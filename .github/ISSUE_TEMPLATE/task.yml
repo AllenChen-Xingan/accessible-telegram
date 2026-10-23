@@ -1,0 +1,21 @@
+name: 想做的事
+description: 功能、改进、读法标准——由人来写，写你自己的话
+body:
+  - type: textarea
+    id: intent
+    attributes:
+      label: 我想要什么
+      description: 用自己的话写，不必完整，不要让 AI 代写
+    validations:
+      required: true
+  - type: dropdown
+    id: ruler
+    attributes:
+      label: 推进哪把尺子
+      multiple: true
+      options: [无障碍友好, 速度很快, AI 友好, 都不是]
+  - type: input
+    id: task
+    attributes:
+      label: 对应核心任务（可选）
+      placeholder: 例如 T03

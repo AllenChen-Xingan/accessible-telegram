@@ -1,0 +1,8 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "atg",
+  "version": "0.1.0",
+  "description": "无障碍 Telegram（macOS · VoiceOver 优先）",
+  "license": "MIT",
+  "keywords": ["aias"]
+}

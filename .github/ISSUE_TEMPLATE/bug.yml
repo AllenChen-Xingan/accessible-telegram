@@ -1,0 +1,25 @@
+name: 问题
+description: 哪里不对——AI 提的请打 by:ai 标签，只写事实
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 现象；读屏读了什么、焦点跑到哪里
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      placeholder: "1. 打开…\n2. 按…"
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来应该怎样
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: macOS 版本 · VoiceOver 开/关 · 提交号

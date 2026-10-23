@@ -1,0 +1,26 @@
+# 标签清单（唯一来源）。同步到 GitHub：bash scripts/sync-labels.sh
+- { name: "type:bug",      color: "d73a4a", description: "功能不对" }
+- { name: "type:feature",  color: "a2eeef", description: "新功能" }
+- { name: "type:a11y",     color: "5319e7", description: "无障碍友好（VoiceOver / 键盘 / 无障碍树）" }
+- { name: "type:perf",     color: "fbca04", description: "速度很快（启动、切换、读屏延迟）" }
+- { name: "type:agent",    color: "0e8a16", description: "AI 友好（CLI、结构化输出、可被 computer use 操作）" }
+- { name: "type:chore",    color: "ededed", description: "杂务：构建、依赖、配置" }
+- { name: "type:docs",     color: "0075ca", description: "文档" }
+- { name: "P0",            color: "b60205", description: "无法使用 / 安全问题" }
+- { name: "P1",            color: "d93f0b", description: "严重影响日常使用" }
+- { name: "P2",            color: "fbca04", description: "影响体验" }
+- { name: "P3",            color: "c2e0c6", description: "可有可无" }
+- { name: "status:active",          color: "1d76db", description: "正在推进（同一时间只有一个）" }
+- { name: "status:blocked",         color: "000000", description: "被卡住" }
+- { name: "status:needs-decision",  color: "e99695", description: "等人拍板" }
+- { name: "by:ai",         color: "bfdadc", description: "AI 提的 issue（只写事实）" }
+- { name: "task:T01", color: "c5def5", description: "specs/tasks.md 的 T01" }
+- { name: "task:T02", color: "c5def5", description: "specs/tasks.md 的 T02" }
+- { name: "task:T03", color: "c5def5", description: "specs/tasks.md 的 T03" }
+- { name: "task:T04", color: "c5def5", description: "specs/tasks.md 的 T04" }
+- { name: "task:T05", color: "c5def5", description: "specs/tasks.md 的 T05" }
+- { name: "task:T06", color: "c5def5", description: "specs/tasks.md 的 T06" }
+- { name: "task:T07", color: "c5def5", description: "specs/tasks.md 的 T07" }
+- { name: "task:T08", color: "c5def5", description: "specs/tasks.md 的 T08" }
+- { name: "task:T09", color: "c5def5", description: "specs/tasks.md 的 T09" }
+- { name: "task:T10", color: "c5def5", description: "specs/tasks.md 的 T10" }

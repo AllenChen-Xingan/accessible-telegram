@@ -1,0 +1,9 @@
+# 作品区 src/ 的目录语义以这里为准：每个 crate 在 .42cog/cog.md 实体表里各占一行。
+[workspace]
+resolver = "2"
+members = ["src/*"]
+exclude = ["src/README.md"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"

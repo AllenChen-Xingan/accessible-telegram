@@ -1,0 +1,32 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: any crates yet?
+        id: crates
+        run: |
+          if ls src/*/Cargo.toml >/dev/null 2>&1; then echo "has=1" >> "$GITHUB_OUTPUT"; else echo "src/ 下还没有 crate，跳过 Rust 检查"; echo "has=0" >> "$GITHUB_OUTPUT"; fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.crates.outputs.has == '1'
+        with:
+          components: rustfmt, clippy
+      - name: fmt
+        if: steps.crates.outputs.has == '1'
+        run: cargo fmt --all --check
+      - name: clippy
+        if: steps.crates.outputs.has == '1'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        if: steps.crates.outputs.has == '1'
+        run: cargo test --workspace
