@@ -1,0 +1,31 @@
+# TDLib version: {"@type":"optionValueString","value":"1.8.61"}
+# first request on fresh client: 1.114ms, initial updates drained: 3
+
+## A. raw tdjson round trip (td_send → td_receive, same thread, incl. JSON parse to Value)
+raw testCallEmpty                            n=5000  median=    0.016ms  p95=    0.027ms  p99=    0.041ms  min=   0.010ms  max=    0.088ms
+raw testSquareInt                            n=5000  median=    0.018ms  p95=    0.031ms  p99=    0.049ms  min=   0.012ms  max=    0.151ms
+raw testCallString(~1KB)                     n=5000  median=    0.058ms  p95=    0.071ms  p99=    0.101ms  min=   0.052ms  max=    0.236ms
+
+## B. raw tdjson burst throughput (20000 x testCallString ~1KB, send all then receive all)
+  round: 903.9ms total, 22127 responses/s
+  round: 912.6ms total, 21916 responses/s
+  round: 916.8ms total, 21816 responses/s
+  round: 903.5ms total, 22136 responses/s
+  round: 907.5ms total, 22039 responses/s
+raw burst median: 22039 responses/s
+
+## C. via tdlib-rs (background receive thread + async fn, incl. serde into typed structs)
+tdlib-rs test_call_empty                     n=5000  median=    0.022ms  p95=    0.026ms  p99=    0.028ms  min=   0.020ms  max=    0.100ms
+tdlib-rs test_call_string(~1KB)              n=5000  median=    0.107ms  p95=    0.177ms  p99=    0.208ms  min=   0.096ms  max=    0.516ms
+  round: 911.0ms total, 21955 responses/s
+  round: 898.0ms total, 22272 responses/s
+  round: 899.8ms total, 22228 responses/s
+  round: 909.1ms total, 22000 responses/s
+  round: 991.3ms total, 20176 responses/s
+tdlib-rs burst median: 22000 responses/s
+
+## D. deserialize one updateNewMessage JSON into tdlib_rs::enums::Update (same path as tdlib_rs::receive)
+# sample JSON size: 1237 bytes
+# sample parses as Update::NewMessage ✓
+parse updateNewMessage (str→Value→Update)    n=20000 median=    0.038ms  p95=    0.039ms  p99=    0.050ms  min=   0.036ms  max=    0.247ms
+=> single-thread decode capacity ≈ 26403 updates/s

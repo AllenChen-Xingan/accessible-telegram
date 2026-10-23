@@ -37,7 +37,7 @@ Telegram 服务器 / GPUI 上游 ──给我──▶  无障碍 Telegram  ─�
 
 | | 是谁 | 交接什么 | 怎么交 |
 |---|---|---|---|
-| 上游 | Telegram（MTProto API） | 消息与账号数据 | grammers 库 |
+| 上游 | Telegram（MTProto API） | 消息与账号数据 | TDLib（经 tdlib-rs；自维护补丁，做好反馈上游） |
 | 上游 | Zed / GPUI | 界面框架与 AccessKit 接入 | Cargo git 依赖 |
 | 下游 | 我自己 | 能用的 App | 本地构建 |
 | 下游 | Zed 仓库（可选） | 发现的 GPUI 无障碍缺口 | 上游 PR / issue |
@@ -46,10 +46,10 @@ Telegram 服务器 / GPUI 上游 ──给我──▶  无障碍 Telegram  ─�
 
 | 依赖 | 版本 | 缺了会怎样 |
 |---|---|---|
-| Rust 工具链（rustup / cargo） | 见 `rust-toolchain.toml` | 什么都编不了（**当前未安装**） |
-| Xcode 命令行工具 | 随系统 | GPUI 的 macOS 后端编不过（需要 Metal 相关工具） |
+| Rust 工具链（rustup / cargo） | 见 `rust-toolchain.toml`（当前 1.99.1） | 什么都编不了 |
+| 完整 Xcode + Metal 工具链 | Xcode 27.1；编译时 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` | GPUI 的 macOS 后端编不过 |
 | GPUI | zed 主干 git 依赖（锁 commit） | 没有界面与无障碍 |
-| grammers | 待定版本 | 连不上 Telegram |
+| TDLib + tdlib-rs | 实验用 1.8.61 预编译；正式用自编 1.8.69（补丁） | 连不上 Telegram |
 | Telegram `api_id` / `api_hash` | my.telegram.org 申请 | 无法登录 |
 | macOS VoiceOver | 系统自带 | 无法做实效验证 |
 

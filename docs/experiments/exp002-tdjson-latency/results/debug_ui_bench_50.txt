@@ -1,0 +1,11 @@
+## UI segment · items=50 samples=300 interval=120ms
+# window active in 233/300 samples; not-found-after-frame: 0; AX nodes walked (last): 53
+t0→tA  TDLib round trip (testCallString)     n=300   median=    0.183ms  p95=    0.243ms  p99=    0.293ms  min=   0.076ms  max=    1.643ms
+tA→t1  bg thread → main thread               n=300   median=    0.043ms  p95=    0.057ms  p99=    0.804ms  min=   0.018ms  max=    4.180ms
+t1→t2  notify → next render starts           n=300   median=    8.299ms  p95=   16.542ms  p99=   16.998ms  min=   0.145ms  max=   17.565ms
+t2→t3  render+layout+paint                   n=300   median=   10.256ms  p95=   13.939ms  p99=   14.255ms  min=   4.434ms  max=   14.557ms
+t3→t4  a11y update+notifs+present            n=300   median=    2.034ms  p95=    3.068ms  p99=    3.354ms  min=   0.991ms  max=    3.547ms
+t4→t5  in-process AX query finds node        n=300   median=    3.094ms  p95=    3.911ms  p99=    4.616ms  min=   1.754ms  max=    5.398ms
+t1→t4  state change → frame done (UI)        n=300   median=   20.266ms  p95=   30.360ms  p99=   32.922ms  min=   6.763ms  max=   33.772ms
+t0→t4  TDLib send → tree updated+notified    n=300   median=   20.560ms  p95=   30.620ms  p99=   33.205ms  min=   6.886ms  max=   34.038ms
+t0→t5  TDLib send → AX query sees it         n=300   median=   23.694ms  p95=   34.100ms  p99=   36.548ms  min=   8.761ms  max=   37.717ms

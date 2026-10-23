@@ -36,7 +36,7 @@
 ## 资源现实
 
 - 模型 / 账号 / 额度：Claude Code（Opus 5.5）为主；本机另有 `codex`，可做第二谱系评审
-- 硬件 / 网络：一台 Mac（macOS 27）。**Rust 还没装**。Rust + GPUI 编译很吃磁盘和 CPU，一个 `target/` 目录几十 GB 很常见，开多个 worktree 前先看剩余空间
+- 硬件 / 网络：一台 Mac（macOS 27）。Rust 1.99.1 与 Metal 工具链已装（2026-10-23）。Rust + GPUI 编译很吃磁盘和 CPU，一个 `target/` 目录几十 GB 很常见，开多个 worktree 前先看剩余空间
 - 人手：我一个人 + AI（投入时间待确认）
 
 ## 使用者现实
