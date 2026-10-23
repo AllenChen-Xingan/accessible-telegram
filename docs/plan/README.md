@@ -5,3 +5,4 @@
 
 | 编号 | 日期 | 标题 |
 |------|------|------|
+| — | 2026-10-23 | GPUI+AccessKit 能否撑起读屏友好的聊天界面，Telegram 层用 grammers 还是 TDLib → 取舍卡见 `docs/research/001_stack/decision.md` |
