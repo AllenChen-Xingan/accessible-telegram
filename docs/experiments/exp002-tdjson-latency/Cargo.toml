@@ -1,0 +1,44 @@
+# exp002 · TDLib 往返 / 新消息到无障碍树 / 冷启动 分段计时。一次性实验代码。
+# 空 [workspace]：别让项目根的 workspace 把它吞进去。
+[workspace]
+
+[package]
+name = "exp002"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# TDLib：只用 tdlib-rs 的预编译下载（1.8.61），不自己编
+tdlib-rs = { version = "=1.4.0", features = ["download-tdlib"] }
+serde_json = "1"
+futures = "0.3"
+async-channel = "2"
+# 界面段：本地浅克隆的 Zed（commit 79fe6a6）
+gpui = { path = "../../../resources/zed/crates/gpui" }
+gpui_platform = { path = "../../../resources/zed/crates/gpui_platform" }
+# 进程内查 NSAccessibility（不走 AX 跨进程接口，不需要「辅助功能」权限）
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString"] }
+
+[build-dependencies]
+tdlib-rs = { version = "=1.4.0", features = ["download-tdlib"] }
+
+[[bin]]
+name = "td_bench"
+path = "src/bin/td_bench.rs"
+
+[[bin]]
+name = "ui_bench"
+path = "src/bin/ui_bench.rs"
+
+[[bin]]
+name = "cold_start"
+path = "src/bin/cold_start.rs"
+
+# 默认用 debug 构建，复用共享目录里 exp001/003 已编好的 GPUI（不另占名额编 release）。
+# 只给「只有本实验用」的叶子包开优化，不改共享包的指纹：
+[profile.dev.package.exp002]
+opt-level = 3
+[profile.dev.package.tdlib-rs]
+opt-level = 3

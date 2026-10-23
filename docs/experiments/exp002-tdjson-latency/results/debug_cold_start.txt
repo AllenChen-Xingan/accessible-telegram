@@ -1,0 +1,18 @@
+## TDLib-only process (td_bench --cold), runs=20
+# first run (maybe cold disk cache): spawn→first response 8.9ms
+spawn → main()                               n=19    median=    7.947ms  p95=    9.420ms  p99=    9.420ms  min=   7.386ms  max=    9.420ms
+main → TDLib client first response           n=19    median=    0.513ms  p95=    0.621ms  p99=    0.621ms  min=   0.474ms  max=    0.621ms
+main → updateAuthorizationState              n=19    median=    0.512ms  p95=    0.619ms  p99=    0.619ms  min=   0.473ms  max=    0.619ms
+spawn → TDLib first response                 n=19    median=    8.426ms  p95=   10.041ms  p99=   10.041ms  min=   7.883ms  max=   10.041ms
+
+## GPUI window + a11y tree + TDLib in parallel (ui_bench --cold --items 50), runs=20
+# first run (maybe cold disk cache): spawn→ax_ready 262.0ms
+spawn → main()                               n=19    median=   19.552ms  p95=   32.835ms  p99=   32.835ms  min=  15.148ms  max=   32.835ms
+main → window opened                         n=19    median=  142.574ms  p95=  209.243ms  p99=  209.243ms  min= 119.912ms  max=  209.243ms
+main → first render()                        n=19    median=  137.512ms  p95=  203.927ms  p99=  203.927ms  min= 114.929ms  max=  203.927ms
+main → first frame presented                 n=19    median=  142.571ms  p95=  209.240ms  p99=  209.240ms  min= 119.909ms  max=  209.240ms
+first present → a11y tree has list           n=19    median=  104.032ms  p95=  566.589ms  p99=  566.589ms  min=  78.236ms  max=  566.589ms
+spawn → first frame presented                n=19    median=  159.593ms  p95=  235.611ms  p99=  235.611ms  min= 143.053ms  max=  235.611ms
+spawn → a11y tree has list                   n=19    median=  284.126ms  p95=  741.570ms  p99=  741.570ms  min= 235.611ms  max=  741.570ms
+spawn → TDLib first response                 n=19    median=   20.429ms  p95=   34.108ms  p99=   34.108ms  min=  15.886ms  max=   34.108ms
+# AX polls until ready: median 4
