@@ -55,7 +55,7 @@
 
 | # | 需要拍板的 | 选项 | 我的建议 | 拍了吗 |
 |---|---|---|---|---|
-| 1 | Telegram 层 | A. TDLib + tdlib-rs　B. grammers + 自建缓存 | A，前提是 `exp002` 通过 | ☐ |
+| 1 | Telegram 层 | A. TDLib + tdlib-rs　B. grammers + 自建缓存 | A，前提是 `exp002` 通过 | ✅ **A**（2026-10-23 人定）：TDLib + tdlib-rs |
 | 2 | tdlib-rs 落后上游怎么办（实际交付的是 TDLib **1.8.61**，`tdlib-rs/build.rs:21,199-205` 锁定） | A. 先用它的 1.8.61 预编译库，落后了再说　B. 自己维护 tdlib-rs 的补丁：用 `local-tdlib` 编新版 TDLib，**同时**更新绑定的 `tl/api.tl` 与写死的库文件名（`build.rs:93,310`），要编译名额 | A：先跑通，等真遇到缺 API 再切 B；B 的成本比原先估计的高 | ✅ **B**（2026-10-23 人定）：自己维护补丁，做好了反馈给上游 tdlib-rs |
 | 3 | 列表浏览方式（**选 A 等于放宽命门 1**：VoiceOver 自带的逐项移动只到可见区，跨屏要靠本应用的方向键） | A. 方向键驱动（active_descendant）　B. 花大力气让屏幕外的项也进树 | A，但必须先过 `exp003-list-nav`，并由你亲手试用后确认能接受 | ☐ |
 | 4 | 先跑哪个实验 | A. `exp001-announce`　B. `exp002-tdjson-latency`　C. `exp003-list-nav` | A，然后 C（都决定界面层），最后 B | ☐ |

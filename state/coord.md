@@ -42,6 +42,6 @@
 ## 待定清单（攒着等人一次看完）
 
 - [ ] `001_stack/must-know.md` 三条命门对不对
-- [ ] `001_stack/decision.md` 拍板：Telegram 层 · 列表浏览方式 · 实验顺序（tdlib-rs 已定 B：自维护补丁，做好反馈上游）
+- [ ] `001_stack/decision.md` 拍板：列表浏览方式 · 实验顺序（已定：Telegram 层 = TDLib + tdlib-rs；tdlib-rs = B 自维护补丁，做好反馈上游）
 - [ ] 主要用哪种辅助功能：VoiceOver / 键盘 / 缩放（线索：Claude Code 设置里开着读屏模式）
 - [ ] 放权边界：哪些动作不用逐条确认
