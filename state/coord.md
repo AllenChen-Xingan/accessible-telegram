@@ -14,6 +14,7 @@
 ## Top 3（次要）
 
 1. 开第一个 issue（人写）
+   - tdlib-rs 补丁：fork 到本人账号，`local-tdlib` 编 TDLib 1.8.69 + 同步 `tl/api.tl` 与库文件名（`build.rs:93,310`）；要编译名额；做好后向上游提 PR（PR 描述人来写）
 2. 三个实验 `exp001-announce` → `exp003-list-nav` → `exp002-tdjson-latency`（要 Rust + 编译名额）
 3. 第一个原型：`atg-cli` 登录 + 列会话
 
@@ -41,6 +42,6 @@
 ## 待定清单（攒着等人一次看完）
 
 - [ ] `001_stack/must-know.md` 三条命门对不对
-- [ ] `001_stack/decision.md` 拍板 4 条（Telegram 层 · tdlib-rs 落后怎么办 · 列表浏览方式 · 实验顺序）
+- [ ] `001_stack/decision.md` 拍板：Telegram 层 · 列表浏览方式 · 实验顺序（tdlib-rs 已定 B：自维护补丁，做好反馈上游）
 - [ ] 主要用哪种辅助功能：VoiceOver / 键盘 / 缩放（线索：Claude Code 设置里开着读屏模式）
 - [ ] 放权边界：哪些动作不用逐条确认
