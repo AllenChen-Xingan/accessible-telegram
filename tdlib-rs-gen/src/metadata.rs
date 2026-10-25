@@ -46,7 +46,13 @@ impl<'a> Metadata<'a> {
         });
 
         type_definitions.iter().for_each(|d| {
-            if def_self_references(d, d, &metadata.defs_with_type, &mut HashSet::new()) {
+            if def_self_references(
+                d,
+                d,
+                &metadata.defs_with_type,
+                &type_definition_map,
+                &mut HashSet::new(),
+            ) {
                 metadata.recursing_defs.insert(&d.name);
             }
         });
@@ -80,6 +86,7 @@ fn def_self_references<'a>(
     root: &Definition,
     check: &'a Definition,
     defs_with_type: &'a HashMap<&String, Vec<&Definition>>,
+    defs_by_name: &'a HashMap<&String, &&Definition>,
     visited: &mut HashSet<&'a String>,
 ) -> bool {
     visited.insert(&check.name);
@@ -88,14 +95,29 @@ fn def_self_references<'a>(
             return true;
         }
 
-        if let Some(defs) = defs_with_type.get(&param.ty.name) {
-            for def in defs {
-                if visited.contains(&def.name) {
-                    continue;
-                }
-                if def_self_references(root, def, defs_with_type, visited) {
-                    return true;
-                }
+        // A bare type (`button:inlineButton`) names a constructor, not a
+        // type, so follow that one definition instead of all of a type's.
+        let next: Vec<&'a Definition> = if param.ty.bare {
+            defs_by_name
+                .get(&param.ty.name)
+                .map(|d| vec![**d])
+                .unwrap_or_default()
+        } else {
+            defs_with_type
+                .get(&param.ty.name)
+                .cloned()
+                .unwrap_or_default()
+        };
+
+        for def in next {
+            if def.ty.name == root.ty.name {
+                return true;
+            }
+            if visited.contains(&def.name) {
+                continue;
+            }
+            if def_self_references(root, def, defs_with_type, defs_by_name, visited) {
+                return true;
             }
         }
     }
@@ -120,4 +142,49 @@ fn def_contains_only_bare_types<'a>(
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tdlib_rs_parser::parse_tl_file;
+
+    fn defs(tl: &str) -> Vec<Definition> {
+        parse_tl_file(tl.to_owned()).map(Result::unwrap).collect()
+    }
+
+    fn recursive(defs: &[Definition], name: &str) -> bool {
+        let metadata = Metadata::new(defs);
+        let def = defs.iter().find(|d| d.name == name).unwrap();
+        metadata.is_recursive_def(def)
+    }
+
+    #[test]
+    fn cycle_through_bare_type_is_recursive() {
+        // TDLib 1.8.69: `richTextButton button:inlineButton` (bare) closes
+        // the cycle InlineButton -> RichText -> RichTextButton -> InlineButton.
+        let defs = defs(
+            "inlineButton text:RichText = InlineButton;\n\
+             richTextPlain text:string = RichText;\n\
+             richTextButton button:inlineButton = RichText;\n",
+        );
+        assert!(recursive(&defs, "richTextButton"));
+        assert!(!recursive(&defs, "richTextPlain"));
+    }
+
+    #[test]
+    fn bare_type_without_cycle_is_not_recursive() {
+        let defs = defs(
+            "formattedText text:string = FormattedText;\n\
+             messageText text:formattedText = MessageContent;\n",
+        );
+        assert!(!recursive(&defs, "messageText"));
+    }
+
+    #[test]
+    fn self_reference_through_vector_is_not_recursive() {
+        // `Vec` is already on the heap, so no `Box` is needed.
+        let defs = defs("pageBlockList items:vector<PageBlock> = PageBlock;\n");
+        assert!(!recursive(&defs, "pageBlockList"));
+    }
 }
