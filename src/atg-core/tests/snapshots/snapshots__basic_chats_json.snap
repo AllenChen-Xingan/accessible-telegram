@@ -1,0 +1,138 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "json_pretty(&world(\"basic\").chat_items())"
+---
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 101,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 2,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 101,
+        "message_id": 1006
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 101,
+          "name": "林小雨"
+        },
+        "date": "2026-10-23T11:35:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "明天改到八点"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "林小雨，2 条未读，明天改到八点"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1001,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": true,
+    "mute_inherited": false,
+    "pinned": true,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1001,
+        "message_id": 2022
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 102,
+          "name": "周大山"
+        },
+        "date": "2026-10-23T11:33:30Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [],
+        "attachment": {
+          "type": "contact",
+          "name": "领队 老王"
+        }
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，周大山：联系人，领队 老王"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1002,
+    "title": "示例频道",
+    "kind": {
+      "type": "channel"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": true,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1002,
+        "message_id": 9
+      },
+      "head": {
+        "sender": {
+          "type": "chat",
+          "chat_id": -1002,
+          "title": "示例频道"
+        },
+        "date": "2026-10-23T09:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水。"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动…"
+  }
+}

@@ -1,0 +1,672 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "json_pretty(&world(\"entities\").docs())"
+---
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3001
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:01Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "😀😀"
+        },
+        {
+          "type": "bold",
+          "children": [
+            {
+              "type": "text",
+              "text": "好消息"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：😀😀好消息，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3002
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:02Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "👨‍👩‍👧"
+        },
+        {
+          "type": "underline",
+          "children": [
+            {
+              "type": "text",
+              "text": "到齐了"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：👨‍👩‍👧到齐了，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3003
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:03Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "bold",
+          "children": [
+            {
+              "type": "text",
+              "text": "一二"
+            },
+            {
+              "type": "italic",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "三四"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "italic",
+          "children": [
+            {
+              "type": "text",
+              "text": "五六"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：一二三四五六，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3004
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:04Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "运行 "
+        },
+        {
+          "type": "code",
+          "text": "ls -la"
+        },
+        {
+          "type": "text",
+          "text": " 看看"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：运行 ls -la 看看，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3005
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:05Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "pre",
+          "language": "python",
+          "text": "print(1)"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：print(1)，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3006
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:06Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "quote",
+          "expandable": true,
+          "children": [
+            {
+              "type": "text",
+              "text": "引用开头，内层引用，引用结尾"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：引用开头，内层引用，引用结尾，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3007
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:07Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "link",
+          "url": "https://example.invalid/p",
+          "children": [
+            {
+              "type": "text",
+              "text": "看 "
+            },
+            {
+              "type": "bold",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "@abc"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " 的帖子"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：看 @abc 的帖子，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3008
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:08Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "custom_emoji",
+          "custom_emoji_id": "5000000000000000001",
+          "children": [
+            {
+              "type": "text",
+              "text": "🔥"
+            }
+          ]
+        },
+        {
+          "type": "mention_name",
+          "user_id": 101,
+          "children": [
+            {
+              "type": "text",
+              "text": "小雨"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "spoiler",
+          "children": [
+            {
+              "type": "text",
+              "text": "秘密是"
+            },
+            {
+              "type": "bold",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "早到"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：🔥小雨，隐藏内容，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3009
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:09Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "email",
+          "children": [
+            {
+              "type": "text",
+              "text": "a@b.invalid"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "phone",
+          "children": [
+            {
+              "type": "text",
+              "text": "555-0100"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "cashtag",
+          "children": [
+            {
+              "type": "text",
+              "text": "$USD"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "bot_command",
+          "children": [
+            {
+              "type": "text",
+              "text": "/start"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "bank_card",
+          "children": [
+            {
+              "type": "text",
+              "text": "4000000000000002"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "ton_address",
+          "children": [
+            {
+              "type": "text",
+              "text": "EQabc"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "media_timestamp",
+          "seconds": 65,
+          "children": [
+            {
+              "type": "text",
+              "text": "1:05"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "date_time",
+          "unix_time": "2026-10-24T11:30:00Z",
+          "text": "明天"
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "strikethrough",
+          "children": [
+            {
+              "type": "text",
+              "text": "旧"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：a@b.invalid 555-0100 $USD /start 4000000000000002 EQabc 1:05 明天 旧，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3010
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "url",
+          "children": [
+            {
+              "type": "text",
+              "text": "https://example.invalid"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "unknown",
+          "td_type": "textEntityTypeSparkle",
+          "children": [
+            {
+              "type": "text",
+              "text": "新格式"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：https://example.invalid 新格式，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3011
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:11Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "underline",
+          "children": [
+            {
+              "type": "text",
+              "text": "👍"
+            }
+          ]
+        },
+        {
+          "type": "italic",
+          "children": [
+            {
+              "type": "text",
+              "text": "短"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：👍短，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3012
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:12Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "spoiler",
+          "children": [
+            {
+              "type": "text",
+              "text": "全是剧透"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：隐藏内容，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 3013
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:13Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": []
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：空消息，19:30"
+  }
+}

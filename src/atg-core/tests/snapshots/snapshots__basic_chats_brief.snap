@@ -1,0 +1,7 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "briefs(&world(\"basic\").chat_items())"
+---
+林小雨，2 条未读，明天改到八点
+周末爬山群，5 条未读，1 条提到你，周大山：联系人，领队 老王
+示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动…

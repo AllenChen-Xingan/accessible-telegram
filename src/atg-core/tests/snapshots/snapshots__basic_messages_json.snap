@@ -1,0 +1,1580 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "json_pretty(&world(\"basic\").docs())"
+---
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "status",
+    "status": "offline"
+  },
+  "speech": {
+    "brief": "网络已断开，正在等待网络"
+  }
+}
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "status",
+    "status": "connecting"
+  },
+  "speech": {
+    "brief": "正在连接"
+  }
+}
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "status",
+    "status": "connecting"
+  },
+  "speech": {
+    "brief": "正在连接"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1000
+    },
+    "date": "2026-10-23T11:20:00Z",
+    "actor": {
+      "type": "user",
+      "user_id": 101,
+      "name": "林小雨"
+    },
+    "action": {
+      "type": "contact_registered"
+    }
+  },
+  "speech": {
+    "brief": "林小雨加入了 Telegram，19:20"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1001
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "👍 "
+        },
+        {
+          "type": "bold",
+          "children": [
+            {
+              "type": "text",
+              "text": "今晚"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "七点见，"
+        },
+        {
+          "type": "italic",
+          "children": [
+            {
+              "type": "text",
+              "text": "记得"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "带书"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：👍 今晚七点见，记得带书，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1002
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 100,
+        "name": null
+      },
+      "date": "2026-10-23T11:31:00Z",
+      "outgoing": true,
+      "reply_to": {
+        "type": "message",
+        "target": {
+          "chat_id": 101,
+          "message_id": 1001
+        },
+        "sender": {
+          "type": "user",
+          "user_id": 101,
+          "name": "林小雨"
+        },
+        "quote": [
+          {
+            "type": "text",
+            "text": "记得带书"
+          }
+        ]
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "好的，没问题"
+        }
+      ]
+    },
+    "tail": {
+      "delivery": "read"
+    }
+  },
+  "speech": {
+    "brief": "我：好的，没问题，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1003
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 100,
+        "name": null
+      },
+      "date": "2026-10-23T11:32:00Z",
+      "outgoing": true
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "路上了"
+        }
+      ]
+    },
+    "tail": {
+      "delivery": "pending"
+    }
+  },
+  "speech": {
+    "brief": "我：路上了，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1004
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:33:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "山顶的风景，结局是"
+        },
+        {
+          "type": "spoiler",
+          "children": [
+            {
+              "type": "text",
+              "text": "大家都到了"
+            }
+          ]
+        }
+      ],
+      "attachment": {
+        "type": "photo",
+        "spoiler": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：图片，山顶的风景，结局是，隐藏内容，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1005
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:34:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "voice",
+        "duration": 12,
+        "listened": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：语音 12 秒，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1006
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:35:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "明天改到八点"
+        }
+      ]
+    },
+    "tail": {
+      "edited": "2026-10-23T11:36:00Z",
+      "reactions": [
+        {
+          "kind": {
+            "type": "emoji",
+            "emoji": "👍"
+          },
+          "count": 2,
+          "chosen": true
+        },
+        {
+          "kind": {
+            "type": "custom_emoji",
+            "custom_emoji_id": "5368324170671202286"
+          },
+          "count": 1,
+          "chosen": false
+        },
+        {
+          "kind": {
+            "type": "paid"
+          },
+          "count": 3,
+          "chosen": false
+        }
+      ]
+    }
+  },
+  "speech": {
+    "brief": "林小雨：明天改到八点，19:35"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "tombstone",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1007
+    }
+  },
+  "speech": {
+    "brief": "已撤回的消息"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1008
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:38:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "call",
+        "video": false,
+        "duration": 0,
+        "missed": true
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：未接语音通话，19:38"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": 101,
+      "message_id": 1009
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:39:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "expired",
+        "what": "photo"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：已过期的图片，19:39"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2000
+    },
+    "date": "2026-10-23T10:30:00Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "group_created",
+      "title": "周末爬山群"
+    }
+  },
+  "speech": {
+    "brief": "周大山创建了群组「周末爬山群」，18:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2001
+    },
+    "date": "2026-10-23T10:40:00Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "members_added",
+      "users": [
+        {
+          "user_id": 101,
+          "name": "林小雨"
+        },
+        {
+          "user_id": 103,
+          "name": "陈一一"
+        }
+      ]
+    }
+  },
+  "speech": {
+    "brief": "周大山添加了林小雨、陈一一，18:40"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2002
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 103,
+        "name": "陈一一"
+      },
+      "date": "2026-10-23T11:30:10Z",
+      "outgoing": false,
+      "topic": {
+        "type": "forum",
+        "topic_id": 3
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "mention",
+          "children": [
+            {
+              "type": "text",
+              "text": "@lin_xy"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " 看下"
+        },
+        {
+          "type": "link",
+          "url": "https://example.invalid/route",
+          "children": [
+            {
+              "type": "text",
+              "text": "路线图"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "hashtag",
+          "children": [
+            {
+              "type": "text",
+              "text": "#爬山"
+            }
+          ]
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "陈一一：@lin_xy 看下路线图 #爬山，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2003
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:30:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "document",
+        "file_name": "路线.gpx",
+        "size": 48213
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：文件，路线.gpx，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2004
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:30:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "sticker",
+        "emoji": "😀"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：贴纸，😀，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2005
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": null
+      },
+      "date": "2026-10-23T11:30:40Z",
+      "outgoing": false,
+      "forward": {
+        "origin": {
+          "type": "hidden_user",
+          "name": "匿名驴友"
+        },
+        "date": "2026-10-22T11:30:00Z"
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "注意防晒"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "未知发送人：注意防晒，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2006
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:30:50Z",
+      "outgoing": false,
+      "forward": {
+        "origin": {
+          "type": "channel",
+          "chat_id": -1002,
+          "title": "示例频道"
+        },
+        "date": "2026-10-23T09:30:00Z"
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水。"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水，19:30"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2007
+    },
+    "head": {
+      "sender": {
+        "type": "chat",
+        "chat_id": -1002,
+        "title": "示例频道"
+      },
+      "date": "2026-10-23T11:31:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "pre",
+          "text": "集合点：北门"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "示例频道：集合点：北门，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2008
+    },
+    "date": "2026-10-23T11:31:10Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "pinned",
+      "pinned": {
+        "chat_id": -1001,
+        "message_id": 2006
+      }
+    }
+  },
+  "speech": {
+    "brief": "周大山置顶了一条消息，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2009
+    },
+    "date": "2026-10-23T11:31:20Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "title_changed",
+      "title": "周末爬山群（十月）"
+    }
+  },
+  "speech": {
+    "brief": "周大山把群名改为「周末爬山群（十月）」，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2010
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:31:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "unknown",
+        "td_type": "messageUnsupported"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：暂不支持的消息，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2011
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:31:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "unknown",
+        "td_type": "messageFancyFutureThing"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：暂不支持的消息，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2012
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:31:50Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "other",
+        "td_type": "messageDice"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：暂不支持的消息，19:31"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2013
+    },
+    "date": "2026-10-23T11:32:00Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "other",
+      "td_type": "messageChatSetTheme"
+    }
+  },
+  "speech": {
+    "brief": "一条系统消息，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2014
+    },
+    "date": "2026-10-23T11:32:10Z",
+    "actor": {
+      "type": "user",
+      "user_id": 103,
+      "name": "陈一一"
+    },
+    "action": {
+      "type": "joined_by_link"
+    }
+  },
+  "speech": {
+    "brief": "陈一一通过邀请链接加入了群组，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2015
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:32:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "video",
+        "duration": 65,
+        "spoiler": true
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：视频 1 分 5 秒，隐藏内容，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2016
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:32:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "video_note",
+        "duration": 30,
+        "viewed": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：圆形视频 30 秒，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2017
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:32:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "audio",
+        "duration": 201,
+        "title": "山歌",
+        "performer": "无名乐队"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：音频，山歌，无名乐队，3 分 21 秒，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2018
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:32:50Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "哈哈"
+        }
+      ],
+      "attachment": {
+        "type": "animation",
+        "duration": 3
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：动图，哈哈，19:32"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2019
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "animated_emoji",
+        "emoji": "🎉"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：🎉，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2020
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "location"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：位置，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2021
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "venue",
+        "title": "北门停车场"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：地点，北门停车场，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2022
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "contact",
+        "name": "领队 老王"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：联系人，领队 老王，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2023
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "几点出发？"
+          }
+        ]
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：投票，几点出发？，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2024
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:50Z",
+      "outgoing": false,
+      "album_id": "7700000000000000001"
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "photo",
+        "spoiler": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：图片，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2025
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:33:50Z",
+      "outgoing": false,
+      "album_id": "7700000000000000001"
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "photo",
+        "spoiler": true
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：图片，隐藏内容，19:33"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2026
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:34:00Z",
+      "outgoing": false,
+      "reply_to": {
+        "type": "unknown",
+        "td_type": "messageReplyToStory"
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "看这个"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：看这个，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2027
+    },
+    "head": {
+      "sender": {
+        "type": "unknown",
+        "td_type": "messageSenderFutureKind"
+      },
+      "date": "2026-10-23T11:34:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "谁发的？"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "未知发送人：谁发的？，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2028
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:34:20Z",
+      "outgoing": false,
+      "reply_to": {
+        "type": "message",
+        "target": {
+          "chat_id": -1009,
+          "message_id": 5
+        },
+        "sender": {
+          "type": "user",
+          "user_id": 102,
+          "name": "周大山"
+        }
+      }
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "跨群回复"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：跨群回复，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2029
+    },
+    "date": "2026-10-23T11:34:30Z",
+    "actor": {
+      "type": "user",
+      "user_id": 103,
+      "name": "陈一一"
+    },
+    "action": {
+      "type": "member_removed",
+      "user": {
+        "user_id": 103,
+        "name": "陈一一"
+      }
+    }
+  },
+  "speech": {
+    "brief": "陈一一退出了群组，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2030
+    },
+    "date": "2026-10-23T11:34:40Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "member_removed",
+      "user": {
+        "user_id": 101,
+        "name": "林小雨"
+      }
+    }
+  },
+  "speech": {
+    "brief": "周大山移出了林小雨，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "service",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2031
+    },
+    "date": "2026-10-23T11:34:50Z",
+    "actor": {
+      "type": "user",
+      "user_id": 102,
+      "name": "周大山"
+    },
+    "action": {
+      "type": "photo_changed"
+    }
+  },
+  "speech": {
+    "brief": "周大山更换了群头像，19:34"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2032
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:35:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "restricted",
+        "reason": "因版权限制无法查看"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：受限内容，无法查看，19:35"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2033
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:35:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "photo",
+        "spoiler": false
+      },
+      "sensitive": true
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：图片，隐藏内容，19:35"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 2034
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:35:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "只有你能看到的内容"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：只有你能看到的内容，19:35"
+  }
+}
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "status",
+    "status": "syncing"
+  },
+  "speech": {
+    "brief": "正在同步"
+  }
+}
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "status",
+    "status": "online"
+  },
+  "speech": {
+    "brief": "已连接"
+  }
+}
+{
+  "v": 1,
+  "kind": "event",
+  "data": {
+    "type": "unknown",
+    "td_type": "updateSomethingFromTheFuture"
+  },
+  "speech": {
+    "brief": "暂不支持的消息"
+  }
+}

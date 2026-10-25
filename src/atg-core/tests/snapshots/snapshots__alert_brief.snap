@@ -1,0 +1,8 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "format!(\"{}\\n{}\\n{}\\n{}\", brief(&one, &cx()), brief(&many, &cx()),\nbrief(&one, &no_key), json::line(&one, &cx()))"
+---
+2 条新消息，来自林小雨，按 M 收听
+7 条新消息，按 M 收听
+2 条新消息，来自林小雨
+{"v":1,"kind":"event","data":{"type":"alert","total":2,"chats":[{"chat_id":101,"title":"林小雨","count":2}]},"speech":{"brief":"2 条新消息，来自林小雨，按 M 收听"}}

@@ -28,11 +28,11 @@
 
 ### 作品区 `src/`：按 crate 分（清单以根 `Cargo.toml` workspace 为准）
 
-> 子目录建出来那一刻在这里补一行。以下是计划中的划分，**还没建**。
+> 子目录建出来那一刻在这里补一行。**已建**：`src/atg-core`（2026-10-25，内容树原型，见 `specs/content-tree.md`）；`atg-cli`、`atg-gui` 还没建。
 
 | crate | 是什么 | 谁产生 | 谁是谁的输入 |
 |---|---|---|---|
-| `src/atg-core` | 能力层：Telegram 连接（封装 TDLib + tdlib-rs：登录、会话、消息、更新推送、本地缓存；见 `docs/research/001_stack/decision.md`）+ 读法（`speech` 模块：把一条消息 / 一个会话变成读屏要读的那句话，纯函数、可快照测试） | AI 写，读法按人定的规约定标 | 输出数据与读法字符串 → `atg-cli`、`atg-gui` |
+| `src/atg-core` | 能力层：Telegram 连接（封装 TDLib + tdlib-rs：登录、会话、消息、更新推送、本地缓存；见 `docs/research/001_stack/decision.md`）+ 内容树（有类型的 AST，一切要读 / 打印的东西都先建成树，各输出都是渲染器；`specs/content-tree.md`）+ 读法（`speech` 模块：把一条消息 / 一个会话变成读屏要读的那句话，纯函数、可快照测试） | AI 写，读法按人定的规约定标 | 输出数据与读法字符串 → `atg-cli`、`atg-gui` |
 | `src/atg-cli` | 入口一（先做）：命令行列会话、读消息（JSON 输出）、发消息（须人确认）。AI 的首选接口 | AI | 输入 `atg-core`；输出 → AI 代理 / 脚本 / 人 |
 | `src/atg-gui` | 入口二（后做）：GPUI 界面，负责角色标注、焦点管理、键盘导航、播报；无障碍树同时服务 VoiceOver 与 computer use | AI | 输入 `atg-core`；输出 → 人 / computer use 代理 |
 
