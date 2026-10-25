@@ -46,7 +46,7 @@
 | `EmailAddress` · `PhoneNumber` · `BankCardNumber` | `tl:6324` · `tl:6327` · `tl:6330` | M（前两个）/ 2 | |
 | `TonAddress` | `tl:6333` | 泛 | |
 | `Bold` · `Italic` · `Underline` · `Strikethrough` | `tl:6336-6345` | M | 简短读法默认不读格式；节点要有 |
-| `Spoiler`（剧透） | `tl:6348` | M | **默认不读内容**，读「剧透」，按需展开 |
+| `Spoiler`（剧透） | `tl:6348` | M | **默认不读内容**，读「隐藏内容，按 D 展开」（R1 人定，`specs/content-tree.md` 第九节） |
 | `Code` · `Pre` · `PreCode`（带语言） | `tl:6351` · `tl:6354` · `tl:6357` | M | 代码块要能整段读 |
 | `BlockQuote` · `ExpandableBlockQuote` | `tl:6360` · `tl:6363` | M | 「引用：……」 |
 | `CustomEmoji`（文本里是替代 emoji） | `tl:6373` | M | 读替代 emoji 字符 |
@@ -64,7 +64,7 @@
 | `messageVideo` | `tl:5737` | M | 时长、`caption` |
 | `messageVoiceNote` | `tl:5749` | M | 时长、`is_listened`、`caption`；语音转文字见 inventory |
 | `messageVideoNote`（圆视频） | `tl:5743` | M | 时长、`is_viewed` |
-| `messageDocument` | `tl:5706` | M | 文件名、大小、`caption` |
+| `messageDocument` | `tl:5706` | M | 文件名、大小（树里是 `document.size`，字节；TDLib 给不出时为 0，`specs/content-tree.md` 第三节第 3 小节）、`caption` |
 | `messageAudio` | `tl:5703` | M | 标题、演唱者、时长 |
 | `messageAnimation`（GIF） | `tl:5700` | M | `caption` |
 | `messageSticker` | `tl:5725` | M | 贴纸对应的 emoji |
@@ -127,7 +127,7 @@
 | **连接状态**（T10） | `updateConnectionState` `tl:11818`；`connectionStateWaitingForNetwork` `tl:10657` · `ConnectingToProxy` `10660` · `Connecting` `10663` · `Updating` `10666` · `Ready` `10669` | M |
 | **登录步骤**（T01） | `updateAuthorizationState` `tl:11193`；`authorizationStateWaitPhoneNumber` `tl:210` · `WaitCode` `233` · `WaitPassword` `250` · `WaitEmailAddress` `222` · `WaitEmailCode` `229` · `WaitRegistration` `242` · `WaitOtherDeviceConfirmation` `237`（二维码）· `Ready` `253` · `LoggingOut` `256` · `Closing` `259` · `Closed` `263` · `WaitPremiumPurchase` `217` | M |
 | **发送结果**（「已发送 / 发送失败」） | `updateMessageSendSucceeded` `tl:11208` · `updateMessageSendFailed` `tl:11214` | M |
-| **撤回占位**（001 拍板 7：原位留「已撤回」） | `updateDeleteMessages` `tl:11523`（`is_permanent`、`from_cache` 区分真撤回与清缓存） | M |
+| **撤回占位**（001 拍板 7：原位留「已撤回」；读法 R7「林小雨撤回了一条消息，19:36」） | `updateDeleteMessages` `tl:11523`；哪些算撤回见 `specs/contracts/actions.md` 事件 `messages_deleted` | M |
 | **日期分隔**（「今天 / 昨天」） | 本项目按 `date` 算 | 2 |
 | **未读分隔**（「以下为未读」；进会话落点也靠它，见 `decision.md` F2） | `chat.last_read_inbox_message_id` | M |
 | **服务通知**（Telegram 官方弹窗） | `updateServiceNotification` `tl:11587` | 2 |
@@ -143,3 +143,8 @@
 3. **`TextUrl` 的链接地址不在文本里**，`MentionName` 的 user_id 也不在——节点必须带这些属性，否则详情层读不到
 4. **相册是多条消息**（`media_album_id`），不是一条消息里的多张图——是建一个「相册」父节点还是渲染时合并，请 tree 定
 5. **108 个内容子类会随 TDLib 升级增加**（TDLib 小版本升级常加新子类；tdlib-rs 落后时还会碰到它不认识的类型）：泛化节点带原类型名，是升级不崩的关键
+
+## 修订记录
+
+- 2026-10-25 v0.1 / v0.2（api），三视角自审与 codex 评审 003
+- 2026-10-25 按 b2 拍板同步（sync）：剧透读法按 R1；`messageDocument` 对齐 tree 已加的 `size`；撤回占位判定与 R7 读法

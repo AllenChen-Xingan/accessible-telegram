@@ -1,6 +1,6 @@
 # 契约 · CLI（`atg-cli`）v0
 
-> 2026-10-25 · 手下 infra 起草 · 外壳已与 `tree` 对齐（2026-10-25 回信同意）· 状态：**草稿**，末尾「待人拍板」未定
+> 2026-10-25 · 手下 infra 起草 · 外壳已与 `tree` 对齐（2026-10-25 回信同意）· 状态：**草稿**；末尾「待人拍板」C1、C2 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步
 > 管：子命令与参数风格、每行 JSON 的外壳、错误输出与退出码、流式输出、给 AI 的自描述
 > 不管：外壳里 `data` 的内容结构（归 `tree`：`specs/content-tree.md`）；动作语义（`actions.md`）；错误种类（`errors.md`）
 > 依据：`.42cog/intent.md`「AI 友好」①命令行优先；`docs/plan/001_arch-stack.md` 第一节第 2 小节（`atg-cli` 职责）
@@ -34,13 +34,14 @@
 | `download CHAT_ID MSG_ID` | 下载这条消息的附件，输出进度事件与本地路径 | `file_download` | T07 |
 | `open (--link URL \| --file CHAT_ID MSG_ID)` | 用系统打开；协议与类型白名单，先输出 `plan` 再确认（`actions.md` `open_link` / `open_file`） | `open_link` `open_file` | T06 T07 |
 | `mute CHAT_ID (on\|off)` | 静音 / 取消静音 | `mute` | T05 |
+| `delete CHAT_ID MSG_ID... [--dry-run]` | 删除消息，**给所有人**（S1 人定进 MVP；只删自己这边第二批）：先逐条输出 `plan`（删哪条 + 简短读法），按闸确认后输出结果；`--dry-run` 只输出 `plan` | `delete_prepare` `delete` | T04 |
 | `resend CHAT_ID MSG_ID...` | 重发失败的消息：先逐条输出 `plan`（写明会不会去掉回复关系），确认后逐条输出结果 | `resend_prepare` `resend` | T04 |
 | `show CHAT_ID MSG_ID` | 一条消息的全部细节（含被回复的那条），`speech` 带 `detail`。**不标已读** | `message_get` `replied_message_get` | T06 T07 |
 | `search chats QUERY [-n N]` / `search messages QUERY [--chat CHAT_ID] [-n N] [--cursor C]` | 搜索 | `search_*` | T08 |
 | `send CHAT_ID (--text T \| --text-file PATH) [--reply-to MSG_ID] [--dry-run]` | 先输出一行 `plan`，再按闸要求确认，**等到 `send_succeeded` / `send_failed` 才输出结尾行**；30 秒内都没等到 → `error(send_outcome_unknown)` 带临时 id，**不许重发**，用 `pending` 查；`--dry-run` 只输出 `plan` | `send_text_prepare` `send_text` | T04 |
 | `watch [--chat CHAT_ID]` | 订阅更新，持续输出事件，Ctrl+C 结束 | `subscribe` | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
-| `play CHAT_ID MSG_ID [--mark-listened]`（批次随 `decision.md` F3；音频出口放哪见 F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
+| `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
 | `speech --scenario NAME [--chat CHAT_ID] [--level brief\|detail\|chat_brief]` | 只打印读法，用夹具场景 | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
 | `version` | 版本、TDLib 版本、外壳版本 `v` | — | — |
@@ -54,11 +55,13 @@
 | `--fake SCENARIO` | 用假后端，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（也接受路径），不联网（`testing.md`） |
 | `--format json\|text` | 默认 `json`；`text` 给人看，每行一句读法（`speech.brief`） |
 | `--redact` | 打码输出，用于贴进 issue / 发给别人：**白名单**——只留 `type`、计数、时间、状态、错误码；正文、说明、名字、用户名、手机号、文件名、链接、`speech` 全部换成「类型 + 长度」；id 换成**每次随机加盐**的哈希（同一次输出内一致，跨次不可对照、也无法穷举反推）。日志打码另有脚本，见 `config-privacy.md` |
-| `--unsafe-direct-send` | **直发模式**（第七节第 11 条）：本次运行发送免确认，到进程退出为止。只认这个参数（不读环境变量、配置文件）；第一行 `status` 带 `direct_send:true`，标准错误打醒目提示；每条直发写 `direct-send.log`。测试档案仍只许发收藏夹。细则只在 `actions.md` 第一节第 5 小节 |
+| `--unsafe-direct-send` | **直发模式**（001 第七节第 11 条）：本次运行 L2 免确认（范围见 `actions.md` 第一节第 5 小节，D1），到进程退出为止。只认这个参数（不读环境变量、配置文件）；第一行 `status` 带 `direct_send:true`，标准错误打醒目提示；每条直发写 `direct-send.log`。测试档案仍只许发收藏夹。细则只在 `actions.md` 第一节第 5 小节 |
 | `--wait` | 遇到 L0 的限流就等够再继续（默认不等，立刻返回 `rate_limited`，`errors.md` 第一节第 5 小节） |
 | `--tz OFFSET` | 读法里时间按哪个时区读，默认取系统时区 |
 
 `send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么确认（Touch ID、测试豁免、直发模式）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
+
+**界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑完全一样，调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `auth *` 不转发（秘密不过接口）。细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。
 
@@ -116,8 +119,8 @@
 | 6 | 找不到 | `not_found` |
 | 7 | 没权限 / 输入不合法 | `forbidden` `invalid_input` |
 | 8 | 发送被拒或人取消 | `send_refused` `cancelled` |
+| 9 | 本地档案被占用且本机接口连不上 / 本地库钥匙不对 | `profile_busy` `db_key_invalid` |
 | 10 | 发送结果未知（已交出，没等到成败） | `send_outcome_unknown` |
-| 9 | 本地档案被占用 / 本地库钥匙不对 | `profile_busy` `db_key_invalid` |
 | 130 | Ctrl+C 中断（`watch` 除外） | `interrupted` |
 
 ### 5. 流式（`watch`）
@@ -165,12 +168,20 @@
 
 ## 四、⚠️ 待人拍板
 
-**C1. CLI 默认输出 JSON 还是给人看的文字**
-- A. 默认 JSON，人加 `--format text`（暂定）：AI 什么都不用加；人每次要多打一个选项
+> ✅ **已拍板（2026-10-25）**：结果见 `docs/plan/003_decisions-b2.md`——C1 默认 JSON，人加 `--format text`（N4 人定；003 记录里的「`--text`」是简写，`docs/plan/005_decisions-b3.md`）· C2 `atg-cli`。下面的题面保留作依据。
+
+**C1. CLI 默认输出 JSON 还是给人看的文字** —— ✅ 人选：默认 JSON
+- A. 默认 JSON，人加 `--format text`：AI 什么都不用加；人每次要多打一个选项
 - B. 按标准输出是不是终端自动切换：人直接用顺手，但同一条命令在不同环境输出不同，AI 调试时容易困惑
 - 建议：A（命令行优先是给 AI 的）
 
-**C2. 命令名**
+**C2. 命令名** —— ✅ 人选 A
 - A. `atg-cli`（与 crate 同名，暂定）
 - B. 装好后另起短名 `atg`
 - 建议：先 A，打包时再议
+
+## 修订记录
+
+- 2026-10-25 初稿（infra），外壳与 tree 对齐
+- 2026-10-25 按 b2 拍板同步（sync）：加 `delete`（S1）；`play` 进 MVP（F3、F8）；直发模式免一切 L2（D1）；GUI 开着时经本机接口转发（P1）；C1、C2 结果
+- 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`--format text` 定名（N4）；本机接口下直发参数听执行方（N1）
