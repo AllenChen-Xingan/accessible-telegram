@@ -4,6 +4,19 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🔧 issue #3 补丁完成（2026-10-25）
+> - fork `AllenChen-Xingan/tdlib-rs` 分支 `atg/tdlib-1.8.69` @ `4521d6d`：TDLib 1.8.69、生成器递归修补、日志与崩溃不带内容、`execute()`；45 单测；测试服务器连到 waitPhoneNumber，日志里凭据 0 次
+> - `.env.local` 两值齐（apikey 手下 + 人）；issue #4–#22 已开；拍板 N1–N8 与补丁 ①–③ → `docs/plan/005_decisions-b3.md`
+> - **下一步**：#14 建骨架（第一刀第 1 块）设为 `status:active`，派手下
+
+> ## ✅ PR #2 合并（2026-10-25，人明确同意，squash → `c9db792`）
+> - 本地改在 `chore/3-tdlib-patch`（从新 `main` 拉）；旧分支本地与远程都已删
+> - sync 的文档改动将来单独开 PR，与 issue #3 补丁分开提交
+
+> ## ✅ PR #1 合并（2026-10-25，人在对话里明确同意，`ATG_CONFIRMED=1` 放行，squash → `5c9031a`）
+> - PR #2 改 base 为 `main`；squash 造成的假冲突用 ours 合并记录消除（`cc79d59`，文件内容不变）
+> - 分支 `docs/research-001-stack` 本地与远程都已删除（远程已被 GitHub 合并后自动删除）
+
 > ## 📦 批次 b2 完成（2026-10-25 · 分支 `docs/research-002-features`，未提交）
 > - 交付：系统分析 002 功能清单 + 路线图（api）· 内容树规约 + `src/atg-core` 原型 35 测试（tree）· 基础契约 v0 五份（infra）· codex 评审 003 / 004 全修
 > - 人拍板：001 第 11 条直发模式；b2 共 30 余条 → `docs/plan/003_decisions-b2.md`
