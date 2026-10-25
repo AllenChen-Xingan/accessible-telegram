@@ -36,12 +36,12 @@
 ## 资源现实
 
 - 模型 / 账号 / 额度：Claude Code（Opus 5.5）为主；本机另有 `codex`，可做第二谱系评审
-- 硬件 / 网络：一台 Mac（macOS 27）。**Rust 还没装**。Rust + GPUI 编译很吃磁盘和 CPU，一个 `target/` 目录几十 GB 很常见，开多个 worktree 前先看剩余空间
+- 硬件 / 网络：一台 Mac（macOS 27）。Rust 1.99.1 与 Metal 工具链已装（2026-10-23）。Rust + GPUI 编译很吃磁盘和 CPU，一个 `target/` 目录几十 GB 很常见，开多个 worktree 前先看剩余空间
 - 人手：我一个人 + AI（投入时间待确认）
 
 ## 使用者现实
 
-- 使用者：我自己。在 Mac 上用 Telegram 时依赖 macOS 无障碍功能（具体是 VoiceOver / 键盘操作 / 缩放 / 其他，**待我确认**）
+- 使用者：我自己。在 Mac 上用 Telegram 时依赖 macOS 无障碍功能（具体是 VoiceOver / 键盘操作 / 缩放 / 其他，**待我确认**；线索：Claude Code 设置里开着读屏模式 Screen Reader Mode）
 - 现有工具：现有的 Telegram macOS 客户端都不太好用，主要卡在无障碍
 - 一次能记住几件事：快捷键要少而一致；同一个操作在所有界面用同一个键
 - 使用环境：macOS，日常联网；需要考虑断网 / 重连时读屏能告诉我状态
