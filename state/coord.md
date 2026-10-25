@@ -29,6 +29,9 @@
 | `exp003b`（会话 `telegram-accessibility-15`） | **改向（2026-10-25）**：专门消息列表 · Tab / VO+←/→ 到达 · ↑/↓ 浏览 | `_tmp/20261025-batch/exp003b-v2.md`（原 `_tmp/20261023-exp/exp003b.md`） | `state/handoff/exp003b.md` | **完成，已收尾**（自测全过；窗口已关）；剩人工试听「第三次试用」，试完跑 `python3 summarize-live.py` 看按键是否到达应用 |
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
+| `patch`（会话 `telegram-accessibility-5f`） | 批次 b3 · issue #3 tdlib-rs 补丁 → TDLib 1.8.69（补丁仓 `5-App/tdlib-rs`，分支 `atg/tdlib-1.8.69`） | `_tmp/20261025-b3/patch.md` | `state/handoff/patch.md` | **完成，已收尾**（补丁 @ `4521d6d` 已推 fork；窗口已关） |
+| `sync`（会话 `telegram-accessibility-45`） | 批次 b3 · 把 b2 拍板同步进契约 / 内容树 / 路线图；写 issue 草稿 | `_tmp/20261025-b3/sync.md` | `state/handoff/sync.md` | **完成，已收尾**（b2 + N1–N8 落进正文 · 9 处冲突修 · issue 草稿 19 份；窗口已关） |
+| `apikey`（会话 `telegram-accessibility-a6`） | 批次 b3 · 用 Claude in Chrome 申请 api_id / api_hash 写入 `.env.local`（手机号、登录码经大总管向人要；值不许外露） | `_tmp/20261025-b3/apikey.md` | `state/handoff/apikey.md` | **完成，已收尾**（应用 atg client 已建；`.env.local` 两值齐，600，git 忽略；已登出、关标签；窗口已关） |
 | `api`（会话 `telegram-accessibility-13`） | 批次 b2 · 系统分析 002：功能清单 + 路线图 | `_tmp/20261025-b2/api.md` | `state/handoff/api.md` | **完成，已收尾**（自审 + codex 003 全修；窗口已关）；待人拍板 F1–F8、S0–S3（契约 A2–A5 归 infra） |
 | `tree`（会话 `telegram-accessibility-2e`） | 批次 b2 · 内容树（AST）设计 + `atg-core` 原型 | `_tmp/20261025-b2/tree.md` | `state/handoff/tree.md` | **完成，已收尾**（35 测试 / clippy / fmt 过；规约 + 原型 + 架构方案；窗口已关）；待人拍板 7 条（`specs/content-tree.md` 第十节） |
 | `infra`（会话 `telegram-accessibility-8f`） | 批次 b2 · 树以外的基础契约 v0（动作 / CLI / 错误 / 配置隐私 / 测试） | `_tmp/20261025-b2/infra.md` | `state/handoff/infra.md` | **完成，已收尾**（自审 63 + codex 004 17 条全修；直发模式写入 actions.md 一·5；窗口已关）；待人拍板 16 条（汇总表在现状页） |
@@ -61,6 +64,15 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **2026-10-25 开 issue #4–#22**（sync 草稿，大总管代开，`by:ai`，意图只引人原话）：#4–#13 = F7 十条；#14–#22 = 第一刀第 1–9 块。均未打状态标签（活跃的只有 #3）
+- **patch ①② 通过**：45 单测；新增 `tdlib_rs::execute`，建客户端前降日志级别后 stderr 0 行；生成函数不再 unwrap，崩溃信息只留类型名
+
+- **patch 补丁验证（2026-10-25）**：build / clippy / fmt / 40 单测过；version_check 读到 1.8.69（commit ea3f69c）。补丁另修生成器递归类型（richTextButton↔InlineButton）。2 个 doctest 与补丁无关（上游本就跳过）。**给 atg-core**：TDLib 默认日志在 setLogVerbosityLevel 生效前就把整条 update 打到 stderr → 建客户端前先用同步 execute 把级别设低
+
+- **patch（2026-10-25）**：TDLib 1.8.69 编好（203 s），`_build/20261025-161449/tdlib/lib/libtdjson.1.8.69.dylib`，依赖 homebrew openssl@3。坑：**项目路径末尾有空格**，TDLib 链接参数 `-exported_symbols_list` 没加引号被拆开 → 用不带空格的软链接编译。连测试服务器缺 `.env.local`（api_id / api_hash）→ 问人
+
+- **2026-10-25**：b2 已提交并开 PR #2（叠在 PR #1 上）；issue #3（补丁，`status:active`）；fork `AllenChen-Xingan/tdlib-rs` 克隆在项目外 `5-App/tdlib-rs`
 
 - 待转（infra → tree，已关）：UserStatus 加 `stopping`；撤回占位只认 `is_permanent` 且非 `from_cache`
 - 待转（infra → api，已关）：`decision.md` F1「焦点经过哪条标哪条」依据不成立——`viewMessages` 把已读推到最大 id（`MessagesManager.cpp:16961`）；已读 / 已听在规则定下前默认关闭
@@ -98,6 +110,81 @@
 - 人：输入法「不确定」→ 下次试听先切 ABC 对照；弹窗测试「等我说再跑」
 
 ## 待定清单（攒着等人一次看完）
+
+### 批次 b3 待人拍板 N1–N8（sync 2026-10-25）——✅ 已拍板，结果见 `docs/plan/005_decisions-b3.md`；下为题面存档
+
+#### N1. 直发模式遇上本机接口：听谁的
+`atg-cli --unsafe-direct-send send …` 碰上 GUI 开着（GUI 不是直发模式启动的），命令转给 GUI 执行。
+- A. 只看执行方：GUI 不是直发模式，就照常弹 Touch ID；CLI 带的直发参数忽略，并在标准错误说明
+- B. 看发起方：CLI 带了直发参数，GUI 就为这一条免确认
+- 代价：A 让「直发」在你开着界面时失效，AI 发不出去要等你按 Touch ID；B 等于任何能连套接字的本用户程序都能借 GUI 免确认（直发参数原本「一定出现在启动命令里、看得见」的性质没了）
+- 建议：A
+
+#### N2. P2 × P4 合起来，开发版开正式账号时要不要弹框
+P4 说开发版也能开正式档案；P2 说开发证书只管测试档案的钥匙。两条合起来：开发版取正式档案的钥匙时，系统钥匙串会弹框问「允许吗」，你点了才给，每次重新编译可能要再点一次。
+- A. 就这样（我已按这个写进 `config-privacy.md` 第一节第 3 小节）：多一次点击，也算一道人手的关
+- B. 开发证书也管正式档案的钥匙：不弹框；但 AI 用同一张证书签的任何程序都能拿到正式钥匙
+- 建议：A
+
+#### N3. 已读红线和「AI 经界面读也标已读」
+`.42cog/real.md:31` 写「开发和测试时，向真实联系人……**标记已读**都是不可逆动作」，自动化测试只能在收藏夹或测试服务器。F1 定了「AI 经界面读时同样会标」，P4 又让开发版能开正式档案——AI 在开发、测试时用界面开正式档案，就会给真实联系人标已读。
+- A. 不改红线：AI 的开发、测试一律只开测试档案（和「测试绝不向真实联系人发消息」同一规矩），F1 只管你本人和你在旁时
+- B. 改红线：把「标记已读」从开发测试的红线里拿掉
+- 建议：A（只需把这句写进 `CLAUDE.md` 第五节或 `testing.md`，不改 F1）
+
+#### N4. C1 的选项名
+拍板记录写的是「`--text` 出文字」，契约里一直是 `--format text`；`--text` 已经是 `send` / `draft set` 的正文参数（`--text T`），再当输出格式会撞。
+- A. 保持 `--format text`（`cli.md` 现状，我没改）
+- B. 另给一个短的全局选项，如 `--human`
+- 建议：A；拍板记录里的「`--text`」可能只是简写，请确认
+
+#### N5. F6「停手后播一次」，是谁停手
+拍板原文「只在当前打开的私聊里、停手后播一次『对方正在输入』」没有主语。
+- A. 对方停止输入后播一次（告诉你「刚才对方在打字」）
+- B. 你自己停下操作（不在朗读、不在按键）后播一次（不打断你）
+- 建议：B——A 的话，对方停了才说「正在输入」意思反了；正文暂时照原文写「停手后」，没替你选
+
+#### N6. 直发模式管不管「写草稿」和「阅后即焚的已看」
+D1 列的是「发出、编辑、删除、表情回应」。`draft_set`（按 L2 同级把关）和打开阅后即焚（按 L2）没提到。
+- A. 也免（D1 的题面 B 是「一切 L2 都免确认」）
+- B. 照默认规则要确认（正文现状）
+- 建议：A，和题面 B 字面一致；你确认前正文按 B 写
+
+#### N7. 「删除给所有人」在测试服务器上怎么验
+TDLib 不许在收藏夹里「给所有人删」（`MessagesManager.cpp:8346`）；测试服务器上 L2 又只许碰收藏夹（`test_dc_saved_only`）。所以成功路径在测试服务器上做不成。
+- A. 只验拒绝路径 + 假后端单测；成功路径留给你本人在正式账号上删一条自己发错的（M4.6 的人验）
+- B. 给「删除」开个口：测试服务器上允许删自己发给另一个**自己控制的测试号**的消息（要再开一个测试号，`test_dc_saved_only` 多一条例外）
+- 建议：A（不动红线）
+
+#### N8. 撤回占位（R7）的三处细节
+- 记下的发送人是原作者：群管理员删了别人的消息，会读成「林小雨撤回了一条消息」，其实是管理员删的（TDLib 的删除更新不带删除人）
+- 会话项最后一条是占位时：会话项本来不读时间，读「林小雨撤回了一条消息」即可？
+- 记不到发送人时读「未知发送人撤回了一条消息，19:37」（带时间）？
+- 建议：第一条接受（拿不到删除人）、改读「一条消息已撤回」的兜底留给你实听再定；第二、三条按「是」
+
+### 代码解冻后要改的快照与代码（sync 2026-10-25）
+
+时间按夹具 + 东八区算。撤回那条在夹具里是 `1792755420` = **19:37**（拍板里的「19:36」是举例）。
+
+| 快照文件 | 现在的句子 | 应改成 | 依据 |
+|---|---|---|---|
+| `snapshots__basic_messages_brief.snap` | `林小雨：图片，山顶的风景，结局是，隐藏内容，19:33` | `林小雨：图片，山顶的风景，结局是，隐藏内容，按 D 展开，19:33` | R1 |
+| 同上 | `已撤回的消息` | `林小雨撤回了一条消息，19:37` | R7 |
+| 同上 | `周大山：视频 1 分 5 秒，隐藏内容，19:32` | `周大山：视频 1 分 5 秒，隐藏内容，按 D 展开，19:32` | R1 |
+| 同上 | `周大山：图片，隐藏内容，19:33` | `周大山：图片，隐藏内容，按 D 展开，19:33` | R1 |
+| 同上 | `周大山：图片，隐藏内容，19:35` | `周大山：图片，隐藏内容，按 D 展开，19:35` | R1 |
+| `snapshots__basic_chats_brief.snap` | `示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动…` | `示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水` | R2 不截断（句末句号照现规则去掉） |
+| `snapshots__entities_brief.snap` | `林小雨：🔥小雨，隐藏内容，19:30` | `林小雨：🔥小雨，隐藏内容，按 D 展开，19:30` | R1 |
+| 同上 | `林小雨：隐藏内容，19:30` | `林小雨：隐藏内容，按 D 展开，19:30` | R1 |
+| `snapshots__basic_messages_json.snap` | 第 247、938、1262、1513 行的 `speech.brief`；第 345 行 `tombstone` 节点、第 352 行 `"brief": "已撤回的消息"` | `brief` 同上；`tombstone` 多出 `sender`、`date` 两个字段（新增可选字段，`v` 不加一） | R1 R7 |
+| `snapshots__basic_chats_json.snap` | 第 136 行 `"brief": "示例频道，天气预报：……适合户外活动…"` | 同 chats_brief 那行 | R2 |
+| `snapshots__entities_json.snap` | 第 371、643 行的 `speech.brief` | 同上 | R1 |
+
+JSON 快照里的 `brief` 带「按 D 展开」的前提是：快照测试用带详情键的上下文（像 alert 快照的 `cx()`），另加一组不带键的（像 `no_key`）验 CLI 只读「隐藏内容」。
+
+不用改：`林小雨：跨群回复，19:34`、`周大山：天气预报…，19:30`（转发）、`林小雨：明天改到八点，19:35`（已编辑、有回应）——现在就没把回复 / 转发 / 编辑 / 回应读进名称，已合 R4、R5。提醒、连接状态的句子不受影响。
+
+**连带的代码改动**（同样等解冻）：`speech.rs:22` `LAST_MAX_CHARS` 截断去掉；`speech.rs:133` 隐藏内容加键（`SpeechCtx` 加一个详情键，像 `listen_key`）；`speech.rs:33,68` 撤回占位读法；`tdjson.rs:124` 现在只看 `is_permanent`，要再加 `from_cache` 为假；`Tombstone` 加 `sender` / `date`；`UserStatus` 加 `stopping`。
 
 - [x] 批次 b2 全部拍板（2026-10-25）→ `docs/plan/003_decisions-b2.md`
 
