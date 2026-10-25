@@ -14,6 +14,7 @@ unsafe extern "C" {
     fn td_create_client_id() -> c_int;
     fn td_send(client_id: c_int, request: *const c_char);
     fn td_receive(timeout: c_double) -> *const c_char;
+    fn td_execute(request: *const c_char) -> *const c_char;
 }
 
 pub(crate) fn create_client() -> i32 {
@@ -28,6 +29,18 @@ pub(crate) fn send(client_id: i32, request: String) {
 pub(crate) fn receive(timeout: f64) -> Option<String> {
     unsafe {
         td_receive(timeout)
+            .as_ref()
+            .map(|response| CStr::from_ptr(response).to_string_lossy().into_owned())
+    }
+}
+
+pub(crate) fn execute(request: String) -> Option<String> {
+    let cstring = CString::new(request).unwrap();
+    // The result lives in a thread-local buffer inside TDLib
+    // (td/telegram/ClientJson.cpp `current_output`) until this thread's next
+    // td_receive / td_execute, so it is copied out right away.
+    unsafe {
+        td_execute(cstring.as_ptr())
             .as_ref()
             .map(|response| CStr::from_ptr(response).to_string_lossy().into_owned())
     }

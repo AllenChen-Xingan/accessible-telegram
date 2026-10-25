@@ -109,17 +109,14 @@ fn write_function<W: Write>(
     writeln!(file, "        if response[\"@type\"] == \"error\" {{")?;
     writeln!(
         file,
-        "            return Err(serde_json::from_value(response).unwrap())"
+        "            return Err(crate::from_response(response))"
     )?;
     writeln!(file, "        }}")?;
 
     if rustifier::types::is_ok(&def.ty) {
         writeln!(file, "        Ok(())")?;
     } else {
-        writeln!(
-            file,
-            "        Ok(serde_json::from_value(response).unwrap())"
-        )?;
+        writeln!(file, "        Ok(crate::from_response(response))")?;
     }
 
     writeln!(file, "    }}")?;
@@ -160,4 +157,33 @@ pub(crate) fn write_functions_mod<W: Write>(
 
     // End outermost mod
     writeln!(file, "}}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tdlib_rs_parser::parse_tl_file;
+
+    #[test]
+    fn generated_functions_never_unwrap_serde_errors() {
+        // `unwrap()` on a serde error would put field values into the panic
+        // message; generated code must go through `crate::from_response`.
+        let tl = "user id:int53 = User;\n---functions---\ngetMe = User;\nclose = Ok;\n";
+        let defs: Vec<Definition> = parse_tl_file(tl.to_owned()).map(Result::unwrap).collect();
+        let metadata = Metadata::new(&defs);
+        let mut out = Vec::new();
+        for def in defs.iter().filter(|d| d.category == Category::Functions) {
+            write_function(&mut out, def, &metadata, false).unwrap();
+        }
+        let code = String::from_utf8(out).unwrap();
+        assert!(
+            code.contains("Ok(crate::from_response(response))"),
+            "{code}"
+        );
+        assert!(
+            code.contains("Err(crate::from_response(response))"),
+            "{code}"
+        );
+        assert!(!code.contains(".unwrap()"), "{code}");
+    }
 }
