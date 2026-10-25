@@ -29,6 +29,9 @@
 | `exp003b`（会话 `telegram-accessibility-15`） | **改向（2026-10-25）**：专门消息列表 · Tab / VO+←/→ 到达 · ↑/↓ 浏览 | `_tmp/20261025-batch/exp003b-v2.md`（原 `_tmp/20261023-exp/exp003b.md`） | `state/handoff/exp003b.md` | **完成，已收尾**（自测全过；窗口已关）；剩人工试听「第三次试用」，试完跑 `python3 summarize-live.py` 看按键是否到达应用 |
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
+| `api`（会话 `telegram-accessibility-13`） | 批次 b2 · 系统分析 002：功能清单 + 路线图 | `_tmp/20261025-b2/api.md` | `state/handoff/api.md` | **完成，已收尾**（自审 + codex 003 全修；窗口已关）；待人拍板 F1–F8、S0–S3（契约 A2–A5 归 infra） |
+| `tree`（会话 `telegram-accessibility-2e`） | 批次 b2 · 内容树（AST）设计 + `atg-core` 原型 | `_tmp/20261025-b2/tree.md` | `state/handoff/tree.md` | **完成，已收尾**（35 测试 / clippy / fmt 过；规约 + 原型 + 架构方案；窗口已关）；待人拍板 7 条（`specs/content-tree.md` 第十节） |
+| `infra`（会话 `telegram-accessibility-8f`） | 批次 b2 · 树以外的基础契约 v0（动作 / CLI / 错误 / 配置隐私 / 测试） | `_tmp/20261025-b2/infra.md` | `state/handoff/infra.md` | **完成，已收尾**（自审 63 + codex 004 17 条全修；直发模式写入 actions.md 一·5；窗口已关）；待人拍板 16 条（汇总表在现状页） |
 | `tg`（会话 `telegram-accessibility-b3`） | 001 · 命门 3：grammers vs TDLib | `_tmp/20261023-dispatch/tg.md` | `state/handoff/tg.md` | 完成，已收尾（窗口已关） |
 
 ## 规矩
@@ -59,6 +62,14 @@
 
 ## 发现（实验中途）
 
+- 待转（infra → tree，已关）：UserStatus 加 `stopping`；撤回占位只认 `is_permanent` 且非 `from_cache`
+- 待转（infra → api，已关）：`decision.md` F1「焦点经过哪条标哪条」依据不成立——`viewMessages` 把已读推到最大 id（`MessagesManager.cpp:16961`）；已读 / 已听在规则定下前默认关闭
+- 待转（api 已关）：tree 已做 content-types v0.2 三条 + document `size`；`docs/research/002_features/content-types.md` 如需同步 `size`，交下一个接手的手下
+
+- **tree 原型（2026-10-25）**：`atg-core` 30 测试全过（20 单测 + 1 覆盖 + 9 快照），clippy / fmt 过；大总管复跑一致。仓根 `Cargo.lock` 入库
+
+- **人定（2026-10-25）**：`atg-core` 用有类型的内容树（AST）表示一切要读 / 打印的东西，各输出都是渲染器。批次 b2 分支 `docs/research-002-features`（叠在 PR #1 上）
+
 - **exp003b-v2 自测（2026-10-25）**：绕 / 不绕输入法两轮各 45 步 0 失败（Tab 环、列表内 ↑/↓ 跨屏、离开回来选中保持、模拟 VO 落到列表后 ↓ 生效）；macOS 层 VO+←/→ 会经过 AXList「消息」。局限：进程内事件不经 VoiceOver；自测时输入法是 U.S.，双拼疑点靠人工对照。人试听：`人工试用.md`「第三次试用」17 步
 
 - **exp004 补跑 7/7（2026-10-25）**：模式 6 标题与列表名带「2 条新消息，按 M 收听」；模式 7 选中项提示语同句。剩人试听
@@ -87,6 +98,8 @@
 - 人：输入法「不确定」→ 下次试听先切 ABC 对照；弹窗测试「等我说再跑」
 
 ## 待定清单（攒着等人一次看完）
+
+- [x] 批次 b2 全部拍板（2026-10-25）→ `docs/plan/003_decisions-b2.md`
 
 - [x] 架构方案第七节 10 条拍板（2026-10-25 人定，见方案第七节表）
 
