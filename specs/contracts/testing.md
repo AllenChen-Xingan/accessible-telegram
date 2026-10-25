@@ -1,6 +1,6 @@
 # 契约 · 测试基座 v0
 
-> 2026-10-25 · 手下 infra 起草 · 状态：**草稿**，末尾「待人拍板」未定
+> 2026-10-25 · 手下 infra 起草 · 状态：**草稿**；末尾「待人拍板」T1、T2 **已拍板**（`docs/plan/003_decisions-b2.md`）
 > 管：假后端、夹具目录约定、测试服务器与发送闸豁免的单测、无障碍树导出对比在 PR 里怎么跑
 > 不管：读法快照的**期望值**（人定，`specs/style/`）；内容树的夹具形状（`tree`：`specs/content-tree.md`）
 > 依据：`docs/plan/001_arch-stack.md` 第四节；第七节第 6、10 条（人已定）；`CLAUDE.md` 第五节（改界面附树对比、改读法附快照差异、测试绝不向真实联系人发消息）
@@ -70,15 +70,15 @@ src/atg-core/fixtures/
 | 只有闸能发（`actions.md` 第一节第 4 小节第 7 条） | `scripts/check-td-boundary`（待写）扫源码：`tdlib_rs` 只许出现在 `atg-core::td` 里；发送类函数只许在闸后调用 |
 | 限流（`errors.md` 第一节第 5 小节） | L2 遇网络错误不重试（假后端记账里只调一次）；`flood_until` 写盘后新进程仍遵守；`account_limited` 后 L2 和登录全拒 |
 | CLI 外壳（`cli.md`） | 每条命令最后恰好一行 `result` / `error`；退出码与 `error.code` 一致；标准输出每行都能解析成 JSON；`schema` 输出快照 |
-| 一库一进程 | 同一档案起第二个后端 → `profile_busy` |
-| L1 默认关闭 | `mark_read` / `mark_listened` / `set_online` / `typing` / `draft_set` 在规则定下前一律 `send_refused(l1_disabled)`，CLI 和 GUI 两个入口都测 |
+| 一库一进程 | 同一档案起第二个后端 → 先经本机接口转给占着的进程（P1）；连不上才 `profile_busy` |
+| L1 按入口规则 | F1、A2 人定后：GUI 进会话标到最新一条、界面开着设在线、打字发正在输入；CLI 从不调 `mark_read` / `set_online` / `typing`，`mark_listened` 只在 `play --mark-listened` 时调；`draft_set` 仍按 L2 同级把关（`actions.md` 第一节第 4 小节第 9 条）。两个入口都测 |
 | 已读范围 | `mark_read(up_to)` 的说明 / 计划里写出连带标记的范围 |
 | 删除事件 | `from_cache` 或非永久的删除**不**生成撤回占位；只有永久删除才生成 |
 | 重发 | `can_retry` 假 → 拒；`retry_after` 未到 → `rate_limited`；`need_drop_reply` → 计划写明去掉回复；付费重发 → 拒；部分成功逐条报告 |
 | 话题 | 话题群里回复沿用被回复那条的话题；话题群里不回复的新消息被拒；改话题后旧凭据作废（摘要不符） |
 | 发送结果未知 | 假后端扣住成败事件 → CLI `send` 30 秒后 `send_outcome_unknown`、退出码 10、没有第二次 `sendMessage` |
 | 直发模式 | 见矩阵；另测：环境变量 / 配置文件打不开直发；`direct-send.log` 每条一行且不含正文、名字；留痕写不进去就拒发 |
-| 钥匙访问（本机，非 CI） | 开发签名的程序读正式档案的钥匙 → 失败 |
+| 钥匙访问（本机，非 CI） | 开发证书签的程序读正式、测试档案的钥匙 → 不弹框直接拿到（N2）；开发证书以外的签名 → 拿不到（`config-privacy.md` 第一节第 3 小节） |
 | 外部打开 | 非 `http(s)` 链接、可执行类文件一律拒；打开不经 shell |
 
 **发送闸矩阵**（第七节第 10 条：默认模式下只「测试服务器 + 收藏夹」免确认，写死在闸里；第 11 条：直发模式另起几行）：
@@ -94,9 +94,10 @@ src/atg-core/fixtures/
 | 正式 | 别的会话 | 合法的 Touch ID 凭据 | ✅ 发出 |
 | 正式 | 任意（含收藏夹） | 只有终端确认 | ❌ 默认模式下终端确认不开凭据 |
 | 正式 · 直发模式 | 任意 | 无 | ✅ `direct_mode`，发出并留痕 |
-| 测试 · 直发模式 | 别的会话 | 无 | ❌ `test_dc_saved_only` |
-| 任意 · 直发模式 | 任意 | 编辑 / 删除 / 回应 | ❌ 照默认规则（D1） |
+| 测试 · 直发模式 | 别的会话（第二个测试号私聊除外） | 无 | ❌ `test_dc_saved_only` |
+| 任意 · 直发模式 | 任意（测试档案仍只许收藏夹） | 编辑 / 删除 / 回应 | ✅ `direct_mode`，留痕（D1 人定：全部免确认） |
 | 任意 · 直发模式 | 任意 | `account_limited` 已记录 | ❌ |
+| 测试 | 与第二个测试号的私聊（N7） | 无 | ✅ `test_exempt`（发送、给所有人删都行） |
 | 测试 | 别的会话 | 任何凭据 | ❌ `send_refused(test_dc_saved_only)` |
 | 测试 | 收藏夹，但登录号不是 `99966` 开头 | 无 | ❌ 不豁免 |
 | 任意 | 任意 | `account_limited` 已记录 | ❌ `send_refused(account_limited)` |
@@ -106,7 +107,7 @@ src/atg-core/fixtures/
 ### 5. 测试服务器（Telegram test DC）
 
 - 打开方式：`setTdlibParameters use_test_dc=true`（`td_api.tl:12185`），只配 `test` 档案（`config-privacy.md` 第一节第 2 小节）
-- 账号：手机号 `99966XYYYY`，X 是测试 DC 号（1–3），YYYY 随便；**验证码就是 X 连写五遍**（core.telegram.org/api/auth「Test accounts」，2026-10-25 核）。号码存 `.env.local` 的 `ATG_TEST_PHONE`
+- 账号：手机号 `99966XYYYY`，X 是测试 DC 号（1–3），YYYY 随便；**验证码就是 X 连写五遍**（core.telegram.org/api/auth「Test accounts」，2026-10-25 核）。号码存 `.env.local` 的 `ATG_TEST_PHONE`。**第二个测试号**（N7 人定）存 `ATG_TEST_PHONE_2`，用单独的测试档案（如 `test2`）登录，专门用来互发、验「删除给所有人」；也按 T1 被清空就自动重注册
 - 官方说明的三个坑，测试要接得住：
   1. **测试服务器会定期清空**——账号可能没了，登录会走到「注册」步骤。所以**只在测试档案上**允许测试代码调注册（`registerUser`，`td_api.tl:12253`，名字取自 `names.txt`）；正式档案上注册仍是 `unsupported`
   2. **谁都能登这些号**——测试账号里不放任何私人东西；别人可能往测试账号发消息，所以测试**只断言收藏夹**里的内容
@@ -116,6 +117,7 @@ src/atg-core/fixtures/
 
 ### 6. 无障碍树导出对比在 PR 里怎么跑
 
+- **谁跑**：每个改 `atg-gui` 的 PR，由做这个 PR 的手下自己跑（T2 人定）
 - **快照入库**：`src/atg-gui/tests/a11y/<场景名>.gpui.txt` 与 `<场景名>.macos.txt` 两层（架构方案第二节第 3 小节：VoiceOver 读的是 macOS 层，两层都要）
 - **导出**：`atg-gui --fixture <场景名> --dump-tree <输出目录>`；**不带 `--fixture` 就拒绝导出**，所以只可能是夹具数据；每次导出 ≤ 1 分钟，人关窗即停
 - **规范化**（写快照前做，保证同样的界面导出同样的文字）：去掉几何位置、时间戳、每次都变的数字节点号；节点用稳定 id 路径标识；**保留子节点顺序**（顺序就是读的顺序）；Live 节点另记一行（树导出里看不到 Live 字段，架构方案第二节第 2 小节末段）
@@ -148,13 +150,19 @@ src/atg-core/fixtures/
 
 ## 四、⚠️ 待人拍板
 
-**T1. 测试服务器的账号**
-- A. 固定一个号（存 `.env.local`），被清空就自动重新注册（暂定）
+**T1. 测试服务器的账号** —— ✅ 人选 A
+- A. 固定一个号（存 `.env.local`），被清空就自动重新注册
 - B. 每次跑随机一个号：不怕别人动它，但每次都走注册，更容易撞上每日登录上限
 - 建议：A
 
-**T2. 树导出谁来跑、什么时候跑**
+**T2. 树导出谁来跑、什么时候跑** —— ✅ 人选 A：每个 PR 自己跑
 「能不能跑」人已定（第七节第 6 条：随时可跑，≤ 1 分钟）。只剩：是每个改 `atg-gui` 的 PR 由手下自己跑，还是攒到一批由一个手下统一跑？
 - A. 每个 PR 自己跑：对比及时；弹窗次数多
 - B. 攒批：弹窗少；PR 要等
 - 建议：A（每次很短，且已有长期许可）
+
+## 修订记录
+
+- 2026-10-25 初稿（infra）
+- 2026-10-25 按 b2 拍板同步（sync，大总管授权）：一库一进程按 P1；L1 按 F1 / A2；钥匙访问按 P2 × P4；直发矩阵编辑 / 删除 / 回应按 D1；T1、T2 结果，T2 写进第一节第 6 小节
+- 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：钥匙访问按 N2；发送闸矩阵加第二个测试号例外（N7）；第一节第 5 小节加第二个测试号

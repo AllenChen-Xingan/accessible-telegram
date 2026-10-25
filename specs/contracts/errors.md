@@ -1,6 +1,6 @@
 # 契约 · 错误与状态模型 v0
 
-> 2026-10-25 · 手下 infra 起草 · 状态：**草稿**，末尾「待人拍板」未定
+> 2026-10-25 · 手下 infra 起草 · 状态：**草稿**；末尾「待人拍板」E1、E2 **已拍板**（`docs/plan/003_decisions-b2.md`）
 > 管：`atg-core` 对外报的错误种类、连接 / 授权 / 内核三条状态线、它们怎么变成用户听得懂的状态（T10、T01「出错时读出原因」）
 > 不管：读法的最终措辞（归 `specs/style/` 读法规约，人定）；CLI 的退出码与 JSON 形状（归 `cli.md`，本文只给对照）
 > 依据：`docs/plan/001_arch-stack.md` 第一节第 4 小节（收线程监督）、第四节第 1 小节（发送闸）；`resources/td/td/generate/scheme/td_api.tl`
@@ -26,7 +26,7 @@
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
 | `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个 | — | 否，要重启内核 |
-| `profile_busy` | 同一个本地库已被另一个进程占用（见 `config-privacy.md`「一库一进程」） | `holder`：能查到就写是 CLI 还是 GUI | 否 |
+| `profile_busy` | 同一个本地库已被另一个进程占用，且本机接口连不上（见 `config-privacy.md`「一库一进程」「本机接口」） | `holder`：能查到就写是 CLI 还是 GUI | 否 |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但在时限内既没等到成功也没等到失败（如 CLI `send` 30 秒超时） | `chat_id` · 临时 `message_id` | **否**。不许重发；用 `status` 查这条待发消息的下落，或 `pending_cancel` 撤销 |
@@ -34,7 +34,7 @@
 | `internal` | TDLib 406，或本项目自己的 bug | — | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
-`send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（L1 副作用在规则定下之前默认关闭，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
+`send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
 
 **CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对）· `interrupted`（Ctrl+C）。
 
@@ -97,7 +97,7 @@
 
 ### 4. 什么时候播报状态变化（T10）
 
-- **防抖**：`connecting` / `syncing` 要持续 **2 秒**以上才播；短暂闪断不出声（数字为暂定，原型里量）
+- **防抖**：`connecting` / `syncing` 要持续 **2 秒**以上才播；短暂闪断不出声（E1 人定 2 秒）
 - **成对**：只有播过「断开 / 连接中」，恢复时才播「已连接」；没播过坏状态就不播恢复
 - **合并**：2 秒内连续变化只播最后一个
 - **不抢焦点、不打断**：走播报器（架构方案第二节第 2 小节），级别同新消息提示的低优先级；`fault` / `offline` 用较高优先级
@@ -140,13 +140,18 @@
 
 ## 四、⚠️ 待人拍板
 
-**E1. 状态变化的防抖时长**
-- A. 2 秒（暂定）：闪断不吵；真断网晚 2 秒知道
+**E1. 状态变化的防抖时长** —— ✅ 人选 A：2 秒
+- A. 2 秒：闪断不吵；真断网晚 2 秒知道
 - B. 0 秒：立刻知道；抖动时会连念
 - C. 5 秒：最安静；断网后可能已经发了一条才知道
 - 建议：A，原型里人试听后再调
 
-**E2. 「已连接」要不要说**
-- A. 只在播过「断开」之后说（暂定）
+**E2. 「已连接」要不要说** —— ✅ 人选 A
+- A. 只在播过「断开」之后说
 - B. 从不说，只写进标题：最安静，但人不知道什么时候恢复的
 - 建议：A
+
+## 修订记录
+
+- 2026-10-25 初稿（infra）
+- 2026-10-25 按 b2 拍板同步（sync，大总管授权）：`profile_busy` 按 P1；`l1_disabled` 含义按 F1 / A2；E1、E2 结果
