@@ -1306,6 +1306,8 @@ dependencies = [
 name = "exp003-list-nav"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
+ "block2 0.6.2",
  "env_logger",
  "gpui",
  "gpui_platform",

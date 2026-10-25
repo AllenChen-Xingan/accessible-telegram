@@ -160,14 +160,24 @@ use std::sync::Mutex;
 
 use block2::RcBlock;
 
+/// 不透明的 CGEvent；给 objc2 一个与 AppKit 声明一致的类型编码 `^{__CGEvent=}`
+#[repr(C)]
+pub struct CGEvent {
+    _p: [u8; 0],
+}
+unsafe impl objc2::RefEncode for CGEvent {
+    const ENCODING_REF: objc2::Encoding = objc2::Encoding::Pointer(&objc2::Encoding::Struct("__CGEvent", &[]));
+}
+
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGEventCreateKeyboardEvent(source: *const c_void, keycode: u16, keydown: bool) -> *mut c_void;
-    fn CGEventSetFlags(event: *mut c_void, flags: u64);
+    fn CGEventCreateKeyboardEvent(source: *const c_void, keycode: u16, keydown: bool) -> *mut CGEvent;
+    fn CGEventSetFlags(event: *mut CGEvent, flags: u64);
     fn CFRelease(cf: *const c_void);
 }
 
 const CG_FLAG_CMD: u64 = 0x0010_0000;
+const CG_FLAG_SHIFT: u64 = 0x0002_0000;
 pub const NS_FLAG_CMD: usize = 1 << 20;
 pub const NS_FLAG_SHIFT: usize = 1 << 17;
 pub const NS_FLAG_CTRL: usize = 1 << 18;
@@ -184,6 +194,7 @@ pub fn keycode_for(key: &str) -> Option<(u16, bool)> {
         "pagedown" => (121, false),
         "cmd-up" => (126, true),
         "cmd-down" => (125, true),
+        "tab" => (48, false),
         _ => return None,
     })
 }
@@ -191,8 +202,14 @@ pub fn keycode_for(key: &str) -> Option<(u16, bool)> {
 /// 键码 + 修饰键 → 本实验用的键名（与 main.rs 的绑定一致）
 pub fn key_name(code: u16, flags: usize) -> Option<&'static str> {
     let cmd = flags & NS_FLAG_CMD != 0;
-    if flags & (NS_FLAG_CTRL | NS_FLAG_OPT | NS_FLAG_SHIFT) != 0 {
-        return None; // 带 Ctrl/Option/Shift 的（含 VO 键 Ctrl+Option）一律不碰
+    if flags & (NS_FLAG_CTRL | NS_FLAG_OPT) != 0 {
+        return None; // 带 Ctrl/Option 的（含 VO 键 Ctrl+Option）一律不碰
+    }
+    if code == 48 && !cmd {
+        return Some(if flags & NS_FLAG_SHIFT != 0 { "shift-tab" } else { "tab" });
+    }
+    if flags & NS_FLAG_SHIFT != 0 {
+        return None;
     }
     Some(match (code, cmd) {
         (125, false) => "down",
@@ -209,6 +226,10 @@ pub fn key_name(code: u16, flags: usize) -> Option<&'static str> {
 
 /// 投一次真实按键（按下 + 抬起）到本进程 NSApp 队列。返回是否投成功
 pub fn post_key(key: &str) -> bool {
+    let (shift, key) = match key.strip_prefix("shift-") {
+        Some(k) => (true, k),
+        None => (false, key),
+    };
     let Some((code, cmd)) = keycode_for(key) else { return false };
     autoreleasepool(|_| unsafe {
         let Some(app): Option<Retained<AnyObject>> = msg_send![class!(NSApplication), sharedApplication] else {
@@ -219,11 +240,12 @@ pub fn post_key(key: &str) -> bool {
             if cg.is_null() {
                 return false;
             }
-            if cmd {
-                CGEventSetFlags(cg, CG_FLAG_CMD);
+            let flags = if cmd { CG_FLAG_CMD } else { 0 } | if shift { CG_FLAG_SHIFT } else { 0 };
+            if flags != 0 {
+                CGEventSetFlags(cg, flags);
             }
             let ev: Option<Retained<AnyObject>> = msg_send![class!(NSEvent), eventWithCGEvent: cg];
-            CFRelease(cg);
+            CFRelease(cg as *const c_void);
             let Some(ev) = ev else { return false };
             let _: () = msg_send![&app, postEvent: &*ev, atStart: Bool::NO];
         }
@@ -377,4 +399,49 @@ pub fn log_event(mut v: Value) {
     if let Some(f) = LOG.lock().unwrap().as_mut() {
         writeln!(f, "{v}").ok();
     }
+}
+
+// ---------------------------------------------------------------- exp003b-v2：VO+←/→ 能不能落到列表上
+
+/// VO+←/→ 在窗口里依次会经过的元素（角色, 标题）：从 contentView 往下，
+/// 没标题的 AXGroup 往里钻，有标题的元素和 AXList 本身算一站，不进 AXList 内部
+pub fn vo_stops() -> Vec<(String, String)> {
+    fn walk(obj: &AnyObject, out: &mut Vec<(String, String)>, depth: usize) {
+        if depth > 10 {
+            return;
+        }
+        for c in children_of(obj) {
+            let role = get_str(&c, sel!(accessibilityRole)).unwrap_or_default();
+            let title = get_str(&c, sel!(accessibilityTitle))
+                .filter(|t| !t.is_empty())
+                .or_else(|| get_str(&c, sel!(accessibilityLabel)).filter(|t| !t.is_empty()))
+                .unwrap_or_default();
+            if role == "AXList" || (!title.is_empty() && role != "AXGroup") {
+                out.push((role, title));
+            } else {
+                walk(&c, out, depth + 1);
+            }
+        }
+    }
+    autoreleasepool(|_| {
+        let mut out = Vec::new();
+        if let Some(view) = content_view() {
+            walk(&view, &mut out, 0);
+        }
+        out
+    })
+}
+
+/// 模拟 VoiceOver 落到列表上、且「键盘焦点跟随 VO 光标」：对 AXList 调 setAccessibilityFocused:YES。
+/// 返回 (是否允许设焦点, 是否调用了)
+pub fn vo_focus_list() -> (bool, bool) {
+    autoreleasepool(|_| unsafe {
+        let Some(view) = content_view() else { return (false, false) };
+        let Some(list) = find_role(&view, "AXList", 0) else { return (false, false) };
+        let allowed: Bool = msg_send![&list, isAccessibilitySelectorAllowed: sel!(setAccessibilityFocused:)];
+        if allowed.as_bool() {
+            let _: () = msg_send![&list, setAccessibilityFocused: Bool::YES];
+        }
+        (allowed.as_bool(), allowed.as_bool())
+    })
 }
