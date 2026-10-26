@@ -1,7 +1,7 @@
 # 大总管看板（coord）
 
 > 只有大总管跟人说话。手下做完、卡住、要名额，只报给大总管。
-> 大总管会话名：`telegram-accessibility-40`（2026-10-25 起；原 `-ca`）（换班后在这里改）。tmux 工作区：`aiw`。
+> 大总管会话名：`telegram-accessibility-64`（2026-10-25 会话重启后；原 `-40`、更早 `-ca`）（换班后在这里改）。tmux 工作区：`aiw`。
 > 做法依据：阳志平《AI 自主系统的高级玩法：建一个大总管》（2026-10-15，安仁书院）。
 
 ## Top 4（眼下最重要）
@@ -30,6 +30,7 @@
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
 | `codesign`（会话 `telegram-accessibility-e2`） | 批次 b11 · 运行 `scripts/setup-dev-codesign.sh` 建自签名开发证书 `atg-dev`（密码框人亲手输） | `_tmp/20261025-b11/codesign.md` | `state/handoff/codesign.md` | **完成，已收尾**（证书 `atg-dev` 已建，有效到 2036-10-23；窗口已关） |
+| `chats`（会话 `telegram-accessibility-87`） | 批次 b14 · issue #18 第一刀第 5 块：`atg-cli chats`（正式账号只读验证，只报统计） | `_tmp/20261025-b14/chats.md` | `state/handoff/chats.md` | **完成，已收尾**（chats；222 测试；正式账号只读：100 行、首条 67–84 ms、断网本地先出；窗口已关） |
 | `login`（会话 `telegram-accessibility-b9`） | 批次 b13 · issue #17 第一刀第 4 块：`atg-cli login` / `logout`（测试服务器 + 99966 测试号验证） | `_tmp/20261025-b13/login.md` | `state/handoff/login.md` | **完成，已收尾**（login / logout / auth；输错原因可读已验；测试服务器正确码被拒 → #35；人用正式号跑 `live/login-main.sh` 验证；窗口已关） |
 | `tdlib`（会话 `telegram-accessibility-6e`） | 批次 b9 · issue #16 第一刀第 3 块：接 TDLib（收线程、关闭、监督、Backend 两份、加密 + 钥匙串、测试服务器） | `_tmp/20261025-b9/tdlib.md` | `state/handoff/tdlib.md` | **完成，已收尾**（接 TDLib；160 测试；测试服务器冒烟到 wait_phone、凭据 0 次；codex 待补审 #32；窗口已关） |
 | `scanskill`（会话 `telegram-accessibility-c8`） | 批次 b10 · 按人拍板改 `codex-review`：拆 `privacy-scan.sh`、放松扫描（禁区仍硬拦）、顺手 #29 | `_tmp/20261025-b10/scanskill.md` | `state/handoff/scanskill.md` | **完成，已收尾**（新版 codex-review 已覆盖安装，旧版备份在草稿区；自测 195/195；剩余 P2 开 issue；待 codex 补审 #32；窗口已关） |
@@ -73,6 +74,10 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **钥匙串每次重编译都弹框（2026-10-25）** → #38（推测自签名证书按 cdhash 认程序）；人定这次手动「始终允许」、根治另议。chats 手下自报一次未申请名额跑了 clippy + test（约 1 分钟，已提醒）
+
+- **2026-10-25**：PR #37 合并、#17 关；#18 `status:active`，分支 `feat/18-cli-chats`
 
 - **正式账号登录成功（2026-10-25）**：人要求「你直接帮我登录吧」，大总管用 expect 代输手机号与人给的验证码（`auth phone` → `auth code`），档案 main 已登录；号码与验证码未落盘（扫描确认）。#35 已补评论
 
