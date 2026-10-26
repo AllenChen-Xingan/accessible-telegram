@@ -29,6 +29,8 @@
 | `exp003b`（会话 `telegram-accessibility-15`） | **改向（2026-10-25）**：专门消息列表 · Tab / VO+←/→ 到达 · ↑/↓ 浏览 | `_tmp/20261025-batch/exp003b-v2.md`（原 `_tmp/20261023-exp/exp003b.md`） | `state/handoff/exp003b.md` | **完成，已收尾**（自测全过；窗口已关）；剩人工试听「第三次试用」，试完跑 `python3 summarize-live.py` 看按键是否到达应用 |
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
+| `codesign`（会话 `telegram-accessibility-e2`） | 批次 b11 · 运行 `scripts/setup-dev-codesign.sh` 建自签名开发证书 `atg-dev`（密码框人亲手输） | `_tmp/20261025-b11/codesign.md` | `state/handoff/codesign.md` | **完成，已收尾**（证书 `atg-dev` 已建，有效到 2036-10-23；窗口已关） |
+| `tdlib`（会话 `telegram-accessibility-6e`） | 批次 b9 · issue #16 第一刀第 3 块：接 TDLib（收线程、关闭、监督、Backend 两份、加密 + 钥匙串、测试服务器） | `_tmp/20261025-b9/tdlib.md` | `state/handoff/tdlib.md` | **完成，已收尾**（接 TDLib；160 测试；测试服务器冒烟到 wait_phone、凭据 0 次；codex 待补审 #32；窗口已关） |
 | `scanskill`（会话 `telegram-accessibility-c8`） | 批次 b10 · 按人拍板改 `codex-review`：拆 `privacy-scan.sh`、放松扫描（禁区仍硬拦）、顺手 #29 | `_tmp/20261025-b10/scanskill.md` | `state/handoff/scanskill.md` | 已报到 |
 | `codexskill`（会话 `telegram-accessibility-12`） | 批次 b8 · 专门的 skill `codex-review`（Opus 子代理用 skill-creator 起草），真跑审 004 | `_tmp/20261025-b8/codexskill.md` | `state/handoff/codexskill.md` | **完成，已收尾**（skill `codex-review` 已装到 `2-aartifacts/skills/` + 软链接；codex 自审 11 轮收敛；记录 `docs/reviews/006_codex-review-skill-codex.md`；剩余 P2 → #29；窗口已关） |
 | `model`（会话 `telegram-accessibility-89`） | 批次 b7 · issue #15 第一刀第 2 块：model + reducer + 投影 | `_tmp/20261025-b7/model.md` | `state/handoff/model.md` | **完成，已收尾**（model + reducer + 投影 + 缓存上限 + 唯一写入口；115 测试；codex 十三轮收敛，余 P2 → #30；窗口已关） |
@@ -70,6 +72,14 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **codesign 授权（2026-10-25）**：人要求代输登录密码；自动模式拦下「写密码进文件」后，人退出自动模式并说「在试一下」→ 大总管直接运行 `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -l atg-dev`（只限 atg-dev），实测 codesign 不再弹框。密码未写入任何文件；已提醒人密码出现在对话记录里
+
+- **codex 额度用完（2026-10-25，恢复 2026-11-01 13:13）**：人定「自审通过就合并，事后补审」→ `CLAUDE.md` 临时例外 + issue #32 补审清单；`.claude/settings.local.json` 放行 codex-review 脚本（人「直接给 claude code 加上规则，不拦截就好」）
+
+- **开发证书（2026-10-25）**：`scripts/setup-dev-codesign.sh` 建好自签名代码签名身份 `atg-dev`（登录钥匙串，仅授权 codesign）；开发版程序用 `codesign -s atg-dev` 签名
+
+- **2026-10-25**：PR #31 合并，#15、#28 关；#16 `status:active`，分支 `feat/16-tdlib`
 
 - **#15 收尾（2026-10-25）**：codex 十三轮提 43、采纳 37、人定 1、转 issue 5（#28 已修、#30 留）；两条经验入 `state/memory/`（唯一写入口 + 穷举测试；检查脚本静默失败）
 

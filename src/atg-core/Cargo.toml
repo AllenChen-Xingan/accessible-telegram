@@ -9,9 +9,19 @@ description = "无障碍 Telegram 的能力层：内容树、读法（接 TDLib 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# 事件流（无界通道；tdlib-rs 已依赖它）
+futures-channel = "0.3"
+# 本地库钥匙：系统安全随机源
+getrandom = "0.4"
+# 本项目日志的出口（只经 `logline` 写，白名单字段）
+log = "0.4"
 # 打过补丁的 tdlib-rs（src/tdlib-rs，fork 的 subtree）。默认不编：编它要先有 TDLib 库
 # （bash src/tdlib-build/build.sh，再设 LOCAL_TDLIB_PATH）。只有 `td` 模块许用（scripts/check-no-debug.sh 守着）。
 tdlib-rs = { path = "../tdlib-rs/tdlib-rs", optional = true }
+
+# 本地库钥匙放钥匙串（拍板 001-8）
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
 
 [features]
 # 代码开关：td 模块里用 tdlib-rs 的代码一律挂 #[cfg(feature = "tdlib-api")]。
@@ -23,3 +33,8 @@ tdlib = ["tdlib-api", "tdlib-rs/local-tdlib"]
 
 [dev-dependencies]
 insta = "1"
+
+# 本机冒烟：测试服务器 → wait_phone（要 TDLib 库；不在 CI）
+[[example]]
+name = "live_wait_phone"
+required-features = ["tdlib"]
