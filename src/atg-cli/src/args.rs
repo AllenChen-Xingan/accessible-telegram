@@ -1,6 +1,6 @@
 //! 参数定义：子命令名与全局选项，照 `specs/contracts/cli.md` 第一节第 2 小节。
 //!
-//! 骨架阶段子命令只占名字，后面的参数原样收下不校验（各块实现时再按契约定参数）。
+//! 已做的子命令（`login` · `auth *` · `logout` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -23,7 +23,7 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
-/// 全局选项：放在子命令前后都可以。骨架阶段只有 `--format` 起作用，其余收下不用
+/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`；登录这组还认 `--test-dc` `--profile` `--fake`。其余收下不用
 #[derive(Args)]
 pub struct Global {
     /// 选测试服务器档案，并断言它是测试服务器
@@ -67,12 +67,17 @@ pub struct Rest {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// 交互登录（给人用）
-    Login(Rest),
-    /// 分步登录（给 AI 和脚本）：state · phone · code · password · email · email-code · resend
-    Auth(Rest),
-    /// 登出本机
-    Logout(Rest),
+    /// 交互登录（给人用）：手机号 → 验证码 → 二步验证密码，都从终端读、不回显
+    Login,
+    /// 分步登录（给 AI 和脚本）：每步一行 `auth`。秘密值从终端读；测试档案上号码取 `.env.local` 的 ATG_TEST_PHONE
+    // 缺分步名是用法错误（一行 `usage`），不是给人看的帮助
+    #[command(arg_required_else_help = false)]
+    Auth {
+        #[command(subcommand)]
+        step: AuthCmd,
+    },
+    /// 登出本机（须在终端当场确认）
+    Logout,
     /// 自己是谁
     Me(Rest),
     /// 待发出的消息；`pending cancel CHAT_ID MSG_ID` 撤销一条
@@ -117,13 +122,47 @@ pub enum Command {
     Version,
 }
 
+/// `auth` 的分步子命令
+#[derive(Subcommand, Clone, Copy)]
+pub enum AuthCmd {
+    /// 现在走到哪一步
+    State,
+    /// 交手机号
+    Phone,
+    /// 交验证码
+    Code,
+    /// 交二步验证密码
+    Password,
+    /// 交登录邮箱
+    Email,
+    /// 交邮箱里收到的验证码
+    EmailCode,
+    /// 换一种方式重发验证码
+    Resend,
+}
+
+impl AuthCmd {
+    pub fn sub(self) -> crate::login::AuthSub {
+        use crate::login::AuthSub as S;
+        match self {
+            Self::State => S::State,
+            Self::Phone => S::Phone,
+            Self::Code => S::Code,
+            Self::Password => S::Password,
+            Self::Email => S::Email,
+            Self::EmailCode => S::EmailCode,
+            Self::Resend => S::Resend,
+        }
+    }
+}
+
 impl Command {
     /// 契约里的子命令名
     pub fn name(&self) -> &'static str {
         match self {
-            Command::Login(_) => "login",
-            Command::Auth(_) => "auth",
-            Command::Logout(_) => "logout",
+            Command::Login => "login",
+            Command::Auth { .. } => "auth",
+            Command::Logout => "logout",
             Command::Me(_) => "me",
             Command::Pending(_) => "pending",
             Command::Status(_) => "status",

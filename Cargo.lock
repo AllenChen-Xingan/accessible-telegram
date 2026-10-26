@@ -67,6 +67,8 @@ version = "0.0.0"
 dependencies = [
  "atg-core",
  "clap",
+ "libc",
+ "serde",
  "serde_json",
 ]
 

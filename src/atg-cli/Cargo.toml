@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "无障碍 Telegram 的命令行入口：JSON 行输出，给 AI 和脚本用（骨架阶段，不接 TDLib）"
+description = "无障碍 Telegram 的命令行入口：JSON 行输出，给 AI 和脚本用（接 TDLib 走 tdlib 特性，默认关）"
 
 [[bin]]
 name = "atg-cli"
@@ -13,4 +13,11 @@ path = "src/main.rs"
 [dependencies]
 atg-core = { path = "../atg-core" }
 clap = { version = "4", features = ["derive"] }
+serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
+# 读 /dev/tty 时关回显（termios）
+libc = "0.2"
+
+[features]
+# 真接 TDLib（要先有 TDLib 库，见 src/README.md）：cargo build -p atg-cli --features tdlib
+tdlib = ["atg-core/tdlib"]

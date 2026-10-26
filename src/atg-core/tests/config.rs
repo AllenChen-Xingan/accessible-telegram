@@ -178,3 +178,28 @@ fn log_fields_are_whitelisted() {
     );
     assert_eq!(safe_td_type(&"a".repeat(65)), "<invalid>");
 }
+
+#[test]
+fn test_phone_only_from_env_file_and_only_test_numbers() {
+    use atg_core::config::load_test_phone;
+    let dir = std::env::temp_dir().join(format!("atg-test-phone-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("env");
+    std::fs::write(
+        &f,
+        "ATG_API_ID=1234\nexport ATG_TEST_PHONE=\"9996621234\"\n",
+    )
+    .unwrap();
+    assert_eq!(
+        load_test_phone(&f)
+            .map(|s| s.expose_str().to_owned())
+            .as_deref(),
+        Some("9996621234")
+    );
+    std::fs::write(&f, "ATG_TEST_PHONE=+8613800000000\n").unwrap();
+    assert!(load_test_phone(&f).is_none(), "不是测试号就不认");
+    std::fs::write(&f, "ATG_API_ID=1\n").unwrap();
+    assert!(load_test_phone(&f).is_none());
+    assert!(load_test_phone(&dir.join("missing")).is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+}

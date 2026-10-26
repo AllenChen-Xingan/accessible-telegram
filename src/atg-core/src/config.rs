@@ -59,6 +59,32 @@ pub fn load_api_credentials(path: &Path) -> Result<ApiCredentials, CoreError> {
     }
 }
 
+/// 测试服务器的号码 `ATG_TEST_PHONE`（`.env.local`，`config-privacy.md` 第一节第 1 小节）。
+/// 只认 `99966` 开头的；没有、读不到或不是测试号都给 `None`（调用方再去终端问）。不认环境变量
+pub fn load_test_phone(path: &Path) -> Option<Secret> {
+    let mut raw = String::new();
+    File::open(path)
+        .and_then(|mut f| f.read_to_string(&mut raw))
+        .ok()?;
+    let raw = Secret::from_string(raw);
+    let found = raw.expose_str().lines().find_map(|line| {
+        let line = line.trim();
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == "ATG_TEST_PHONE").then(|| {
+            Secret::new(
+                v.trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .as_bytes()
+                    .to_vec(),
+            )
+        })
+    })?;
+    ServerKind::Test
+        .phone_allowed(found.expose_str())
+        .then_some(found)
+}
+
 // ───────────────────────── 档案 ─────────────────────────
 
 /// 档案连的是哪种服务器。测试与正式绝不共用一个档案

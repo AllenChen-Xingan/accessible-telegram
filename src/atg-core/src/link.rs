@@ -11,6 +11,7 @@
 //!
 //! 不引异步运行时：请求的应答由 tdlib-rs 的一次性信道唤醒，任何执行器都行；这里自带一个极小的 [`block_on`]。
 
+use crate::auth::AuthPrompt;
 use crate::error::CoreError;
 use crate::logline::{self, Field};
 use crate::model::CoreEvent;
@@ -58,6 +59,10 @@ pub enum Step {
 struct State {
     lines: Lines,
     status: UserStatus,
+    /// 授权线当前这一步的提示（给人看的；`auth_prompt()` 交出去）
+    prompt: AuthPrompt,
+    /// 收到过几条授权状态更新。同一步重新下发（换号、重发验证码后又是 `wait_code`）步骤名不变，靠它看出「有新的了」
+    auth_gen: u64,
     seq: u64,
     /// 故障或关闭后丢掉，消费方取完剩下的就看到流结束
     tx: Option<UnboundedSender<Envelope>>,
@@ -88,6 +93,8 @@ impl Shared {
             state: Mutex::new(State {
                 lines,
                 status,
+                prompt: AuthPrompt::bare(AuthStep::WaitParameters),
+                auth_gen: 0,
                 seq: 0,
                 tx: Some(tx),
             }),
@@ -151,6 +158,53 @@ impl Shared {
 
     pub fn status(&self) -> UserStatus {
         lock(&self.state).status
+    }
+
+    /// 收到一条授权状态更新：先换提示、再改授权线（等步骤变化的一方醒来时提示已是新的）
+    pub fn set_auth(&self, prompt: AuthPrompt) {
+        let step = prompt.step;
+        {
+            let mut st = lock(&self.state);
+            st.prompt = prompt;
+            st.auth_gen += 1;
+        }
+        // set_lines 末尾总会唤醒等待方，步骤名没变也一样
+        self.set_lines(|l| l.auth = step);
+    }
+
+    /// 到现在为止收到过几条授权状态更新（提交之前记下，之后用 [`Shared::wait_auth_after`] 等新的）
+    pub fn auth_gen(&self) -> u64 {
+        lock(&self.state).auth_gen
+    }
+
+    /// 等到第 `seen` 条之后又来了一条授权状态更新（或故障 / 超时 → `None`），返回那时的步骤
+    pub fn wait_auth_after(&self, timeout: Duration, seen: u64) -> Option<AuthStep> {
+        let deadline = Instant::now() + timeout;
+        let mut st = lock(&self.state);
+        loop {
+            if st.auth_gen > seen {
+                return Some(st.lines.auth);
+            }
+            let now = Instant::now();
+            if st.lines.core == CoreState::Faulted || now >= deadline {
+                return None;
+            }
+            st = self
+                .cond
+                .wait_timeout(st, deadline - now)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+    }
+
+    /// 当前步骤 + 提示。提示与授权线对不上（如内核故障后）就只给步骤
+    pub fn auth_prompt(&self) -> AuthPrompt {
+        let st = lock(&self.state);
+        if st.prompt.step == st.lines.auth {
+            st.prompt.clone()
+        } else {
+            AuthPrompt::bare(st.lines.auth)
+        }
     }
 
     pub fn is_faulted(&self) -> bool {
@@ -319,7 +373,8 @@ fn run(shared: &Shared, source: &mut dyn FnMut() -> Step) -> bool {
             Step::End => return false,
             Step::Update(v) => match tdjson::classify(&v) {
                 Classified::Auth(step) => {
-                    shared.set_lines(|l| l.auth = step);
+                    let prompt = AuthPrompt::from_td(&v["authorization_state"]);
+                    shared.set_auth(prompt);
                     if step == AuthStep::Closed {
                         return true;
                     }

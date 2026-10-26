@@ -3,11 +3,11 @@
 use serde_json::Value;
 use std::process::{Command, Output};
 
-/// 契约第一节第 2 小节表里的子命令（`version` 另测）
+/// 已做的子命令（`version` 另测）
+const DONE: &[&str] = &["login", "auth", "logout"];
+
+/// 契约第一节第 2 小节表里还没做的子命令
 const PLACEHOLDERS: &[&str] = &[
-    "login",
-    "auth",
-    "logout",
     "me",
     "pending",
     "status",
@@ -126,7 +126,69 @@ fn help_is_for_humans_exit_0() {
     let out = run(&["--help"]);
     assert_eq!(out.status.code(), Some(0));
     let s = String::from_utf8(out.stdout).unwrap();
-    for name in PLACEHOLDERS {
+    for name in PLACEHOLDERS.iter().chain(DONE) {
         assert!(s.contains(name), "--help 里缺 {name}");
     }
+}
+
+/// 登录这组命令的外壳（真实后端要 TDLib 与终端，这里只测不联网就能判定的路径）
+#[test]
+fn login_commands_with_fake_are_not_implemented_yet() {
+    for args in [
+        &["--fake", "basic", "login"][..],
+        &["--fake", "basic", "auth", "state"][..],
+        &["logout", "--fake", "basic"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "not_implemented");
+        assert!(DONE.contains(&ls[0]["data"]["command"].as_str().unwrap()));
+    }
+}
+
+#[test]
+fn auth_needs_a_known_step() {
+    for args in [
+        &["auth"][..],
+        &["auth", "nope"][..],
+        &["login", "extra"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1);
+        assert_eq!(ls[0]["data"]["code"], "usage");
+    }
+}
+
+/// 秘密值不许进命令行参数：`auth code 12345`、`auth password x` 都是用法错误，而且不回显
+#[test]
+fn secrets_are_not_accepted_as_arguments() {
+    for args in [
+        &["auth", "code", "40419"][..],
+        &["auth", "password", "hunter2"][..],
+        &["auth", "phone", "+9996627731"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let s = String::from_utf8(out.stdout).unwrap();
+        assert!(!s.contains(args[2]), "{s}");
+    }
+}
+
+#[cfg(not(feature = "tdlib"))]
+#[test]
+fn without_tdlib_login_says_how_to_build() {
+    let out = run(&["--test-dc", "auth", "state"]);
+    assert_eq!(out.status.code(), Some(1));
+    let ls = lines(&out);
+    assert_eq!(ls[0]["data"]["code"], "not_implemented");
+    assert!(
+        ls[0]["data"]["message_zh"]
+            .as_str()
+            .unwrap()
+            .contains("--features tdlib")
+    );
 }

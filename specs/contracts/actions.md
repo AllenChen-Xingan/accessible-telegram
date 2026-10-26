@@ -52,7 +52,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
 |---|---|---|---|---|
 | `auth_state()` | `AuthStep` + 本步提示（如密码提示语、验证码发到哪） | — | L0 | `updateAuthorizationState` 缓存。提示语可能就是密码的变体，验证码去向带打码手机号：**只给面向人的界面 / 终端，不进 CLI 的 JSON**（JSON 只给步骤名） |
-| `auth_submit_phone(phone: String)` | `Ack` | `auth_phone_invalid` `auth_wrong_state` | L0 | `setAuthenticationPhoneNumber`（`td_api.tl:12192`） |
+| `auth_submit_phone(phone: String)` | `Ack` | `auth_phone_invalid` `auth_phone_not_for_profile` `auth_wrong_state` | L0 | `setAuthenticationPhoneNumber`（`td_api.tl:12192`）。先在本地查形状与档案（测试档案只收 `99966` 开头，正式档案不收），不合格不发给 TDLib。等号码、等验证码、等邮箱、等密码、等注册这几步都收（TDLib 允许中途换号重来） |
 | `auth_submit_code(code: String)` | `Ack` | `auth_code_invalid` `auth_code_expired` `auth_wrong_state` | L0 | `checkAuthenticationCode`（`:12222`） |
 | `auth_resend_code()` | `Ack` | `auth_wrong_state` | L0 | `resendAuthenticationCode`（`:12215`） |
 | `auth_submit_email(address: String)` | `Ack` | `invalid_input` `auth_wrong_state` | L0 | `setAuthenticationEmailAddress`（`:12210`） |
@@ -60,7 +60,9 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `auth_submit_password(pw: Secret)` | `Ack` | `auth_password_invalid` `auth_wrong_state` | L0 | `checkAuthenticationPassword`（`:12261`）；`Secret` 用完即清零，Debug 不打印 |
 | `logout()` | `Ack` | — | L0（本机）\* | `logOut`（`:12292`）；\* 不对外，但会让本机丢掉登录，须人当场确认（同 L2 的确认步骤，不过发送闸） |
 
-注册新账号（`registerUser`）、找回密码第一阶段不做（例外：**测试档案上**测试代码可以注册，因为测试服务器会定期清空账号，见 `testing.md` 第 5 小节）；二维码登录（`auth_qr`，`requestQrCodeAuthentication` `:12228`）以后再说，对读屏用户不友好。不做的：落到 `unsupported` 步骤（`errors.md`）。
+实现上这一组的输入（号码、验证码、邮箱、密码）一律用 `Secret` 装（`Debug` 打不出、用完清零），比上表写的 `String` 更严。提交成功只表示 TDLib 收下了；下一步看下一条授权状态更新——同一步可能重新下发（换号重交、重发验证码后仍是 `wait_code`），所以不能只比步骤名。
+
+注册新账号（`registerUser`）、找回密码第一阶段不做（例外：**测试档案上**测试代码可以注册，因为测试服务器会定期清空账号，见 `testing.md` 第 5 小节；`atg-cli` 的 `login` / `auth *` 在测试档案上遇到注册步骤会自动注册，名字写死 `Atg Test`，`names.txt` 建好后改取它）；二维码登录（`auth_qr`，`requestQrCodeAuthentication` `:12228`）以后再说，对读屏用户不友好。不做的：落到 `unsupported` 步骤（`errors.md`）。
 
 **会话（T02、T08、T09）**
 
@@ -290,3 +292,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-25 按 b2 拍板同步（sync）：L1 按 F1 / A2 同官方客户端（GUI 发、CLI 默认不发）；`typing` 进 MVP；`delete`（给所有人）进 MVP（S1）；直发模式免一切 L2（D1）；代理不进 MVP（A5）；威胁边界按 P4 改写；本机接口下凭据由执行方重开（P1）；加 `chat_action` 事件（F6）
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`test_dc_saved_only` 加第二个测试号例外（N7）；直发也免草稿与阅后即焚（N6）；开发测试时 L1 不再受红线限制（N3）
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第一节第 7 小节——写明 `CoreEvent` 即本表（乙6）；补 `message_ephemeral_changed`、`chat_draft_changed`、`chat_mention_count_changed` 三行；`send_succeeded` / `send_failed` 改为带整条消息；`messages_deleted` 补「未发出的不是撤回、没见过的待应答判定」（乙7）；`message_edited` 补编辑时间来源与 0（乙8）；`message_content_opened` 补只改原内容；`chat_last_message_changed` 补「新消息可只随它到达」；末尾补「喂给 store 的应答」
+- 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：`auth_submit_phone` 加 `auth_phone_not_for_profile` 与可收的步骤；登录输入用 `Secret`；提交后按下一条授权更新判断；测试档案自动注册、名字写死 `Atg Test`

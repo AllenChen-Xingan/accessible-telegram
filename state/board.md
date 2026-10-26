@@ -4,6 +4,11 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🔑 #17 atg-cli login 完成（2026-10-25）
+> - login / logout / auth 分步；输错验证码读出原因（T01 判据）；新错误码 `auth_phone_not_for_profile`；契约补齐
+> - **正式账号已登录**（档案 main，人给码、大总管代输）；测试服务器正确码被拒 → #35；登录计数 → #36
+> - **下一步**：#18 `atg-cli chats`（列会话）
+
 > ## 🔌 #16 接 TDLib 完成（2026-10-25）
 > - 收线程 + 序号 → 单线程 reducer；关闭（TDLib 先关不卡死）；监督与故障广播；Backend 真 / 假两份；`.env.local`；本地库加密 + 钥匙串；开发证书 `atg-dev`（`scripts/setup-dev-codesign.sh`）
 > - 测试服务器冒烟：wait_phone、正常关闭、凭据出现 0 次；运行需 `DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib"`
