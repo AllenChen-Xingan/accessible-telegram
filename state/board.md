@@ -4,6 +4,12 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🔌 #16 接 TDLib 完成（2026-10-25）
+> - 收线程 + 序号 → 单线程 reducer；关闭（TDLib 先关不卡死）；监督与故障广播；Backend 真 / 假两份；`.env.local`；本地库加密 + 钥匙串；开发证书 `atg-dev`（`scripts/setup-dev-codesign.sh`）
+> - 测试服务器冒烟：wait_phone、正常关闭、凭据出现 0 次；运行需 `DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib"`
+> - codex 额度用完（11-01 恢复）→ 人定「自审通过就合并，事后补审」，#32 记账
+> - **下一步**：#17 `atg-cli login`
+
 > ## 🧠 #15 model + reducer 完成（2026-10-25）
 > - `atg-core`：model · store（`store/table.rs` 唯一写入口，受限原文不留）· 投影 · 类型级脱敏 · 缓存上限（非当前会话 50 条）· 撤回占位跨重拉保留；115 测试含暗号穷举
 > - codex 十三轮收敛；#28 一并修掉；扫描脚本剩余 P2 → #30；人定 → `docs/plan/006_decisions-b7.md`
