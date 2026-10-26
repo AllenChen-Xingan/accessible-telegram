@@ -18,9 +18,6 @@ pub struct SpeechCtx {
     pub listen_key: Option<char>,
 }
 
-/// 会话列表里「最后一条」摘要最多读几个字（超出用「…」）。待人定
-pub const LAST_MAX_CHARS: usize = 40;
-
 pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => format!(
@@ -38,7 +35,8 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     }
 }
 
-/// 会话列表一项：名字，未读，最后一条摘要（不读时间，约 3 秒内读完，T02）
+/// 会话列表一项：名字，未读，提到你，最后一条摘要。最后一条不读时间、**不截断**（R2 人定：听够了人自己打断，
+/// `specs/content-tree.md` 第九节）
 pub fn chat_brief(c: &ChatItem) -> String {
     let mut parts = vec![if c.title.is_empty() {
         "未命名会话".to_owned()
@@ -67,7 +65,7 @@ pub fn chat_brief(c: &ChatItem) -> String {
             ChatLast::Service(sv) => service(sv),
             ChatLast::Tombstone(_) => "已撤回的消息".to_owned(),
         };
-        parts.push(truncate(&summary, LAST_MAX_CHARS));
+        parts.push(summary);
     }
     parts.join("，")
 }
@@ -345,16 +343,6 @@ fn dur(secs: u32) -> String {
     }
 }
 
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_owned()
-    } else {
-        let mut t: String = s.chars().take(max).collect();
-        t.push('…');
-        t
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,11 +355,5 @@ mod tests {
         assert_eq!(dur(65), "1 分 5 秒");
         assert_eq!(dur(3600), "1 小时");
         assert_eq!(dur(3725), "1 小时 2 分");
-    }
-
-    #[test]
-    fn truncate_counts_chars_not_bytes() {
-        assert_eq!(truncate("一二三", 3), "一二三");
-        assert_eq!(truncate("一二三四", 3), "一二三…");
     }
 }

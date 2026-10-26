@@ -1,6 +1,6 @@
 //! 参数定义：子命令名与全局选项，照 `specs/contracts/cli.md` 第一节第 2 小节。
 //!
-//! 已做的子命令（`login` · `auth *` · `logout` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
+//! 已做的子命令（`login` · `auth *` · `logout` · `chats` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -23,7 +23,8 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
-/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`；登录这组还认 `--test-dc` `--profile` `--fake`。其余收下不用
+/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`、`--test-dc`、`--profile`（登录这组与 `chats`）。
+/// 其余收下不用（帮助里标了「还没做」）
 #[derive(Args)]
 pub struct Global {
     /// 选测试服务器档案，并断言它是测试服务器
@@ -32,22 +33,22 @@ pub struct Global {
     /// 本地档案名
     #[arg(long, global = true, value_name = "NAME", default_value = "main")]
     pub profile: String,
-    /// 用假后端（夹具场景名或路径），不联网
+    /// 用假后端（夹具场景名或路径），不联网。还没做：场景目录未建，现在一律报 not_implemented
     #[arg(long, global = true, value_name = "SCENARIO")]
     pub fake: Option<OsString>,
     /// 输出格式
     #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
     pub format: Format,
-    /// 打码输出（白名单）
+    /// 打码输出，用于贴进 issue：只留类型、计数、时间、状态、错误码，名字和正文换成「类型 + 长度」。还没做
     #[arg(long, global = true)]
     pub redact: bool,
     /// 直发模式：本次运行发消息免确认（细则见 `specs/contracts/actions.md` 第一节第 5 小节）
     #[arg(long, global = true)]
     pub unsafe_direct_send: bool,
-    /// 遇到限流就等够再继续
+    /// 遇到 Telegram 限流（要求过 N 秒再试）就等够再继续，默认立刻报 rate_limited。还没做
     #[arg(long, global = true)]
     pub wait: bool,
-    /// 读法里的时区偏移
+    /// 读法里报钟点用的时区偏移，默认取系统时区。还没做（会话项不读时间；读消息的命令再接）
     #[arg(long, global = true, value_name = "OFFSET", allow_hyphen_values = true)]
     pub tz: Option<String>,
 }
@@ -84,8 +85,9 @@ pub enum Command {
     Pending(Rest),
     /// 内核 / 授权 / 连接状态
     Status(Rest),
-    /// 列会话
-    Chats(Rest),
+    /// 列会话，一行一个，顺序同官方客户端。会等服务器把离线期间漏掉的更新（新消息、未读数）补送完再出，
+    /// 等不到（断网）照样从本地出，结尾行 synced 为 false
+    Chats(ChatsArgs),
     /// 下一个有未读的会话
     NextUnread(Rest),
     /// 列某会话的消息（不标已读）
@@ -120,6 +122,51 @@ pub enum Command {
     Schema(Rest),
     /// 版本
     Version,
+}
+
+/// `chats` 的参数
+#[derive(Args)]
+pub struct ChatsArgs {
+    /// 哪个列表：主列表或归档
+    #[arg(long, value_enum, default_value_t = ListArg::Main)]
+    pub list: ListArg,
+    /// 这一页最多几个
+    #[arg(
+        short = 'n',
+        long = "limit",
+        value_name = "N",
+        default_value_t = 100,
+        value_parser = clap::value_parser!(u32).range(1..=100_000)
+    )]
+    pub limit: u32,
+    /// 只列有未读的
+    #[arg(long)]
+    pub unread: bool,
+    /// 接着上一页列：填上一页最后一行（kind 为 result）里的 next_cursor
+    #[arg(long, value_name = "C")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ListArg {
+    Main,
+    Archive,
+}
+
+impl ListArg {
+    pub fn list(self) -> atg_core::model::ChatList {
+        match self {
+            Self::Main => atg_core::model::ChatList::Main,
+            Self::Archive => atg_core::model::ChatList::Archive,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Archive => "archive",
+        }
+    }
 }
 
 /// `auth` 的分步子命令

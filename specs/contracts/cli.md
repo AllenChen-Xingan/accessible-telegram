@@ -27,7 +27,7 @@
 | `me` | 自己是谁 + `saved_chat_id` | `me` | — |
 | `pending [cancel CHAT_ID MSG_ID]` | 列出待发出的消息；`cancel` 撤销一条（`actions.md`「待发出的消息」） | `status` `pending_cancel` | T04 |
 | `status` | 内核 / 授权 / 连接三条线、合成后的用户状态、**待发出的消息** | `status` | T10 |
-| `chats [--list main\|archive] [-n N] [--unread] [--cursor C]` | 列会话，一行一个 | `chats_load` + Store | T02 |
+| `chats [--list main\|archive] [-n N] [--unread] [--cursor C]` | 列会话，一行一个；`-n` 默认 100；会话行的 `speech.brief` 即会话项读法（`chat_brief`） | `chats_load` + Store | T02 |
 | `next-unread [--after CHAT_ID]` | 下一个有未读的会话；没有就零行 + `result{count:0}`，退出码 0（「没有」不算错） | Store | T09 |
 | `history CHAT_ID [-n N] [--from MSG_ID] [--local]` | 从新到旧列消息，一行一条。`--from` **不含**起点那条；CLI 内部循环补满 N 条（TDLib 首次常只回 1 条）。**不标已读** | `history` | T03 |
 | `links CHAT_ID MSG_ID` | 列出这条消息里的链接（文字 + 地址） | `message_links` | T06 |
@@ -52,7 +52,7 @@
 |---|---|
 | `--test-dc` | 等于「选 `test` 档案，并断言它是测试服务器档案」；断言不过就拒绝启动（`config-privacy.md` 第一节第 2 小节） |
 | `--profile NAME` | 选本地档案，默认 `main`。档案是哪种服务器由档案自己的标记决定，不由选项决定 |
-| `--fake SCENARIO` | 用假后端，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（也接受路径），不联网（`testing.md`） |
+| `--fake SCENARIO` | 用假后端，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（也接受路径），不联网（`testing.md`）。**场景目录以后做**（#18 人定）；现在一律 `not_implemented` |
 | `--format json\|text` | 默认 `json`；`text` 给人看，每行一句读法（`speech.brief`） |
 | `--redact` | 打码输出，用于贴进 issue / 发给别人：**白名单**——只留 `type`、计数、时间、状态、错误码；正文、说明、名字、用户名、手机号、文件名、链接、`speech` 全部换成「类型 + 长度」；id 换成**每次随机加盐**的哈希（同一次输出内一致，跨次不可对照、也无法穷举反推）。日志打码另有脚本，见 `config-privacy.md` |
 | `--unsafe-direct-send` | **直发模式**（001 第七节第 11 条）：本次运行 L2 免确认（范围见 `actions.md` 第一节第 5 小节，D1），到进程退出为止。只认这个参数（不读环境变量、配置文件）；第一行 `status` 带 `direct_send:true`，标准错误打醒目提示；每条直发写 `direct-send.log`。测试档案仍只许发收藏夹。细则只在 `actions.md` 第一节第 5 小节 |
@@ -63,7 +63,7 @@
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑完全一样，调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `auth *` 不转发（秘密不过接口）。细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
 
-**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。
+**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的暂行定义**（#18，事件本身随 `watch` 落地前）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。
 
 ### 3. 每行 JSON 的外壳
 
@@ -102,7 +102,8 @@
 {"v":1,"kind":"error","at":"…","data":{"code":"auth_code_invalid","message_zh":"验证码不对，请重新输入","retryable":false,"td":{"code":400,"message":"PHONE_CODE_INVALID"}}}
 ```
 
-- 列表类命令的 `result.data` 统一带：`count`（本页条数）· `more` · `next_cursor`（`more` 为真时才有；`history` 的游标就是本页最旧那条的 `message_id`）· `total`（TDLib 给得出才有）
+- 列表类命令的 `result.data` 统一带：`count`（本页条数）· `more` · `next_cursor`（`more` 为真时才有；`history` 的游标就是本页最旧那条的 `message_id`；`chats` 的游标是本页最后一个会话的 `<order>:<会话 id>`）· `total`（TDLib 给得出才有）
+- `chats` 的 `result.data` 另带（可选字段，`v` 不加一）：`list`（`main` / `archive`）· `synced` · `load_timed_out`（加载到 10 秒上限提前停了）· `first_chat_ms`（进程启动到这个列表第一次有会话的毫秒数；列表是空的为 `null`）。会话行的读法在 `speech.brief`（即会话项读法 `chat_brief` 那一句）
 - `send` 的 `result` 带最终 `message_id`：**退出码 0 = 服务器已收下**；`send_failed` 时输出 `error`，`code` 来自失败原因
 - 每条命令 `result.data` 的完整字段由 `schema` 给出（第 6 小节）
 
@@ -186,3 +187,5 @@
 - 2026-10-25 按 b2 拍板同步（sync）：加 `delete`（S1）；`play` 进 MVP（F3、F8）；直发模式免一切 L2（D1）；GUI 开着时经本机接口转发（P1）；C1、C2 结果
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`--format text` 定名（N4）；本机接口下直发参数听执行方（N1）
 - 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：自有码加 `not_implemented`（退出码 1）；`--version` 登记为 `version` 的别名
+- 2026-10-25 issue #18 列会话（chats，大总管授权）：写明 `sync_done` 的暂行定义（连接线到 `ready`）与 `chats` 的加载上限；`chats` 的 `result.data` 登记 `list`、`synced`、`load_timed_out`、`first_chat_ms`，游标形状
+- 2026-10-25 issue #18 人定（经大总管）：`chats` 的 `-n` 默认 100；会话行读法键名用 `brief`（即会话项读法）；`--fake` 场景目录以后做
