@@ -22,7 +22,8 @@ pub struct Entity {
     pub kind: EntityKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(test, derive(Debug))]
 pub enum EntityKind {
     Bold,
     Italic,
@@ -497,7 +498,8 @@ fn make_span(kind: &EntityKind, children: Vec<Span>, raw: &str) -> Span {
 }
 
 /// 正文里的一个链接：给「列出本条链接」用
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct LinkRef {
     /// 链接文字
     pub text: String,

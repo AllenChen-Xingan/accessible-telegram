@@ -89,6 +89,8 @@ fn alert(a: &Alert, cx: &SpeechCtx) -> String {
 fn status(s: UserStatus) -> &'static str {
     match s {
         UserStatus::Fault => "连接已中断，需要重启",
+        // 说法待 #19 定（规约：这一态不播报；名称仍要有一句）
+        UserStatus::Stopping => "正在退出",
         UserStatus::SignedOut => "未登录",
         UserStatus::SigningIn => "正在登录",
         UserStatus::UnsupportedStep => "这一步本应用暂不支持，请先在官方客户端完成",

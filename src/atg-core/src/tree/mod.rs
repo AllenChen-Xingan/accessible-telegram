@@ -34,7 +34,8 @@ pub struct MsgId {
 
 // 绝大多数 Doc 就是 Message，装箱只会给每条消息多一次分配
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Doc {
     /// 普通消息（含带媒体的）
@@ -60,7 +61,8 @@ pub struct Unknown {
 
 // ───────────────────────── 消息 ─────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Message {
     pub id: MsgId,
     pub head: Head,
@@ -68,7 +70,8 @@ pub struct Message {
     pub tail: Tail,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Head {
     pub sender: Sender,
     pub date: Time,
@@ -86,7 +89,8 @@ pub struct Head {
 }
 
 /// `MessageTopic`（`td_api.tl:3422-3431`）
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Topic {
     Thread {
@@ -110,7 +114,8 @@ pub enum Topic {
 }
 
 /// 发送人。名字在投影时从用户 / 会话缓存查；查不到是 `None`，读法给兜底说法。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Sender {
     User { user_id: i64, name: Option<String> },
@@ -118,7 +123,8 @@ pub enum Sender {
     Unknown { td_type: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReplyTo {
     /// 回复一条消息。`target.chat_id` 可能是别的会话；被回复的那条不一定在 store 里
@@ -136,13 +142,15 @@ pub enum ReplyTo {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Forward {
     pub origin: Origin,
     pub date: Time,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Origin {
     User {
@@ -167,7 +175,8 @@ pub enum Origin {
 }
 
 /// 正文 + 附件。只取决于消息本身，可以存进 model。
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Content {
     /// 文本消息的正文，或媒体的说明文字；没有就是空
     pub body: Vec<Span>,
@@ -179,7 +188,8 @@ pub struct Content {
     pub sensitive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Attachment {
     Photo {
@@ -274,7 +284,8 @@ pub struct Tail {
     pub delivery: Option<Delivery>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Reaction {
     pub kind: ReactionKind,
     pub count: u32,
@@ -282,7 +293,8 @@ pub struct Reaction {
     pub chosen: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReactionKind {
     Emoji {
@@ -313,7 +325,8 @@ pub enum Delivery {
 ///
 /// 三类：只有文字的叶子（`Text` `Code` `Pre` `DateTime`）· 格式（粗斜下删剧透，可嵌任何东西）·
 /// 其余实体（带 `children`，里面只许有格式）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Span {
     Text {
@@ -411,7 +424,8 @@ pub enum Span {
 
 // ───────────────────────── 系统消息 ─────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Service {
     pub id: MsgId,
     pub date: Time,
@@ -420,13 +434,15 @@ pub struct Service {
     pub action: Action,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct UserRef {
     pub user_id: i64,
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
     MembersAdded {
@@ -457,14 +473,22 @@ pub enum Action {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Tombstone {
     pub id: MsgId,
+    /// 撤回前记下的发送人（名字投影时填）；没见过原消息就撤回的为空
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<Sender>,
+    /// 撤回前记下的发送时间（读法 R7「某某撤回了一条消息，19:37」用）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<Time>,
 }
 
 // ───────────────────────── 会话项 · 提醒 · 连接状态 ─────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct ChatItem {
     pub chat_id: i64,
     pub title: String,
@@ -483,7 +507,8 @@ pub struct ChatItem {
 
 /// 会话项的「最后一条」只可能是这三种（JSON `type` 与 [`Doc`] 的同名变体一致）
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatLast {
     Message(Message),
@@ -502,13 +527,15 @@ pub enum ChatKind {
     Unknown { td_type: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Alert {
     pub total: u32,
     pub chats: Vec<AlertChat>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct AlertChat {
     pub chat_id: i64,
     pub title: Option<String>,
@@ -526,6 +553,8 @@ pub struct Status {
 #[serde(rename_all = "snake_case")]
 pub enum UserStatus {
     Fault,
+    /// 内核或授权在关闭中 / 已关闭：人自己关的，不播报（infra 新增，`errors.md` 第一节第 3 小节）
+    Stopping,
     SignedOut,
     SigningIn,
     UnsupportedStep,

@@ -346,7 +346,13 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "id": {
       "chat_id": 101,
       "message_id": 1007
-    }
+    },
+    "sender": {
+      "type": "user",
+      "user_id": 101,
+      "name": "林小雨"
+    },
+    "date": "2026-10-23T11:37:00Z"
   },
   "speech": {
     "brief": "已撤回的消息"
