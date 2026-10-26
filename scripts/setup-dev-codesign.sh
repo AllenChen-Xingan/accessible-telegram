@@ -1,75 +1,41 @@
 #!/usr/bin/env bash
-# setup-dev-codesign.sh — 在本机登录钥匙串里建一张自签名「代码签名」开发证书（默认名 atg-dev）。
+# setup-dev-codesign.sh — 检查本机有没有能给开发版签名的 Apple Development 身份；没有就告诉人怎么领。
 #
-# 为什么：拍板 005 N2「开发证书也管正式钥匙、不弹框」需要一张稳定的签名身份；
-#         没有它，每次 cargo 重编出的程序签名都变，读钥匙串会反复弹「允许访问」。
-# 谁来跑：人本人（会往钥匙串里加证书；第 3 步系统会弹框要登录密码确认信任）。
-#         命令：bash scripts/setup-dev-codesign.sh [证书名]
-# 做什么：① openssl 生成 RSA-2048 私钥 + 自签证书（EKU = codeSigning，10 年）
-#         ② 导入登录钥匙串，只授权 /usr/bin/codesign 使用私钥
-#         ③ 设为「信任用于代码签名」  ④ 列出确认
-# 不做什么：不改别的证书；私钥只进钥匙串，临时文件退出即删；已存在同名有效身份就直接退出。
+# 为什么（issue #38，拍板 007「#38 钥匙串弹框」：用乙）：开发版读钥匙串要重编不弹框，签名得带团队号，
+#   只有苹果签发的证书有；以前这里建的自签名证书 atg-dev 没有团队号，重编必弹（exp005）。
+# 谁来跑：人或 AI 都行，只读，不改钥匙串、不弹框。命令：bash scripts/setup-dev-codesign.sh
+# 做什么：按 scripts/dev-codesign-id.sh 的规则找身份（环境变量 / .env.local 的 ATG_CODESIGN_ID，或恰好一个 Apple Development），
+#   找到就打印 SHA-1 前 8 位与有效期；找不到或不止一个就打印领证书 / 选证书的步骤，退出码 2。
+# 不做什么：不建证书、不打印身份名（里面有人名）。
+# atg-dev 已于 2026-10-26 删除（拍板 007 E，人亲手删），exp005 的 atg-dev 对照组不可复现。
 set -euo pipefail
 
-NAME="${1:-atg-dev}"
-KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
-DRY="${ATG_CODESIGN_DRY_RUN:-0}"   # =1 只生成并检查证书，不碰钥匙串（给 AI 自测用）
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ ! "${NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-  echo "证书名只许字母数字 . _ -：${NAME}" >&2; exit 1
-fi
+if ! id="$(bash "${here}/dev-codesign-id.sh")"; then
+  cat >&2 <<'EOF'
 
-if [[ "${DRY}" != 1 ]] && security find-identity -v -p codesigning 2>/dev/null | grep -q "\"${NAME}\""; then
-  echo "已有有效的代码签名身份「${NAME}」，不重复创建："
-  security find-identity -v -p codesigning | grep "\"${NAME}\""
-  exit 0
-fi
-
-OPENSSL="$(brew --prefix openssl@3 2>/dev/null)/bin/openssl"
-[[ -x "${OPENSSL}" ]] || { echo "找不到 homebrew 的 openssl@3（brew install openssl@3）" >&2; exit 1; }
-
-TMP="$(mktemp -d)"
-trap 'rm -rf "${TMP}"' EXIT
-chmod 700 "${TMP}"
-
-cat > "${TMP}/req.cnf" <<EOF
-[req]
-distinguished_name = dn
-x509_extensions = ext
-prompt = no
-[dn]
-CN = ${NAME}
-[ext]
-basicConstraints = critical,CA:false
-keyUsage = critical,digitalSignature
-extendedKeyUsage = critical,codeSigning
-subjectKeyIdentifier = hash
+（原因见上一行。下面是各种情形的处理办法。）
+没有身份——领 Apple Development 证书（免费 Apple ID 就行，不用建工程）：
+  0. 要完整的 Xcode（App Store 下载，十几 GB；只装命令行工具不够，没有 Accounts 面板）。装好后下面几步约 2 分钟
+  1. 打开 Xcode → 设置（⌘,）→ Accounts
+  2. 左下角「+」→ Apple ID → 登录
+  3. 选中个人团队（Personal Team）→ Manage Certificates…
+  4. 左下角「+」→ Apple Development
+  5. 回来再跑一次 bash scripts/setup-dev-codesign.sh
+ATG_CODESIGN_ID 设错了（格式不对、过期、不是 Apple Development）：改环境变量或 .env.local 里那一行，或删掉它走自动选择
+有两个以上 Apple Development 身份时（比如续签期间新旧并存）：上面已列出每个的 SHA-1 与有效期，
+  把要用的那个写进仓库根 .env.local：ATG_CODESIGN_ID=<40 位 SHA-1>
+只想跑单测、本机暂时没有身份：ATG_DEV_SIGN=0 cargo test --workspace（单测不碰钥匙串；不签名的程序读本地库钥匙会弹框或读不到）
 EOF
-
-echo "① 生成私钥与自签证书（${NAME}，10 年）"
-"${OPENSSL}" req -x509 -newkey rsa:2048 -nodes -days 3650 \
-  -keyout "${TMP}/key.pem" -out "${TMP}/cert.pem" -config "${TMP}/req.cnf" 2>/dev/null
-"${OPENSSL}" x509 -in "${TMP}/cert.pem" -noout -subject -enddate -ext extendedKeyUsage
-
-if [[ "${DRY}" == 1 ]]; then
-  echo "（ATG_CODESIGN_DRY_RUN=1：只生成并检查，不导入钥匙串）"; exit 0
+  exit 2
 fi
 
-# p12 的临时口令只活在本进程，导入后随临时目录删除
-P12_PASS="$("${OPENSSL}" rand -hex 16)"
-"${OPENSSL}" pkcs12 -export -legacy -inkey "${TMP}/key.pem" -in "${TMP}/cert.pem" \
-  -name "${NAME}" -out "${TMP}/id.p12" -passout "pass:${P12_PASS}"
+end="$(bash "${here}/dev-codesign-id.sh" --not-after "${id}")"
 
-echo "② 导入登录钥匙串（只授权 /usr/bin/codesign 使用私钥）"
-security import "${TMP}/id.p12" -k "${KEYCHAIN}" -P "${P12_PASS}" -T /usr/bin/codesign >/dev/null
-
-echo "③ 设为「信任用于代码签名」——系统会弹框要你的登录密码"
-security add-trusted-cert -r trustRoot -p codeSign -k "${KEYCHAIN}" "${TMP}/cert.pem"
-
-echo "④ 确认："
-if security find-identity -v -p codesigning | grep "\"${NAME}\""; then
-  echo "完成。以后签名用：codesign -s \"${NAME}\" <程序>"
-else
-  echo "没找到有效身份「${NAME}」——可能信任那一步被取消了。可在「钥匙串访问」里找到 ${NAME}，打开「信任」→「代码签名：始终信任」。" >&2
-  exit 1
-fi
+echo "开发签名身份就绪：Apple Development，SHA-1 前 8 位 ${id:0:8}${end:+，有效到 ${end}}"
+echo "签名：bash scripts/dev-sign.sh <程序>；cargo run / cargo test 经 .cargo/config.toml 的 runner 自动签。"
+echo "证书一年一续（看板 state/board.md 记着到期日）。续签后：新证书签的程序能否照读现有条目未测，"
+echo "  先按 docs/experiments/exp005-keychain-acl/README.md「乙本体」第 4、7 条用实验条目演一遍，再迁真条目"
+echo "  （探针与做法见 docs/experiments/exp006-keychain-migrate/README.md「续签时怎么用」）；"
+echo "  旧证书别急着删。注意迁移过的条目新身份只能读、不能删（config-privacy.md 第一节第 3 小节）。"

@@ -4,6 +4,12 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🔐 #38 钥匙串弹框根治（2026-10-26）
+> - 开发版改用 Apple Development 身份签名（`scripts/dev-sign.sh`，cargo runner 自动签）；test / main 真条目已迁移，重编不再弹框；atg-dev 证书已删
+> - 证据：`docs/experiments/exp005-keychain-acl/`（原因与方案）· `exp006-keychain-migrate/`（迁移）；拍板 `docs/plan/007_decisions-b15.md`
+> - ⏰ **证书 2027-10-26 到期**：到期前人在 Xcode 续签，续后先按 exp006 用实验条目测再读真条目
+> - #42（强化运行时）缓做
+
 > ## 🚀 批次 b15 四线并行（2026-10-26）
 > - PR #39 合并（`9087ac4`），#18 关
 > - 手下：speech #19 · style #20（草稿，人改定）· ipc #22 · keychain #38（只调研）；worktree 在 `5-App/atg-wt/`，交代 `_tmp/20261026-b15/`

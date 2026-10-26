@@ -1,0 +1,9 @@
+[package]
+name = "atg-migrate-read"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+security-framework = "=3.7.0"
+
+[workspace]

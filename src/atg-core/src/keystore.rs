@@ -3,9 +3,13 @@
 //! 规约：`specs/contracts/config-privacy.md` 第一节第 3 小节——32 字节随机数，首次建档时用系统安全随机源生成，
 //! 存进钥匙串一条「通用密码」：服务名 `atg.tdlib-db-key`，账户名 = 档案名。不进环境变量、文件、日志、命令行参数。
 //!
-//! [`KeyStore`] 特征让测试换成内存版（CI 绝不碰钥匙串）。真钥匙串 [`Keychain`] 用原生接口：条目的访问名单
-//! 记的是**建它的那个程序**的签名要求，所以开发版要用同一张开发证书、同一个标识签名（`codesign -s atg-dev
-//! -i atg.dev`；证书由 `scripts/setup-dev-codesign.sh` 建），重编后才不弹框（005 N2：开发证书也管正式档案的钥匙）。
+//! [`KeyStore`] 特征让测试换成内存版（CI 绝不碰钥匙串）。真钥匙串 [`Keychain`] 用原生接口（传统登录钥匙串）。
+//! 条目有两道关，都按**建它的那个程序**记：访问名单认「标识 + 证书」，分区名单认团队号（`teamid:…`）。
+//! 所以开发版一律用本人的 Apple Development 身份、固定标识 `atg.dev` 签名（`scripts/dev-sign.sh`；`cargo run` /
+//! `cargo test` 经 `.cargo/config.toml` 的 runner 自动签），重编后才不弹框。自签名证书没有团队号，分区只能记
+//! cdhash，重编必弹（exp005，issue #38）。开发身份也管正式档案的钥匙（005 N2，按 007 A1 改写）：同用户任何进程
+//! 都能用这个身份静默签一个程序拿到钥匙，人已知并接受。迁移过来的旧条目还认旧 atg-dev 版、新身份不能删，
+//! 见 `specs/contracts/config-privacy.md` 第一节第 3 小节；术语见 `docs/experiments/exp005-keychain-acl/README.md` 开头。
 //!
 //! 钥匙丢了（条目没了但本地库还在）：这里会生成新钥匙，TDLib 打开旧库时报 `Wrong database encryption key`
 //! → `db_key_invalid`，由人决定是否清缓存。**绝不自动删库**。

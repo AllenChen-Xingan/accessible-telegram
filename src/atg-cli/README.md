@@ -20,13 +20,13 @@
 
 其余子命令还只占名，输出一行 `not_implemented` 错误、退出码 1。全局选项里 `--fake`（场景目录）、`--redact`、`--wait`、`--unsafe-direct-send` 还没接上；`--tz` 现在只有 `speech` 用。
 
-跑法：真实后端要编进 TDLib（`--features tdlib`），运行前提（`.env.local`、库路径、签名）见 `src/README.md` 与 `state/handoff/login.md`：
+跑法：真实后端要编进 TDLib（`--features tdlib`），运行前提（`.env.local`、库路径、签名）见 `src/README.md`（`state/handoff/login.md` 是登录那块的过程记录，里面的 `codesign -s atg-dev …` 已作废，签名以 `src/README.md` 为准）：
 
 ```sh
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
-cargo build -p atg-cli --features tdlib
-codesign -s atg-dev -i atg.dev --force target/debug/atg-cli
-DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" target/debug/atg-cli --test-dc login
+cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名、带上库目录（scripts/dev-sign-run.sh）
+# 或分开做：cargo build -p atg-cli --features tdlib && bash scripts/dev-sign.sh target/debug/atg-cli
+#           DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" target/debug/atg-cli --test-dc login
 ```
 
 测试：`cargo test -p atg-cli`（登录、列会话用假后端单测走全部分支；另跑真二进制对照契约检查外壳与退出码）。本机冒烟脚本 `live/login.exp`（测试服务器、测试号，用 expect 把输入喂进终端）。
