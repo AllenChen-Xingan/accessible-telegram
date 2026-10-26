@@ -61,7 +61,7 @@
 |---|---|---|
 | `message` | 普通消息（含带媒体的） | `message` `tl:3598` |
 | `service` | 系统消息 | 系统类 `MessageContent` |
-| `tombstone` | 原位「已撤回」占位（拍板 7）：`id` + 撤回前记下的 `sender`、`date`（R7 读法要用，store 在删除前留下这两项） | `updateDeleteMessages` `tl:11523`，判定只在一处：`specs/contracts/actions.md` 事件 `messages_deleted`（只认永久且非缓存的删除） |
+| `tombstone` | 原位「已撤回」占位（拍板 7）：`id` + 撤回前记下的 `sender`、`date`、`outgoing`（R7 读法要用，store 在删除前留下这三项；`outgoing` 为假时不输出） | `updateDeleteMessages` `tl:11523`，判定只在一处：`specs/contracts/actions.md` 事件 `messages_deleted`（只认永久且非缓存的删除） |
 | `chat_item` | 会话列表一项 | `chat` `tl:4080` |
 | `alert` | 新消息提醒：总数 + 各会话条数 | 本项目 `notify` 策略 |
 | `status` | 用户状态（T10）：内核、授权、连接三条线合成的一个值 | 合成规则归 `specs/contracts/errors.md` 第一节第 3 小节；连接一线来自 `updateConnectionState` `tl:11818` |
@@ -75,13 +75,14 @@
 Message
 ├── id: {chat_id, message_id}
 ├── head
-│   ├── sender: user{user_id, name?} | chat{chat_id, title?} | unknown{td_type}
+│   ├── sender: user{user_id, name?, deleted?} | chat{chat_id, title?} | unknown{td_type}
 │   ├── date
 │   ├── outgoing
 │   ├── reply_to?: message{target, sender?, quote?} | unknown{td_type}
 │   ├── forward?: {origin, date}，origin = user | hidden_user{name} | chat | channel | unknown
 │   ├── album_id?
-│   └── topic?: thread | forum{topic_id, name?} | direct_messages | saved_messages | unknown   ← 回复、发送时要沿用
+│   ├── topic?: thread | forum{topic_id, name?} | direct_messages | saved_messages | unknown   ← 回复、发送时要沿用
+│   └── in_channel?            ← 消息在频道里（投影按会话种类填）
 ├── content
 │   ├── body: [Span]          ← 文本消息的正文，或媒体的说明文字
 │   └── attachment?: Attachment
@@ -92,6 +93,7 @@ Message
 ```
 
 - 名字是 `Option`：查不到就是空，读法给兜底说法（「未知发送人」），**树里不写兜底文字**
+- `sender.deleted`：发送人是已注销账号（`userTypeDeleted`，投影时填，读法读「已注销的账号」，V14）；`head.in_channel`：消息在频道里（投影按会话种类填；读法据此分开「频道自己发的」和群里的「匿名管理员」，V10、V11）。两项为假时不输出（新增可选字段，`v` 不加一）
 - **建树前先选有效内容**：消息带临时内容（`ephemeral_content`，`tl:3547`、`:3594`「必须代替原内容显示」）就用它，否则用 `content`；更新 `updateMessageEphemeralContent`（`tl:11223`）归 reducer
 - **受限内容**（`restriction_info`，`tl:2738`、`:3591`「必须执行」）：原因非空 → 原内容**不进树**，附件换成 `restricted{reason}`、正文为空；只有「敏感」标记 → 照常建，`content.sensitive = true`，读法标「隐藏」
 - `reply_to.target.chat_id` 可能是别的会话、也可能是 0（TDLib：被回复的那条在未知会话）；被回复那条不在 store 里时，发送人先用 TDLib 附带的 `origin` 兜底（api 提醒 2）
@@ -119,9 +121,11 @@ Message
 
 `other` 与 `unknown` 分开，是为了让读法区分「我们知道这是什么，只是还没做」和「连我们都不认识」。
 
-### 4. 系统消息 `Service`：`{id, date, actor, action}`
+### 4. 系统消息 `Service`：`{id, date, actor, action, outgoing?, in_channel?}`
 
-`action` 的 `type`：`members_added{users}` · `joined_by_link` · `joined_by_request` · `member_removed{user}`（`user` 与 actor 同人即自己退出）· `title_changed{title}` · `photo_changed` · `photo_deleted` · `pinned{pinned: 消息身份}` · `group_created{title}` · `contact_registered` · `other{td_type}`（认识但没做专门节点的，清单 `OTHER_SERVICE`）。
+`outgoing`：自己做的（TDLib 消息的 `is_outgoing`，读「我」）；`in_channel`：发生在频道里（投影按会话种类填，读「频道名」「频道头像」）。`UserRef` 另带 `is_me?`（就是自己，投影按事件 `my_id_changed` 填）、`deleted?`（已注销账号）。这几项为假时都不输出（新增可选字段，`v` 不加一）。
+
+`action` 的 `type`：`members_added{users}` · `joined_by_link` · `joined_by_request` · `member_removed{user}`（`user` 与 actor 同人即自己退出）· `title_changed{title}` · `photo_changed` · `photo_deleted` · `pinned{pinned: 消息身份, content?}`（`content` 是被置顶那条的有效内容，投影时从 store 填，查不到为空；存下来的一律为空，同「名字投影时填」；V16）· `group_created{title}` · `contact_registered` · `other{td_type}`（认识但没做专门节点的，清单 `OTHER_SERVICE`）。
 
 不认识的内容类型一律落附件 `unknown`，**不猜它是不是系统消息**。
 
@@ -142,7 +146,7 @@ Message
 
 ### 6. 会话项 `ChatItem` · 提醒 `Alert` · 连接 `Connection`
 
-- `chat_item`：`chat_id, title, kind(private / group / supergroup / channel / secret / unknown), unread_count, unread_mention_count, muted, mute_inherited, pinned, last?`。`muted` 是**有效静音**：会话设了 `use_default_mute_for`（`tl:3811`）就继承范围设置（`scopeNotificationSettings` `tl:3823`，论坛话题继承所在论坛 `tl:3795`），由投影算好放进来，`mute_inherited` 记它是不是继承的。原型没有范围设置，继承时按不静音算`last` 是一份 `message` / `service` / `tombstone`（Rust 里是窄枚举 `ChatLast`，只许这三种）
+- `chat_item`：`chat_id, title, kind(private / group / supergroup / channel / secret / unknown), unread_count, unread_mention_count, muted, mute_inherited, pinned, peer_deleted?, saved_messages?, last?`。`peer_deleted`：私聊、加密聊天的对方是已注销账号（TDLib 空标题 + 用户类型 `userTypeDeleted`，`UserManager.cpp:5708`、`:10495`）；`saved_messages`：收藏夹，即和自己的私聊（自己的 id 来自事件 `my_id_changed`，`actions.md` 第一节第 7 小节）。两项为假时不输出（新增可选字段，`v` 不加一）。`muted` 是**有效静音**：会话设了 `use_default_mute_for`（`tl:3811`）就继承范围设置（`scopeNotificationSettings` `tl:3823`，论坛话题继承所在论坛 `tl:3795`），由投影算好放进来，`mute_inherited` 记它是不是继承的。原型没有范围设置，继承时按不静音算`last` 是一份 `message` / `service` / `tombstone`（Rust 里是窄枚举 `ChatLast`，只许这三种）
 - `alert`：`total, chats[{chat_id, title?, count}]`。只有数据，「按 M 收听」不在树里
 - `status`：`status` = `fault` / `stopping` / `signed_out` / `signing_in` / `unsupported_step` / `offline` / `connecting` / `syncing` / `online`（`stopping` 由 infra 新增：内核或授权在关闭中 / 已关闭，是人自己关的，不播报；合成规则见 `errors.md` 第一节第 3 小节）。**读法只读合成后的这个值，不直接读 TDLib 的连接状态**；三线合成函数归 infra（`errors.md`），不认识的连接状态在合成时按「正在连接」处理，所以这里不需要 `unknown`。原型 `tdjson` 只按连接一线简化合成
 
@@ -173,7 +177,7 @@ Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `M
 
 ## 五、正例与反例
 
-**正例**（`text.rs` 单测 + `tests/fixtures/*.json` 快照）：
+**正例**（`text.rs` 单测 + `fixtures/speech/*.json` 快照）：
 
 | 输入 | 树 |
 |---|---|
@@ -247,8 +251,8 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 
 要点：
 
-- 自己发的读「我」；名字查不到一律读「未知发送人」；不认识或没做读法的内容一律读「暂不支持的消息」——**英文类型名不读**，只进 JSON
-- 格式（粗斜下删）不读；**剧透、18+ 遮挡统一读「隐藏内容，按 D 展开」**（R1 人定），两边用逗号隔开（VoiceOver 不念括号）；键由调用方给（同提醒的「按 M 收听」），没有键的调用方（CLI）只读「隐藏内容」；D 是否就是详情键，GUI 阶段定键位时一并定；链接只读文字不读地址；代码照读文字
+- 自己发的读「我」；名字查不到**分场合**（V18 人定）：消息发送人与撤回占位读「未知发送人」，系统消息的操作人读「有人」，系统消息里被添加、被移出的人读「未知用户」；不认识或没做读法的内容一律读「暂不支持的消息」，**系统消息例外**读「暂不支持的系统消息」（V19 人定）——**英文类型名不读**，只进 JSON
+- 格式（粗斜下删）不读；**剧透、18+ 遮挡统一读「隐藏内容，按 D 展开」**（R1 人定），两边用逗号隔开（VoiceOver 不念括号）；键由调用方给（同提醒的「按 M 收听」），没有键的调用方（CLI）只读「隐藏内容」；**按键提示每条只说一次，放在整条末尾、钟点前**，各处遮挡只读「隐藏内容」（V13 人定；单处遮挡同样放末尾，如「图片，隐藏内容，山顶的风景，按 D 展开，19:33」，待人确认）；D 是否就是详情键，GUI 阶段定键位时一并定；链接只读文字不读地址；代码照读文字
 - **时间只读钟点**（R3）：日期进 `detail`。**回复谁、转发自谁**（R4）、**已编辑、表情回应**（R5）都不进 `brief`，进 `detail`
 - **相册每张一项**（R6），GUI 阶段再看
 - **撤回占位**（R7）：句式「〈发送人〉撤回了一条消息，〈钟点〉」，与消息句同形——发送人、时间取撤回前记下的（第三节第 1 小节），发送人沿用「我」「未知发送人」的规则（记不到发送人读「未知发送人撤回了一条消息，〈钟点〉」）。读的是**原作者**——TDLib 不给删除人，管理员删别人的消息也读成原作者撤回，接受；**会话项**里的占位不带时间（同会话项最后一条的规则）。实听再定（N8 人定）
@@ -276,4 +280,6 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-10-25 初稿（tree），收 api v0.1 / v0.2
 - 2026-10-25 按 b2 拍板同步（sync）：第九节写入人定读法原则与 R1–R7；`tombstone` 只认 `is_permanent` 且非 `from_cache`，并带撤回前的 `sender`、`date`；`UserStatus` 加 `stopping`（infra 转来）。快照与代码未改（S0 暂停）
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：R7 撤回占位细节按 N8
+- 2026-10-26 按 007 人定同步（`docs/plan/007_decisions-b15.md`，大总管授权）：第三节第 2 小节 `sender.deleted`、`head.in_channel`；第 4 小节 `pinned.content`；第九节名字查不到分场合（V18）、系统消息「暂不支持的系统消息」（V19）、按键提示整条末尾一次（V13）
+- 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：第三节第 6 小节 `chat_item` 加可选字段 `peer_deleted`、`saved_messages`；第 1 小节 `tombstone` 加 `outgoing`；第 4 小节 `service` 加 `outgoing`、`in_channel`，`UserRef` 加 `is_me`、`deleted`（都为假不输出，`v` 不加一）
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第二节投影函数改写成实际的四个（乙9）；第八节补「给取值固定的字段加新取值不加一」（乙10）；第三节第 2 小节受限规则系统消息也适用，原文本就没写例外，无需改（乙12）；第三节第 2 小节补「被回复那条受限则引用不出」（乙11）与回复对象跟随换 id

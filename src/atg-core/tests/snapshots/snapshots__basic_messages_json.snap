@@ -244,7 +244,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "林小雨：图片，山顶的风景，结局是，隐藏内容，19:33"
+    "brief": "林小雨：图片，山顶的风景，结局是，隐藏内容，按 D 展开，19:33"
   }
 }
 {
@@ -355,7 +355,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "date": "2026-10-23T11:37:00Z"
   },
   "speech": {
-    "brief": "已撤回的消息"
+    "brief": "林小雨撤回了一条消息，19:37"
   }
 }
 {
@@ -741,11 +741,19 @@ expression: "json_pretty(&world(\"basic\").docs())"
       "pinned": {
         "chat_id": -1001,
         "message_id": 2006
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水。"
+          }
+        ]
       }
     }
   },
   "speech": {
-    "brief": "周大山置顶了一条消息，19:31"
+    "brief": "周大山置顶了一条消息：天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水，19:31"
   }
 }
 {
@@ -886,7 +894,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     }
   },
   "speech": {
-    "brief": "一条系统消息，19:32"
+    "brief": "暂不支持的系统消息，19:32"
   }
 }
 {
@@ -941,7 +949,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：视频 1 分 5 秒，隐藏内容，19:32"
+    "brief": "周大山：视频 1 分 5 秒，隐藏内容，按 D 展开，19:32"
   }
 }
 {
@@ -1201,7 +1209,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：投票，几点出发？，19:33"
+    "brief": "周大山：投票，几点出发？19:33"
   }
 }
 {
@@ -1265,7 +1273,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：图片，隐藏内容，19:33"
+    "brief": "周大山：图片，隐藏内容，按 D 展开，19:33"
   }
 }
 {
@@ -1332,7 +1340,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "未知发送人：谁发的？，19:34"
+    "brief": "未知发送人：谁发的？19:34"
   }
 }
 {
@@ -1516,7 +1524,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：图片，隐藏内容，19:35"
+    "brief": "周大山：图片，隐藏内容，按 D 展开，19:35"
   }
 }
 {

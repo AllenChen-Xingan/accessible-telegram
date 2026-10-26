@@ -18,6 +18,7 @@ pub fn message(store: &Store, id: MsgId) -> Option<Doc> {
             id,
             sender: t.sender.as_ref().map(|s| sender(store, s)),
             date: t.date,
+            outgoing: t.outgoing,
         }),
     })
 }
@@ -87,6 +88,14 @@ pub fn chat_item(store: &Store, chat_id: i64, list: &ChatList) -> Option<ChatIte
         muted: mute_for > 0,
         mute_inherited: inherited,
         pinned: c.positions.iter().any(|p| &p.list == list && p.is_pinned),
+        peer_deleted: c
+            .peer_user
+            .and_then(|u| store.user(u))
+            .is_some_and(|u| u.deleted),
+        // 只认私聊：加密聊天不能和自己开
+        saved_messages: c.kind == ChatKind::Private
+            && c.peer_user.is_some()
+            && c.peer_user == store.me(),
         last,
     })
 }
@@ -102,6 +111,8 @@ fn live(store: &Store, m: &MMessage) -> Doc {
                 date: m.date,
                 actor: sender_doc,
                 action: action(store, a),
+                outgoing: m.outgoing,
+                in_channel: in_channel(store, m.id.chat_id),
             });
         }
         Body::Content(c) => c.clone(),
@@ -131,6 +142,7 @@ fn live(store: &Store, m: &MMessage) -> Doc {
             }),
             album_id: m.album_id.clone(),
             topic: m.topic.clone(),
+            in_channel: in_channel(store, m.id.chat_id),
         },
         content,
         tail: Tail {
@@ -145,6 +157,16 @@ fn user_name(store: &Store, id: i64) -> Option<String> {
     store.user(id).map(|u| u.name())
 }
 
+fn in_channel(store: &Store, chat_id: i64) -> bool {
+    store
+        .chat(chat_id)
+        .is_some_and(|c| c.kind == ChatKind::Channel)
+}
+
+fn user_deleted(store: &Store, id: i64) -> bool {
+    store.user(id).is_some_and(|u| u.deleted)
+}
+
 fn chat_title(store: &Store, id: i64) -> Option<String> {
     store.chat(id).map(|c| c.title.clone())
 }
@@ -154,6 +176,7 @@ fn sender(store: &Store, s: &SenderId) -> Sender {
         SenderId::User(user_id) => Sender::User {
             user_id: *user_id,
             name: user_name(store, *user_id),
+            deleted: user_deleted(store, *user_id),
         },
         SenderId::Chat(chat_id) => Sender::Chat {
             chat_id: *chat_id,
@@ -207,7 +230,11 @@ fn reply(store: &Store, r: &ReplyRef) -> ReplyTo {
             let quote = if restricted { None } else { quote.clone() };
             let sender = from_store.or_else(|| {
                 fallback.as_ref().and_then(|o| match origin(store, o) {
-                    Origin::User { user_id, name } => Some(Sender::User { user_id, name }),
+                    Origin::User { user_id, name } => Some(Sender::User {
+                        user_id,
+                        name,
+                        deleted: user_deleted(store, user_id),
+                    }),
                     Origin::Chat { chat_id, title } | Origin::Channel { chat_id, title } => {
                         Some(Sender::Chat { chat_id, title })
                     }
@@ -231,16 +258,26 @@ fn action(store: &Store, a: &Action) -> Action {
     let fill = |u: &UserRef| UserRef {
         user_id: u.user_id,
         name: user_name(store, u.user_id),
+        is_me: store.me() == Some(u.user_id),
+        deleted: user_deleted(store, u.user_id),
     };
     match a {
         Action::MembersAdded { users } => Action::MembersAdded {
             users: users.iter().map(fill).collect(),
         },
         Action::MemberRemoved { user } => Action::MemberRemoved { user: fill(user) },
-        // 被置顶那条可能已换 id
-        Action::Pinned { pinned } => Action::Pinned {
-            pinned: store.current_id(*pinned),
-        },
+        // 被置顶那条可能已换 id；内容按现在的 id 查（受限的存的时候已换成受限节点）
+        Action::Pinned { pinned, .. } => {
+            let pinned = store.current_id(*pinned);
+            let content = match store.entry(pinned) {
+                Some(Entry::Live(m)) => match m.effective() {
+                    Body::Content(c) => Some(Box::new(c.clone())),
+                    Body::Service(_) => None,
+                },
+                Some(Entry::Tombstone(_)) | None => None,
+            };
+            Action::Pinned { pinned, content }
+        }
         Action::JoinedByLink
         | Action::JoinedByRequest
         | Action::TitleChanged { .. }

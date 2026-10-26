@@ -86,6 +86,9 @@ pub struct Head {
     /// 所在话题。回复、发送时要沿用，否则话题群里可能发错地方
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<Topic>,
+    /// 消息在频道里（投影时按会话种类填）。读法据此分开「频道自己发的」和「匿名管理员」。为假时不输出（新增可选字段，`v` 不加一；存下来的树里一律为假，投影时才填）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub in_channel: bool,
 }
 
 /// `MessageTopic`（`td_api.tl:3422-3431`）
@@ -118,9 +121,20 @@ pub enum Topic {
 #[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Sender {
-    User { user_id: i64, name: Option<String> },
-    Chat { chat_id: i64, title: Option<String> },
-    Unknown { td_type: String },
+    User {
+        user_id: i64,
+        name: Option<String>,
+        /// 已注销的账号（`userTypeDeleted`，投影时填）。为假时不输出（新增可选字段，`v` 不加一）
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        deleted: bool,
+    },
+    Chat {
+        chat_id: i64,
+        title: Option<String>,
+    },
+    Unknown {
+        td_type: String,
+    },
 }
 
 #[derive(Clone, PartialEq, Serialize)]
@@ -432,6 +446,12 @@ pub struct Service {
     /// 谁做的
     pub actor: Sender,
     pub action: Action,
+    /// 自己做的（读「我」）。为假时不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outgoing: bool,
+    /// 发生在频道里（读「频道名」「频道头像」而不是「群名」「群头像」）。投影时按会话种类填；为假时不输出（新增可选字段，`v` 不加一；存下来的树里一律为假，投影时才填）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub in_channel: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -439,6 +459,12 @@ pub struct Service {
 pub struct UserRef {
     pub user_id: i64,
     pub name: Option<String>,
+    /// 就是自己（投影时按 `my_id` 填）。为假时不输出（新增可选字段，`v` 不加一；存下来的树里一律为假，投影时才填）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_me: bool,
+    /// 已注销的账号（`userTypeDeleted`，投影时填）。为假时不输出（新增可选字段，`v` 不加一；存下来的树里一律为假，投影时才填）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub deleted: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize)]
@@ -459,9 +485,12 @@ pub enum Action {
     },
     PhotoChanged,
     PhotoDeleted,
-    /// `pinned` 是被置顶的那条
+    /// `pinned` 是被置顶的那条；`content` 是它的有效内容（投影时从 store 查，查不到为空；
+    /// 存下来的树里一律为空——同「名字投影时填」）。为空时不输出（新增可选字段，`v` 不加一）
     Pinned {
         pinned: MsgId,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Box<Content>>,
     },
     GroupCreated {
         title: String,
@@ -483,6 +512,9 @@ pub struct Tombstone {
     /// 撤回前记下的发送时间（读法 R7「某某撤回了一条消息，19:37」用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<Time>,
+    /// 撤回前那条是自己发的（R7 读「我撤回了一条消息」）。为假时不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outgoing: bool,
 }
 
 // ───────────────────────── 会话项 · 提醒 · 连接状态 ─────────────────────────
@@ -500,6 +532,12 @@ pub struct ChatItem {
     /// `muted` 是不是继承来的
     pub mute_inherited: bool,
     pub pinned: bool,
+    /// 私聊、加密聊天的对方是已注销的账号（`userTypeDeleted`）。为假时不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub peer_deleted: bool,
+    /// 收藏夹：和自己的私聊（TDLib 给的标题是自己的名字）。为假时不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub saved_messages: bool,
     /// 最后一条
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last: Option<Box<ChatLast>>,

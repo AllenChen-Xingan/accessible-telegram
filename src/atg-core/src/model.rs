@@ -24,6 +24,8 @@ pub struct User {
     pub id: UserId,
     pub first_name: String,
     pub last_name: String,
+    /// 已注销的账号（`userTypeDeleted`）：TDLib 不再给名字，私聊标题为空
+    pub deleted: bool,
 }
 
 impl User {
@@ -248,6 +250,8 @@ pub struct Chat {
     pub last_read_inbox: i64,
     pub last_read_outbox: i64,
     pub notify: ChatNotify,
+    /// 私聊、加密聊天的对方用户 id（`chatTypePrivate.user_id` / `chatTypeSecret.user_id`）；群和频道为 `None`
+    pub peer_user: Option<UserId>,
     /// 最后一条的消息 id（消息本身存在 store 的消息表里）。由 store 维护，映射时留空
     pub last_message: Option<i64>,
 }
@@ -334,6 +338,9 @@ pub enum CoreEvent {
     ScopeNotificationChanged { scope: NotifyScope, mute_for: i64 },
     /// `updateUser`
     UserChanged(User),
+    /// `updateOption` 的 `my_id`：自己的用户 id（登录后 TDLib 自己推，TDLib 1.8.69 源码 `td/telegram/AuthManager.cpp:348`）。
+    /// 投影据此认出收藏夹、读出「我」
+    MyIdChanged { user_id: UserId },
     /// 合成后的用户状态（`crate::status::user_status`，`errors.md` 第一节第 3 小节）
     UserStatusChanged(UserStatus),
     /// 授权线变了（`auth_step_changed`；不带提示语）。由收线程从 `updateAuthorizationState` 合成

@@ -21,7 +21,7 @@ use serde_json::Value;
 use std::fmt;
 
 /// 测试服务器上自动注册用的名字（只在测试档案上注册，`testing.md` 第一节第 5 小节第 1 条；
-/// `fixtures/names.txt` 还没建，先写死一个明显是测试的名字）
+/// 写死一个明显是测试的名字；它是测试服务器上的账号名，不进夹具，所以不在 `fixtures/names.txt` 里）
 pub const TEST_REGISTER_FIRST_NAME: &str = "Atg";
 pub const TEST_REGISTER_LAST_NAME: &str = "Test";
 

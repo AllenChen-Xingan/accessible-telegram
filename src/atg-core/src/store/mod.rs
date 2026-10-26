@@ -101,11 +101,13 @@ pub enum Entry {
     Tombstone(Tomb),
 }
 
-/// 墓碑：撤回前记下的发送人和时间（没见过原消息就撤回的，两项都空）
+/// 墓碑：撤回前记下的发送人、时间、是不是自己发的（没见过原消息就撤回的，都空）
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tomb {
     pub sender: Option<SenderId>,
     pub date: Option<Time>,
+    /// 自己发的（读法 R7 读「我撤回了一条消息」）
+    pub outgoing: bool,
 }
 
 /// 当前打开的消息窗口
@@ -245,6 +247,8 @@ pub struct Store {
     config: StoreConfig,
     /// 发过的历史请求个数（凭据的 `request`）
     requests: u64,
+    /// 自己的用户 id（事件 `my_id_changed`）；还不知道是 `None`
+    me: Option<UserId>,
 }
 
 /// 纯函数形式：旧状态 + 一件事 → 新状态
@@ -319,6 +323,10 @@ impl Store {
     }
     pub fn user(&self, id: UserId) -> Option<&User> {
         self.users.get(&id)
+    }
+    /// 自己的用户 id（收到过 `my_id_changed` 才有）
+    pub fn me(&self) -> Option<UserId> {
+        self.me
     }
     pub fn chat(&self, id: ChatId) -> Option<&Chat> {
         self.chats.get(&id)
@@ -506,6 +514,8 @@ impl Store {
             CoreEvent::ScopeNotificationChanged { scope, mute_for } => {
                 self.scope_mute.insert(scope, mute_for);
             }
+            // 0 = 没有（登出后 TDLib 会把选项清掉）
+            CoreEvent::MyIdChanged { user_id } => self.me = (user_id != 0).then_some(user_id),
             CoreEvent::UserChanged(u) => {
                 self.users.insert(u.id, u);
             }
@@ -658,10 +668,12 @@ impl Store {
                     Some(Entry::Live(m)) => Tomb {
                         sender: Some(m.sender.clone()),
                         date: Some(m.date),
+                        outgoing: m.outgoing,
                     },
                     None => Tomb {
                         sender: None,
                         date: None,
+                        outgoing: false,
                     },
                 };
                 // 窗口里的 id 原样留着，投影成原位占位
@@ -1184,6 +1196,7 @@ mod tests {
             last_read_inbox: 0,
             last_read_outbox: 0,
             notify: ChatNotify::default(),
+            peer_user: None,
             last_message: None,
         }
     }

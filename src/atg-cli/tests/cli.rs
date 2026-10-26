@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
-const DONE: &[&str] = &["login", "auth", "logout"];
+const DONE: &[&str] = &["login", "auth", "logout", "speech"];
 
 /// 契约第一节第 2 小节表里还没做的子命令
 const PLACEHOLDERS: &[&str] = &[
@@ -25,7 +25,6 @@ const PLACEHOLDERS: &[&str] = &[
     "watch",
     "draft",
     "play",
-    "speech",
     "schema",
 ];
 
@@ -217,4 +216,120 @@ fn chats_with_fake_scenario_is_not_implemented_yet() {
     assert_eq!(ls.len(), 1);
     assert_eq!(ls[0]["data"]["code"], "not_implemented");
     assert_eq!(ls[0]["data"]["command"], "chats");
+}
+
+// ───── speech --fixture（#19） ─────
+
+fn core_dir() -> String {
+    format!("{}/../atg-core", env!("CARGO_MANIFEST_DIR"))
+}
+
+/// 快照文件的正文（去掉 insta 的抬头）
+fn snapshot_body(name: &str) -> String {
+    let path = format!("{}/tests/snapshots/snapshots__{name}.snap", core_dir());
+    let s = std::fs::read_to_string(&path).expect("读快照");
+    let body = s.splitn(3, "---\n").nth(2).expect("快照有抬头");
+    body.trim_end().to_owned()
+}
+
+/// 文字模式每行一句，与 atg-core 的读法快照逐行一致（快照用 GUI 的按键，CLI 没有按键，比之前去掉；
+/// V13 人定按键提示每条至多一次，在钟点前）
+#[test]
+fn speech_text_matches_core_snapshots() {
+    for (fixture, level, snap) in [
+        ("basic", "brief", "basic_messages_brief"),
+        ("basic", "chat_brief", "basic_chats_brief"),
+        ("entities", "brief", "entities_brief"),
+        ("cases", "brief", "cases_brief"),
+        ("chat_items", "chat_brief", "chat_items_brief"),
+    ] {
+        let path = format!("{}/fixtures/speech/{fixture}.json", core_dir());
+        let out = run(&[
+            "speech",
+            "--fixture",
+            &path,
+            "--level",
+            level,
+            "--tz",
+            "+08:00",
+            "--format",
+            "text",
+        ]);
+        assert_eq!(out.status.code(), Some(0), "{fixture}");
+        let got = String::from_utf8(out.stdout).unwrap();
+        // 「…，按 D 展开，19:33」与「…？按 D 展开，19:33」（V22：问号后不加逗号）都还原成没有按键的样子
+        let want = snapshot_body(snap)
+            .replace("，按 D 展开", "")
+            .replace("按 D 展开，", "");
+        assert_eq!(got.trim_end(), want, "{fixture} {level}");
+    }
+}
+
+#[test]
+fn speech_json_lines_end_with_result() {
+    let path = format!("{}/fixtures/speech/cases.json", core_dir());
+    let out = run(&["speech", "--fixture", &path, "--tz", "Z"]);
+    assert_eq!(out.status.code(), Some(0));
+    let ls = lines(&out);
+    let (last, body) = ls.split_last().unwrap();
+    assert!(!body.is_empty());
+    for l in body {
+        assert!(
+            ["message", "event"].contains(&l["kind"].as_str().unwrap()),
+            "{l}"
+        );
+        assert!(!l["speech"]["brief"].as_str().unwrap().is_empty(), "{l}");
+        // CLI 没有按键
+        assert!(
+            !l["speech"]["brief"].as_str().unwrap().contains("按 D"),
+            "{l}"
+        );
+    }
+    assert_eq!(last["kind"], "result");
+    assert_eq!(last["data"]["command"], "speech");
+    assert_eq!(last["data"]["level"], "brief");
+    assert_eq!(last["data"]["count"], body.len());
+    assert_eq!(last["data"]["tz"], "fixed");
+    assert_eq!(last["data"]["utc_offset_s"], 0);
+
+    let path = format!("{}/fixtures/speech/chat_items.json", core_dir());
+    let out = run(&["speech", "--fixture", &path, "--level", "chat_brief"]);
+    let ls = lines(&out);
+    let (last, body) = ls.split_last().unwrap();
+    assert!(body.iter().all(|l| l["kind"] == "chat"));
+    assert_eq!(last["data"]["level"], "chat_brief");
+    // 不给 --tz：跟系统时区，没有对所有行都成立的固定偏移
+    assert_eq!(last["data"]["tz"], "system");
+    assert!(last["data"]["utc_offset_s"].is_null());
+    assert_eq!(last["data"]["count"], body.len());
+}
+
+#[test]
+fn speech_bad_input_is_usage_and_does_not_echo() {
+    let dir = std::env::temp_dir().join(format!("atg-cli-speech-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let not_array = dir.join("暗号目录-not-array.json");
+    std::fs::write(&not_array, r#"{"暗号":"内容"}"#).unwrap();
+    let not_json = dir.join("not-json.json");
+    std::fs::write(&not_json, "暗号 不是 JSON").unwrap();
+    let missing = dir.join("missing.json");
+    let good = format!("{}/fixtures/speech/basic.json", core_dir());
+    for args in [
+        vec!["speech"],
+        vec!["speech", "--fixture", not_array.to_str().unwrap()],
+        vec!["speech", "--fixture", not_json.to_str().unwrap()],
+        vec!["speech", "--fixture", missing.to_str().unwrap()],
+        vec!["speech", "--fixture", &good, "--level", "detail"],
+        vec!["speech", "--fixture", &good, "--tz", "+25:00"],
+        vec!["speech", "--fixture", &good, "--fake", "basic"],
+    ] {
+        let out = run(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "usage", "{args:?}");
+        let s = String::from_utf8(out.stdout).unwrap();
+        assert!(!s.contains("暗号"), "{s}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }
