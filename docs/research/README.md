@@ -6,3 +6,5 @@
 | 编号 | 日期 | 标题 |
 |------|------|------|
 | [001](001_stack/) | 2026-10-23 | GPUI+AccessKit 能否撑起读屏友好的聊天界面，Telegram 层用 grammers 还是 TDLib |
+| [002](002_features/) | 2026-10-25 | 我们具体实现哪些 Telegram 功能、按什么顺序 |
+| [003](003_send-receive-prior-art/) | 2026-10-26 | 发消息 / 收消息的开源先例（Rust 为主） |
