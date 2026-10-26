@@ -29,6 +29,7 @@
 | `exp003b`（会话 `telegram-accessibility-15`） | **改向（2026-10-25）**：专门消息列表 · Tab / VO+←/→ 到达 · ↑/↓ 浏览 | `_tmp/20261025-batch/exp003b-v2.md`（原 `_tmp/20261023-exp/exp003b.md`） | `state/handoff/exp003b.md` | **完成，已收尾**（自测全过；窗口已关）；剩人工试听「第三次试用」，试完跑 `python3 summarize-live.py` 看按键是否到达应用 |
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
+| `skills`（会话 `telegram-accessibility-b2`，**Fable 5.1**） | 批次 b5 · 读全部对话与工具记录，找反复出现的问题 → Opus 子代理用 skill-creator 起草跨项目 skills（只出草稿，装不装人定） | `_tmp/20261025-b5/skills-miner.md` | `state/handoff/skills.md` | 已报到 |
 | `skeleton`（会话 `telegram-accessibility-01`） | 批次 b4 · issue #14 第一刀第 1 块：`atg-cli` 骨架 + 禁 `{:?}` 检查 + CI | `_tmp/20261025-b4/skeleton.md` | `state/handoff/skeleton.md` | **完成，已收尾**（atg-cli 骨架 + 禁打印两层检查 + CI；三条小拍板已落；窗口已关）；转交表在现状页 |
 | `patch`（会话 `telegram-accessibility-5f`） | 批次 b3 · issue #3 tdlib-rs 补丁 → TDLib 1.8.69（补丁仓 `5-App/tdlib-rs`，分支 `atg/tdlib-1.8.69`） | `_tmp/20261025-b3/patch.md` | `state/handoff/patch.md` | **完成，已收尾**（补丁 @ `4521d6d` 已推 fork；窗口已关） |
 | `sync`（会话 `telegram-accessibility-45`） | 批次 b3 · 把 b2 拍板同步进契约 / 内容树 / 路线图；写 issue 草稿 | `_tmp/20261025-b3/sync.md` | `state/handoff/sync.md` | **完成，已收尾**（b2 + N1–N8 落进正文 · 9 处冲突修 · issue 草稿 19 份；窗口已关） |
