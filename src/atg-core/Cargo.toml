@@ -13,6 +13,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 futures-channel = "0.3"
 # 本地库钥匙：系统安全随机源
 getrandom = "0.4"
+# 本机接口：getpeereid（核对对端用户）、poll、geteuid
+libc = "0.2"
 # 本项目日志的出口（只经 `logline` 写，白名单字段）
 log = "0.4"
 # 打过补丁的 tdlib-rs（src/tdlib-rs，fork 的 subtree）。默认不编：编它要先有 TDLib 库

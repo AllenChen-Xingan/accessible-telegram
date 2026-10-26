@@ -1,7 +1,9 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
 //! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
-//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）。真实后端要 `--features tdlib`。其余子命令输出一行 `not_implemented` 错误。
+//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；本机接口（第 9 块）：`serve` 常驻当执行方，
+//! 档案被占时 `chats` / `auth state` 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
+//! `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
 #![cfg_attr(
@@ -18,8 +20,12 @@ mod args;
 // 列会话的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod chats;
+mod forward;
 mod login;
 mod out;
+// 执行方只有真实后端起；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod serve;
 mod session;
 mod speech;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
@@ -30,7 +36,7 @@ use args::{Cli, Command, Format};
 use atg_core::status::AuthStep;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
-use out::{Code, emit, envelope, fail, fail_with, text_line};
+use out::{Code, Fail, Sink, Stdio, emit, emit_to, envelope, fail, fail_with};
 use serde_json::json;
 use session::Job;
 use std::ffi::OsString;
@@ -82,6 +88,7 @@ fn main() -> ExitCode {
         Command::Auth { step } => run_job(&cli.global, format, Job::Auth(step.sub()), started),
         Command::Logout => run_job(&cli.global, format, Job::Logout, started),
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
+        Command::Serve => serve::run(&cli.global, format, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
         Command::Speech(_) if cli.global.fake.is_some() => fail(
             format,
@@ -102,64 +109,117 @@ fn main() -> ExitCode {
     }
 }
 
-/// 登录这组命令：每走到一步出一行 `auth`（只有步骤名），最后一行 `result` / `error`
+/// 登录这组命令：每走到一步出一行 `auth`（只有步骤名），最后一行 `result` / `error`。
+/// 档案被占时只有 `auth state` 转给执行方（只读、不带秘密）；其余不转（秘密不过接口），照旧报 `profile_busy`
 fn run_job(g: &args::Global, format: Format, job: Job, started: Instant) -> ExitCode {
-    let mut on_step = |step: AuthStep| match format {
-        Format::Json => emit(&envelope(
-            "auth",
-            json!({ "step": serde_json::to_value(step).unwrap_or_default() }),
-        )),
-        Format::Text => text_line(login::step_zh(step)),
-    };
-    match session::run(g, job, &mut on_step) {
+    if matches!(job, Job::Auth(login::AuthSub::State))
+        && let Some(code) = forward::try_forward(g, format, "auth", &json!({ "sub": "state" }))
+    {
+        return ExitCode::from(code);
+    }
+    let r = session::run(g, job, &mut |step| emit_step(&mut Stdio, format, step));
+    // 占着档案的是常驻进程（接口连得上），这条命令却不转：说清要先停掉它
+    if let Err(Fail::Core(e @ atg_core::error::CoreError::ProfileBusy { .. })) = &r
+        && let Some(m) = forward::busy_reason(g, false)
+    {
+        return ExitCode::from(out::busy_to(&mut Stdio, format, e, m));
+    }
+    ExitCode::from(job_output(&mut Stdio, format, job, r, started))
+}
+
+/// 授权走到的一步：JSON 一行 `auth`；文字一句
+fn emit_step(sink: &mut dyn Sink, format: Format, step: AuthStep) {
+    match format {
+        Format::Json => emit_to(
+            sink,
+            &envelope(
+                "auth",
+                json!({ "step": serde_json::to_value(step).unwrap_or_default() }),
+            ),
+        ),
+        Format::Text => sink.out(login::step_zh(step)),
+    }
+}
+
+/// 登录这组命令的结尾行，返回退出码。`started`：直跑是进程启动，经本机接口是执行方收到请求
+fn job_output(
+    sink: &mut dyn Sink,
+    format: Format,
+    job: Job,
+    r: Result<serde_json::Value, Fail>,
+    started: Instant,
+) -> u8 {
+    match r {
         Ok(mut data) => {
             match format {
                 Format::Json => {
-                    let elapsed_ms =
-                        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
                     if let Some(d) = data.as_object_mut() {
-                        d.insert("elapsed_ms".into(), json!(elapsed_ms));
+                        d.insert("elapsed_ms".into(), json!(elapsed_ms(started)));
                     }
-                    emit(&envelope("result", data));
+                    emit_to(sink, &envelope("result", data));
                 }
-                Format::Text => text_line(match (job, data["already_signed_out"].as_bool()) {
+                Format::Text => sink.out(match (job, data["already_signed_out"].as_bool()) {
                     (Job::Logout, Some(true)) => "本来就没有登录",
                     (Job::Logout, _) => "已登出",
                     (Job::Login, _) => "已登录",
                     (Job::Auth(_), _) => "完成",
                 }),
             }
-            ExitCode::SUCCESS
+            0
         }
-        Err(f) => fail_with(format, &f),
+        Err(f) => out::fail_with_to(sink, format, &f),
     }
 }
 
-/// `chats`：一行一个会话（`kind:"chat"`，`data` 是 `ChatItem`，`speech.brief` 是会话项读法）+ 一行 `result`。
-/// 文字模式每行一句读法，统计写标准错误
-fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Instant) -> ExitCode {
+fn elapsed_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// `chats` 的查询；`--cursor` 形状不对是用法错误
+fn chats_query(a: &args::ChatsArgs) -> Result<chats::Query, Fail> {
     let after = match a.cursor.as_deref().map(chats::Cursor::parse) {
         None => None,
         Some(Some(c)) => Some(c),
         Some(None) => {
-            return fail(
-                format,
-                Code::Usage,
+            return Err(Fail::Usage(
                 "--cursor 不对：用上一页 result 里的 next_cursor",
-                json!({}),
-            );
+            ));
         }
     };
-    let q = chats::Query {
+    Ok(chats::Query {
         list: a.list.list(),
         limit: usize::try_from(a.limit).unwrap_or(usize::MAX),
         unread: a.unread,
         after,
-    };
-    let listing = match session::chats(g, &q, started) {
-        Ok(l) => l,
+    })
+}
+
+/// `chats`：一行一个会话（`kind:"chat"`，`data` 是 `ChatItem`，`speech.brief` 是会话项读法）+ 一行 `result`。
+/// 文字模式每行一句读法，统计写标准错误。档案被占就转给执行方
+fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Instant) -> ExitCode {
+    let q = match chats_query(a) {
+        Ok(q) => q,
         Err(f) => return fail_with(format, &f),
     };
+    let params = serde_json::to_value(a).unwrap_or_default();
+    if let Some(code) = forward::try_forward(g, format, "chats", &params) {
+        return ExitCode::from(code);
+    }
+    let code = match session::chats(g, &q, started) {
+        Ok(l) => render_chats(&mut Stdio, format, a, &l, started),
+        Err(f) => out::fail_with_to(&mut Stdio, format, &f),
+    };
+    ExitCode::from(code)
+}
+
+/// 把列出来的会话写到 `sink`，返回退出码（直跑与执行方共用这一段，输出才一致）
+fn render_chats(
+    sink: &mut dyn Sink,
+    format: Format,
+    a: &args::ChatsArgs,
+    listing: &chats::Listing,
+    started: Instant,
+) -> u8 {
     // 会话项读法不读时间，时区不影响；`--tz` 留给读消息的命令
     let cx = atg_core::speech::SpeechCtx {
         utc_offset: 0,
@@ -175,12 +235,11 @@ fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Ins
                 if let Some(o) = line.as_object_mut() {
                     o.insert("at".into(), json!(out::now_rfc3339_ms()));
                 }
-                emit(&line);
+                emit_to(sink, &line);
             }
-            Format::Text => text_line(&atg_core::speech::chat_brief(item)),
+            Format::Text => sink.out(&atg_core::speech::chat_brief(item)),
         }
     }
-    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     match format {
         Format::Json => {
             let mut data = json!({
@@ -191,12 +250,12 @@ fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Ins
                 "synced": listing.synced,
                 "load_timed_out": listing.load_timed_out,
                 "first_chat_ms": listing.first_chat_ms,
-                "elapsed_ms": elapsed_ms,
+                "elapsed_ms": elapsed_ms(started),
             });
             if let (Some(d), Some(c)) = (data.as_object_mut(), &listing.next_cursor) {
                 d.insert("next_cursor".into(), json!(c));
             }
-            emit(&envelope("result", data));
+            emit_to(sink, &envelope("result", data));
         }
         Format::Text => {
             let first = listing.first_chat_ms.map_or_else(
@@ -213,10 +272,13 @@ fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Ins
                 (false, true) => "；还有更多",
                 (false, false) => "",
             };
-            eprintln!("共 {} 个会话；{first}{synced}{more}", listing.items.len());
+            sink.err(&format!(
+                "共 {} 个会话；{first}{synced}{more}",
+                listing.items.len()
+            ));
         }
     }
-    ExitCode::SUCCESS
+    0
 }
 
 /// `version`：一行 `kind:"version"` + 一行 `result`

@@ -134,18 +134,20 @@ pub fn run_with<B: Backend>(
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return Err(Fail::Core(e));
     }
-    let r = collect(b, &mut stream, q, started, limits);
+    let mut feed = Feed::new(started);
+    let r = collect(b, &mut stream, &mut feed, q, limits);
     if let Err(e) = b.shutdown(SHUTDOWN_TIMEOUT) {
         eprintln!("atg-cli: 关闭时出错（{}）", e.code());
     }
     r
 }
 
-fn collect<B: Backend>(
+/// 在已起好的后端上列一页。`feed` 是这个后端的事件流喂成的 Store：直跑时每次新建，`serve` 常驻时一直用同一个
+pub fn collect<B: Backend>(
     b: &B,
     stream: &mut EventStream,
+    feed: &mut Feed,
     q: &Query,
-    started: Instant,
     limits: Limits,
 ) -> Result<Listing, Fail> {
     match b.wait_auth(AUTH_TIMEOUT, &|s| s != AuthStep::WaitParameters) {
@@ -161,12 +163,7 @@ fn collect<B: Backend>(
         }
     }
 
-    let mut feed = Feed {
-        pump: Pump::default(),
-        list: q.list.clone(),
-        started,
-        first_chat_ms: None,
-    };
+    feed.watch(&q.list);
     feed.drain(stream);
     let mut end = false;
     let mut idle = 0;
@@ -234,25 +231,56 @@ fn collect<B: Backend>(
         next_cursor,
         synced,
         load_timed_out,
-        first_chat_ms: feed.first_chat_ms,
+        first_chat_ms: feed.first_chat_ms(&q.list),
     })
 }
 
-/// 把事件流喂进 Store，顺带记下第一条会话出现的时刻
-struct Feed {
+/// 把事件流喂进 Store，顺带记下各列表第一次有会话的时刻（从 `started` 起算：直跑是本进程启动，`serve` 是执行方启动）
+pub struct Feed {
     pump: Pump,
-    list: ChatList,
     started: Instant,
-    first_chat_ms: Option<u64>,
+    /// 问过的列表 → 第一次有会话的毫秒数
+    first: Vec<(ChatList, Option<u64>)>,
 }
 
 impl Feed {
+    /// 主列表与归档从一开始就记（`serve` 常驻时空闲也在喂，记的是会话真到的时刻，不是第一次被问的时刻）
+    pub fn new(started: Instant) -> Self {
+        Self {
+            pump: Pump::default(),
+            started,
+            first: vec![(ChatList::Main, None), (ChatList::Archive, None)],
+        }
+    }
+
     fn store(&self) -> &Store {
         self.pump.store()
     }
 
+    /// 开始记这个列表第一次有会话的时刻（已经有了就记现在）
+    fn watch(&mut self, list: &ChatList) {
+        if !self.first.iter().any(|(l, _)| l == list) {
+            self.first.push((list.clone(), None));
+            self.note_first();
+        }
+    }
+
+    fn first_chat_ms(&self, list: &ChatList) -> Option<u64> {
+        self.first.iter().find(|(l, _)| l == list).and_then(|x| x.1)
+    }
+
+    fn note_first(&mut self) {
+        let ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let store = self.pump.store();
+        for (list, at) in &mut self.first {
+            if at.is_none() && !store.chat_list(list).is_empty() {
+                *at = Some(ms);
+            }
+        }
+    }
+
     /// 不等：把已到的事件全喂完
-    fn drain(&mut self, stream: &mut EventStream) {
+    pub fn drain(&mut self, stream: &mut EventStream) {
         loop {
             let batch = stream.try_batch(512);
             if batch.is_empty() {
@@ -260,10 +288,7 @@ impl Feed {
             }
             // 这里不开会话窗口，不会要求重拉
             let _ = self.pump.apply_batch(batch);
-            if self.first_chat_ms.is_none() && !self.store().chat_list(&self.list).is_empty() {
-                self.first_chat_ms =
-                    Some(u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX));
-            }
+            self.note_first();
         }
     }
 }

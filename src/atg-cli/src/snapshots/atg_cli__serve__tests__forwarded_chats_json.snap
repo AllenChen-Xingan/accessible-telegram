@@ -1,0 +1,7 @@
+---
+source: src/atg-cli/src/serve.rs
+expression: "norm_json(&f.out).join(\"\\n\")"
+---
+{"v":1,"kind":"chat","data":{"type":"chat_item","chat_id":1,"title":"会话1","kind":{"type":"private"},"unread_count":2,"unread_mention_count":0,"muted":false,"mute_inherited":true,"pinned":false},"speech":{"brief":"会话1，2 条未读"},"at":"<at>"}
+{"v":1,"kind":"chat","data":{"type":"chat_item","chat_id":2,"title":"会话2","kind":{"type":"private"},"unread_count":0,"unread_mention_count":0,"muted":false,"mute_inherited":true,"pinned":false},"speech":{"brief":"会话2"},"at":"<at>"}
+{"v":1,"kind":"result","at":"<at>","data":{"command":"chats","list":"main","count":2,"more":true,"synced":true,"load_timed_out":false,"first_chat_ms":"<ms>","elapsed_ms":"<ms>","next_cursor":"20:2"}}

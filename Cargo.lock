@@ -67,6 +67,7 @@ version = "0.0.0"
 dependencies = [
  "atg-core",
  "clap",
+ "insta",
  "libc",
  "serde",
  "serde_json",
@@ -79,6 +80,7 @@ dependencies = [
  "futures-channel",
  "getrandom",
  "insta",
+ "libc",
  "log",
  "security-framework",
  "serde",

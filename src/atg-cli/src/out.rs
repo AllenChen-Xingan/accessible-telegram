@@ -1,4 +1,8 @@
 //! 输出：每行 JSON 的外壳、结尾行、退出码（`specs/contracts/cli.md` 第一节第 1、3、4 小节）。
+//!
+//! 出口 [`Sink`]：直跑时写本进程的标准输出 / 标准错误（[`Stdio`]）；`serve` 替别人执行时写进本机接口的连接，
+//! 由发起方原样写出——两边走同一段渲染代码，输出才逐字节一致（`config-privacy.md` 第一节第 2 小节）。
+//! 不带 `_to` 的函数是「写本进程」的简写。
 
 use crate::args::Format;
 use atg_core::error::CoreError;
@@ -15,6 +19,8 @@ pub enum Code {
     Usage,
     NotImplemented,
     Interrupted,
+    /// 经本机接口转发时执行方中途退出：借用 `disconnected` 码（`errors.md`），说明另写
+    ExecutorGone,
 }
 
 impl Code {
@@ -23,15 +29,18 @@ impl Code {
             Code::Usage => "usage",
             Code::NotImplemented => "not_implemented",
             Code::Interrupted => "interrupted",
+            Code::ExecutorGone => "disconnected",
         }
     }
 
-    /// 退出码表：`usage` → 2；`not_implemented` 归「内部错误 / 未知」→ 1；`interrupted` → 130
+    /// 退出码表：`usage` → 2；`not_implemented` 归「内部错误 / 未知」→ 1；`interrupted` → 130；
+    /// `disconnected`（执行方中途退出）→ 4
     pub fn exit(self) -> u8 {
         match self {
             Code::Usage => 2,
             Code::NotImplemented => 1,
             Code::Interrupted => 130,
+            Code::ExecutorGone => 4,
         }
     }
 }
@@ -117,31 +126,75 @@ pub fn core_error_data(e: &CoreError) -> Value {
     d
 }
 
+/// `profile_busy` 换一句贴合场景的说明（码、`holder`、退出码不变）。本机接口那几种场景各有各的话，
+/// 不改 `CoreError` 的通用说明
+pub fn busy_to(sink: &mut dyn Sink, format: Format, busy: &CoreError, message_zh: &str) -> u8 {
+    match format {
+        Format::Json => {
+            let mut data = core_error_data(busy);
+            data["message_zh"] = json!(message_zh);
+            emit_to(sink, &envelope("error", data));
+        }
+        Format::Text => sink.out(message_zh),
+    }
+    core_exit(busy)
+}
+
 /// 第一阶段不支持的授权步骤，给人的话（占位措辞）
 pub const UNSUPPORTED_STEP_ZH: &str = "这一步本应用暂不支持，请先在官方客户端完成";
 
+/// 一条命令的输出去哪
+pub trait Sink {
+    /// 标准输出的一行（不含换行）
+    fn out(&mut self, line: &str);
+    /// 标准错误的一行（不含换行；给人看）
+    fn err(&mut self, line: &str);
+}
+
+/// 本进程的标准输出 / 标准错误
+pub struct Stdio;
+
+impl Sink for Stdio {
+    fn out(&mut self, line: &str) {
+        let mut out = std::io::stdout().lock();
+        let _ = writeln!(out, "{line}");
+        let _ = out.flush();
+    }
+
+    fn err(&mut self, line: &str) {
+        let mut e = std::io::stderr().lock();
+        let _ = writeln!(e, "{line}");
+    }
+}
+
 /// 出结尾的 `error` 行并给出退出码
 pub fn fail_with(format: Format, f: &Fail) -> ExitCode {
+    ExitCode::from(fail_with_to(&mut Stdio, format, f))
+}
+
+/// 同 [`fail_with`]，写到 `sink`，返回退出码
+pub fn fail_with_to(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
     match f {
         Fail::Core(e) => {
             let data = core_error_data(e);
             match format {
-                Format::Json => emit(&envelope("error", data)),
-                Format::Text => text_line(e.message_zh()),
+                Format::Json => emit_to(sink, &envelope("error", data)),
+                Format::Text => sink.out(e.message_zh()),
             }
-            ExitCode::from(core_exit(e))
+            core_exit(e)
         }
-        Fail::Usage(m) => fail(format, Code::Usage, m, json!({})),
+        Fail::Usage(m) => fail_to(sink, format, Code::Usage, m, json!({})),
         Fail::NotImplemented {
             command,
             message_zh,
-        } => fail(
+        } => fail_to(
+            sink,
             format,
             Code::NotImplemented,
             message_zh,
             json!({ "command": command }),
         ),
-        Fail::Interrupted => fail(format, Code::Interrupted, "已中断", json!({})),
+        Fail::Interrupted => fail_to(sink, format, Code::Interrupted, "已中断", json!({})),
         Fail::Unsupported(step) => {
             let data = json!({
                 "code": "auth_wrong_state",
@@ -150,19 +203,18 @@ pub fn fail_with(format: Format, f: &Fail) -> ExitCode {
                 "expected": to_value(step),
             });
             match format {
-                Format::Json => emit(&envelope("error", data)),
-                Format::Text => text_line(UNSUPPORTED_STEP_ZH),
+                Format::Json => emit_to(sink, &envelope("error", data)),
+                Format::Text => sink.out(UNSUPPORTED_STEP_ZH),
             }
-            ExitCode::from(EXIT_AUTH)
+            EXIT_AUTH
         }
     }
 }
 
-/// 文字模式的一行（给人看）
+/// 文字模式的一行（给人看）。本块起 chats / 登录改走 [`Sink`]；留着给直写本进程的命令（如 speech）用
+#[allow(dead_code)]
 pub fn text_line(s: &str) {
-    let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{s}");
-    let _ = out.flush();
+    Stdio.out(s);
 }
 
 /// `at`：RFC3339 UTC，毫秒，以 `Z` 结尾
@@ -184,13 +236,27 @@ pub fn envelope(kind: &str, data: Value) -> Value {
 
 /// 往标准输出写一行；管道被关掉时不 panic（退出码仍按最后一行定）
 pub fn emit(line: &Value) {
-    let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{line}");
-    let _ = out.flush();
+    emit_to(&mut Stdio, line);
+}
+
+/// 同 [`emit`]，写到 `sink`
+pub fn emit_to(sink: &mut dyn Sink, line: &Value) {
+    sink.out(&line.to_string());
 }
 
 /// 输出错误结尾行并给出退出码。JSON 模式出 `kind:"error"`；文字模式出一句中文
 pub fn fail(format: Format, code: Code, message_zh: &str, extra: Value) -> ExitCode {
+    ExitCode::from(fail_to(&mut Stdio, format, code, message_zh, extra))
+}
+
+/// 同 [`fail`]，写到 `sink`，返回退出码
+pub fn fail_to(
+    sink: &mut dyn Sink,
+    format: Format,
+    code: Code,
+    message_zh: &str,
+    extra: Value,
+) -> u8 {
     match format {
         Format::Json => {
             let mut data = json!({
@@ -201,11 +267,11 @@ pub fn fail(format: Format, code: Code, message_zh: &str, extra: Value) -> ExitC
             if let (Some(d), Value::Object(e)) = (data.as_object_mut(), extra) {
                 d.extend(e);
             }
-            emit(&envelope("error", data));
+            emit_to(sink, &envelope("error", data));
         }
-        Format::Text => text_line(message_zh),
+        Format::Text => sink.out(message_zh),
     }
-    ExitCode::from(code.exit())
+    code.exit()
 }
 
 #[cfg(test)]

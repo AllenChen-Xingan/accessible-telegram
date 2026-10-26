@@ -1,0 +1,6 @@
+---
+source: src/atg-cli/src/serve.rs
+expression: "norm_json(&f.out).join(\"\\n\")"
+---
+{"v":1,"kind":"auth","at":"<at>","data":{"step":"ready"}}
+{"v":1,"kind":"result","at":"<at>","data":{"command":"auth","sub":"state","step":"ready","elapsed_ms":"<ms>"}}

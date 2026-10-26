@@ -118,6 +118,9 @@ impl ServerKind {
 const MARKER: &str = "server-kind";
 const LOCK: &str = "atg.lock";
 const RUNNING: &str = "running";
+/// 拿锁撞上别人在探锁时重试几次、隔多久
+const LOCK_RETRIES: u32 = 3;
+const LOCK_RETRY_GAP: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// 一个档案：一套独立的本地库 + 文件目录 + 钥匙（钥匙在钥匙串，账户名 = 档案名）
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,17 +247,23 @@ impl Profile {
             .map_err(|_| CoreError::Internal {
                 what: "profile_lock_io",
             })?;
-        match file.try_lock() {
+        // 别的发起方正在探锁（共享锁，只占几微秒）时会撞上：短暂重试几次再定
+        let mut tries = 0;
+        let got = loop {
+            match file.try_lock() {
+                Err(std::fs::TryLockError::WouldBlock) if tries < LOCK_RETRIES => {
+                    tries += 1;
+                    std::thread::sleep(LOCK_RETRY_GAP);
+                }
+                r => break r,
+            }
+        };
+        match got {
             Ok(()) => {}
             Err(std::fs::TryLockError::WouldBlock) => {
-                let mut who = String::new();
-                let _ = file.read_to_string(&mut who);
-                let holder = match who.split_whitespace().next() {
-                    Some("cli") => Some(Holder::Cli),
-                    Some("gui") => Some(Holder::Gui),
-                    _ => None,
-                };
-                return Err(CoreError::ProfileBusy { holder });
+                return Err(CoreError::ProfileBusy {
+                    holder: read_holder(&mut file),
+                });
             }
             Err(std::fs::TryLockError::Error(_)) => {
                 return Err(CoreError::Internal {
@@ -275,6 +284,31 @@ impl Profile {
         Ok(ProfileLock { _file: file })
     }
 
+    /// 只探一下锁是不是被占着：拿**共享**锁（发起方之间互不挡）、不写入、立刻放掉。被占 → `profile_busy`
+    /// （带占用方）。发起方据此决定直跑还是转发；探完到真拿锁之间被别人抢了，真拿锁时照样报 `profile_busy`
+    pub fn probe_lock(&self) -> Result<(), CoreError> {
+        let path = self.dir.join(LOCK);
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&path)
+            .map_err(|_| CoreError::Internal {
+                what: "profile_lock_io",
+            })?;
+        match file.try_lock_shared() {
+            Ok(()) => Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) => Err(CoreError::ProfileBusy {
+                holder: read_holder(&mut file),
+            }),
+            Err(std::fs::TryLockError::Error(_)) => Err(CoreError::Internal {
+                what: "profile_lock_io",
+            }),
+        }
+    }
+
     /// 上次是否没有正常关闭（「运行中」标记还在）。读一次后由 [`Profile::mark_running`] 重新放上
     pub fn previous_unclean(&self) -> bool {
         self.dir.join(RUNNING).exists()
@@ -287,6 +321,17 @@ impl Profile {
 
     pub fn mark_clean(&self) {
         let _ = fs::remove_file(self.dir.join(RUNNING));
+    }
+}
+
+/// 锁文件里写的占用方（`cli <pid>` / `gui <pid>`）
+fn read_holder(file: &mut File) -> Option<Holder> {
+    let mut who = String::new();
+    let _ = file.read_to_string(&mut who);
+    match who.split_whitespace().next() {
+        Some("cli") => Some(Holder::Cli),
+        Some("gui") => Some(Holder::Gui),
+        _ => None,
     }
 }
 
