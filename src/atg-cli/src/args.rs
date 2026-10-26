@@ -3,6 +3,7 @@
 //! 已做的子命令（`login` · `auth *` · `logout` · `chats` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 
 #[derive(Parser)]
@@ -53,7 +54,9 @@ pub struct Global {
     pub tz: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+// 经本机接口转发时随请求带过去（`forward`）
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Format {
     Json,
     Text,
@@ -120,12 +123,14 @@ pub enum Command {
     Speech(Rest),
     /// 机读自描述
     Schema(Rest),
+    /// 常驻：占着档案、开本机接口，替后起的 atg-cli 执行命令（chats、auth state），Ctrl+C 结束
+    Serve,
     /// 版本
     Version,
 }
 
-/// `chats` 的参数
-#[derive(Args)]
+/// `chats` 的参数（经本机接口转发时原样序列化过去）
+#[derive(Args, Serialize, Deserialize)]
 pub struct ChatsArgs {
     /// 哪个列表：主列表或归档
     #[arg(long, value_enum, default_value_t = ListArg::Main)]
@@ -147,7 +152,8 @@ pub struct ChatsArgs {
     pub cursor: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ListArg {
     Main,
     Archive,
@@ -230,6 +236,7 @@ impl Command {
             Command::Play(_) => "play",
             Command::Speech(_) => "speech",
             Command::Schema(_) => "schema",
+            Command::Serve => "serve",
             Command::Version => "version",
         }
     }

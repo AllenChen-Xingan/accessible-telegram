@@ -26,13 +26,13 @@
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等） | — | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
-| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个 | — | 否，要重启内核 |
-| `profile_busy` | 同一个本地库已被另一个进程占用，且本机接口连不上（见 `config-privacy.md`「一库一进程」「本机接口」） | `holder`：能查到就写是 CLI 还是 GUI | 否 |
+| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 90 秒没回话，发起方也报它，说明换成「替你执行的进程中途退出了」或「90 秒没回话」，退出码同为 4（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
+| `profile_busy` | 同一个本地库已被另一个进程占用，且这条命令没法经本机接口转过去（见 `config-privacy.md`「一库一进程」「本机接口」）。说明按场景换：占着的是一次性命令 →「稍后重试，或先开着 atg-cli serve」；占着的是常驻执行方而命令不转（登录、登出）→「请先停掉它再跑」；又起一个 `serve` →「已经有常驻进程在服务」 | `holder`：能查到就写是 CLI 还是 GUI | 否（不自动重试；要不要稍后再跑由调用方按说明定） |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但在时限内既没等到成功也没等到失败（如 CLI `send` 30 秒超时） | `chat_id` · 临时 `message_id` | **否**。不许重发；用 `status` 查这条待发消息的下落，或 `pending_cancel` 撤销 |
 | `cancelled` | 人在确认步骤按了取消（只指这个；Ctrl+C 见下方「CLI 自有码」） | — | 否 |
-| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`），不放运行时的值 | 否 |
+| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
@@ -160,3 +160,5 @@
 - 2026-10-25 按 b2 拍板同步（sync，大总管授权）：`profile_busy` 按 P1；`l1_disabled` 含义按 F1 / A2；E1、E2 结果
 - 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：CLI 自有码加 `not_implemented`
 - 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：加 `auth_phone_not_for_profile`（退出码 3）；`internal` 带 `what`；`EMAIL_CODE_INVALID` → `auth_code_invalid`（原文不登记）；不支持的授权步骤按 `auth_wrong_state` + 专门说明报；写明 `expected` 是当前步骤
+- 2026-10-26 issue #22 本机接口（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：`disconnected` 加「转发中途执行方退出」一种，退出码 4；`profile_busy` 说明里提示稍后重试或常开 `serve`
+- 2026-10-26 issue #22 自审后（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：`profile_busy` 按场景换说明（通用说明恢复原句）；「能不能重试」一列统一成「否（不自动重试）」再说调用方能做什么；`internal.what` 登记本机接口的几个值

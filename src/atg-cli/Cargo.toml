@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 atg-core = { path = "../atg-core" }
 clap = { version = "4", features = ["derive"] }
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # 读 /dev/tty 时关回显（termios）
 libc = "0.2"
@@ -21,3 +21,7 @@ libc = "0.2"
 [features]
 # 真接 TDLib（要先有 TDLib 库，见 src/README.md）：cargo build -p atg-cli --features tdlib
 tdlib = ["atg-core/tdlib"]
+
+[dev-dependencies]
+# 本机接口：转发后输出 = 直跑输出的快照
+insta = "1"

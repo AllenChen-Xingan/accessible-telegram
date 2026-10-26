@@ -13,7 +13,7 @@
 2. **每条命令以恰好一行 `result` 或 `error` 结尾**。读的一方看到它就知道结束了，不用猜
 3. **退出码和最后一行一致**：`result` → 0；`error` → 第 4 小节的码
 
-**例外只有三个**：`schema`（输出一个 JSON 文档，无结尾行）· `--format text`（给人看，不是 JSON）· `--help`（给人看）。`version` 不是例外：一行 `kind:"version"` + `result`。
+**例外只有三个**：`schema`（输出一个 JSON 文档，无结尾行）· `--format text`（给人看，不是 JSON）· `--help`（给人看）。另：`serve` 被第二次 Ctrl+C / SIGTERM 强行打断时立刻以 130 退出，不出结尾行。`version` 不是例外：一行 `kind:"version"` + `result`。
 
 ### 2. 子命令
 
@@ -44,6 +44,7 @@
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
 | `speech --scenario NAME [--chat CHAT_ID] [--level brief\|detail\|chat_brief]` | 只打印读法，用夹具场景 | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
+| `serve` | 常驻当执行方：占着档案、开本机接口，替后起的 `atg-cli` 执行转来的命令；起好输出一行 `status`（另带 `listening:true`），Ctrl+C / SIGTERM 后先做完手上的请求，输出 `result`（`reason:"interrupted"` · `served`：执行了几个请求 · `refused`：拒绝了几个非本用户的连接），退出码 0（同 `watch`：被打断就是正常结束）；再按一次立刻以 130 退出、不出结尾行。没有登录入口：要登录先停掉它。细则 `config-privacy.md` 第一节第 2 小节 | — | — |
 | `version` | 版本、TDLib 版本、外壳版本 `v`。`atg-cli --version` 是它的别名，输出相同；不能和别的子命令同用（`usage`） | — | — |
 
 **全局选项**（放在子命令前后都可以）：
@@ -61,7 +62,7 @@
 
 `send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么确认（Touch ID、测试豁免、直发模式）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
 
-**界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑完全一样，调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `auth *` 不转发（秘密不过接口）。细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
+**界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的暂行定义**（#18，事件本身随 `watch` 落地前）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。
 
@@ -84,7 +85,7 @@
 |---|---|
 | `chat` · `message` · `user` | `tree` 的内容节点：`chat` = `ChatItem`；`message` = `Message` / `Service` / `Tombstone`（靠节点自己的 `type` 区分）；`user` = `UserRef` |
 | `auth` | `{"step":"<AuthStep>"}` |
-| `status` | 三条线原值 + `user_status` + `pending_sends` + `direct_send`（布尔）+ 本次已直发条数 |
+| `status` | 三条线原值 + `user_status` + `pending_sends` + `direct_send`（布尔）+ 本次已直发条数；`serve` 起好那一行另带 `listening:true` |
 | `event` | `{"type":"<事件名>", …}`，事件名与字段只登记在 `actions.md` 第一节第 7 小节 |
 | `plan` | `SendPlan`（`actions.md` 第一节第 6 小节） |
 | `version` | 各版本号 |
@@ -103,7 +104,7 @@
 ```
 
 - 列表类命令的 `result.data` 统一带：`count`（本页条数）· `more` · `next_cursor`（`more` 为真时才有；`history` 的游标就是本页最旧那条的 `message_id`；`chats` 的游标是本页最后一个会话的 `<order>:<会话 id>`）· `total`（TDLib 给得出才有）
-- `chats` 的 `result.data` 另带（可选字段，`v` 不加一）：`list`（`main` / `archive`）· `synced` · `load_timed_out`（加载到 10 秒上限提前停了）· `first_chat_ms`（进程启动到这个列表第一次有会话的毫秒数；列表是空的为 `null`）。会话行的读法在 `speech.brief`（即会话项读法 `chat_brief` 那一句）
+- `chats` 的 `result.data` 另带（可选字段，`v` 不加一）：`list`（`main` / `archive`）· `synced` · `load_timed_out`（加载到 10 秒上限提前停了）· `first_chat_ms`（进程启动到这个列表第一次有会话的毫秒数；列表是空的为 `null`；经本机接口转发时是**执行方**进程，见 `config-privacy.md` 第一节第 2 小节）。会话行的读法在 `speech.brief`（即会话项读法 `chat_brief` 那一句）
 - `send` 的 `result` 带最终 `message_id`：**退出码 0 = 服务器已收下**；`send_failed` 时输出 `error`，`code` 来自失败原因
 - 每条命令 `result.data` 的完整字段由 `schema` 给出（第 6 小节）
 
@@ -122,7 +123,7 @@
 | 8 | 发送被拒或人取消 | `send_refused` `cancelled` |
 | 9 | 本地档案被占用且本机接口连不上 / 本地库钥匙不对 | `profile_busy` `db_key_invalid` |
 | 10 | 发送结果未知（已交出，没等到成败） | `send_outcome_unknown` |
-| 130 | Ctrl+C 中断（`watch` 除外） | `interrupted` |
+| 130 | Ctrl+C 中断（`watch`、`serve` 除外；`serve` 被第二次打断时是 130，无结尾行） | `interrupted` |
 
 ### 5. 流式（`watch`）
 
@@ -189,3 +190,5 @@
 - 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：自有码加 `not_implemented`（退出码 1）；`--version` 登记为 `version` 的别名
 - 2026-10-25 issue #18 列会话（chats，大总管授权）：写明 `sync_done` 的暂行定义（连接线到 `ready`）与 `chats` 的加载上限；`chats` 的 `result.data` 登记 `list`、`synced`、`load_timed_out`、`first_chat_ms`，游标形状
 - 2026-10-25 issue #18 人定（经大总管）：`chats` 的 `-n` 默认 100；会话行读法键名用 `brief`（即会话项读法）；`--fake` 场景目录以后做
+- 2026-10-26 issue #22 本机接口（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：加 `serve` 子命令；`auth state` 可经本机接口转发，其余登录命令仍不转；协议只在 `config-privacy.md`
+- 2026-10-26 issue #22 自审后（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：登记 `serve` 的 `listening`、`reason` / `served` / `refused` 与两次 Ctrl+C 的退出码；退出码 130 行与结尾行例外补 `serve`；`first_chat_ms` 转发时的含义；「完全一样」改为时间字段例外；登出不转的理由

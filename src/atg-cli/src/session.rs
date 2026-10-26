@@ -29,18 +29,22 @@ pub enum Job {
     Logout,
 }
 
+/// 按全局选项该用哪个档案名：`--test-dc` 且没另给名字 → `test`（`forward` 探锁也用它，两边必须是同一个档案）
+pub fn profile_name(g: &Global) -> &str {
+    if g.test_dc && g.profile == "main" {
+        "test"
+    } else {
+        &g.profile
+    }
+}
+
 /// 按全局选项打开档案
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn open_profile(g: &Global) -> Result<Profile, Fail> {
     let root = config::default_root().map_err(Fail::Core)?;
     if g.test_dc {
-        let name = if g.profile == "main" {
-            "test"
-        } else {
-            &g.profile
-        };
         // 已有的是正式档案：`create` 核对种类不符，报 `internal{profile_kind_mismatch}`，不启动
-        return Profile::create(&root, name, ServerKind::Test).map_err(Fail::Core);
+        return Profile::create(&root, profile_name(g), ServerKind::Test).map_err(Fail::Core);
     }
     match Profile::open(&root, &g.profile) {
         Ok(p) => Ok(p),

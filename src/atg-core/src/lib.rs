@@ -15,7 +15,7 @@
 //! - [`link`]：收线程（带序号）、监督与故障广播、事件流——两份后端共用
 //! - [`pump`]：消费方把事件成批喂 reducer、重拉、重发应答
 //! - [`error`]：`CoreError` 与 `map_td_error` · [`status`]：三条状态线与合成
-//! - [`config`]：`.env.local`、档案、锁 · [`keystore`]：本地库钥匙（钥匙串）· [`secret`] · [`logline`]：只记形状的日志
+//! - [`config`]：`.env.local`、档案、锁 · [`ipc`]：本机接口（套接字、对端核对、分帧；第 9 块）· [`keystore`]：本地库钥匙（钥匙串）· [`secret`] · [`logline`]：只记形状的日志
 //!
 //! 骨架占位（后续块填）：[`notify`]
 //!
@@ -57,6 +57,7 @@ pub mod backend;
 pub mod config;
 pub mod error;
 pub mod fake;
+pub mod ipc;
 pub mod json;
 pub mod keystore;
 pub mod link;
