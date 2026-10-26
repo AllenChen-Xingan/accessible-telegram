@@ -126,6 +126,7 @@ fn events() -> Vec<CoreEvent> {
         last_read_inbox: 0,
         last_read_outbox: 0,
         notify: ChatNotify::default(),
+        peer_user: None,
         last_message: None,
     };
     let mut v = vec![
@@ -133,6 +134,7 @@ fn events() -> Vec<CoreEvent> {
             id: 7,
             first_name: s("first"),
             last_name: s("last"),
+            deleted: false,
         }),
         CoreEvent::ChatAdded {
             chat,

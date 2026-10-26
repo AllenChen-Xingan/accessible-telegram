@@ -42,7 +42,7 @@
 | `watch [--chat CHAT_ID]` | 订阅更新，持续输出事件，Ctrl+C 结束 | `subscribe` | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
-| `speech --scenario NAME [--chat CHAT_ID] [--level brief\|detail\|chat_brief]` | 只打印读法，用夹具场景 | 无（直接调 `speech`） | 定标 |
+| `speech --fixture PATH [--level brief\|chat_brief]` | 只打印读法：夹具文件（TDLib 更新对象的 JSON 数组，按顺序喂进 store，读法夹具在 `src/atg-core/fixtures/speech/`）→ 树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息 / 系统消息 / 撤回占位 / 状态一行；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法都在 `speech.brief`；CLI 没有按键，不读「按 D 展开」「按 M 收听」。`result.data` 带 `level`、`count`、`tz`、`utc_offset_s`：给了 `--tz` 时 `tz:"fixed"`、`utc_offset_s` 是那个固定偏移（秒）；跟系统时区时 `tz:"system"`、`utc_offset_s` 为 `null`（每个钟点按它自己的时间点取偏移，夏令时前后不同，没有对所有行都成立的一个值）。读不了、不是 JSON 数组 → `usage`。以后有场景目录再加 `--scenario NAME`；`detail` 归 `show` / `history --detail`（M1.6） | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
 | `serve` | 常驻当执行方：占着档案、开本机接口，替后起的 `atg-cli` 执行转来的命令；起好输出一行 `status`（另带 `listening:true`），Ctrl+C / SIGTERM 后先做完手上的请求，输出 `result`（`reason:"interrupted"` · `served`：执行了几个请求 · `refused`：拒绝了几个非本用户的连接），退出码 0（同 `watch`：被打断就是正常结束）；再按一次立刻以 130 退出、不出结尾行。没有登录入口：要登录先停掉它。细则 `config-privacy.md` 第一节第 2 小节 | — | — |
 | `version` | 版本、TDLib 版本、外壳版本 `v`。`atg-cli --version` 是它的别名，输出相同；不能和别的子命令同用（`usage`） | — | — |
@@ -58,7 +58,7 @@
 | `--redact` | 打码输出，用于贴进 issue / 发给别人：**白名单**——只留 `type`、计数、时间、状态、错误码；正文、说明、名字、用户名、手机号、文件名、链接、`speech` 全部换成「类型 + 长度」；id 换成**每次随机加盐**的哈希（同一次输出内一致，跨次不可对照、也无法穷举反推）。日志打码另有脚本，见 `config-privacy.md` |
 | `--unsafe-direct-send` | **直发模式**（001 第七节第 11 条）：本次运行 L2 免确认（范围见 `actions.md` 第一节第 5 小节，D1），到进程退出为止。只认这个参数（不读环境变量、配置文件）；第一行 `status` 带 `direct_send:true`，标准错误打醒目提示；每条直发写 `direct-send.log`。测试档案仍只许发收藏夹。细则只在 `actions.md` 第一节第 5 小节 |
 | `--wait` | 遇到 L0 的限流就等够再继续（默认不等，立刻返回 `rate_limited`，`errors.md` 第一节第 5 小节） |
-| `--tz OFFSET` | 读法里时间按哪个时区读，默认取系统时区 |
+| `--tz OFFSET` | 读法里时间按哪个时区读，默认取系统时区。写法：`+08:00`、`-05:30`、`+0800`、`+8`、`Z`、`UTC`（±14 小时内）；不认得 → `usage` |
 
 `send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么确认（Touch ID、测试豁免、直发模式）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
 
@@ -190,5 +190,7 @@
 - 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：自有码加 `not_implemented`（退出码 1）；`--version` 登记为 `version` 的别名
 - 2026-10-25 issue #18 列会话（chats，大总管授权）：写明 `sync_done` 的暂行定义（连接线到 `ready`）与 `chats` 的加载上限；`chats` 的 `result.data` 登记 `list`、`synced`、`load_timed_out`、`first_chat_ms`，游标形状
 - 2026-10-25 issue #18 人定（经大总管）：`chats` 的 `-n` 默认 100；会话行读法键名用 `brief`（即会话项读法）；`--fake` 场景目录以后做
+- 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：`speech` 的 `result.data` 加 `tz`（`system` / `fixed`），跟系统时区时 `utc_offset_s` 为 `null`
+- 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：`speech` 改成 `--fixture PATH`（TDLib 更新 JSON 数组），`--level` 只留 `brief` / `chat_brief`；`--scenario` 等场景目录、`detail` 归 M1.6
 - 2026-10-26 issue #22 本机接口（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：加 `serve` 子命令；`auth state` 可经本机接口转发，其余登录命令仍不转；协议只在 `config-privacy.md`
 - 2026-10-26 issue #22 自审后（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：登记 `serve` 的 `listening`、`reason` / `served` / `refused` 与两次 Ctrl+C 的退出码；退出码 130 行与结尾行例外补 `serve`；`first_chat_ms` 转发时的含义；「完全一样」改为时间字段例外；登出不转的理由

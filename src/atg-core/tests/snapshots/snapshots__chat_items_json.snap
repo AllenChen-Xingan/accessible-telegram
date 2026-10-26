@@ -1,0 +1,692 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "json_pretty(&world(\"chat_items\").chat_items())"
+---
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 101,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 2,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 101,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 101,
+          "name": "林小雨"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "明天改到八点"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "林小雨，2 条未读，明天改到八点"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 107,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 107,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 100,
+          "name": "我自己"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": true
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "好的，没问题。"
+          }
+        ]
+      },
+      "tail": {
+        "delivery": "sent"
+      }
+    }
+  },
+  "speech": {
+    "brief": "林小雨，我：好的，没问题"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1001,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1001,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 102,
+          "name": "周大山"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "集合点改到北门"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，周大山：集合点改到北门"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1002,
+    "title": "示例频道",
+    "kind": {
+      "type": "channel"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1002,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "chat",
+          "chat_id": -1002,
+          "title": "示例频道"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false,
+        "in_channel": true
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "周六全天晴"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "示例频道，周六全天晴"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1004,
+    "title": "示例频道",
+    "kind": {
+      "type": "channel"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1004,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "chat",
+          "chat_id": -1004,
+          "title": "示例频道"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false,
+        "in_channel": true
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水。"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1003,
+    "title": "新建的群",
+    "kind": {
+      "type": "group"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false
+  },
+  "speech": {
+    "brief": "新建的群"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 103,
+    "title": "",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 1,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "peer_deleted": true,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 103,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 103,
+          "name": "",
+          "deleted": true
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "在吗"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "已注销的账号，1 条未读，在吗"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 104,
+    "title": "",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false
+  },
+  "speech": {
+    "brief": "未命名会话"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 100,
+    "title": "我自己",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "saved_messages": true,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 100,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 100,
+          "name": "我自己"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": true
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "路线图链接"
+          }
+        ]
+      },
+      "tail": {
+        "delivery": "sent"
+      }
+    }
+  },
+  "speech": {
+    "brief": "收藏夹，我：路线图链接"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1005,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": true,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1005,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 102,
+          "name": "周大山"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "集合点改到北门"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，周大山：集合点改到北门"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 108,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 2,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 108,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 108,
+          "name": "林小雨"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "明天改到八点"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "林小雨，2 条未读，明天改到八点"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 109,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 0,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "tombstone",
+      "id": {
+        "chat_id": 109,
+        "message_id": 1
+      },
+      "sender": {
+        "type": "user",
+        "user_id": 109,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T11:30:00Z"
+    }
+  },
+  "speech": {
+    "brief": "林小雨，撤回了一条消息"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1006,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "tombstone",
+      "id": {
+        "chat_id": -1006,
+        "message_id": 1
+      },
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T11:30:00Z"
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，周大山撤回了一条消息"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 111,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 2,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "tombstone",
+      "id": {
+        "chat_id": 111,
+        "message_id": 1
+      },
+      "sender": {
+        "type": "user",
+        "user_id": 100,
+        "name": "我自己"
+      },
+      "date": "2026-10-23T11:30:00Z",
+      "outgoing": true
+    }
+  },
+  "speech": {
+    "brief": "林小雨，2 条未读，我撤回了一条消息"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": 110,
+    "title": "林小雨",
+    "kind": {
+      "type": "private"
+    },
+    "unread_count": 2,
+    "unread_mention_count": 0,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": 110,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 110,
+          "name": "林小雨"
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "山顶的风景"
+          }
+        ],
+        "attachment": {
+          "type": "photo",
+          "spoiler": true
+        }
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "林小雨，2 条未读，图片，隐藏内容，山顶的风景"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1007,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "service",
+      "id": {
+        "chat_id": -1007,
+        "message_id": 2
+      },
+      "date": "2026-10-23T11:30:00Z",
+      "actor": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "action": {
+        "type": "pinned",
+        "pinned": {
+          "chat_id": -1007,
+          "message_id": 1
+        }
+      }
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，周大山置顶了一条消息"
+  }
+}
+{
+  "v": 1,
+  "kind": "chat",
+  "data": {
+    "type": "chat_item",
+    "chat_id": -1008,
+    "title": "周末爬山群",
+    "kind": {
+      "type": "supergroup"
+    },
+    "unread_count": 5,
+    "unread_mention_count": 1,
+    "muted": false,
+    "mute_inherited": false,
+    "pinned": false,
+    "last": {
+      "type": "message",
+      "id": {
+        "chat_id": -1008,
+        "message_id": 1
+      },
+      "head": {
+        "sender": {
+          "type": "user",
+          "user_id": 105,
+          "name": null
+        },
+        "date": "2026-10-23T11:30:00Z",
+        "outgoing": false
+      },
+      "content": {
+        "body": [
+          {
+            "type": "text",
+            "text": "注意防晒"
+          }
+        ]
+      },
+      "tail": {}
+    }
+  },
+  "speech": {
+    "brief": "周末爬山群，5 条未读，1 条提到你，未知发送人：注意防晒"
+  }
+}

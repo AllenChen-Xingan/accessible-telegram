@@ -1,8 +1,9 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
 //! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
-//! `chats`（第 5 块，T02）；本机接口（第 9 块）：`serve` 常驻当执行方，档案被占时 `chats` / `auth state` 自动转过去
-//! （`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行 `not_implemented` 错误。
+//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；本机接口（第 9 块）：`serve` 常驻当执行方，
+//! 档案被占时 `chats` / `auth state` 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
+//! `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
 #![cfg_attr(
@@ -26,6 +27,7 @@ mod out;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
 mod session;
+mod speech;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
@@ -87,6 +89,14 @@ fn main() -> ExitCode {
         Command::Logout => run_job(&cli.global, format, Job::Logout, started),
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
+        // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
+        Command::Speech(_) if cli.global.fake.is_some() => fail(
+            format,
+            Code::Usage,
+            "speech 不用 --fake，夹具文件用 --fixture 给",
+            json!({}),
+        ),
+        Command::Speech(a) => speech::run(&a, cli.global.tz.as_deref(), format, started),
         other => {
             let name = other.name();
             fail(
@@ -213,7 +223,9 @@ fn render_chats(
     // 会话项读法不读时间，时区不影响；`--tz` 留给读消息的命令
     let cx = atg_core::speech::SpeechCtx {
         utc_offset: 0,
+        offset_at: None,
         listen_key: None,
+        expand_key: None,
     };
     for item in &listing.items {
         let doc = atg_core::tree::Doc::ChatItem(item.clone());

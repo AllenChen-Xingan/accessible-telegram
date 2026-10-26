@@ -77,14 +77,15 @@ fn attachment_name(a: &Attachment) -> &'static str {
 const ALL_ACTIONS: &[&str] = &[
     "members_added",
     "joined_by_link",
+    "joined_by_request",
     "member_removed",
     "title_changed",
     "photo_changed",
+    "photo_deleted",
     "pinned",
     "group_created",
     "contact_registered",
     "other",
-    // joined_by_request、photo_deleted：形状与 joined_by_link、photo_changed 相同，下一批夹具补
 ];
 
 fn action_name(a: &Action) -> &'static str {
@@ -224,14 +225,80 @@ impl Seen {
 }
 
 fn load(name: &str) -> World {
-    let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/fixtures/speech/{name}.json", env!("CARGO_MANIFEST_DIR"));
     World::from_json(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// `fixtures/speech/` 下的全部夹具名（按目录取，新加的夹具不用改这里）
+fn fixture_names() -> Vec<String> {
+    let dir = format!("{}/fixtures/speech", env!("CARGO_MANIFEST_DIR"));
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            (p.extension()? == "json")
+                .then(|| p.file_stem().unwrap().to_string_lossy().into_owned())
+        })
+        .collect();
+    names.sort();
+    assert!(names.len() >= 4, "{names:?}");
+    names
+}
+
+/// 夹具隐私（`specs/contracts/testing.md` 第一节第 3 小节）：人名、会话名只许取自 `fixtures/names.txt`
+#[test]
+fn fixture_names_come_from_names_txt() {
+    let base = env!("CARGO_MANIFEST_DIR");
+    let allowed: BTreeSet<String> = std::fs::read_to_string(format!("{base}/fixtures/names.txt"))
+        .unwrap()
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_owned)
+        .collect();
+    fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                let part = |k: &str| m.get(k).and_then(|x| x.as_str()).unwrap_or("");
+                let full = [part("first_name"), part("last_name")]
+                    .into_iter()
+                    .filter(|x| !x.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if !full.is_empty() {
+                    out.push(full);
+                }
+                for k in ["title", "sender_name", "performer"] {
+                    if !part(k).is_empty() {
+                        out.push(part(k).to_owned());
+                    }
+                }
+                m.values().for_each(|x| walk(x, out));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
+        }
+    }
+    for name in fixture_names() {
+        let src = std::fs::read_to_string(format!("{base}/fixtures/speech/{name}.json")).unwrap();
+        let mut found = vec![];
+        walk(&serde_json::from_str(&src).unwrap(), &mut found);
+        let bad: Vec<_> = found.iter().filter(|n| !allowed.contains(*n)).collect();
+        assert!(
+            bad.is_empty(),
+            "{name}.json 里有 names.txt 以外的名字：{bad:?}"
+        );
+    }
 }
 
 #[test]
 fn fixtures_cover_every_kind() {
     let mut seen = Seen::default();
-    for name in ["basic", "entities"] {
+    for name in fixture_names() {
+        let name = name.as_str();
         let w = load(name);
         for d in w.docs().iter().chain(w.chat_items().iter()) {
             seen.doc(d);

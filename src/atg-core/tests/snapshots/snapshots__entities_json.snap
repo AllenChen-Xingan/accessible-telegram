@@ -368,7 +368,7 @@ expression: "json_pretty(&world(\"entities\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "林小雨：🔥小雨，隐藏内容，19:30"
+    "brief": "林小雨：🔥小雨，隐藏内容，按 D 展开，19:30"
   }
 }
 {
@@ -640,7 +640,7 @@ expression: "json_pretty(&world(\"entities\").docs())"
     "tail": {}
   },
   "speech": {
-    "brief": "林小雨：隐藏内容，19:30"
+    "brief": "林小雨：隐藏内容，按 D 展开，19:30"
   }
 }
 {

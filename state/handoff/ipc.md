@@ -85,3 +85,9 @@ A–F 已定（大总管批复）。
 - **关键数字**：正式档案冒烟 `chats -n 100` 转发 0.39 / 0.04 秒、直跑 0.43–0.54 秒（3 次）；第 2 次转发与直跑去掉时间字段后哈希一致；serve 停后套接字、锁、运行标记都清了
 - **自审**：P0 0、P1 0，P2 已全修（见上）。待 codex 补审（#32）
 - **要人定的事**：无。留给以后：GUI 当执行方前（M3.1）把渲染挪进 `atg-core`；建议用 #18 的二进制做「刚停另一个进程就直跑」的 6 秒对照（要人在，会弹框）
+
+## 合并 main（#19 speech）后解冲突（2026-10-26，大总管派）
+
+- 只改了三个冲突文件，两边都留：`specs/contracts/cli.md`（修订记录按日期排，#19 两条在前，#22 两条在后）· `src/atg-cli/src/args.rs`（`SpeechArgs` / `SpeechLevel` + 带 serde 派生的 `ListArg`）· `src/atg-cli/src/main.rs`（模块注释合成一段；`serve` 与 `speech` 两条分派都在）。没跑 git 写操作
+- 复测：`cargo test --workspace` **255 个全过**（atg-core 179，atg-cli 76 = 单元 61 + `tests/cli.rs` 15）；clippy `-D warnings` 三条、`fmt --check`、`check-no-debug` 全过；无 `.snap.new`
+- `speech --fixture`：`speech_text_matches_core_snapshots`（5 组夹具 × 读法层）通过；atg-core 11 个快照文件与 main 检出逐字节相同

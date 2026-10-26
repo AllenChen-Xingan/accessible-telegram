@@ -14,7 +14,11 @@
 
 - `chats [--list main|archive] [-n N] [--unread] [--cursor C]`：一行一个 `{"kind":"chat","data":<ChatItem>,"speech":{"brief":"会话项读法"}}`，顺序同官方客户端；`-n` 默认 100。最后一行 `result`：`count` · `more` · `next_cursor`（`more` 为真时才有，下一页用 `--cursor` 接着列）· `synced`（等到服务器把离线期间漏掉的更新补送完了没有，最多等 10 秒；`false` 时未读数可能是旧的，断网时就是这样）· `load_timed_out`（加载 10 秒没应答提前停了，可能断网）· `first_chat_ms`（进程启动到第一条会话出来的毫秒数）· `elapsed_ms`。`--format text` 每行一句读法，统计写标准错误。只读：不打开会话、不标已读
 
-其余子命令还只占名，输出一行 `not_implemented` 错误、退出码 1。全局选项里 `--fake`（场景目录）、`--redact`、`--wait`、`--tz`、`--unsafe-direct-send` 还没接上。
+读法定标（第一刀第 6 块，#19）：
+
+- `speech --fixture PATH [--level brief|chat_brief] [--tz OFFSET]`：夹具（TDLib 更新对象的 JSON 数组，读法夹具在 `src/atg-core/fixtures/speech/`）→ 内容树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息一行（`kind:"message"`，状态行是 `event`）；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法在 `speech.brief`，CLI 没有按键，不读「按 D 展开」。`--tz` 写 `+08:00`、`-05:30`、`+0800`、`+8`、`Z` 或 `UTC`，默认系统时区。`--format text` 每行一句读法；加 `--tz +08:00` 时与 `src/atg-core/tests/snapshots/*brief*.snap` 逐行一致，只差快照里 GUI 才有的「按 D 展开」（`tests/cli.rs` 管着）。「定标」= 先把读法产出来给人实际听，人改定的那一版才是标准说法；这个子命令就是给人试听、校准用的
+
+其余子命令还只占名，输出一行 `not_implemented` 错误、退出码 1。全局选项里 `--fake`（场景目录）、`--redact`、`--wait`、`--unsafe-direct-send` 还没接上；`--tz` 现在只有 `speech` 用。
 
 跑法：真实后端要编进 TDLib（`--features tdlib`），运行前提（`.env.local`、库路径、签名）见 `src/README.md` 与 `state/handoff/login.md`：
 

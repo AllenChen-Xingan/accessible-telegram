@@ -1,6 +1,6 @@
 //! 参数定义：子命令名与全局选项，照 `specs/contracts/cli.md` 第一节第 2 小节。
 //!
-//! 已做的子命令（`login` · `auth *` · `logout` · `chats` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
+//! 已做的子命令（`login` · `auth *` · `logout` · `chats` · `speech` · `version`）按契约定了参数；其余还只占名字，后面的参数原样收下不校验。
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,8 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
-/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`、`--test-dc`、`--profile`（登录这组与 `chats`）。
+/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`、`--test-dc`、`--profile`（登录这组与 `chats`）、
+/// `--tz`（`speech`）。
 /// 其余收下不用（帮助里标了「还没做」）
 #[derive(Args)]
 pub struct Global {
@@ -49,7 +50,7 @@ pub struct Global {
     /// 遇到 Telegram 限流（要求过 N 秒再试）就等够再继续，默认立刻报 rate_limited。还没做
     #[arg(long, global = true)]
     pub wait: bool,
-    /// 读法里报钟点用的时区偏移，默认取系统时区。还没做（会话项不读时间；读消息的命令再接）
+    /// 读法里报钟点用的时区偏移：+08:00、-05:30、+0800、+8、Z 或 UTC。默认取系统时区。现在只有 speech 用（会话项不读时间）
     #[arg(long, global = true, value_name = "OFFSET", allow_hyphen_values = true)]
     pub tz: Option<String>,
 }
@@ -119,8 +120,8 @@ pub enum Command {
     Draft(Rest),
     /// 播放语音
     Play(Rest),
-    /// 只打印读法（夹具场景）
-    Speech(Rest),
+    /// 只打印读法：夹具（TDLib 更新的 JSON 数组）→ 树 → 读法，不联网
+    Speech(SpeechArgs),
     /// 机读自描述
     Schema(Rest),
     /// 常驻：占着档案、开本机接口，替后起的 atg-cli 执行命令（chats、auth state），Ctrl+C 结束
@@ -150,6 +151,34 @@ pub struct ChatsArgs {
     /// 接着上一页列：填上一页最后一行（kind 为 result）里的 next_cursor
     #[arg(long, value_name = "C")]
     pub cursor: Option<String>,
+}
+
+/// `speech` 的参数（`specs/contracts/cli.md`）。`--fixture` 是单个读法夹具文件。`--scenario` 现在**没有**，名字预留给以后的场景目录
+/// （假后端用的一整套数据：会话、用户、历史、时间线，约定在 `src/atg-core/fixtures/scenarios/<名>/`、目录还没建，`testing.md` 第一节第 3 小节）
+#[derive(Args)]
+pub struct SpeechArgs {
+    /// 夹具文件：TDLib 更新对象的 JSON 数组，按顺序喂进来（如 src/atg-core/fixtures/speech/basic.json）
+    #[arg(long, value_name = "PATH", required = true)]
+    pub fixture: std::path::PathBuf,
+    /// 读哪一层：brief = 按到达顺序每条消息一句；chat_brief = 主列表（不含归档）每个会话一句
+    #[arg(long, value_enum, default_value_t = SpeechLevel::Brief)]
+    pub level: SpeechLevel,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SpeechLevel {
+    Brief,
+    #[value(name = "chat_brief")]
+    ChatBrief,
+}
+
+impl SpeechLevel {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Brief => "brief",
+            Self::ChatBrief => "chat_brief",
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
