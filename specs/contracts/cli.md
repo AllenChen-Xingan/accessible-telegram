@@ -44,7 +44,7 @@
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
 | `speech --scenario NAME [--chat CHAT_ID] [--level brief\|detail\|chat_brief]` | 只打印读法，用夹具场景 | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
-| `version` | 版本、TDLib 版本、外壳版本 `v` | — | — |
+| `version` | 版本、TDLib 版本、外壳版本 `v`。`atg-cli --version` 是它的别名，输出相同；不能和别的子命令同用（`usage`） | — | — |
 
 **全局选项**（放在子命令前后都可以）：
 
@@ -90,7 +90,7 @@
 | `version` | 各版本号 |
 | `playback` | `play` 的状态：`state`（`playing` / `paused` / `stopped` / `finished`）· `position_s` · `duration_s` · `speed` |
 | `result` | 见下 |
-| `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有两个自有码 `usage`、`interrupted` |
+| `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有三个自有码 `usage`、`interrupted`、`not_implemented` |
 
 **内容里的格式**：只登记在 `specs/content-tree.md` 第八节。要点：判别字段 `type`；消息身份是一个对象 `{"chat_id":…,"message_id":…}`；未知节点 `{"type":"unknown","td_type":"…"}`；int53 的 id 写数字，更大的 int64 写字符串；时间 RFC3339 UTC；读的一方忽略不认识的字段、不认识的 `type` 当 `unknown`。
 
@@ -111,7 +111,7 @@
 | 码 | 含义 | 对应 `error.code` |
 |---|---|---|
 | 0 | 成功 | — |
-| 1 | 内部错误 / 未知 | `internal` `unknown` |
+| 1 | 内部错误 / 未知 / 子命令还没实现 | `internal` `unknown` `not_implemented` |
 | 2 | 用法错误（参数不对） | `usage` |
 | 3 | 要登录 / 登录失败 | `auth_*` |
 | 4 | 网络 / 连接 | `network` `disconnected` |
@@ -185,3 +185,4 @@
 - 2026-10-25 初稿（infra），外壳与 tree 对齐
 - 2026-10-25 按 b2 拍板同步（sync）：加 `delete`（S1）；`play` 进 MVP（F3、F8）；直发模式免一切 L2（D1）；GUI 开着时经本机接口转发（P1）；C1、C2 结果
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`--format text` 定名（N4）；本机接口下直发参数听执行方（N1）
+- 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：自有码加 `not_implemented`（退出码 1）；`--version` 登记为 `version` 的别名

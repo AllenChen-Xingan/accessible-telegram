@@ -4,6 +4,11 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🦴 #14 骨架完成（2026-10-25）
+> - `src/atg-cli` 骨架（子命令占位，输出契约格式 `not_implemented`）；`atg-core` 模块占位；禁打印两层（crate 根 deny + `scripts/check-no-debug.sh`，CI 已接）；45 测试
+> - 人定：所有代码放 `src/`（`CLAUDE.md`）→ issue #25（tdlib-rs 搬进 `src/tdlib-rs`，TDLib 用脚本拉取）
+> - **下一步**：#25 → #15 第 2 块 model + reducer
+
 > ## 🔧 issue #3 补丁完成（2026-10-25）
 > - fork `AllenChen-Xingan/tdlib-rs` 分支 `atg/tdlib-1.8.69` @ `4521d6d`：TDLib 1.8.69、生成器递归修补、日志与崩溃不带内容、`execute()`；45 单测；测试服务器连到 waitPhoneNumber，日志里凭据 0 次
 > - `.env.local` 两值齐（apikey 手下 + 人）；issue #4–#22 已开；拍板 N1–N8 与补丁 ①–③ → `docs/plan/005_decisions-b3.md`

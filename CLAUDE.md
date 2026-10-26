@@ -63,6 +63,7 @@
 
 - **开发流程照 `specs/workflow.md`**：一事一 issue · 同时只推一个 `status:active` · 功能分支 + PR · `Closes #N`。**绝不直推 `main`、绝不强推、绝不合并 PR**——合并由人点；`.claude/hooks/guard-git.sh` 会拦，只有人在对话里明确同意后才可加 `ATG_CONFIRMED=1` 重发
 - **issue 里人写的意图，原样保留**：不改写、不扩写。AI 自己开的 issue 打 `by:ai`，只写事实
+- **所有代码都放 `src/`**（人定 2026-10-25）：本项目写的、Telegram 要用的、要编译的代码一律在 `src/` 下；`atg-core`、`atg-cli`、`atg-gui` 等各占 `src/` 的一个根子目录。别处（`docs/experiments/` 的一次性实验除外）不放代码
 - **命令行优先**：功能先在 `atg-cli` 做通，再接 `atg-gui`
 - **改了 `atg-gui` 必附无障碍树导出对比，改了读法必附快照差异**
 - **测试绝不向真实联系人发消息**：只发「收藏夹」或 Telegram 测试服务器

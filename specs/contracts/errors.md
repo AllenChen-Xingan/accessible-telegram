@@ -36,7 +36,7 @@
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
 
-**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对）· `interrupted`（Ctrl+C）。
+**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 
 **`error.data` 的字段**（CLI 原样输出；GUI 读 `message_zh`）：
 
@@ -155,3 +155,4 @@
 
 - 2026-10-25 初稿（infra）
 - 2026-10-25 按 b2 拍板同步（sync，大总管授权）：`profile_busy` 按 P1；`l1_disabled` 含义按 F1 / A2；E1、E2 结果
+- 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：CLI 自有码加 `not_implemented`

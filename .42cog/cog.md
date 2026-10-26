@@ -28,7 +28,7 @@
 
 ### 作品区 `src/`：按 crate 分（清单以根 `Cargo.toml` workspace 为准）
 
-> 子目录建出来那一刻在这里补一行。**已建**：`src/atg-core`（2026-10-25，内容树原型，见 `specs/content-tree.md`）；`atg-cli`、`atg-gui` 还没建。
+> 子目录建出来那一刻在这里补一行。**已建**：`src/atg-core`（2026-10-25，内容树原型，见 `specs/content-tree.md`）；`src/atg-cli`（2026-10-25，骨架：`version` 能用，其余子命令占位，见 `src/atg-cli/README.md`）；`atg-gui` 还没建。
 
 | crate | 是什么 | 谁产生 | 谁是谁的输入 |
 |---|---|---|---|
