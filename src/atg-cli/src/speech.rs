@@ -54,6 +54,7 @@ pub fn run(a: &SpeechArgs, tz: Option<&str>, format: Format, started: Instant) -
         offset_at,
         listen_key: None,
         expand_key: None,
+        reveal: a.reveal,
     };
     let docs = match a.level {
         SpeechLevel::Brief => world.docs(),
@@ -92,7 +93,7 @@ pub fn run(a: &SpeechArgs, tz: Option<&str>, format: Format, started: Instant) -
 }
 
 /// `+08:00` · `-05:30` · `+8` · `+0800` · `Z` / `UTC` → 秒。范围 ±14 小时
-fn parse_tz(s: &str) -> Option<i32> {
+pub(crate) fn parse_tz(s: &str) -> Option<i32> {
     let s = s.trim();
     if s.eq_ignore_ascii_case("z") || s.eq_ignore_ascii_case("utc") {
         return Some(0);
@@ -119,14 +120,14 @@ fn parse_tz(s: &str) -> Option<i32> {
     Some(sign * (h * 3600 + m * 60))
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
 }
 
 /// 系统时区在某个时间点（Unix 秒）的偏移（秒）；取不到按 0
-fn local_offset_at(t: i64) -> i32 {
+pub(crate) fn local_offset_at(t: i64) -> i32 {
     // macOS 上 `time_t` 就是 i64
     let t: libc::time_t = t;
     // SAFETY: `localtime_r` 只读 `t`、只写我们给的 `tm`，返回空指针时不读它

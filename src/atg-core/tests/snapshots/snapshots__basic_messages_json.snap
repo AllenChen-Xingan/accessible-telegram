@@ -1,5 +1,6 @@
 ---
 source: src/atg-core/tests/snapshots.rs
+assertion_line: 51
 expression: "json_pretty(&world(\"basic\").docs())"
 ---
 {
@@ -228,12 +229,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
         },
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "大家都到了"
-            }
-          ]
+          "children": []
         }
       ],
       "attachment": {

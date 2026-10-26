@@ -1,8 +1,12 @@
 //! 读法：内容树 → 读屏要读的那句话。纯函数，可快照测试。
 //!
-//! v0 只做 `brief` 与会话项的 `chat_brief`。「名称」= 无障碍名称：VoiceOver 读到列表里一项时念的那句话，
-//! GUI 和 CLI 的 `speech.brief` 都取这里。`detail`（按详情键展开的那些）归路线图 M1.6（`atg-cli history --detail`，
-//! `docs/plan/002_roadmap.md`）。
+//! 三层：`brief`（名称）与会话项的 `chat_brief`；[`detail`]（按详情键展开的那些：日期、回复谁、转发自、已编辑、
+//! 表情回应、话题名、送达状态，R3–R5）；[`full`]（全文：正文原样，保留换行与标点，不接发送人与钟点）。
+//! 「名称」= 无障碍名称：VoiceOver 读到列表里一项时念的那句话，GUI 和 CLI 的 `speech.brief` 都取这里。
+//! `detail` 与 `full` 由路线图 M1.6 加（`atg-cli history --detail / --full`，#21）。**详情的句子是 AI 草稿，待人实听**
+//! （`specs/style/` 只定了哪些进详情，没定句子；快照 `*detail*.snap` 为正本）。
+//!
+//! 隐藏内容（剧透、18+ 遮挡）三层都只读「隐藏内容」（R1）；[`SpeechCtx::reveal`] 为真 = 人按了展开键，才读原文。
 //!
 //! 规则正本 `specs/content-tree.md` 第九节（原则与 R1–R7 人定）。具体说法的题 V1–V23 **人定 2026-10-26**，
 //! 记录在 `docs/plan/007_decisions-b15.md`；
@@ -29,12 +33,15 @@ pub struct SpeechCtx {
     pub listen_key: Option<char>,
     /// 隐藏内容「按 D 展开」那个键（R1）；`None` 就只读「隐藏内容」（CLI 没有这个键）
     pub expand_key: Option<char>,
+    /// 已展开隐藏内容（= 人按了展开键；CLI 的 `--reveal`）：剧透、18+ 遮挡照读原文，不再说「隐藏内容」与按键。
+    /// R1 人定默认遮住，所以调用方只在人明确要求时才置真
+    pub reveal: bool,
 }
 
 pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => {
-            let (body, hidden) = content(&m.content);
+            let (body, hidden) = content(&m.content, cx.reveal);
             // V13 人定：多处隐藏内容，各处只读「隐藏内容」，按键提示在整条末尾、钟点前说一次
             let body = match (hidden, cx.expand_key) {
                 (true, Some(k)) => then(&body, &format!("按 {} 展开", k.to_ascii_uppercase())),
@@ -51,7 +58,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
                 None => line,
             }
         }
-        Doc::Service(sv) => then(&service(sv), &hm(sv.date, cx)),
+        Doc::Service(sv) => then(&service(sv, cx.reveal), &hm(sv.date, cx)),
         // R7：「林小雨撤回了一条消息，19:36」；V15 人定：没记到时间就不读时间
         Doc::Tombstone(t) => {
             let who = tomb_who(t);
@@ -60,7 +67,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
                 None => format!("{who}{REVOKED}"),
             }
         }
-        Doc::ChatItem(c) => chat_brief(c),
+        Doc::ChatItem(c) => chat_brief_with(c, cx.reveal),
         Doc::Alert(a) => alert(a, cx),
         Doc::Status(s) => status(s.status).to_owned(),
         Doc::Unknown(_) => UNSUPPORTED.to_owned(),
@@ -71,6 +78,11 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
 /// `specs/content-tree.md` 第九节）。V1、V2、V7 人定：静音、置顶、新回应、标为未读都不读；
 /// V20 人定：没有消息不说「暂无消息」；V5 人定：隐藏内容不带按键（会话列表里展开不了一条消息）
 pub fn chat_brief(c: &ChatItem) -> String {
+    chat_brief_with(c, false)
+}
+
+/// 同 [`chat_brief`]；`reveal` 为真（人展开了隐藏内容，CLI 的 `--reveal`）时最后一条里的剧透照读原文
+pub fn chat_brief_with(c: &ChatItem, reveal: bool) -> String {
     let private = matches!(c.kind, ChatKind::Private | ChatKind::Secret);
     let name = if c.saved_messages {
         // V6 人定：和自己的私聊读「收藏夹」（TDLib 给的标题是自己的名字）
@@ -102,16 +114,16 @@ pub fn chat_brief(c: &ChatItem) -> String {
         };
         let summary = match last.as_ref() {
             ChatLast::Message(m) if omit_name(&m.head.sender, m.head.outgoing) => {
-                content(&m.content).0
+                content(&m.content, reveal).0
             }
             ChatLast::Message(m) => {
-                let body = content(&m.content).0;
+                let body = content(&m.content, reveal).0;
                 match speaker(&m.head.sender, m.head.outgoing, c.chat_id, channel) {
                     Some(who) => format!("{who}：{body}"),
                     None => body,
                 }
             }
-            ChatLast::Service(sv) => service(sv),
+            ChatLast::Service(sv) => service(sv, reveal),
             // R7 同形，会话项里不带时间（N8 人定，`docs/plan/005_decisions-b3.md`）
             // 私聊里不是自己撤回的就一定是对方，记没记到发送人都省名
             ChatLast::Tombstone(t) => match &t.sender {
@@ -123,6 +135,235 @@ pub fn chat_brief(c: &ChatItem) -> String {
         parts.push(summary);
     }
     parts.join("，")
+}
+
+/// 详情（`--detail`，R3–R5 定了这些不进名称、进详情）：日期 · 回复谁 · 转发自 · 已编辑 · 表情回应 · 话题名 ·
+/// 自己发的送达状态，有哪项说哪项，用「；」分段。系统消息、撤回占位只有日期；别的节点没有详情（空串）。
+/// **句子是 AI 草稿，待人实听**（`specs/style/` 没定详情的说法）
+pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
+    match doc {
+        Doc::Message(m) => {
+            let mut parts = vec![date(m.head.date, cx)];
+            if let Some(r) = &m.head.reply_to {
+                parts.push(reply(r, m.id.chat_id, cx.reveal));
+            }
+            if let Some(f) = &m.head.forward {
+                parts.push(format!(
+                    "转发自{}，原发于 {}",
+                    origin_name(&f.origin),
+                    date(f.date, cx)
+                ));
+            }
+            if let Some(t) = m.tail.edited {
+                parts.push(format!("已编辑，{}", date_or_hm(t, m.head.date, cx)));
+            }
+            if !m.tail.reactions.is_empty() {
+                parts.push(reactions(&m.tail.reactions));
+            }
+            if let Some(t) = topic(m.head.topic.as_ref()) {
+                parts.push(t);
+            }
+            if let Some(d) = m.tail.delivery {
+                parts.push(delivery(d).to_owned());
+            }
+            parts.join("；")
+        }
+        Doc::Service(sv) => date(sv.date, cx),
+        Doc::Tombstone(t) => t.date.map(|d| date(d, cx)).unwrap_or_default(),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => String::new(),
+    }
+}
+
+/// 全文（`--full`）：正文原样——保留换行、末尾标点，表情不合并，不接发送人与钟点；附件照名称的说法放在前面。
+/// 隐藏内容照样只读「隐藏内容」，[`SpeechCtx::reveal`] 为真才读原文（R1；大总管授权 2026-10-26）。
+/// 系统消息、撤回占位与名称同一句、不带钟点；别的节点同 [`brief`]
+pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
+    match doc {
+        Doc::Message(m) => full_content(&m.content, cx.reveal),
+        Doc::Service(sv) => service(sv, cx.reveal),
+        Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => brief(doc, cx),
+    }
+}
+
+fn full_content(c: &Content, reveal: bool) -> String {
+    let body = full_spans(&c.body, reveal);
+    let label = c.attachment.as_ref().map(|a| {
+        let (l, spoiler) = attachment(a, reveal);
+        if (spoiler || c.sensitive) && !reveal {
+            format!("{l}，{HIDDEN}")
+        } else {
+            l
+        }
+    });
+    match (label, body.trim().is_empty()) {
+        (None, true) => "空消息".to_owned(),
+        (None, false) => body,
+        (Some(l), true) => l,
+        (Some(l), false) => format!("{l}，{body}"),
+    }
+}
+
+/// 遮住处先放占位符，最后看两边：紧挨着别的字才补逗号（原文自己的空格、标点、换行照留）
+const MASK: char = '\u{FFFC}';
+
+fn full_spans(list: &[Span], reveal: bool) -> String {
+    let mut raw = String::new();
+    for s in list {
+        full_span(&mut raw, s, reveal);
+    }
+    let pause = |c: char| c.is_whitespace() || "，、。；：！？,.;:!?「」（）()".contains(c);
+    let chars: Vec<char> = raw.chars().collect();
+    let mut out = String::with_capacity(raw.len());
+    for (i, &c) in chars.iter().enumerate() {
+        if c != MASK {
+            out.push(c);
+            continue;
+        }
+        if out.chars().last().is_some_and(|p| !pause(p) && p != MASK) {
+            out.push('，');
+        }
+        out.push_str(HIDDEN);
+        if chars.get(i + 1).is_some_and(|&n| !pause(n)) {
+            out.push('，');
+        }
+    }
+    out
+}
+
+fn full_span(out: &mut String, s: &Span, reveal: bool) {
+    match s {
+        Span::Text { text }
+        | Span::Code { text }
+        | Span::Pre { text, .. }
+        | Span::DateTime { text, .. } => out.push_str(&text.replace(MASK, "")),
+        Span::Spoiler { children } if reveal => {
+            for c in children {
+                full_span(out, c, reveal);
+            }
+        }
+        // 相邻的几段剧透只说一次
+        Span::Spoiler { .. } => {
+            if !out.ends_with(MASK) {
+                out.push(MASK);
+            }
+        }
+        Span::Bold { children }
+        | Span::Italic { children }
+        | Span::Underline { children }
+        | Span::Strikethrough { children }
+        | Span::Quote { children, .. }
+        | Span::Link { children, .. }
+        | Span::Url { children }
+        | Span::Mention { children }
+        | Span::MentionName { children, .. }
+        | Span::Hashtag { children }
+        | Span::Cashtag { children }
+        | Span::BotCommand { children }
+        | Span::Email { children }
+        | Span::Phone { children }
+        | Span::BankCard { children }
+        | Span::TonAddress { children }
+        | Span::CustomEmoji { children, .. }
+        | Span::MediaTimestamp { children, .. }
+        | Span::Unknown { children, .. } => {
+            for c in children {
+                full_span(out, c, reveal);
+            }
+        }
+    }
+}
+
+/// 「2026年10月26日 19:35」（详情里的日期，R3）
+fn date(t: Time, cx: &SpeechCtx) -> String {
+    let offset = cx.offset_at.map_or(cx.utc_offset, |f| f(t.0));
+    let (y, m, d) = t.local_ymd(offset);
+    format!("{y}年{m}月{d}日 {}", hm(t, cx))
+}
+
+/// 与 `base` 同一天只读钟点，否则读日期
+fn date_or_hm(t: Time, base: Time, cx: &SpeechCtx) -> String {
+    let day = |x: Time| x.local_ymd(cx.offset_at.map_or(cx.utc_offset, |f| f(x.0)));
+    if day(t) == day(base) {
+        hm(t, cx)
+    } else {
+        date(t, cx)
+    }
+}
+
+/// 回复谁：「回复周大山：〈引用的那段〉」；被回复那条在别的会话里加「另一个会话里」
+fn reply(r: &ReplyTo, chat_id: i64, reveal: bool) -> String {
+    match r {
+        ReplyTo::Message {
+            target,
+            sender,
+            quote,
+        } => {
+            let elsewhere = target.chat_id != chat_id;
+            let who = match (sender, elsewhere) {
+                (Some(s), false) => sender_name(s, UNKNOWN_SENDER),
+                (Some(s), true) => format!("另一个会话里{}的消息", sender_name(s, UNKNOWN_SENDER)),
+                (None, false) => "一条消息".to_owned(),
+                (None, true) => "另一个会话里的一条消息".to_owned(),
+            };
+            match quote.as_deref().map(|q| spans(q, reveal).0) {
+                Some(q) if !q.trim().is_empty() => format!("回复{who}：{}", q.trim()),
+                Some(_) | None => format!("回复{who}"),
+            }
+        }
+        ReplyTo::Unknown { .. } => "回复了暂不支持的内容".to_owned(),
+    }
+}
+
+/// 转发来源的名字
+fn origin_name(o: &Origin) -> String {
+    match o {
+        Origin::User { name, .. } => name_or(name, UNKNOWN_SENDER),
+        Origin::HiddenUser { name } => name_or(&Some(name.clone()), UNKNOWN_SENDER),
+        Origin::Chat { title, .. } | Origin::Channel { title, .. } => name_or(title, UNTITLED),
+        Origin::Unknown { .. } => "未知来源".to_owned(),
+    }
+}
+
+/// 「回应：3 个👍、1 个❤️，我点了👍」
+fn reactions(list: &[Reaction]) -> String {
+    let label = |r: &Reaction| match &r.kind {
+        ReactionKind::Emoji { emoji } => emoji.clone(),
+        ReactionKind::CustomEmoji { .. } => "自定义表情".to_owned(),
+        ReactionKind::Paid => "星星".to_owned(),
+        ReactionKind::Unknown { .. } => "暂不支持的回应".to_owned(),
+    };
+    let all: Vec<String> = list
+        .iter()
+        .map(|r| format!("{} 个{}", r.count, label(r)))
+        .collect();
+    let mine: Vec<String> = list.iter().filter(|r| r.chosen).map(label).collect();
+    let mut s = format!("回应：{}", all.join("、"));
+    if !mine.is_empty() {
+        s.push_str(&format!("，我点了{}", mine.join("、")));
+    }
+    s
+}
+
+/// 话题名：只有论坛话题读（回复串、私信话题、收藏夹分组不读）；名字没到读「未知话题」
+fn topic(t: Option<&Topic>) -> Option<String> {
+    match t? {
+        Topic::Forum { name, .. } => Some(format!("话题：{}", name_or(name, "未知话题"))),
+        Topic::Thread { .. }
+        | Topic::DirectMessages { .. }
+        | Topic::SavedMessages { .. }
+        | Topic::Unknown { .. } => None,
+    }
+}
+
+/// 自己发的：送达到哪一步
+fn delivery(d: Delivery) -> &'static str {
+    match d {
+        Delivery::Pending => "发送中",
+        Delivery::Failed => "发送失败",
+        Delivery::Sent => "已发出",
+        Delivery::Read => "已读",
+    }
 }
 
 fn alert(a: &Alert, cx: &SpeechCtx) -> String {
@@ -238,7 +479,7 @@ const SAVED: &str = "收藏夹";
 /// - 操作人：自己读「我」；群里以群的名义做的读「匿名管理员」（V11）；查不到读「有人」（V18）；已注销读「已注销的账号」（V14）
 /// - 被操作的人：自己读「我」（V17 人定「周大山添加了我」）；查不到读「未知用户」（V18）；已注销读「已注销的账号」
 /// - 频道里「群组 / 群名 / 群头像」换成「频道 / 频道名 / 频道头像」（style 例 S7）
-fn service(sv: &Service) -> String {
+fn service(sv: &Service, reveal: bool) -> String {
     let actor = if sv.outgoing {
         ME.to_owned()
     } else {
@@ -303,7 +544,7 @@ fn service(sv: &Service) -> String {
         Action::Pinned {
             content: Some(c), ..
         } => {
-            format!("{actor}置顶了一条消息：{}", content(c).0)
+            format!("{actor}置顶了一条消息：{}", content(c, reveal).0)
         }
         Action::Pinned { content: None, .. } => format!("{actor}置顶了一条消息"),
         Action::GroupCreated { title } => format!("{actor}创建了{place}「{title}」"),
@@ -313,15 +554,15 @@ fn service(sv: &Service) -> String {
 }
 
 /// 正文 + 附件的简短说法，以及里面有没有隐藏内容（剧透、18+ 遮挡）。按键提示由调用方决定加不加
-fn content(c: &Content) -> (String, bool) {
-    let (body, body_hidden) = spans(&c.body);
+fn content(c: &Content, reveal: bool) -> (String, bool) {
+    let (body, body_hidden) = spans(&c.body, reveal);
     // 句号、逗号后面还要接「，时间」，去掉免得读成「。，」；问号叹号带语气、英文句点可能是省略号，留着
     let body = body.trim().trim_end_matches(['。', '，', ',']).trim_end();
     let mut hidden = body_hidden;
     let label = c.attachment.as_ref().map(|a| {
-        let (l, spoiler) = attachment(a);
-        // 剧透、18+ 遮挡同一种说法，两样都有也只读一次
-        if spoiler || c.sensitive {
+        let (l, spoiler) = attachment(a, reveal);
+        // 剧透、18+ 遮挡同一种说法，两样都有也只读一次；已展开就不说
+        if (spoiler || c.sensitive) && !reveal {
             hidden = true;
             format!("{l}，{HIDDEN}")
         } else {
@@ -337,7 +578,7 @@ fn content(c: &Content) -> (String, bool) {
     (text, hidden)
 }
 
-fn attachment(a: &Attachment) -> (String, bool) {
+fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
     let label = match a {
         Attachment::Photo { spoiler } => return ("图片".to_owned(), *spoiler),
         Attachment::Video { duration, spoiler } => {
@@ -374,7 +615,7 @@ fn attachment(a: &Attachment) -> (String, bool) {
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
         // 投票题目里的剧透只读「隐藏内容」，不算进整条的按键提示（展开的是整条消息）
-        Attachment::Poll { question } => labeled("投票", &spans(question).0),
+        Attachment::Poll { question } => labeled("投票", &spans(question, reveal).0),
         Attachment::Call {
             video,
             duration,
@@ -418,11 +659,11 @@ fn labeled(kind: &str, what: &str) -> String {
 
 /// 行内树的简短说法，以及有没有剧透：格式不读；剧透只读「隐藏内容」（R1）；链接只读文字不读地址；
 /// 连续 3 个及以上相同的表情合并成「5 个😂」（V12 人定）
-fn spans(list: &[Span]) -> (String, bool) {
+fn spans(list: &[Span], reveal: bool) -> (String, bool) {
     let mut out = String::new();
     let mut hidden = false;
     for s in list {
-        span(&mut out, s, &mut hidden);
+        span(&mut out, s, &mut hidden, reveal);
     }
     // 「隐藏内容」两边加的逗号可能和原文的空格、逗号、开头撞上
     let mut out = out.replace(" ，", "，");
@@ -432,12 +673,18 @@ fn spans(list: &[Span]) -> (String, bool) {
     (merge_emoji(out.trim_start_matches('，')), hidden)
 }
 
-fn span(out: &mut String, s: &Span, hidden: &mut bool) {
+fn span(out: &mut String, s: &Span, hidden: &mut bool, reveal: bool) {
     match s {
         Span::Text { text }
         | Span::Code { text }
         | Span::Pre { text, .. }
         | Span::DateTime { text, .. } => out.push_str(text),
+        // 已展开：照读里面的字
+        Span::Spoiler { children } if reveal => {
+            for c in children {
+                span(out, c, hidden, reveal);
+            }
+        }
         // VoiceOver 不念括号，用逗号隔开才听得出这是标注
         Span::Spoiler { .. } => {
             *hidden = true;
@@ -465,7 +712,7 @@ fn span(out: &mut String, s: &Span, hidden: &mut bool) {
         | Span::MediaTimestamp { children, .. }
         | Span::Unknown { children, .. } => {
             for c in children {
-                span(out, c, hidden);
+                span(out, c, hidden, reveal);
             }
         }
     }
@@ -628,6 +875,7 @@ mod tests {
             offset_at: Some(fake_ny),
             listen_key: None,
             expand_key: None,
+            reveal: false,
         };
         assert_eq!(hm(summer, &system), "19:36");
         assert_eq!(hm(winter, &system), "19:36");

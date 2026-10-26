@@ -22,8 +22,11 @@
 
 | 窗口 | 任务 | 交代文件 | 现状页 | 状态 |
 |---|---|---|---|---|
+| `send` | 批次 b17 · #52 发送闸 + send（worktree `atg-wt/52-send`） | `_tmp/20261026-b17/send.md` | worktree 内 `state/handoff/send.md` | 已派 |
+| `watch` | 批次 b17 · #53 watch（worktree `atg-wt/53-watch`） | `_tmp/20261026-b17/watch.md` | worktree 内 `state/handoff/watch.md` | 已派 |
+| `prior`（会话 `telegram-accessibility-8b`） | 批次 b17 · 系统分析 003：发 / 收消息的开源先例（Rust 为主），结论给 #52 #53 | `_tmp/20261026-b17/prior.md` | `state/handoff/prior.md` | **完成，已收尾**（003；窗口已关；待提交） |
 | `signing`（会话 `38-signing-65`） | 批次 b16 · #38 落地：开发版改用 Apple Development 签名、迁移 test / main 真条目（worktree `atg-wt/38-signing`，分支 `feat/38-dev-signing`） | `_tmp/20261026-b16/signing.md` | worktree 内 `state/handoff/signing.md` | **完成，已收尾**（255 测试；test / main 迁移不弹框；atg-dev 已删；exp006；PR 见下） |
-| `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **已报到** |
+| `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **已交付**（284 测试；自审第 5、6 轮清零；待提交） |
 | `cert`（会话 `telegram-accessibility-1c`） | 批次 b15 · 领 Apple 免费开发证书（人登录 Apple ID，其余手下做），给 #38 方案乙 | `_tmp/20261026-b15/cert.md` | `state/handoff/cert.md` | **完成，已收尾**（Apple Development 证书已建，SHA-1 DE6F6A93…，团队 XWFX…，有效到 2027-10-26；无弹框；窗口已关） |
 | `speech`（会话 `19-speech-96`） | 批次 b15 · #19 speech v0 + 快照（worktree `atg-wt/19-speech`，分支 `feat/19-speech`） | `_tmp/20261026-b15/speech.md` | worktree 内 `state/handoff/speech.md` | **完成，已收尾**（235 测试；V1–V23 落地；PR #47；窗口已关） |
 | `style`（会话 `20-style-e3`） | 批次 b15 · #20 读法规约 v0 草稿（worktree `atg-wt/20-style`，分支 `docs/20-style-v0`） | `_tmp/20261026-b15/style.md` | worktree 内 `state/handoff/style.md` | **完成，已收尾**（三份稿 60+ 例，V1–V23 回填；007 随 PR #48；窗口已关） |
@@ -69,7 +72,7 @@
 
 | 名额 | 当前持有 |
 |---|---|
-| 重编译 / 全量测试（1 个） | 空 |
+| 重编译 / 全量测试（1 个） | history（2026-10-26，首编修错，持有至告一段落） |
 
 排队（先来先得；GPUI 首次编译最重，之后共享 `_build/20261023-154000`）：
 
@@ -81,6 +84,18 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **人定 B17-2（2026-10-26）**：直发模式重复提交 → 拦下（A），机制归 #52 设计评审。003 八条契约建议大总管全采纳：1、2、3、7、8 → #52；5、6 → #53；发送状态读法、notify 行为先默认后交人。history 第五、六轮连续干净，最终复测中
+
+- **history 大群冒烟（2026-10-26，人允许读 Van Ness 大群，只读只统计）**：落点 first_unread、翻页连续不重、--after 接回、links 与树一致，不弹框。自审 P1：JSON data 带剧透原文 → 大总管定 A（不加 --reveal 时 data 也遮，chats 同规则）
+
+- **history 冒烟（2026-10-26）**：不弹框；收藏夹是空的 → 0 条，执行方 847 ms；翻页、links 真机未测，待人往收藏夹放几条或另定
+
+- **history（2026-10-26）**：277 测试过；收藏夹只读冒烟已批；serve 一条旧测试时序抖动（4 次失败 1 次）待开 issue
+
+- **人（2026-10-26）**：「另外发消息也可以做 / 重要的把主要功能先实现」→ 开 #52（M2.1–2.2 send）#53（M2.3 watch），worktree 已建；工具小尾巴 #29 #30 #34 暂缓。人又要「在做之前」先做开源先例分析 → 手下 prior；#52 #53 等它的结论再派
+
+- **2026-10-26**：PR #51 合并（人「合并」），#38 关；history 报到后停住 1.5 h（报到消息结束了它的回合）→ 已催；教训：报到后几分钟回看屏尾。history H1–H5：对齐 F2 的 --before/--after、--full 不揭隐藏 + `--reveal`、详情句待人定、kind:link、saved 用 force=false
 
 - **atg-dev 已删（2026-10-26）**：signing 的会话被自动审核拦下 `delete-identity`，人亲手跑（`! security delete-identity -Z B1C8869C…`）；删后 test / main 静默读不弹
 

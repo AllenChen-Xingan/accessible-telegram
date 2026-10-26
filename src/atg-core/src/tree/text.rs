@@ -514,6 +514,73 @@ pub fn links(spans: &[Span]) -> Vec<LinkRef> {
     out
 }
 
+/// 同 [`links`]，另标每个链接是否隐藏（读法 R1）。规则与 [`super::mask`] 遮 `data` 时同一条：链接落在剧透里，
+/// 或链接文字里套着剧透，都算隐藏——两处都只认 [`contains_spoiler`] 加「祖先里有没有剧透」
+pub fn links_marked(spans: &[Span]) -> Vec<(LinkRef, bool)> {
+    let mut out = Vec::new();
+    walk_marked(spans, false, &mut out);
+    out
+}
+
+fn walk_marked(spans: &[Span], inside: bool, out: &mut Vec<(LinkRef, bool)>) {
+    for sp in spans {
+        match sp {
+            Span::Url { .. } | Span::Link { .. } => {
+                let hidden = inside || contains_spoiler(sp);
+                let mut one = Vec::new();
+                collect_links(std::slice::from_ref(sp), &mut one);
+                out.extend(one.into_iter().map(|l| (l, hidden)));
+            }
+            Span::Text { .. } | Span::Code { .. } | Span::Pre { .. } | Span::DateTime { .. } => {}
+            Span::Spoiler { children } => walk_marked(children, true, out),
+            Span::Bold { children }
+            | Span::Italic { children }
+            | Span::Underline { children }
+            | Span::Strikethrough { children }
+            | Span::Quote { children, .. }
+            | Span::Mention { children }
+            | Span::MentionName { children, .. }
+            | Span::Hashtag { children }
+            | Span::Cashtag { children }
+            | Span::BotCommand { children }
+            | Span::Email { children }
+            | Span::Phone { children }
+            | Span::BankCard { children }
+            | Span::TonAddress { children }
+            | Span::CustomEmoji { children, .. }
+            | Span::MediaTimestamp { children, .. }
+            | Span::Unknown { children, .. } => walk_marked(children, inside, out),
+        }
+    }
+}
+
+/// 这段里（含它自己）有没有剧透
+pub fn contains_spoiler(sp: &Span) -> bool {
+    match sp {
+        Span::Spoiler { .. } => true,
+        Span::Text { .. } | Span::Code { .. } | Span::Pre { .. } | Span::DateTime { .. } => false,
+        Span::Bold { children }
+        | Span::Italic { children }
+        | Span::Underline { children }
+        | Span::Strikethrough { children }
+        | Span::Quote { children, .. }
+        | Span::Url { children }
+        | Span::Link { children, .. }
+        | Span::Mention { children }
+        | Span::MentionName { children, .. }
+        | Span::Hashtag { children }
+        | Span::Cashtag { children }
+        | Span::BotCommand { children }
+        | Span::Email { children }
+        | Span::Phone { children }
+        | Span::BankCard { children }
+        | Span::TonAddress { children }
+        | Span::CustomEmoji { children, .. }
+        | Span::MediaTimestamp { children, .. }
+        | Span::Unknown { children, .. } => children.iter().any(contains_spoiler),
+    }
+}
+
 fn collect_links(spans: &[Span], out: &mut Vec<LinkRef>) {
     for sp in spans {
         match sp {

@@ -1,0 +1,7 @@
+---
+source: src/atg-cli/src/serve.rs
+expression: "norm_json(&f.out).join(\"\\n\")"
+---
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":1,"message_id":2},"head":{"sender":{"type":"user","user_id":1,"name":"林小雨"},"date":"2026-10-26T11:32:00Z","outgoing":false},"content":{"body":[{"type":"text","text":"第2条"}]},"tail":{}},"speech":{"brief":"林小雨：第2条，19:32","detail":"2026年10月26日 19:32","full":"第2条"},"at":"<at>"}
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":1,"message_id":3},"head":{"sender":{"type":"user","user_id":1,"name":"林小雨"},"date":"2026-10-26T11:33:00Z","outgoing":false},"content":{"body":[{"type":"text","text":"看下"},{"type":"link","url":"https://example.invalid/route","children":[{"type":"text","text":"路线图"}]}]},"tail":{}},"speech":{"brief":"林小雨：看下路线图，19:33","detail":"2026年10月26日 19:33","full":"看下路线图"},"at":"<at>"}
+{"v":1,"kind":"result","at":"<at>","data":{"command":"history","chat_id":1,"count":2,"more":true,"more_newer":false,"first_unread":2,"landing":"latest","synced":true,"partial":false,"elapsed_ms":"<ms>","next_cursor":2}}

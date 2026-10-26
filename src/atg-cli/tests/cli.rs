@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
-const DONE: &[&str] = &["login", "auth", "logout", "speech"];
+const DONE: &[&str] = &["login", "auth", "logout", "speech", "history", "links"];
 
 /// 契约第一节第 2 小节表里还没做的子命令
 const PLACEHOLDERS: &[&str] = &[
@@ -12,8 +12,6 @@ const PLACEHOLDERS: &[&str] = &[
     "pending",
     "status",
     "next-unread",
-    "history",
-    "links",
     "download",
     "open",
     "mute",
@@ -84,14 +82,14 @@ fn version_is_a_version_line_plus_result() {
 #[test]
 fn global_options_work_before_and_after_subcommand() {
     for args in [
-        &["--format", "text", "history"][..],
-        &["history", "--format", "text"][..],
-        &["history", "-n", "3", "--format=text"][..],
+        &["--format", "text", "show"][..],
+        &["show", "--format", "text"][..],
+        &["show", "-n", "3", "--format=text"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         let s = String::from_utf8(out.stdout).unwrap();
-        assert!(s.contains("history"), "{args:?}: {s}");
+        assert!(s.contains("show"), "{args:?}: {s}");
         assert!(!s.trim_start().starts_with('{'), "文字模式不出 JSON：{s}");
     }
 }
@@ -332,4 +330,55 @@ fn speech_bad_input_is_usage_and_does_not_echo() {
         assert!(!s.contains("暗号"), "{s}");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `history` / `links` 的用法错误在本地就报（与直跑、转发都一样），不碰档案。带 `--fake` 确保不去探真实档案的锁
+#[test]
+fn history_and_links_usage_errors() {
+    for args in [
+        &["history", "abc", "--fake", "x"][..],
+        &[
+            "history", "saved", "--before", "5", "--after", "3", "--fake", "x",
+        ][..],
+        &["history", "saved", "-n", "0", "--fake", "x"][..],
+        &["history", "saved", "--tz", "+99", "--fake", "x"][..],
+        &["links", "saved", "--fake", "x"][..],
+        &["links", "nope", "5", "--fake", "x"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "usage", "{args:?}");
+    }
+}
+
+/// 负的会话 id（群、频道）当位置参数收下，不当成选项；`--fake` 场景目录还没做 → `not_implemented`
+#[test]
+fn history_takes_negative_chat_ids() {
+    for args in [
+        &["history", "-1001", "--fake", "x"][..],
+        &["links", "-1001", "7", "--fake", "x"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls[0]["data"]["code"], "not_implemented", "{args:?}");
+    }
+}
+
+/// `--redact` 还没做：吐名字、正文的命令（chats、history、links）不悄悄忽略，报 `not_implemented`（不碰档案）
+#[test]
+fn redact_refused_until_done() {
+    for args in [
+        &["history", "saved", "--redact"][..],
+        &["links", "saved", "5", "--redact"][..],
+        &["chats", "--redact"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1);
+        assert_eq!(ls[0]["data"]["code"], "not_implemented", "{args:?}");
+    }
 }

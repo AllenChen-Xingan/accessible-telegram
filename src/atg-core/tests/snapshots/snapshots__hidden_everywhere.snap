@@ -1,0 +1,25 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "format!(\"# brief\\n{}\\n# brief --reveal\\n{}\\n# json\\n{}\",\nlayer(&docs, brief, &cx()), layer(&docs, brief, &revealed()),\ndocs.iter().map(|d| json::line(d, &cx())).collect::<Vec<_>>().join(\"\\n\"),)"
+---
+# brief
+林小雨：答案是，隐藏内容，按 D 展开，20:20
+周大山：投票，凶手是，隐藏内容，？20:20
+周大山：我也猜到了，20:20
+林小雨：看，隐藏内容，按 D 展开，20:20
+周大山置顶了一条消息：答案是，隐藏内容，20:20
+周末爬山群，林小雨：看，隐藏内容
+# brief --reveal
+林小雨：答案是甲乙，20:20
+周大山：投票，凶手是丙丁？20:20
+周大山：我也猜到了，20:20
+林小雨：看 秘密地图，20:20
+周大山置顶了一条消息：答案是甲乙，20:20
+周末爬山群，林小雨：看 秘密地图
+# json
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":-1001,"message_id":3001},"head":{"sender":{"type":"user","user_id":101,"name":"林小雨"},"date":"2026-10-23T12:20:01Z","outgoing":false},"content":{"body":[{"type":"text","text":"答案是"},{"type":"spoiler","children":[]}]},"tail":{}},"speech":{"brief":"林小雨：答案是，隐藏内容，按 D 展开，20:20"}}
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":-1001,"message_id":3002},"head":{"sender":{"type":"user","user_id":102,"name":"周大山"},"date":"2026-10-23T12:20:02Z","outgoing":false},"content":{"body":[],"attachment":{"type":"poll","question":[{"type":"text","text":"凶手是"},{"type":"spoiler","children":[]},{"type":"text","text":"？"}]}},"tail":{}},"speech":{"brief":"周大山：投票，凶手是，隐藏内容，？20:20"}}
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":-1001,"message_id":3003},"head":{"sender":{"type":"user","user_id":102,"name":"周大山"},"date":"2026-10-23T12:20:03Z","outgoing":false,"reply_to":{"type":"message","target":{"chat_id":-1001,"message_id":3001},"sender":{"type":"user","user_id":101,"name":"林小雨"},"quote":[{"type":"text","text":"答案是"},{"type":"spoiler","children":[]}]}},"content":{"body":[{"type":"text","text":"我也猜到了"}]},"tail":{}},"speech":{"brief":"周大山：我也猜到了，20:20"}}
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":-1001,"message_id":3004},"head":{"sender":{"type":"user","user_id":101,"name":"林小雨"},"date":"2026-10-23T12:20:04Z","outgoing":false},"content":{"body":[{"type":"text","text":"看 "},{"type":"spoiler","children":[]}]},"tail":{}},"speech":{"brief":"林小雨：看，隐藏内容，按 D 展开，20:20"}}
+{"v":1,"kind":"message","data":{"type":"service","id":{"chat_id":-1001,"message_id":3005},"date":"2026-10-23T12:20:05Z","actor":{"type":"user","user_id":102,"name":"周大山"},"action":{"type":"pinned","pinned":{"chat_id":-1001,"message_id":3001},"content":{"body":[{"type":"text","text":"答案是"},{"type":"spoiler","children":[]}]}}},"speech":{"brief":"周大山置顶了一条消息：答案是，隐藏内容，20:20"}}
+{"v":1,"kind":"chat","data":{"type":"chat_item","chat_id":-1001,"title":"周末爬山群","kind":{"type":"supergroup"},"unread_count":0,"unread_mention_count":0,"muted":false,"mute_inherited":true,"pinned":false,"last":{"type":"message","id":{"chat_id":-1001,"message_id":3004},"head":{"sender":{"type":"user","user_id":101,"name":"林小雨"},"date":"2026-10-23T12:20:04Z","outgoing":false},"content":{"body":[{"type":"text","text":"看 "},{"type":"spoiler","children":[]}]},"tail":{}}},"speech":{"brief":"周末爬山群，林小雨：看，隐藏内容"}}
