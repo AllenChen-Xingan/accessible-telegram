@@ -4,6 +4,12 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 🧠 #15 model + reducer 完成（2026-10-25）
+> - `atg-core`：model · store（`store/table.rs` 唯一写入口，受限原文不留）· 投影 · 类型级脱敏 · 缓存上限（非当前会话 50 条）· 撤回占位跨重拉保留；115 测试含暗号穷举
+> - codex 十三轮收敛；#28 一并修掉；扫描脚本剩余 P2 → #30；人定 → `docs/plan/006_decisions-b7.md`
+> - 新规则：每次审查都过 codex，停止线 = P0/P1 清零 + 连续两轮无 P0/P1（`CLAUDE.md`）；skill `codex-review` 已装
+> - **下一步**：#16 接 TDLib（交代已备 `_tmp/20261025-b9/tdlib.md`）
+
 > ## 📁 #25 所有代码放 src/（2026-10-25）
 > - `src/tdlib-rs`（subtree，未改一行库代码）· `src/tdlib-build/build.sh`（按 `ea3f69c` 拉取编译 TDLib 1.8.69，181 s）· 根工作区 `src/atg-*` + exclude tdlib-rs · `atg-core` 特性 `tdlib-api` / `tdlib`
 > - **下一步**：#15 第 2 块 model + reducer

@@ -39,7 +39,7 @@
 
 - 全存：名字、已读状态会比消息晚到（`updateUser`、`updateChatReadOutbox`），存下来的树会过时；每来一条用户更新就要重建一批树。和架构方案第三节「在渲染时算」相冲突
 - 全现算：每次渲染都重新解析实体。代价其实很小（虚拟化列表每帧只渲染约 12 项），但 model 就得另存一份 TDLib 形状的「纯文本 + 实体」，等于两种正文表示并存
-- **建议：分层。** model 里消息的正文字段**就是** `Content`，不再另定义一个「格式化文本」类型——唯一编码，也让 reducer 的「按字段合并」天然成立（内容只认 `updateMessageContent`，它换的正是 `Content`）。`Doc` 由一个纯函数 `project(&model, &store) -> Doc` 现算；以后量出来慢再加缓存，缓存键带上名字和已读位置的版本号
+- **建议：分层。** model 里消息的正文字段**就是** `Content`，不再另定义一个「格式化文本」类型——唯一编码，也让 reducer 的「按字段合并」天然成立（内容只认 `updateMessageContent`，它换的正是 `Content`）。`Doc` 由投影纯函数现算（`src/atg-core/src/project.rs`，拍板 006 乙9）：`message(&store, 消息身份)`（一条消息 / 系统消息 / 撤回占位）、`window(&store)`（当前窗口，从旧到新）、`chat_list(&store, 列表)`、`chat_item(&store, 会话 id, 列表)`（「置顶」按传入的列表看）；以后量出来慢再加缓存，缓存键带上名字和已读位置的版本号
 
 **哪些更新能改 `Content` 的哪个字段**（reducer 照这张表，其余更新一律不碰 `Content`）：
 
@@ -95,6 +95,7 @@ Message
 - **建树前先选有效内容**：消息带临时内容（`ephemeral_content`，`tl:3547`、`:3594`「必须代替原内容显示」）就用它，否则用 `content`；更新 `updateMessageEphemeralContent`（`tl:11223`）归 reducer
 - **受限内容**（`restriction_info`，`tl:2738`、`:3591`「必须执行」）：原因非空 → 原内容**不进树**，附件换成 `restricted{reason}`、正文为空；只有「敏感」标记 → 照常建，`content.sensitive = true`，读法标「隐藏」
 - `reply_to.target.chat_id` 可能是别的会话、也可能是 0（TDLib：被回复的那条在未知会话）；被回复那条不在 store 里时，发送人先用 TDLib 附带的 `origin` 兜底（api 提醒 2）
+- 被回复那条在 store 里且受限 → 投影时 `reply_to.quote` 不出（引用的那段就是它的原文，拍板 006 乙11）；被回复那条换过 id 的，`target` 投影成现在的 id
 - **相册**（`media_album_id`）v0 不建父节点：每张仍是一条消息、一个焦点身份，头里带 `album_id`，要合并由渲染器做（api 提醒 4）
 
 ### 3. 附件 `Attachment`（一条消息至多一个，`tl:5689-5843`）
@@ -234,7 +235,8 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 空的可选字段不输出（`reply_to`、`forward`、`attachment`、`edited`、`delivery`、空的 `reactions`）
 - **版本**：外壳和树共用一个 `v`（代码里 `tree::SCHEMA_V`）。
   - **不加一**：新增可选字段、新增节点种类、新增 `td_type` 值；**某种内容从 `other` / `unknown` 升级成专门节点**（如骰子从 `attachment.type = "other", td_type = "messageDice"` 变成 `"dice"`）也不加——使用方本来就得把不认识的 `type` 当未知处理
-  - **加一**：改字段名、删字段、改字段含义、改判别值
+  - **给取值固定的字段加新取值**（如 `status` 加 `stopping`）也**不加一**（拍板 006 乙10）——使用方遇到不认识的值按「未知」处理、读 `speech.brief` 兜底，与「新增节点种类」同理
+  - **加一**：改字段名、删字段、改字段含义、改判别值（把已有取值改名或改义）
   - **使用方的义务**（写进 CLI 文档）：忽略不认识的字段；遇到不认识的 `type` 当 `unknown` 处理、读 `speech.brief` 兜底。这样加节点不破坏老的使用方
 
 ## 九、读法 v0（`brief`；**原则人定 2026-10-25，具体说法待人实听定标**）
@@ -274,3 +276,4 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-10-25 初稿（tree），收 api v0.1 / v0.2
 - 2026-10-25 按 b2 拍板同步（sync）：第九节写入人定读法原则与 R1–R7；`tombstone` 只认 `is_permanent` 且非 `from_cache`，并带撤回前的 `sender`、`date`；`UserStatus` 加 `stopping`（infra 转来）。快照与代码未改（S0 暂停）
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：R7 撤回占位细节按 N8
+- 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第二节投影函数改写成实际的四个（乙9）；第八节补「给取值固定的字段加新取值不加一」（乙10）；第三节第 2 小节受限规则系统消息也适用，原文本就没写例外，无需改（乙12）；第三节第 2 小节补「被回复那条受限则引用不出」（乙11）与回复对象跟随换 id

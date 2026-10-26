@@ -43,7 +43,7 @@
 
 ## 使用者现实
 
-- 使用者：我自己。在 Mac 上用 Telegram 时依赖 macOS 无障碍功能（具体是 VoiceOver / 键盘操作 / 缩放 / 其他，**待我确认**；线索：Claude Code 设置里开着读屏模式 Screen Reader Mode）
+- 使用者：我自己。在 Mac 上用 Telegram 时依赖 **VoiceOver**（人定 2026-10-25：「对就是 VoiceOver」）；习惯 VO+←/→ 自由浏览，长内容自己用 Control 打断（试听 exp003 / exp003b 所得）
 - 现有工具：现有的 Telegram macOS 客户端都不太好用，主要卡在无障碍
 - 一次能记住几件事：快捷键要少而一致；同一个操作在所有界面用同一个键
 - 使用环境：macOS，日常联网；需要考虑断网 / 重连时读屏能告诉我状态
