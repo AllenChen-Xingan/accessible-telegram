@@ -33,9 +33,9 @@ LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 export LOCAL_TDLIB_PATH
 cargo build -p atg-cli --features tdlib --quiet
 bin="$root/target/debug/atg-cli"
-# 钥匙串按签名认程序：用固定的开发证书与标识签，读本地库钥匙才不弹框（见 src/atg-core/src/keystore.rs 头部）
-if ! codesign -s atg-dev -i atg.dev --force "$bin" 2>/dev/null; then
-  echo "签名失败：先跑一次 bash scripts/setup-dev-codesign.sh 建开发证书 atg-dev。" >&2
+# 钥匙串按签名认程序：用本人的 Apple Development 身份与固定标识签，读本地库钥匙才不弹框（见 src/atg-core/src/keystore.rs 头部）
+if ! bash scripts/dev-sign.sh "$bin"; then
+  echo "签名失败：跑一次 bash scripts/setup-dev-codesign.sh 看开发签名身份是否就绪。" >&2
   exit 2
 fi
 export DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib"

@@ -80,8 +80,10 @@ src/atg-core/fixtures/
 | 话题 | 话题群里回复沿用被回复那条的话题；话题群里不回复的新消息被拒；改话题后旧凭据作废（摘要不符） |
 | 发送结果未知 | 假后端扣住成败事件 → CLI `send` 30 秒后 `send_outcome_unknown`、退出码 10、没有第二次 `sendMessage` |
 | 直发模式 | 见矩阵；另测：环境变量 / 配置文件打不开直发；`direct-send.log` 每条一行且不含正文、名字；留痕写不进去就拒发 |
-| 钥匙访问（本机，非 CI） | 开发证书签的程序读正式、测试档案的钥匙 → 不弹框直接拿到（N2）；开发证书以外的签名 → 拿不到（`config-privacy.md` 第一节第 3 小节） |
+| 钥匙访问（本机，非 CI） | 本人 Apple Development 身份 + 标识 `atg.dev` 签的程序（`scripts/dev-sign.sh`）读正式、测试档案的钥匙 → 不弹框直接拿到，**重编一次再读仍不弹**（N2，按 007 改写）；没用这个身份签的（临时签名、自签名证书如 atg-dev、未签名）、同身份但标识不是 `atg.dev` 的 → 拿不到**由 Apple Development 版新建的**条目（`config-privacy.md` 第一节第 3 小节；临时签名 / atg-dev 版见 exp005 取证 10 ③，同身份别的标识见 `docs/experiments/exp006-keychain-migrate/` 结论 3）。迁移过来的 `test`、`main` 真条目仍认旧 atg-dev 版，不拿它们测这一条。不测「静默签名拿不到」——它拿得到，人已接受（007 A1） |
 | 外部打开 | 非 `http(s)` 链接、可执行类文件一律拒；打开不经 shell |
+
+本机跑测试的前提：`cargo test` 经 `.cargo/config.toml` 的 runner（cargo 运行测试程序前先调的包装脚本 `scripts/dev-sign-run.sh`）先用开发身份签名、再带上 TDLib 库目录。除上表「钥匙访问」一行外，单测不碰钥匙串：本机没有开发身份时可设 `ATG_DEV_SIGN=0` 跳过签名，CI 里自动跳过。「钥匙访问」这行和测试服务器层（`live_`，第 1、5 小节）要读钥匙串，**必须签名**，设了 `ATG_DEV_SIGN=0` 会弹框或读不到。
 
 **发送闸矩阵**（第七节第 10 条：默认模式下只「测试服务器 + 收藏夹」免确认，写死在闸里；第 11 条：直发模式另起几行）：
 
@@ -170,3 +172,4 @@ src/atg-core/fixtures/
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：钥匙访问按 N2；发送闸矩阵加第二个测试号例外（N7）；第一节第 5 小节加第二个测试号
 - 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：测试档案注册名字暂写死 `Atg Test`；登录次数计数（`flood.json`）未做，另开 issue
 - 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：夹具目录加 `speech/`（读法夹具，CLI `speech --fixture` 与读法快照共用）
+- 2026-10-26 issue #38 按 007 人定（A1 · 乙）同步（signing，大总管授权）：第一节第 4 小节「钥匙访问」由「开发证书」改为本人 Apple Development 身份 + 标识 `atg.dev`，加「重编再读仍不弹」，写明不测静默签名；「拿不到」限定为新建条目（迁移条目仍认旧 atg-dev 版）。另：单测不碰钥匙串，但 `cargo test` 经 runner 先签名，本机没有开发身份时设 `ATG_DEV_SIGN=0` 跳过签名（CI 自动跳过）；第 3 轮自审后写明「钥匙访问」行与 `live_` 层必须签名，演练出处指向 exp006

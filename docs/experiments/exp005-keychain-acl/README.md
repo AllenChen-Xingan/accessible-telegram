@@ -117,7 +117,7 @@ C 小探针（`probe.c`）建、读、删服务名 `atg.exp005` 的实验条目�
 - **B → 乙**：免费 Apple Development 证书方案
 - **C**：#42（强化运行时）缓做，乙先单独落地（开发版照旧靠 `DYLD_LIBRARY_PATH`；经 cargo runner 跑时用 `ATG_TDLIB_LIB`，见「乙本体」第 2 条）
 - **D**：`test`、`main` 两个档案都迁移，人各点一次「始终允许」（先用实验条目验证，见「乙本体」第 4 条）
-- **E**：atg-dev 证书先留着，迁移验证做完再删
+- **E**：atg-dev 证书先留着，迁移验证做完再删。（补记：迁移验证做完后人定删，**atg-dev 已于 2026-10-26 删除，对照组不可复现**——人亲手 `security delete-identity`；迁移见 `../exp006-keychain-migrate/`）
 
 落地按「采用乙的具体做法 · 乙本体」第 1–5、7 条做（第 6 条是 A3 专用，不做）；「开强化运行时要做的」归 #42，缓做。
 
@@ -180,8 +180,8 @@ C 小探针（`probe.c`）建、读、删服务名 `atg.exp005` 的实验条目�
 - `probe.c`：探针（add / get / del / addnp / addacc / adddp / viahelper），只打印状态码和长度
 - `keyhelper.c`：方案丁原型（核调用方签名 → 读 / 建条目）；**核身份不安全，见上**
 - `inject.c`：注入取证与清理（读只打印长度 / 删；挂在小助手的 `getppid` 与探针的 `SecKeychainSetUserInteractionAllowed` 上）
-- `run.sh`：一条命令复现取证 3、方案丁、注入读取，退出时自清（包括中途失败）。证书哈希现场读出。产物目录默认用 `mktemp`，不进仓库
-- `run-b.sh`：一条命令复现方案乙（取证 10 ①–⑤），要本机有 Apple Development 身份（恰好一个，或设 `ATG_CODESIGN_ID`）；③ 的 atg-dev 对照要 atg-dev 证书，没有就跳过；不打印证书名，团队号只留前 4 位
+- `run.sh`：一条命令复现取证 3、方案丁、注入读取，退出时自清（包括中途失败）。证书哈希现场读出。产物目录默认用 `mktemp`，不进仓库。**atg-dev 已于 2026-10-26 删除，对照组不可复现**：`run.sh` 整个依赖 atg-dev，跑不了
+- `run-b.sh`：一条命令复现方案乙（取证 10 ①–⑤），要本机有 Apple Development 身份（恰好一个，或设 `ATG_CODESIGN_ID`）；③ 的 atg-dev 对照要 atg-dev 证书，没有就跳过；不打印证书名，团队号只留前 4 位。**atg-dev 已于 2026-10-26 删除，对照组不可复现**：③ 的 atg-dev 对照会自动跳过
 - `libdummy.c`：替身动态库，模拟 `libtdjson` 在强化运行时下的加载
 
 ```sh

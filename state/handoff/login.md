@@ -69,7 +69,7 @@ fmt ✓ · clippy -D warnings 三套（默认 / atg-core tdlib-api / atg-cli tdl
 ```sh
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 cargo build -p atg-cli --features tdlib
-codesign -s atg-dev -i atg.dev --force target/debug/atg-cli
+codesign -s atg-dev -i atg.dev --force target/debug/atg-cli   # 已过时（2026-10-26 #38）：atg-dev 已删，改用 scripts/dev-sign.sh target/debug/atg-cli
 ATG_LIVE=1 ATG_SMOKE_PHONE="$(grep '^ATG_TEST_PHONE=' .env.local | cut -d= -f2)" \
   ATG_TDLIB_LIB="$LOCAL_TDLIB_PATH/lib" expect src/atg-cli/live/login.exp target/debug/atg-cli
 ```

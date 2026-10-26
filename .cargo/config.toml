@@ -1,0 +1,10 @@
+# 仓库级 cargo 配置（issue #38，exp005「乙本体」第 2 条）
+#
+# runner：cargo 运行编出来的程序前先调它。`cargo run` / `cargo test` 都会先用本人的 Apple Development
+# 身份签名（标识 atg.dev），再带上 TDLib 库目录运行——读钥匙串才不弹框。细节见脚本头注释。
+# 相对路径按本文件所在 .cargo 目录的上一级（仓库根）解析。CI 里（CI 非空）只运行、不签名。
+# 只 `cargo build` 不经 runner：要跑的程序手动 `bash scripts/dev-sign.sh <程序>`。
+# 本机没有开发身份、只跑单测：ATG_DEV_SIGN=0 cargo test --workspace
+# 只配了 Apple 芯片本机目标；Intel Mac / --target 别的平台不自动签。
+[target.aarch64-apple-darwin]
+runner = "scripts/dev-sign-run.sh"

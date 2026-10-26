@@ -22,6 +22,7 @@
 
 | 窗口 | 任务 | 交代文件 | 现状页 | 状态 |
 |---|---|---|---|---|
+| `signing`（会话 `38-signing-65`） | 批次 b16 · #38 落地：开发版改用 Apple Development 签名、迁移 test / main 真条目（worktree `atg-wt/38-signing`，分支 `feat/38-dev-signing`） | `_tmp/20261026-b16/signing.md` | worktree 内 `state/handoff/signing.md` | **完成，已收尾**（255 测试；test / main 迁移不弹框；atg-dev 已删；exp006；PR 见下） |
 | `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **已报到** |
 | `cert`（会话 `telegram-accessibility-1c`） | 批次 b15 · 领 Apple 免费开发证书（人登录 Apple ID，其余手下做），给 #38 方案乙 | `_tmp/20261026-b15/cert.md` | `state/handoff/cert.md` | **完成，已收尾**（Apple Development 证书已建，SHA-1 DE6F6A93…，团队 XWFX…，有效到 2027-10-26；无弹框；窗口已关） |
 | `speech`（会话 `19-speech-96`） | 批次 b15 · #19 speech v0 + 快照（worktree `atg-wt/19-speech`，分支 `feat/19-speech`） | `_tmp/20261026-b15/speech.md` | worktree 内 `state/handoff/speech.md` | **完成，已收尾**（235 测试；V1–V23 落地；PR #47；窗口已关） |
@@ -80,6 +81,20 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **atg-dev 已删（2026-10-26）**：signing 的会话被自动审核拦下 `delete-identity`，人亲手跑（`! security delete-identity -Z B1C8869C…`）；删后 test / main 静默读不弹
+
+- **#38 验收（2026-10-26）**：TDLib 版 atg-cli（runner 签名）auth state：test → wait_phone、main → ready，都不弹框、库能打开
+
+- **人定（2026-10-26）E**：删 atg-dev 证书（「删掉吧」）→ signing 在验收后删
+
+- **signing（2026-10-26）**：255 测试过；runner 签名生效（atg.dev / 团队 XWFX…）；自审中
+
+- **真条目迁移完成（2026-10-26）**：人点两次「始终允许」，test / main 都读到 len=32；重编两版静默读 4 次全不弹。只读，未建改删
+
+- **signing 演练（2026-10-26，atg.exp006）**：人点「始终允许」后新身份读到，再重编两版静默读不弹 → 迁移可行；新身份能读不能删（属主仍是 atg-dev 版）。真条目迁移选甲（只读小程序，`-i atg.dev`）
+
+- **2026-10-26**：人「可以，合并吧」→ PR #50 合并；#38 落地块并行开工（手下 signing）
 
 - **人定 #38（2026-10-26）**：A1 开发版照常用正式账号（静默签名口径同 P5）· 用乙 · #42 缓做 · 迁 test + main · atg-dev 先留 → 记入 007。落地块（乙第 1–5、7 条）待派；#49 实验索引补登
 

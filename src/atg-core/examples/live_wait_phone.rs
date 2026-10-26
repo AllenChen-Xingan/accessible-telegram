@@ -6,18 +6,17 @@
 //! 第一次跑之前要准备两样（都不入库）：
 //! 1. 仓库根 `.env.local` 写 `ATG_API_ID=…`、`ATG_API_HASH=…`（自己在 my.telegram.org 申请；
 //!    `specs/contracts/config-privacy.md` 第一节第 1 小节）
-//! 2. 开发签名证书 `atg-dev`：跑一次 `bash scripts/setup-dev-codesign.sh`；codesign 第一次用它时钥匙串会问
-//!    要不要允许，选「始终允许」（要人点）
+//! 2. 开发签名身份：本人的 Apple Development 证书（在 Xcode 领，免费；`bash scripts/setup-dev-codesign.sh`
+//!    检查并给出步骤）
 //!
-//! 钥匙在钥匙串（服务名 `atg.tdlib-db-key`，账户 `test`）。条目的访问名单记建它的程序的签名，所以每个开发版
-//! 都用同一张证书、同一个固定标识签（`-i atg.dev`），重编后读钥匙才不弹框。出错时只打机读码
+//! 钥匙在钥匙串（服务名 `atg.tdlib-db-key`，账户 `test`）。条目记的是建它的程序的签名（标识 + 团队号），所以每个
+//! 开发版都用这个身份、固定标识 `atg.dev` 签（`scripts/dev-sign.sh`；`cargo run` 经 runner 自动签），重编后读钥匙
+//! 才不弹框（issue #38）。出错时只打机读码
 //! （如 `env_local_unreadable`），含义见 `src/atg-core/src/error.rs` 与 `config.rs`：
 //!
 //! ```sh
 //! export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
-//! cargo build -p atg-core --features tdlib --example live_wait_phone
-//! codesign -s atg-dev -i atg.dev --force target/debug/examples/live_wait_phone
-//! DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" ATG_LIVE=1 target/debug/examples/live_wait_phone   # 程序里没写库搜索路径，要这样指给它
+//! ATG_LIVE=1 cargo run -p atg-core --features tdlib --example live_wait_phone   # runner 签名并带上 TDLib 库目录
 //! ```
 //!
 //! 只读出状态名、序号、耗时；不打印 `api_id` / `api_hash` / 钥匙。
