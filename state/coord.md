@@ -29,8 +29,11 @@
 | `exp003b`（会话 `telegram-accessibility-15`） | **改向（2026-10-25）**：专门消息列表 · Tab / VO+←/→ 到达 · ↑/↓ 浏览 | `_tmp/20261025-batch/exp003b-v2.md`（原 `_tmp/20261023-exp/exp003b.md`） | `state/handoff/exp003b.md` | **完成，已收尾**（自测全过；窗口已关）；剩人工试听「第三次试用」，试完跑 `python3 summarize-live.py` 看按键是否到达应用 |
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
+| `scanskill`（会话 `telegram-accessibility-c8`） | 批次 b10 · 按人拍板改 `codex-review`：拆 `privacy-scan.sh`、放松扫描（禁区仍硬拦）、顺手 #29 | `_tmp/20261025-b10/scanskill.md` | `state/handoff/scanskill.md` | 已报到 |
+| `codexskill`（会话 `telegram-accessibility-12`） | 批次 b8 · 专门的 skill `codex-review`（Opus 子代理用 skill-creator 起草），真跑审 004 | `_tmp/20261025-b8/codexskill.md` | `state/handoff/codexskill.md` | **完成，已收尾**（skill `codex-review` 已装到 `2-aartifacts/skills/` + 软链接；codex 自审 11 轮收敛；记录 `docs/reviews/006_codex-review-skill-codex.md`；剩余 P2 → #29；窗口已关） |
+| `model`（会话 `telegram-accessibility-89`） | 批次 b7 · issue #15 第一刀第 2 块：model + reducer + 投影 | `_tmp/20261025-b7/model.md` | `state/handoff/model.md` | **完成，已收尾**（model + reducer + 投影 + 缓存上限 + 唯一写入口；115 测试；codex 十三轮收敛，余 P2 → #30；窗口已关） |
 | `srcmove`（会话 `telegram-accessibility-32`） | 批次 b6 · issue #25：tdlib-rs 已 subtree 进 `src/tdlib-rs`，调工作区 / TDLib 拉取编译脚本 / CI / 文档 | `_tmp/20261025-b6/srcmove.md` | `state/handoff/srcmove.md` | **完成，已收尾**（方案 B；`src/tdlib-build/build.sh`；特性 tdlib-api / tdlib；旧克隆与 161449 已删；窗口已关） |
-| `skills`（会话 `telegram-accessibility-b2`，**Fable 5.1**） | 批次 b5 · 读全部对话与工具记录，找反复出现的问题 → Opus 子代理用 skill-creator 起草跨项目 skills（只出草稿，装不装人定） | `_tmp/20261025-b5/skills-miner.md` | `state/handoff/skills.md` | 已报到 |
+| `skills`（会话 `telegram-accessibility-b2`，**Fable 5.1**） | 批次 b5 · 读全部对话与工具记录，找反复出现的问题 → Opus 子代理用 skill-creator 起草跨项目 skills（只出草稿，装不装人定） | `_tmp/20261025-b5/skills-miner.md` | `state/handoff/skills.md` | **完成，已收尾**（7 个 skill 草稿在 `_tmp/20261025-b5/skills/`，未安装；报告 `_tmp/20261025-b5/report.md`，待人拍板 9 条；窗口已关） |
 | `skeleton`（会话 `telegram-accessibility-01`） | 批次 b4 · issue #14 第一刀第 1 块：`atg-cli` 骨架 + 禁 `{:?}` 检查 + CI | `_tmp/20261025-b4/skeleton.md` | `state/handoff/skeleton.md` | **完成，已收尾**（atg-cli 骨架 + 禁打印两层检查 + CI；三条小拍板已落；窗口已关）；转交表在现状页 |
 | `patch`（会话 `telegram-accessibility-5f`） | 批次 b3 · issue #3 tdlib-rs 补丁 → TDLib 1.8.69（补丁仓 `5-App/tdlib-rs`，分支 `atg/tdlib-1.8.69`） | `_tmp/20261025-b3/patch.md` | `state/handoff/patch.md` | **完成，已收尾**（补丁 @ `4521d6d` 已推 fork；窗口已关） |
 | `sync`（会话 `telegram-accessibility-45`） | 批次 b3 · 把 b2 拍板同步进契约 / 内容树 / 路线图；写 issue 草稿 | `_tmp/20261025-b3/sync.md` | `state/handoff/sync.md` | **完成，已收尾**（b2 + N1–N8 落进正文 · 9 处冲突修 · issue 草稿 19 份；窗口已关） |
@@ -67,6 +70,19 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **#15 收尾（2026-10-25）**：codex 十三轮提 43、采纳 37、人定 1、转 issue 5（#28 已修、#30 留）；两条经验入 `state/memory/`（唯一写入口 + 穷举测试；检查脚本静默失败）
+
+- **spawn-worker.sh 第二次真机（2026-10-25）**：修过的就绪正则 3 秒认出、首条消息一次提交成功，exit 0
+
+- **人定（2026-10-25）**：每次审查都要过 codex（`CLAUDE.md` 第二节）；做专门 skill `codex-review`
+- **spawn-worker.sh 真机首试（2026-10-25）**：读屏模式下提示符是 `$` + 「auto mode on」，原就绪正则认不出 → 已加；长段粘贴后首次回车常被吞 → 已改为隔 3 秒补一次回车
+
+- **清理（2026-10-25，人「可以不用轮换 / 然后其他的该删除的就删除吧」）**：密钥不轮换。已删：`_tmp/20261025-b5/skills/`（已装到 `2-aartifacts`，留副本违反唯一编码）、`_tmp/20261025-b3/issues/`（已开成 #4–#22）、`_tmp/20261025-b5/digest/`（各项目对话摘录，隐私）、`_build/exp004-*` 零散输出（结果已在 `docs/experiments/exp004-announce-calm/out/`）。试听通过后又删 `_build/20261023-154000`（6.9 GB GPUI 实验缓存）。保留：`_build/20261025-171733`（当前 TDLib 库）、`target/`（当前编译缓存）、各批交代文件（账本引用）
+
+- **skills 安装（2026-10-25，人定「帮我安装在 xingan chen 2. my create 里面有一个artifacts 里」）**：7 个复制到 `~/xingan-chen/B-MyCreate/2-aartifacts/skills/`，`~/.claude/skills/` 建软链接生效。**人「好我都同意」**：旧草稿 `agent-coordinator` 已删；report 第四节 9 条全按建议（登录交接取严格版、bib 自动填 author 默认关、待定格式等）；`coordinator-dispatch/scripts/spawn-worker.sh` 下次派活真机试
+
+- **2026-10-25**：PR #27 合并、#25 关；#15 `status:active`，分支 `feat/15-model-reducer`
 
 - **#25 人定（2026-10-25）**：ATG.md 改指本地路径 + 脚本；`LOCAL_TDLIB_PATH` 每次 `export "$(bash src/tdlib-build/build.sh path)"`；旧克隆 `5-App/tdlib-rs`（9.7 GB）与 `_build/20261025-161449` 已删
 
@@ -201,13 +217,13 @@ JSON 快照里的 `brief` 带「按 D 展开」的前提是：快照测试用带
 - [x] 架构方案第七节 10 条拍板（2026-10-25 人定，见方案第七节表）
 
 - [x] 列表名带不带「共 N 条」：只读「消息」（2026-10-25 人定）
-- [ ] 人工试听 exp003b「第三次试用」17 步 + 输入法对照 A/B/C
-- [ ] 人工试听 exp004 11 步
+- [x] 人工试听 exp003b「第三次试用」：通过（2026-10-25，人「是听完了，我觉得没问题」）
+- [x] 人工试听 exp004：通过（同上）
 
 - [x] 人工试听 exp001：礼貌式**插进来播**、打断式掐断立即播 → 「不打断朗读」靠 Live 做不到，需后续实验（exp004）
-- [ ] **人工试听 exp003**：`docs/experiments/exp003-list-nav/人工试用.md`（第一轮 13 步 + 第二轮）
+- [x] **人工试听 exp003**（被 exp003b 第三次试用取代，已通过）：`docs/experiments/exp003-list-nav/人工试用.md`（第一轮 13 步 + 第二轮）
 - [x] 位置怎么读：**不读**（人：听着奇怪）；A 否决
 - [ ] `001_stack/must-know.md` 三条命门对不对
-- [ ] `001_stack/decision.md` 拍板：实验顺序（已定：列表浏览 = 应用方向键驱动；Telegram 层 = TDLib + tdlib-rs；tdlib-rs = B 自维护补丁，做好反馈上游）
-- [ ] 主要用哪种辅助功能：VoiceOver / 键盘 / 缩放（线索：Claude Code 设置里开着读屏模式）
+- [x] `001_stack/decision.md` 拍板（4 条均已定；第 3 条 2026-10-25 改定）：实验顺序（已定：列表浏览 = 应用方向键驱动；Telegram 层 = TDLib + tdlib-rs；tdlib-rs = B 自维护补丁，做好反馈上游）
+- [x] 主要用哪种辅助功能：**VoiceOver**（2026-10-25 人「对就是 VoiceOver」；已写进 `.42cog/real.md`）
 - [ ] 放权边界：哪些动作不用逐条确认

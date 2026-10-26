@@ -40,7 +40,34 @@ expression: "json_pretty(&world(\"basic\").chat_items())"
           }
         ]
       },
-      "tail": {}
+      "tail": {
+        "edited": "2026-10-23T11:36:00Z",
+        "reactions": [
+          {
+            "kind": {
+              "type": "emoji",
+              "emoji": "👍"
+            },
+            "count": 2,
+            "chosen": true
+          },
+          {
+            "kind": {
+              "type": "custom_emoji",
+              "custom_emoji_id": "5368324170671202286"
+            },
+            "count": 1,
+            "chosen": false
+          },
+          {
+            "kind": {
+              "type": "paid"
+            },
+            "count": 3,
+            "chosen": false
+          }
+        ]
+      }
     }
   },
   "speech": {

@@ -183,23 +183,26 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 事件名用 snake_case，CLI 原样输出（`cli.md` 第一节第 5 小节）。第一阶段：
 
-事件名的**唯一登记处**就是这张表：
+事件名的**唯一登记处**就是这张表。`atg-core` 的 `CoreEvent`（`src/atg-core/src/model.rs`）就是这些对外事件，变体名与事件名一一对应（拍板 006 乙6）；store 消费的事件以本表为准，表外的不许出现在 `CoreEvent` 里：
 
 | 事件 | 带什么 |
 |---|---|
 | `new_message` | 完整消息节点 |
-| `message_content_changed` | `chat_id` `message_id` + 新内容节点（替代内容、投票结果、语音转文字等一切内容变化都走它，store 整体替换内容，不做局部合并） |
-| `message_edited` | `chat_id` `message_id` + 编辑时间 |
+| `message_content_changed` | `chat_id` `message_id` + 新内容节点（替代内容、投票结果、语音转文字等原内容的变化都走它，store 整体替换原内容，不做局部合并；临时内容另走下一行） |
+| `message_ephemeral_changed` | `chat_id` `message_id` + 新的临时内容节点，或空（临时内容消失）（`updateMessageEphemeralContent` `td_api.tl:11223`）。有临时内容时显示它、不显示原内容（`content-tree.md` 第三节第 2 小节） |
+| `message_edited` | `chat_id` `message_id` + 编辑时间（`updateMessageEdited` `:11230`）。**字段更新里编辑时间只认它**；整条消息（新消息、历史）自带的 `edit_date` 照收；**0 = 没有编辑时间**（拍板 006 乙8） |
 | `chat_action` | `chat_id` + 话题 + 发送人 + 动作种类（`updateChatAction` `td_api.tl:11530`；第一阶段只认「正在输入」`chatActionTyping` `:6960`，其余落 `other{td_type}`）。播不播由 `notify` 判（F6：只在当前打开的私聊、停手后播一次「对方正在输入」） |
-| `messages_deleted` | `chat_id` + `message_ids` + `is_permanent` + `from_cache`（`updateDeleteMessages`，`td_api.tl:11523`）。**只有 `is_permanent` 为真且 `from_cache` 为假才是撤回**、才留「已撤回」占位；`from_cache`（只是清缓存）和非永久（暂时不可访问）都不许显示成撤回 |
-| `send_succeeded` | `chat_id` + 临时 id + 最终 `message_id` |
-| `send_failed` | `chat_id` + 临时 id + 错误（`errors.md` 的 `code`）+ 能否 `resend` |
+| `messages_deleted` | `chat_id` + `message_ids` + `is_permanent` + `from_cache`（`updateDeleteMessages`，`td_api.tl:11523`）。**只有 `is_permanent` 为真且 `from_cache` 为假才是撤回**、才留「已撤回」占位；`from_cache`（只是清缓存）和非永久（暂时不可访问）都不许显示成撤回。另两条（拍板 006 乙7）：**待发送 / 发送失败的消息被删不是撤回**（自己取消，或 TDLib 重发时先删掉失败那条，`MessagesManager.cpp:25221-25223`）；**没见过原消息的删除待应答判定**——先留占位，后到的历史应答说它没发出去就拿掉，说它已发出就补记发送人和时间 |
+| `send_succeeded` | `chat_id` + 临时 id + **发出后的整条消息**（含最终 `message_id`；`updateMessageSendSucceeded` `:11208` 就带整条，内容可能被服务器改过） |
+| `send_failed` | `chat_id` + 临时 id + 失败后的整条消息（TDLib 也给它新 id，`:11214`）+ 错误（`errors.md` 的 `code`）+ 能否 `resend` |
 | `chat_added` | 会话节点 |
-| `chat_position_changed` · `chat_last_message_changed` · `chat_read_inbox` · `chat_title_changed` | `chat_id` + 变了的字段 |
+| `chat_position_changed` · `chat_last_message_changed` · `chat_read_inbox` · `chat_title_changed` | `chat_id` + 变了的字段。`chat_last_message_changed` 带整条最后一条消息（可空）和全部位置；最后一条未知期间新消息可以只随它到达、不带 `new_message`（`:11312`） |
+| `chat_draft_changed` | `chat_id` + 全部位置（`updateChatDraftMessage` `:11349`；TDLib 可能用它代替 `updateChatPosition`）。草稿本身不带——第一阶段不显示草稿，它是内容 |
+| `chat_mention_count_changed` | `chat_id` + 未读提及数。来源两个：`updateChatUnreadMentionCount` `:11384`，和 `updateMessageMentionRead` `:11250`（消息已通知过客户端时 TDLib 只发后者） |
 | `chat_read_outbox` | `chat_id` + 对方已读到的消息 id（`updateChatReadOutbox` `:11334`；「已读」状态要它） |
 | `message_interaction_changed` | `chat_id` `message_id` + 回应、浏览数、回复数（`updateMessageInteractionInfo` `:11239`） |
 | `message_unread_reactions` | `chat_id` `message_id` + 未读回应（`updateMessageUnreadReactions` `:11257`；会话的未读回应数 `updateChatUnreadReactionCount` `:11387` 并入 `chat_read_inbox` 一类，写明字段） |
-| `message_content_opened` | `chat_id` `message_id`（`updateMessageContentOpened` `:11244`：已听 / 已看） |
+| `message_content_opened` | `chat_id` `message_id`（`updateMessageContentOpened` `:11244`：已听 / 已看）。只改原内容，临时内容不动（TDLib 只改 `m->content`，`MessagesManager.cpp:9300-9312`） |
 | `message_pinned_changed` | `chat_id` `message_id` + 是否置顶（`updateMessageIsPinned` `:11233`） |
 | `chat_notification_changed` | `chat_id` + 会话自己的通知设置（`updateChatNotificationSettings` `:11367`） |
 | `scope_notification_changed` | 范围（私聊 / 群 / 频道）+ 全局通知设置（`updateScopeNotificationSettings` `:11489`）。**有效静音**由 store 合成：会话设成「跟随默认」时取它所属范围的设置（`002_roadmap.md` M2.3） |
@@ -213,6 +216,8 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `unknown_update` | 只有 `td_type`，不带内容（与 `tree` 的「未知」节点同理） |
 
 每个事件带 `seq`。
+
+**不是事件、但也喂给 store 的应答**：历史应答（`history`，带请求凭据）、重发应答 `resend` 逐条的新旧对应（store 里叫 `Input::Resent{old, new}`：新消息沿用旧的稳定键）。它们走请求—应答，不进 `subscribe`。
 
 ## 二、为什么
 
@@ -284,3 +289,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-25 初稿（infra）
 - 2026-10-25 按 b2 拍板同步（sync）：L1 按 F1 / A2 同官方客户端（GUI 发、CLI 默认不发）；`typing` 进 MVP；`delete`（给所有人）进 MVP（S1）；直发模式免一切 L2（D1）；代理不进 MVP（A5）；威胁边界按 P4 改写；本机接口下凭据由执行方重开（P1）；加 `chat_action` 事件（F6）
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`test_dc_saved_only` 加第二个测试号例外（N7）；直发也免草稿与阅后即焚（N6）；开发测试时 L1 不再受红线限制（N3）
+- 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第一节第 7 小节——写明 `CoreEvent` 即本表（乙6）；补 `message_ephemeral_changed`、`chat_draft_changed`、`chat_mention_count_changed` 三行；`send_succeeded` / `send_failed` 改为带整条消息；`messages_deleted` 补「未发出的不是撤回、没见过的待应答判定」（乙7）；`message_edited` 补编辑时间来源与 0（乙8）；`message_content_opened` 补只改原内容；`chat_last_message_changed` 补「新消息可只随它到达」；末尾补「喂给 store 的应答」
