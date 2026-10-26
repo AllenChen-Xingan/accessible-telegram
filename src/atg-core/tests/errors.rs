@@ -23,6 +23,7 @@ fn every_mapping_rule_has_a_case() {
         (400, "USER_ID_INVALID", "not_found"),
         (400, "PHONE_NUMBER_INVALID", "auth_phone_invalid"),
         (400, "PHONE_CODE_INVALID", "auth_code_invalid"),
+        (400, "EMAIL_CODE_INVALID", "auth_code_invalid"),
         (400, "PHONE_CODE_EXPIRED", "auth_code_expired"),
         (400, "PASSWORD_HASH_INVALID", "auth_password_invalid"),
         (400, "MESSAGE_TOO_LONG", "invalid_input"),

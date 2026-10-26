@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+# 本机冒烟（不在 CI）：测试服务器 + 测试号，交互 `login` 走一遍，再故意输错一次验证码看原因，最后登出。
+#
+# 写死的前置：只跑 `--test-dc`；号码必须 99966 开头（测试号，不是秘密）。验证码按测试号规则推出：
+# 99966XYYYY 的验证码是 X 连写五遍（testing.md 第一节第 5 小节）。
+#
+# 用法（仓库根，先编好、签好 target/debug/atg-cli，见 src/atg-cli/README.md）：
+#   ATG_LIVE=1 ATG_SMOKE_PHONE="$(grep '^ATG_TEST_PHONE=' .env.local | cut -d= -f2)" \
+#     ATG_TDLIB_LIB="$LOCAL_TDLIB_PATH/lib" expect src/atg-cli/live/login.exp target/debug/atg-cli
+# 注意：/usr/bin/expect 是系统程序，macOS 启动它时会删掉 DYLD_LIBRARY_PATH，所以库目录换名 ATG_TDLIB_LIB 传进来，
+# 在脚本里再设回去。ATG_SMOKE_PHONE 只给本脚本用（atg-cli 自己只从 .env.local 读 ATG_TEST_PHONE，不认环境变量）。
+# 标准输出（JSON 行）由 atg-cli 自己写；本脚本看到的是终端（/dev/tty）那一侧。
+# 退出码：0 = 登录成功、错码原因可读、登出成功；其余 = 哪一步没过（见末尾）。
+
+set timeout 60
+if {[info exists env(ATG_LIVE)] == 0 || $env(ATG_LIVE) ne "1"} { puts "要设 ATG_LIVE=1"; exit 2 }
+set phone $env(ATG_SMOKE_PHONE)
+if {![regexp {^99966([1-3])[0-9]{4}$} $phone -> dc]} { puts "ATG_SMOKE_PHONE 不是测试号"; exit 2 }
+set env(DYLD_LIBRARY_PATH) $env(ATG_TDLIB_LIB)
+set code [string repeat $dc 5]
+set bin [lindex $argv 0]
+log_user 1
+
+# ── 登录：号码 → 输错一次验证码 → 对的验证码（测试服务器清空过就会自动注册）──
+spawn $bin --test-dc --format text login
+# 档案可能已停在等验证码（之前交过号，如先跑了 `auth phone`）：那就直接从验证码开始
+expect {
+  "手机号（带国家码" {
+    send -- "$phone\r"
+    expect { "验证码：" {} "验证码（" {} timeout { exit 11 } }
+  }
+  "验证码：" {}
+  "验证码（" {}
+  "已登录" { puts "\n已登录过：先登出再跑"; exit 3 }
+  timeout { exit 10 }
+}
+send -- "00000\r"
+expect { "验证码不对，请重新输入" {} timeout { exit 12 } }
+expect { "验证码：" {} "验证码（" {} timeout { exit 13 } }
+send -- "$code\r"
+expect { "已登录" {} timeout { exit 14 } }
+expect eof
+lassign [wait] _ _ _ status
+if {$status != 0} { exit 15 }
+
+# ── 登出：终端当场确认 ──
+spawn $bin --test-dc --format text logout
+expect { "输入 yes 确认" { send -- "yes\r" } timeout { exit 20 } }
+expect { "已登出" {} timeout { exit 21 } }
+expect eof
+lassign [wait] _ _ _ status
+if {$status != 0} { exit 22 }
+puts "\nLIVE-LOGIN-OK"
+exit 0

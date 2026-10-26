@@ -109,7 +109,7 @@ src/atg-core/fixtures/
 - 打开方式：`setTdlibParameters use_test_dc=true`（`td_api.tl:12185`），只配 `test` 档案（`config-privacy.md` 第一节第 2 小节）
 - 账号：手机号 `99966XYYYY`，X 是测试 DC 号（1–3），YYYY 随便；**验证码就是 X 连写五遍**（core.telegram.org/api/auth「Test accounts」，2026-10-25 核）。号码存 `.env.local` 的 `ATG_TEST_PHONE`。**第二个测试号**（N7 人定）存 `ATG_TEST_PHONE_2`，用单独的测试档案（如 `test2`）登录，专门用来互发、验「删除给所有人」；也按 T1 被清空就自动重注册
 - 官方说明的三个坑，测试要接得住：
-  1. **测试服务器会定期清空**——账号可能没了，登录会走到「注册」步骤。所以**只在测试档案上**允许测试代码调注册（`registerUser`，`td_api.tl:12253`，名字取自 `names.txt`）；正式档案上注册仍是 `unsupported`
+  1. **测试服务器会定期清空**——账号可能没了，登录会走到「注册」步骤。所以**只在测试档案上**允许测试代码调注册（`registerUser`，`td_api.tl:12253`，名字取自 `names.txt`；`names.txt` 还没建，现在写死 `Atg Test`）；正式档案上注册仍是 `unsupported`
   2. **谁都能登这些号**——测试账号里不放任何私人东西；别人可能往测试账号发消息，所以测试**只断言收藏夹**里的内容
   3. **每个号每天登录次数有限**，超了报限流——换一个 YYYY；测试代码遇到 `rate_limited` 就跳过并报告，不反复重试
 - 仍然要真实的 `api_id` / `api_hash`（`.env.local`）
@@ -166,3 +166,4 @@ src/atg-core/fixtures/
 - 2026-10-25 初稿（infra）
 - 2026-10-25 按 b2 拍板同步（sync，大总管授权）：一库一进程按 P1；L1 按 F1 / A2；钥匙访问按 P2 × P4；直发矩阵编辑 / 删除 / 回应按 D1；T1、T2 结果，T2 写进第一节第 6 小节
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：钥匙访问按 N2；发送闸矩阵加第二个测试号例外（N7）；第一节第 5 小节加第二个测试号
+- 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：测试档案注册名字暂写死 `Atg Test`；登录次数计数（`flood.json`）未做，另开 issue

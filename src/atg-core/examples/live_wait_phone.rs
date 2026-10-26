@@ -17,7 +17,7 @@
 //! export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 //! cargo build -p atg-core --features tdlib --example live_wait_phone
 //! codesign -s atg-dev -i atg.dev --force target/debug/examples/live_wait_phone
-//! DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" ATG_LIVE=1 target/debug/examples/live_wait_phone   // 程序里没写库搜索路径，要这样指给它
+//! DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" ATG_LIVE=1 target/debug/examples/live_wait_phone   # 程序里没写库搜索路径，要这样指给它
 //! ```
 //!
 //! 只读出状态名、序号、耗时；不打印 `api_id` / `api_hash` / 钥匙。
@@ -80,7 +80,7 @@ fn main() -> ExitCode {
         backend.use_test_dc().unwrap_or(false),
         backend.status().previous_unclean
     );
-    let reached = backend.wait_auth(Duration::from_secs(30), |a| {
+    let reached = backend.wait_auth(Duration::from_secs(30), &|a| {
         matches!(a, AuthStep::WaitPhone | AuthStep::Ready)
     });
     println!(

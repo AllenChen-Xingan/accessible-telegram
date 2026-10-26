@@ -18,6 +18,7 @@
 | `auth_code_invalid` | 验证码不对（`PHONE_CODE_INVALID`） | — | 否，让人重输 |
 | `auth_code_expired` | 验证码过期（`PHONE_CODE_EXPIRED`） | — | 否，提示「重发验证码」 |
 | `auth_password_invalid` | 二步验证密码不对（`PASSWORD_HASH_INVALID`） | — | 否 |
+| `auth_phone_not_for_profile` | 号码与档案不配：测试档案收到非 `99966` 开头的号，或正式档案收到 `99966` 开头的测试号（`config-privacy.md` 第一节第 2 小节）。本地检查拦下，不交给 TDLib，所以不带 `td` 附件；退出码同 `auth_*`（3） | — | 否，换号或换档案（测试加 `--test-dc`） |
 | `auth_wrong_state` | 当前授权步骤不收这个输入（如等密码时送了验证码） | `expected`：当前的 `AuthStep` 值 | 否 |
 | `rate_limited` | 限流：TDLib 429 `Too Many Requests: retry after N`，服务器 `FLOOD_WAIT_N`，群慢速模式 `SLOWMODE_WAIT_N` | `retry_after_s` | 是，**等够秒数**才许再发（L2 除外，见第 5 小节） |
 | `account_limited` | 账号被限制的信号：`PEER_FLOOD`（发给陌生人太多）、`PHONE_NUMBER_FLOOD`（登录太多）、码 420 的其余情况 | — | 否；收到后**停掉全部 L2 动作和登录**，直到人处理 |
@@ -31,7 +32,7 @@
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但在时限内既没等到成功也没等到失败（如 CLI `send` 30 秒超时） | `chat_id` · 临时 `message_id` | **否**。不许重发；用 `status` 查这条待发消息的下落，或 `pending_cancel` 撤销 |
 | `cancelled` | 人在确认步骤按了取消（只指这个；Ctrl+C 见下方「CLI 自有码」） | — | 否 |
-| `internal` | TDLib 406，或本项目自己的 bug | — | 否 |
+| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
@@ -61,7 +62,7 @@
 4. 码 **401** → `auth_required`
 5. 码 **403** → `forbidden`
 6. 码 **404**，或消息以 `_NOT_FOUND` / `_ID_INVALID` 结尾 → `not_found`
-7. 码 **400** 且消息是第一节第 1 小节表里点名的那几个 → 对应的 `auth_*`
+7. 码 **400** 且消息是第一节第 1 小节表里点名的那几个 → 对应的 `auth_*`；另 `EMAIL_CODE_INVALID`（邮箱验证码错）→ `auth_code_invalid`（`actions.md` `auth_submit_email_code`「同验证码」）。它的原文**不**登记，附件只带数字码
 8. 码 **400** 其余 → `invalid_input`
 9. 码 **500**，或请求超时 → `network`（例外：内核正在关闭时 TDLib 也回 500，如 `Request aborted`，此时归 `disconnected`；候选，未核）
 10. 其余 → `unknown`
@@ -77,6 +78,8 @@
 | **连接** `NetState` | `waiting_for_network` · `connecting_to_proxy` · `connecting` · `updating` · `ready` · `unknown{td_type}`（TDLib 升级后新增的状态；合成时当 `connecting`，宁可保守不说「已连接」） | `updateConnectionState`（`td_api.tl:11818`；各状态 `:10657-10669`） |
 
 `unsupported` 收容本项目第一阶段不支持的授权步骤（如 `authorizationStateWaitPremiumPurchase`，`td_api.tl:217`），不崩，告诉人「这一步本应用暂不支持，请先在官方客户端完成」。
+
+**登录走到不支持的一步时 CLI 怎么报**：`login` / `auth *` 遇到 `unsupported`、`wait_other_device`（扫码确认）、或**正式档案**上的 `wait_registration`，以 `auth_wrong_state` 结尾，`expected` 写那一步，`message_zh` 换成上面那句，退出码 3。注意 `auth_wrong_state.expected` 一律是**现在所在**的那一步，不是调用方本想交的那一步。
 
 **合成规则**（一个纯函数 `fn user_status(core, auth, net) -> UserStatus`，归本契约；`UserStatus` 这个数据类型定义在 `atg-core::tree`，JSON 形如 `{"type":"status","status":"offline"}`，见 `specs/content-tree.md`），优先级从高到低：
 
@@ -156,3 +159,4 @@
 - 2026-10-25 初稿（infra）
 - 2026-10-25 按 b2 拍板同步（sync，大总管授权）：`profile_busy` 按 P1；`l1_disabled` 含义按 F1 / A2；E1、E2 结果
 - 2026-10-25 issue #14 骨架（skeleton，大总管授权，人选建议）：CLI 自有码加 `not_implemented`
+- 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：加 `auth_phone_not_for_profile`（退出码 3）；`internal` 带 `what`；`EMAIL_CODE_INVALID` → `auth_code_invalid`（原文不登记）；不支持的授权步骤按 `auth_wrong_state` + 专门说明报；写明 `expected` 是当前步骤

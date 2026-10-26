@@ -16,19 +16,21 @@
 //! tdlib-rs 的 `receive()` 是全进程共用的，内部 `OBSERVER` 是全局单例，所以一个进程只许一个 [`TdBackend`]。
 
 #[cfg(feature = "tdlib-api")]
-pub use real::{TdBackend, TdConfig};
+pub use real::{TdBackend, TdConfig, tdlib_version};
 
 #[cfg(feature = "tdlib-api")]
 mod real {
+    use crate::auth::{self, AuthPrompt};
     use crate::backend::{Backend, StatusReport, already_subscribed};
-    use crate::config::{self, Profile, ProfileLock};
+    use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
-    use crate::secret;
+    use crate::secret::{self, Secret};
     use crate::status::{AuthStep, CoreState};
     use serde_json::{Value, json};
+    use std::future::Future;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -98,17 +100,41 @@ mod real {
             lock(&self.run).as_ref().map(|r| r.use_test_dc)
         }
 
-        /// 等到授权线满足条件（或故障 / 超时）。冒烟与登录流程用
-        pub fn wait_auth(
-            &self,
-            timeout: Duration,
-            pred: impl Fn(AuthStep) -> bool,
-        ) -> Option<AuthStep> {
-            self.shared.wait_auth(timeout, pred)
-        }
-
         fn client_id(&self) -> Option<i32> {
             lock(&self.run).as_ref().map(|r| r.client_id)
+        }
+
+        fn kind(&self) -> Option<ServerKind> {
+            lock(&self.run).as_ref().map(|r| r.profile.kind())
+        }
+
+        fn step(&self) -> AuthStep {
+            self.shared.lines().auth
+        }
+
+        /// 还没 `start` 就调登录动作
+        fn not_started() -> CoreError {
+            CoreError::Internal {
+                what: "not_started",
+            }
+        }
+
+        /// 发一个登录请求：故障先到 → `disconnected`；TDLib 回错 → 映射。日志只记动作名与错误机读码
+        async fn auth_request<F>(&self, action: &'static str, req: F) -> Result<(), CoreError>
+        where
+            F: Future<Output = Result<(), types::Error>>,
+        {
+            logline::info("auth_submit", &[Field::Name("action", action)]);
+            let r = link::guard(self.shared.clone(), req)
+                .await?
+                .map_err(|e| self.map_error(&e));
+            if let Err(e) = &r {
+                logline::info(
+                    "auth_submit_failed",
+                    &[Field::Name("action", action), Field::Name("code", e.code())],
+                );
+            }
+            r
         }
 
         /// TDLib 错误 → `CoreError`；关闭途中的 500（如 `Request aborted`）归 `disconnected`（`errors.md` 规则 9 的例外）
@@ -135,6 +161,12 @@ mod real {
                 INSTANCE.store(false, Ordering::SeqCst);
             }
         }
+    }
+
+    /// 链进来的 TDLib 版本号（同步 `getOption version`，不建客户端、不联网）。`atg-cli version` 用
+    pub fn tdlib_version() -> Option<String> {
+        let v = tdlib_rs::execute(json!({ "@type": "getOption", "name": "version" }))?;
+        v["value"].as_str().map(str::to_owned)
     }
 
     /// 建客户端之前：TDLib 日志级别降到 0、输出改到档案自己的日志文件
@@ -294,6 +326,100 @@ mod real {
                 lines: self.shared.lines(),
                 previous_unclean: self.previous_unclean.load(Ordering::SeqCst),
             }
+        }
+
+        fn auth_prompt(&self) -> AuthPrompt {
+            self.shared.auth_prompt()
+        }
+
+        fn wait_auth(
+            &self,
+            timeout: Duration,
+            pred: &dyn Fn(AuthStep) -> bool,
+        ) -> Option<AuthStep> {
+            self.shared.wait_auth(timeout, pred)
+        }
+
+        fn auth_generation(&self) -> u64 {
+            self.shared.auth_gen()
+        }
+
+        fn wait_auth_update(&self, timeout: Duration, after: u64) -> Option<AuthStep> {
+            self.shared.wait_auth_after(timeout, after)
+        }
+
+        // 交给 TDLib 的值要转成 String（tdlib-rs 的接口如此）：那份副本清不掉，`secret.rs` 头部已说明
+        async fn auth_submit_phone(&self, phone: &Secret) -> Result<(), CoreError> {
+            let kind = self.kind().ok_or_else(Self::not_started)?;
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let phone = auth::prepare_phone(self.step(), kind, phone)?;
+            let req =
+                functions::set_authentication_phone_number(phone.expose_str().to_owned(), None, id);
+            self.auth_request("phone", req).await
+        }
+
+        async fn auth_submit_code(&self, code: &Secret) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::AuthAction::Code.check(self.step())?;
+            let req = functions::check_authentication_code(code.expose_str().to_owned(), id);
+            self.auth_request("code", req).await
+        }
+
+        async fn auth_resend_code(&self) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::AuthAction::Resend.check(self.step())?;
+            let req = functions::resend_authentication_code(
+                Some(enums::ResendCodeReason::UserRequest),
+                id,
+            );
+            self.auth_request("resend", req).await
+        }
+
+        async fn auth_submit_email(&self, address: &Secret) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::AuthAction::Email.check(self.step())?;
+            let req =
+                functions::set_authentication_email_address(address.expose_str().to_owned(), id);
+            self.auth_request("email", req).await
+        }
+
+        async fn auth_submit_email_code(&self, code: &Secret) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::AuthAction::EmailCode.check(self.step())?;
+            let req = functions::check_authentication_email_code(
+                enums::EmailAddressAuthentication::Code(types::EmailAddressAuthenticationCode {
+                    code: code.expose_str().to_owned(),
+                }),
+                id,
+            );
+            self.auth_request("email_code", req).await
+        }
+
+        async fn auth_submit_password(&self, password: &Secret) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::AuthAction::Password.check(self.step())?;
+            let req =
+                functions::check_authentication_password(password.expose_str().to_owned(), id);
+            self.auth_request("password", req).await
+        }
+
+        async fn auth_register(&self) -> Result<(), CoreError> {
+            let kind = self.kind().ok_or_else(Self::not_started)?;
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::prepare_register(self.step(), kind)?;
+            let req = functions::register_user(
+                auth::TEST_REGISTER_FIRST_NAME.to_owned(),
+                auth::TEST_REGISTER_LAST_NAME.to_owned(),
+                true,
+                id,
+            );
+            self.auth_request("register", req).await
+        }
+
+        async fn logout(&self) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            auth::prepare_logout(self.step())?;
+            self.auth_request("logout", functions::log_out(id)).await
         }
 
         fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

@@ -6,12 +6,19 @@
 //!
 //! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；
 //! 每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）与假时钟留给用到它的块（CLI `--fake`）。
+//!
+//! 登录（第 4 块）：[`FakeBackend::set_auth`] 给一个假账号 [`FakeAuth`]，`start` 后自己推到 `wait_phone`
+//! （已登录的推到 `ready`）；每步提交按账号核对，对了就推下一步的授权状态（TDLib JSON 形状，带提示字段，
+//! 走与真实后端同一段 [`AuthPrompt::from_td`]），错了回 TDLib 会回的那个错误（经 `map_td_error`）。
+//! [`FakeBackend::fail_next`] 给某一步注入一次错误。记账只记动作名，**不记输入的值**。
 
+use crate::auth::{self, AuthPrompt};
 use crate::backend::{Backend, StatusReport, already_subscribed};
-use crate::config::{Profile, ProfileLock};
-use crate::error::{CoreError, Holder};
+use crate::config::{Profile, ProfileLock, ServerKind};
+use crate::error::{CoreError, Holder, map_td_error};
 use crate::link::{self, EventStream, Shared, Step};
-use crate::status::CoreState;
+use crate::secret::Secret;
+use crate::status::{AuthStep, CoreState};
 use serde_json::{Value, json};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -30,9 +37,30 @@ pub enum FakeStart {
 /// 一次调用的记账
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Call {
-    Start { profile: String, use_test_dc: bool },
+    Start {
+        profile: String,
+        use_test_dc: bool,
+    },
     Subscribe,
     Shutdown,
+    /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
+    /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
+    Auth(&'static str),
+}
+
+/// 假账号：登录各步该输什么。测试数据，值都是编的
+#[derive(Clone, Default)]
+pub struct FakeAuth {
+    pub phone: String,
+    pub code: String,
+    /// 号码之后先要设登录邮箱：（邮箱，邮箱里的验证码）。之后不再要短信验证码
+    pub email: Option<(String, String)>,
+    /// 二步验证：（密码，提示语）
+    pub password: Option<(String, String)>,
+    /// 号码还没注册（测试服务器被清空后会这样）
+    pub needs_registration: bool,
+    /// 起来就已登录
+    pub logged_in: bool,
 }
 
 enum Feed {
@@ -52,6 +80,8 @@ pub struct FakeBackend {
     previous_unclean: Mutex<bool>,
     /// 起过之后：档案与锁（与真实后端同样的起停前置）
     run: Mutex<Option<(Profile, Option<ProfileLock>)>>,
+    auth: Mutex<Option<FakeAuth>>,
+    fail_next: Mutex<Vec<(&'static str, CoreError)>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -81,7 +111,110 @@ impl FakeBackend {
             close_hangs: Mutex::new(false),
             previous_unclean: Mutex::new(false),
             run: Mutex::new(None),
+            auth: Mutex::new(None),
+            fail_next: Mutex::new(Vec::new()),
         })
+    }
+
+    /// 给一个假账号（`start` 之前设）
+    pub fn set_auth(&self, a: FakeAuth) {
+        *lock(&self.auth) = Some(a);
+    }
+
+    /// 下一次 `action`（记账里的名字）回这个错误，一次性
+    pub fn fail_next(&self, action: &'static str, e: CoreError) {
+        lock(&self.fail_next).push((action, e));
+    }
+
+    fn take_failure(&self, action: &'static str) -> Option<CoreError> {
+        let mut f = lock(&self.fail_next);
+        let i = f.iter().position(|(a, _)| *a == action)?;
+        Some(f.remove(i).1)
+    }
+
+    fn kind(&self) -> ServerKind {
+        lock(&self.run)
+            .as_ref()
+            .map_or(ServerKind::Main, |(p, _)| p.kind())
+    }
+
+    fn account(&self) -> Result<FakeAuth, CoreError> {
+        lock(&self.auth).clone().ok_or(CoreError::Internal {
+            what: "fake_no_account",
+        })
+    }
+
+    /// 一个登录动作的公共部分：记账 → 注入的错误 → 内核故障。过了才轮到账号核对
+    async fn auth_call(&self, action: &'static str) -> Result<FakeAuth, CoreError> {
+        lock(&self.calls).push(Call::Auth(action));
+        let injected = self.take_failure(action);
+        link::guard(self.shared.clone(), async move {
+            match injected {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        })
+        .await??;
+        self.account()
+    }
+
+    fn push_state(&self, state: Value) {
+        self.push(json!({ "@type": "updateAuthorizationState", "authorization_state": state }));
+    }
+
+    fn push_wait_code(&self, a: &FakeAuth, via: &str, can_resend: bool) {
+        let next = if can_resend {
+            json!({ "@type": "authenticationCodeTypeSms", "length": a.code.len() })
+        } else {
+            Value::Null
+        };
+        self.push_state(json!({
+            "@type": "authorizationStateWaitCode",
+            "code_info": {
+                "@type": "authenticationCodeInfo",
+                "phone_number": a.phone,
+                "type": { "@type": via, "length": a.code.len() },
+                "next_type": next,
+                "timeout": 0,
+            },
+        }));
+    }
+
+    /// 验证码（或邮箱验证码）对了之后的下一步
+    fn push_after_code(&self, a: &FakeAuth) {
+        if a.needs_registration {
+            self.push_state(json!({ "@type": "authorizationStateWaitRegistration" }));
+        } else {
+            self.push_after_registration(a);
+        }
+    }
+
+    fn push_after_registration(&self, a: &FakeAuth) {
+        match &a.password {
+            Some((_, hint)) => self.push_state(json!({
+                "@type": "authorizationStateWaitPassword",
+                "password_hint": hint,
+                "has_recovery_email_address": false,
+                "has_passport_data": false,
+                "recovery_email_address_pattern": "",
+            })),
+            None => self.push_auth("authorizationStateReady"),
+        }
+    }
+
+    fn step(&self) -> AuthStep {
+        self.shared.lines().auth
+    }
+
+    /// 与真实后端同一个先后：还没 `start` 就调登录动作 → `internal{not_started}`
+    fn started(&self) -> Result<(), CoreError> {
+        if lock(&self.run).is_some() {
+            Ok(())
+        } else {
+            Err(CoreError::Internal {
+                what: "not_started",
+            })
+        }
     }
 
     pub fn set_start(&self, s: FakeStart) {
@@ -157,6 +290,13 @@ impl Backend for FakeBackend {
         })
         .await??;
         self.shared.set_core(CoreState::Running);
+        if let Some(a) = lock(&self.auth).as_ref() {
+            self.push_auth(if a.logged_in {
+                "authorizationStateReady"
+            } else {
+                "authorizationStateWaitPhoneNumber"
+            });
+        }
         Ok(())
     }
 
@@ -171,6 +311,134 @@ impl Backend for FakeBackend {
             lines: self.shared.lines(),
             previous_unclean: *lock(&self.previous_unclean),
         }
+    }
+
+    fn auth_prompt(&self) -> AuthPrompt {
+        self.shared.auth_prompt()
+    }
+
+    fn wait_auth(&self, timeout: Duration, pred: &dyn Fn(AuthStep) -> bool) -> Option<AuthStep> {
+        self.shared.wait_auth(timeout, pred)
+    }
+
+    fn auth_generation(&self) -> u64 {
+        self.shared.auth_gen()
+    }
+
+    fn wait_auth_update(&self, timeout: Duration, after: u64) -> Option<AuthStep> {
+        self.shared.wait_auth_after(timeout, after)
+    }
+
+    async fn auth_submit_phone(&self, phone: &Secret) -> Result<(), CoreError> {
+        self.started()?;
+        let phone = auth::prepare_phone(self.step(), self.kind(), phone)?;
+        let a = self.auth_call("phone").await?;
+        let want = auth::normalize_phone(a.phone.as_bytes())?;
+        if phone.expose() != want.expose() {
+            return Err(map_td_error(400, "PHONE_NUMBER_INVALID"));
+        }
+        if a.email.is_some() {
+            self.push_state(json!({
+                "@type": "authorizationStateWaitEmailAddress",
+                "allow_apple_id": false,
+                "allow_google_id": false,
+            }));
+        } else {
+            self.push_wait_code(&a, "authenticationCodeTypeTelegramMessage", true);
+        }
+        Ok(())
+    }
+
+    async fn auth_submit_code(&self, code: &Secret) -> Result<(), CoreError> {
+        self.started()?;
+        auth::AuthAction::Code.check(self.step())?;
+        let a = self.auth_call("code").await?;
+        if !same(code, &a.code) {
+            return Err(map_td_error(400, "PHONE_CODE_INVALID"));
+        }
+        self.push_after_code(&a);
+        Ok(())
+    }
+
+    async fn auth_resend_code(&self) -> Result<(), CoreError> {
+        self.started()?;
+        auth::AuthAction::Resend.check(self.step())?;
+        let a = self.auth_call("resend").await?;
+        if !self.shared.auth_prompt().can_resend {
+            // TDLib：没有下一种方式时重发被拒
+            return Err(map_td_error(400, "SEND_CODE_UNAVAILABLE"));
+        }
+        self.push_wait_code(&a, "authenticationCodeTypeSms", false);
+        Ok(())
+    }
+
+    async fn auth_submit_email(&self, address: &Secret) -> Result<(), CoreError> {
+        self.started()?;
+        auth::AuthAction::Email.check(self.step())?;
+        let a = self.auth_call("email").await?;
+        let Some((want, code)) = &a.email else {
+            return Err(map_td_error(400, "EMAIL_NOT_ALLOWED"));
+        };
+        if !same(address, want) {
+            return Err(map_td_error(400, "EMAIL_INVALID"));
+        }
+        self.push_state(json!({
+            "@type": "authorizationStateWaitEmailCode",
+            "allow_apple_id": false,
+            "allow_google_id": false,
+            "code_info": {
+                "@type": "emailAddressAuthenticationCodeInfo",
+                "email_address_pattern": "e***@example.com",
+                "length": code.len(),
+            },
+            "email_address_reset_state": null,
+        }));
+        Ok(())
+    }
+
+    async fn auth_submit_email_code(&self, code: &Secret) -> Result<(), CoreError> {
+        self.started()?;
+        auth::AuthAction::EmailCode.check(self.step())?;
+        let a = self.auth_call("email_code").await?;
+        let ok = a.email.as_ref().is_some_and(|(_, want)| same(code, want));
+        if !ok {
+            return Err(map_td_error(400, "EMAIL_CODE_INVALID"));
+        }
+        self.push_after_code(&a);
+        Ok(())
+    }
+
+    async fn auth_submit_password(&self, password: &Secret) -> Result<(), CoreError> {
+        self.started()?;
+        auth::AuthAction::Password.check(self.step())?;
+        let a = self.auth_call("password").await?;
+        let ok = a
+            .password
+            .as_ref()
+            .is_some_and(|(want, _)| same(password, want));
+        if !ok {
+            return Err(map_td_error(400, "PASSWORD_HASH_INVALID"));
+        }
+        self.push_auth("authorizationStateReady");
+        Ok(())
+    }
+
+    async fn auth_register(&self) -> Result<(), CoreError> {
+        self.started()?;
+        auth::prepare_register(self.step(), self.kind())?;
+        let a = self.auth_call("register").await?;
+        self.push_after_registration(&a);
+        Ok(())
+    }
+
+    async fn logout(&self) -> Result<(), CoreError> {
+        self.started()?;
+        auth::prepare_logout(self.step())?;
+        self.auth_call("logout").await?;
+        self.push_auth("authorizationStateLoggingOut");
+        self.push_auth("authorizationStateClosing");
+        self.push_auth("authorizationStateClosed");
+        Ok(())
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {
@@ -204,4 +472,9 @@ impl Backend for FakeBackend {
             })
         }
     }
+}
+
+/// 输入与假账号里的值一样（逐字节）
+fn same(given: &Secret, want: &str) -> bool {
+    given.expose() == want.as_bytes()
 }

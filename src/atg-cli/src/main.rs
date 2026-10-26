@@ -1,6 +1,7 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
-//! 骨架阶段：`version` / `--version` / `--help` 能用；其余子命令输出一行 `not_implemented` 错误。
+//! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01，
+//! 真实后端要 `--features tdlib`）。其余子命令输出一行 `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
 #![cfg_attr(
@@ -14,18 +15,27 @@
 )]
 
 mod args;
+mod login;
 mod out;
+mod session;
+// 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod tty;
 
 use args::{Cli, Command, Format};
+use atg_core::status::AuthStep;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser};
-use out::{Code, emit, envelope, fail};
+use out::{Code, emit, envelope, fail, fail_with, text_line};
 use serde_json::json;
+use session::Job;
 use std::ffi::OsString;
 use std::process::ExitCode;
 use std::time::Instant;
 
 fn main() -> ExitCode {
+    // panic 信息可能带出运行时的值：只说一句，不打印原文（`config-privacy.md` 第一节第 5 小节黑名单）
+    std::panic::set_hook(Box::new(|_| eprintln!("atg-cli: 内部错误（panic）")));
     let started = Instant::now();
     let argv: Vec<OsString> = std::env::args_os().collect();
 
@@ -64,6 +74,9 @@ fn main() -> ExitCode {
 
     match command {
         Command::Version => version(format, started),
+        Command::Login => run_job(&cli.global, format, Job::Login, started),
+        Command::Auth { step } => run_job(&cli.global, format, Job::Auth(step.sub()), started),
+        Command::Logout => run_job(&cli.global, format, Job::Logout, started),
         other => {
             let name = other.name();
             fail(
@@ -73,6 +86,39 @@ fn main() -> ExitCode {
                 json!({ "command": name }),
             )
         }
+    }
+}
+
+/// 登录这组命令：每走到一步出一行 `auth`（只有步骤名），最后一行 `result` / `error`
+fn run_job(g: &args::Global, format: Format, job: Job, started: Instant) -> ExitCode {
+    let mut on_step = |step: AuthStep| match format {
+        Format::Json => emit(&envelope(
+            "auth",
+            json!({ "step": serde_json::to_value(step).unwrap_or_default() }),
+        )),
+        Format::Text => text_line(login::step_zh(step)),
+    };
+    match session::run(g, job, &mut on_step) {
+        Ok(mut data) => {
+            match format {
+                Format::Json => {
+                    let elapsed_ms =
+                        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    if let Some(d) = data.as_object_mut() {
+                        d.insert("elapsed_ms".into(), json!(elapsed_ms));
+                    }
+                    emit(&envelope("result", data));
+                }
+                Format::Text => text_line(match (job, data["already_signed_out"].as_bool()) {
+                    (Job::Logout, Some(true)) => "本来就没有登录",
+                    (Job::Logout, _) => "已登出",
+                    (Job::Login, _) => "已登录",
+                    (Job::Auth(_), _) => "完成",
+                }),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(f) => fail_with(format, &f),
     }
 }
 
@@ -86,8 +132,8 @@ fn version(format: Format, started: Instant) -> ExitCode {
                 json!({
                     "atg_cli": cli_version,
                     "v": atg_core::tree::SCHEMA_V,
-                    // 骨架阶段还没接 TDLib
-                    "tdlib": null,
+                    // 没编进 TDLib（不带 `tdlib` 特性）时是 null
+                    "tdlib": tdlib_version(),
                 }),
             ));
             let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -97,13 +143,27 @@ fn version(format: Format, started: Instant) -> ExitCode {
             ));
         }
         Format::Text => {
+            let td =
+                tdlib_version().map_or_else(|| "没编进 TDLib".to_owned(), |v| format!("TDLib {v}"));
             println!(
-                "atg-cli {cli_version}，外壳版本 {}，还没接 TDLib",
+                "atg-cli {cli_version}，外壳版本 {}，{td}",
                 atg_core::tree::SCHEMA_V
             );
         }
     }
     ExitCode::SUCCESS
+}
+
+/// 链进来的 TDLib 版本；没编进来是 `None`
+fn tdlib_version() -> Option<String> {
+    #[cfg(feature = "tdlib")]
+    {
+        atg_core::td::tdlib_version()
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        None
+    }
 }
 
 /// 参数解析失败：`--help` 照常给人看；其余按 `usage` 出一行错误，人看的说明走标准错误

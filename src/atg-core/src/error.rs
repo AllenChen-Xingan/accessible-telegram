@@ -79,6 +79,11 @@ pub enum CoreError {
     AuthPasswordInvalid {
         td: Option<TdInfo>,
     },
+    /// 号码与档案不配：测试档案收到非 `99966` 开头的号，或正式档案收到 `99966` 开头的测试号
+    /// （`config-privacy.md` 第一节第 2 小节）。本地检查拦下，不交给 TDLib，所以没有 `td` 附件
+    AuthPhoneNotForProfile,
+    /// ⚠️ `expected` 是**现在所在**的那一步（「现在等的是这个」），不是调用方本想交的那一步。
+    /// 字段名照 `errors.md` 第一节第 1 小节（「当前的 `AuthStep` 值」），会原样平铺进 CLI 的 JSON
     AuthWrongState {
         expected: AuthStep,
     },
@@ -135,6 +140,7 @@ impl CoreError {
             Self::AuthCodeInvalid { .. } => "auth_code_invalid",
             Self::AuthCodeExpired { .. } => "auth_code_expired",
             Self::AuthPasswordInvalid { .. } => "auth_password_invalid",
+            Self::AuthPhoneNotForProfile => "auth_phone_not_for_profile",
             Self::AuthWrongState { .. } => "auth_wrong_state",
             Self::RateLimited { .. } => "rate_limited",
             Self::AccountLimited { .. } => "account_limited",
@@ -174,6 +180,7 @@ impl CoreError {
             | Self::Network { td } => td.as_ref(),
             Self::Unknown { td } => Some(td),
             Self::AuthWrongState { .. }
+            | Self::AuthPhoneNotForProfile
             | Self::Disconnected
             | Self::ProfileBusy { .. }
             | Self::DbKeyInvalid { .. }
@@ -193,6 +200,9 @@ impl CoreError {
             Self::AuthCodeInvalid { .. } => "验证码不对，请重新输入",
             Self::AuthCodeExpired { .. } => "验证码已过期，请重发验证码",
             Self::AuthPasswordInvalid { .. } => "二步验证密码不对，请重新输入",
+            Self::AuthPhoneNotForProfile => {
+                "这个号码不能用在这个档案上：测试档案只收 99966 开头的测试号，正式档案不收测试号"
+            }
             Self::AuthWrongState { .. } => "当前登录步骤不收这项输入",
             Self::RateLimited { .. } => "请求太频繁，请等一会儿再试",
             Self::AccountLimited { .. } => "账号被 Telegram 暂时限制，已停止发送和登录，请人工处理",
@@ -288,7 +298,8 @@ pub fn map_td_error(code: i32, message: &str) -> CoreError {
         }
         400 => match message {
             "PHONE_NUMBER_INVALID" => CoreError::AuthPhoneInvalid { td },
-            "PHONE_CODE_INVALID" => CoreError::AuthCodeInvalid { td },
+            // 邮箱验证码错按验证码错报（`actions.md` `auth_submit_email_code`「同验证码」）；原文未登记，附件只带数字码
+            "PHONE_CODE_INVALID" | "EMAIL_CODE_INVALID" => CoreError::AuthCodeInvalid { td },
             "PHONE_CODE_EXPIRED" => CoreError::AuthCodeExpired { td },
             "PASSWORD_HASH_INVALID" => CoreError::AuthPasswordInvalid { td },
             _ => CoreError::InvalidInput { td },
