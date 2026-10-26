@@ -1,0 +1,16 @@
+[package]
+name = "atg-cli"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "无障碍 Telegram 的命令行入口：JSON 行输出，给 AI 和脚本用（骨架阶段，不接 TDLib）"
+
+[[bin]]
+name = "atg-cli"
+path = "src/main.rs"
+
+[dependencies]
+atg-core = { path = "../atg-core" }
+clap = { version = "4", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

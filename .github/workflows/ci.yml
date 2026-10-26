@@ -24,6 +24,9 @@ jobs:
       - name: fmt
         if: steps.crates.outputs.has == '1'
         run: cargo fmt --all --check
+      - name: no-debug（拍板 005 补丁 ③）
+        if: steps.crates.outputs.has == '1'
+        run: bash scripts/check-no-debug.sh
       - name: clippy
         if: steps.crates.outputs.has == '1'
         run: cargo clippy --workspace --all-targets -- -D warnings
