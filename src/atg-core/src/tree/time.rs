@@ -31,6 +31,12 @@ impl Time {
             .rem_euclid(86_400);
         ((secs / 3600) as u32, (secs % 3600 / 60) as u32)
     }
+
+    /// 加上时区偏移（秒）后的 (年, 月, 日)
+    pub fn local_ymd(self, utc_offset: i32) -> (i64, u32, u32) {
+        let local = self.0.saturating_add(i64::from(utc_offset));
+        civil_from_days(local.div_euclid(86_400))
+    }
 }
 
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
@@ -66,5 +72,14 @@ mod tests {
         // 极端值不溢出
         let _ = Time(i64::MAX).local_hm(8 * 3600);
         let _ = Time(i64::MIN).rfc3339();
+    }
+
+    #[test]
+    fn local_ymd_follows_offset() {
+        // 2026-10-22T20:13:20Z：东八区已是 23 日，西五区还是 22 日
+        assert_eq!(Time(1_792_700_000).local_ymd(8 * 3600), (2026, 10, 23));
+        assert_eq!(Time(1_792_700_000).local_ymd(-5 * 3600), (2026, 10, 22));
+        let _ = Time(i64::MAX).local_ymd(8 * 3600);
+        let _ = Time(i64::MIN).local_ymd(-8 * 3600);
     }
 }

@@ -10,6 +10,7 @@
 //! - [`Content`]（正文 + 附件）只取决于消息本身，收到消息时建一次，存进 model；`updateMessageContent` 整块替换
 //! - [`Doc`] 是渲染时从 model + store 现投影出来的（名字、已读状态都可能晚到），不存
 
+pub mod mask;
 pub mod text;
 mod time;
 

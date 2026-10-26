@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（节点类型 `mod.rs` · 实体建树 `text.rs`）· 读法 `speech.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（节点类型 `mod.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -216,16 +216,16 @@ Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `M
 
 ## 七、渲染器
 
-渲染器 = 「树 → 某种输出」的纯函数。现在有两个：`speech::brief`（读法）、`json::value`（CLI 的 JSON 行）。以后有 GUI 视图、无障碍名称（取 `speech` 的结果）、`speech::detail`。
+渲染器 = 「树 → 某种输出」的纯函数。现在有：`speech::brief` / `speech::detail` / `speech::full`（读法三层，#21 加后两个）、`json::value` / `json::value_with`（CLI 的 JSON 行；不展开时先过 `tree::mask::masked` 遮住隐藏内容，第八节）。以后有 GUI 视图、无障碍名称（取 `speech` 的结果）。
 
-**怎么遍历**：对每个枚举直接写 `match`，**不写 `_ =>`**；不另造访问者（visitor）抽象——Rust 的穷尽匹配本身就是最好的访问者。共用的遍历两个，都在 `text.rs`：`plain_text`（还原原文，给「阅读视图 / 复制全文」）、`links`（按出现顺序列出所有链接：文本里的网址 + 文字链接的隐藏地址和文字，给「列出本条链接」）。
+**怎么遍历**：对每个枚举直接写 `match`，**不写 `_ =>`**；不另造访问者（visitor）抽象——Rust 的穷尽匹配本身就是最好的访问者。共用的遍历都在 `text.rs`：`plain_text`（还原原文，给「阅读视图 / 复制全文」）、`links`（按出现顺序列出所有链接：文本里的网址 + 文字链接的隐藏地址和文字，给「列出本条链接」）、`links_marked`（同 `links`，另标是否隐藏）、`contains_spoiler`（这段里有没有剧透；`links_marked` 与 `mask` 判「隐藏的链接」都只认它）。
 
 api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频道 / 匿名管理员发言、名字未到、连续相同 emoji 合并——**都是渲染器的事**（原列的「简短读法里表情回应只读总数」「长消息截断」已被人定的读法原则取代：表情回应进 `detail`，不截断，见第九节），树里的数据已齐（发送人带 id、名字可空、表情回应带种类和次数）。「连续同一发送人」要看前一条，读法的输入届时从「一个 Doc」扩成「Doc + 前一条的发送人」，树不变。
 
 **加一种新节点，谁来提醒**：
 
 1. **编译器**：所有枚举都**不加** `#[non_exhaustive]`（加了反而逼下游写 `_ =>`，就提醒不到了）。`atg-cli`、`atg-gui` 在同一个 workspace，新变体一加，每个没处理它的渲染器都编不过
-2. **lint**：渲染器模块顶上 `#![deny(clippy::wildcard_enum_match_arm)]`，防有人图省事写 `_ =>`（`speech.rs`、`tests/coverage.rs` 已加）。CI 的 clippy 用 `-D warnings`
+2. **lint**：渲染器模块顶上 `#![deny(clippy::wildcard_enum_match_arm)]`，防有人图省事写 `_ =>`（`speech.rs`、`tree/mask.rs`、`tests/coverage.rs` 已加）。CI 的 clippy 用 `-D warnings`
 3. **测试**：`tests/coverage.rs` 里每个枚举一个「变体 → 名字」的穷尽 `match` 加一张 `ALL_*` 清单；夹具里缺哪种就失败。于是加新节点必须补一条夹具，它就会出现在**所有**渲染器的快照里，PR 的快照差异一眼可见
 4. **JSON** 用 `serde` 派生，新节点自动有 JSON 形状；但它的形状变化同样落在快照里
 
@@ -237,6 +237,7 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - id：会话、消息、用户 id 都是 int53，用数字；超过 2^53 的 int64（`custom_emoji_id`、`album_id`）写字符串
 - 时间：结构体里存 Unix 秒，JSON 里写 RFC3339 UTC（如 `2026-10-23T11:30:00Z`）；读法按调用方给的时区偏移转本地钟点
 - 空的可选字段不输出（`reply_to`、`forward`、`attachment`、`edited`、`delivery`、空的 `reactions`）
+- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`）整个换成这个空剧透，地址也不留。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
 - **版本**：外壳和树共用一个 `v`（代码里 `tree::SCHEMA_V`）。
   - **不加一**：新增可选字段、新增节点种类、新增 `td_type` 值；**某种内容从 `other` / `unknown` 升级成专门节点**（如骰子从 `attachment.type = "other", td_type = "messageDice"` 变成 `"dice"`）也不加——使用方本来就得把不认识的 `type` 当未知处理
   - **给取值固定的字段加新取值**（如 `status` 加 `stopping`）也**不加一**（拍板 006 乙10）——使用方遇到不认识的值按「未知」处理、读 `speech.brief` 兜底，与「新增节点种类」同理
@@ -283,3 +284,5 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-10-26 按 007 人定同步（`docs/plan/007_decisions-b15.md`，大总管授权）：第三节第 2 小节 `sender.deleted`、`head.in_channel`；第 4 小节 `pinned.content`；第九节名字查不到分场合（V18）、系统消息「暂不支持的系统消息」（V19）、按键提示整条末尾一次（V13）
 - 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：第三节第 6 小节 `chat_item` 加可选字段 `peer_deleted`、`saved_messages`；第 1 小节 `tombstone` 加 `outgoing`；第 4 小节 `service` 加 `outgoing`、`in_channel`，`UserRef` 加 `is_me`、`deleted`（都为假不输出，`v` 不加一）
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第二节投影函数改写成实际的四个（乙9）；第八节补「给取值固定的字段加新取值不加一」（乙10）；第三节第 2 小节受限规则系统消息也适用，原文本就没写例外，无需改（乙12）；第三节第 2 小节补「被回复那条受限则引用不出」（乙11）与回复对象跟随换 id
+- 2026-10-26 issue #21 history（大总管授权 2026-10-26）：第八节加「隐藏内容默认遮住」——不展开时 `data` 里剧透换成空节点，落在剧透里或文字里套着剧透的链接整个换成空剧透（文字和地址都不留）；`v` 不加一；第七节登记新渲染器与遍历、`mask.rs` 的 lint
+- 2026-10-26 issue #21 第三、四轮自审后（大总管授权 2026-10-26，属技术细节）：文首代码清单加 `mask.rs`；第八节写明 `data` 的遮挡只在输出 JSON 时做、读法另遮、原文只在内存

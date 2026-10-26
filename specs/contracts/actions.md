@@ -69,7 +69,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
 |---|---|---|---|---|
 | `chats_load(list: ChatListKind, limit: u32)` | `Ack`；会话经 `updateNewChat` / `updateChatPosition` 等进 Store | — | L0 | `loadChats`（`:12502`）；没有更多时 TDLib 回 404，内核吞掉、标「已到底」 |
-| `chat_get(chat: ChatId)` | `ChatItem` | `not_found` | L0 | `getChat`（`:12413`） |
+| `chat_get(chat: ChatId)` | `Ack`；会话经 `updateNewChat` 先进 Store | `not_found` | L0 | `getChat`（`:12413`）；本地没有这个私聊（如收藏夹）时改用 `createPrivateChat(force=false)`（`:14288`）取已有的，**不新建会话** |
 | `mute(chat: ChatId, on: bool)` | `Ack` | `not_found` | L0 | `setChatNotificationSettings`（`:14493`）；从第二批提到 MVP：吵的群会打断读屏 |
 | `search_chats(query: String, limit: u32)` | `Vec<ChatItem>` | — | L0 | `searchChats`（`:12523`，本地）；不够再 `searchChatsOnServer`（`:12529`） |
 | Store：`chat_list(list)` | 当前排好序的 `Vec<ChatItem>` | — | — | 纯查询 |
@@ -83,7 +83,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|---|---|---|
 | `chat_open(chat: ChatId)` | `Ack` | `not_found` | L0 | `openChat`（`:14188`）；让 TDLib 推这个会话的实时更新（超级群 / 频道只有打开的会话才推）。**`chat_open` 本身绝不隐式调 `viewMessages`**（频道浏览量也靠它涨）；GUI 进会话时另行**显式**调 `mark_read` 标到最新一条（F1）；必须与 `chat_close` 配对 |
 | `chat_close(chat: ChatId)` | `Ack` | — | L0 | `closeChat`（`:14191`） |
-| `history(chat: ChatId, from: Option<MessageId>, limit: u32, local_only: bool)` | `Vec<Message>`（从新到旧） | `not_found` | L0 | `getChatHistory`（`:12758`）；带请求代次（架构方案第一节第 3 小节第 6 条） |
+| `history(chat: ChatId, from: MessageId, offset: i32, limit: u32, local_only: bool)` | `Vec<Message>`（从新到旧） | `not_found` · `invalid_input`（`limit` 不在 1–100、`offset` 不在 -99–0、`offset` 为负时 `limit < -offset`：本地先拒，不发） | L0 | `getChatHistory`（`:12758`），参数同 TDLib（`from` 为 0 = 最新一条起；`offset` 为 0 时**不含** `from` 那条、往旧取（TDLib 1.8.69 `OrderedMessage.cpp` `get_history`）；负 `offset` 含它、另取比它新的，往新翻页用（CLI 那层去掉 X 本身）。应答为空 = TDLib 已经自己从本地库 / 服务器拉过、确实没有了；不空但短 = 它只给了内存里连着的那段，再要能拿到更多）；带请求代次（架构方案第一节第 3 小节第 6 条）。F2 落点、循环补满、从旧到新排在 CLI 里做 |
 | `message_get(id: MsgId)` | `Message` | `not_found` | L0 | `getMessage`（`:12418`）；`MsgId` 即 `tree` 的 `MsgId` |
 | `replied_message_get(id: MsgId)` | `Option<Message>` | — | L0 | `getRepliedMessage`（`:12436`）；T06「回复谁」 |
 | `message_properties(id: MsgId)` | `MessageProps`（能回复 / 能转发 / 能编辑……） | `not_found` | L0 | `getMessageProperties`（`:12457`）；决定菜单里列什么 |
@@ -92,7 +92,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `file_download(file: FileId)` | `Ack`；进度经 `updateFile` | `not_found` | L0 | `downloadFile`（`:15001`）；对外不可见，前提是不调 `mark_listened`。T07 语音时长、文件名在消息节点里就有，不必下载 |
 | `mark_listened(id: MsgId)` | `Ack` | `not_found` | **L1**（与已读同一道把关，A1）；阅后即焚类 **L2** | `openMessageContent`（`:14205`）；对方会看到「已听 / 已看」，阅后即焚一打开就开始倒计时、不可逆。GUI 播放即标（同官方客户端，与 F1 同一取向）；CLI 只在 `play --mark-listened` 时标；阅后即焚按 L2 要确认 |
 | `mark_read(chat: ChatId, up_to: MessageId)` | `Ack` | — | **L1** | `viewMessages`（`:14199`，`force_read`）。⚠️ **不是按条标**：TDLib 取传入的最大消息 id，把普通会话的已读位置推进到那里（`MessagesManager.cpp:16961` `read_dialog_inbox`），此前的消息全部连带变成已读。所以参数是「标到哪条为止」。F1 人定：GUI 进会话就标到最新一条（同官方客户端，不确认）；CLI 的 `history` / `show` 不标 |
-| `message_links(id: MsgId)` | `Vec<Link>`（链接文字 + 地址） | `not_found` | L0 | 从内容树取，不联网 |
+| `message_links(id: MsgId)`（**不是 `Backend` 动作**：`Backend` 动作是真后端、假后端各实现一份的那种；这个是在它们之上拼出来的） | `Vec<Link>`（链接文字 + 地址 + 是否隐藏 `hidden`） | `not_found` | L0 | `message_get`（`getMessage`）取这条，再用 `tree::text::links_marked` 从内容树取；现在 CLI 的 `links` 这样拼，GUI 照同样两步。隐藏的链接调用方默认遮住（`cli.md` `links`） |
 | `open_link(url)` · `open_file(file: FileId)` | `Ack` | `not_found` `invalid_input` | **L1 外部** | 用系统接口（`NSWorkspace`）打开，**不经 shell**。链接只许 `http` / `https`，其余协议（`file:`、`tg:`、`mailto:`、自定义协议……）拒绝；打开前把完整网址（域名单独读出）给人看并确认。文件只许常见的只读类型（图片、音频、视频、PDF、纯文本），可执行文件、`.app`、`.command`、脚本、安装包一律拒绝，改为「在访达中显示」。打开文件前须已下载 |
 
 **发送（T04）**
@@ -295,3 +295,7 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第一节第 7 小节——写明 `CoreEvent` 即本表（乙6）；补 `message_ephemeral_changed`、`chat_draft_changed`、`chat_mention_count_changed` 三行；`send_succeeded` / `send_failed` 改为带整条消息；`messages_deleted` 补「未发出的不是撤回、没见过的待应答判定」（乙7）；`message_edited` 补编辑时间来源与 0（乙8）；`message_content_opened` 补只改原内容；`chat_last_message_changed` 补「新消息可只随它到达」；末尾补「喂给 store 的应答」
 - 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：第一节第 7 小节加 `my_id_changed`；`user_changed` 注明含是否已注销
 - 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：`auth_submit_phone` 加 `auth_phone_not_for_profile` 与可收的步骤；登录输入用 `Secret`；提交后按下一条授权更新判断；测试档案自动注册、名字写死 `Atg Test`
+- 2026-10-26 issue #21 history（大总管授权 2026-10-26，属技术细节）：`history` 动作参数改成与 `getChatHistory` 同形（加 `offset`，往新翻页要用）；F2 落点与循环补满归 CLI
+- 2026-10-26 issue #21 自审后（大总管授权 2026-10-26，属技术细节）：`chat_get` 返回 `Ack` 并登记 `createPrivateChat(force=false)` 后备；`message_links` 登记先 `getMessage` 与 `hidden`；`history` 写明含不含起点
+- 2026-10-26 issue #21 第三轮自审后（大总管授权 2026-10-26，属技术细节）：`message_links` 标明是组合、不是 `Backend` 动作；`history` 登记本地参数检查的 `invalid_input`
+- 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：`message_links` 的说法改清楚（什么叫「不是 `Backend` 动作」、GUI 照同样两步）

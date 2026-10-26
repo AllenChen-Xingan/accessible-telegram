@@ -7,7 +7,7 @@
 //! - 标准输出：起好后一行 `status`（带 `listening:true`），结束时一行 `result`（`reason:"interrupted"`，退出码 0，
 //!   同 `watch` 被打断算正常结束）；后端故障就以 `disconnected` 结尾，好让人重开
 //! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）
-//! - 能执行的：`chats`、`auth state`。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
+//! - 能执行的：`chats`、`history`、`links`、`auth state`。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
 //!   版本号不对、请求形状不对回 `internal{ipc_version_mismatch | ipc_bad_request}`（这时还不知道要哪种格式，一律 JSON）
 //! - 只连上就断的（发起方探一下执行方在不在）不记
 //! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，
@@ -16,7 +16,7 @@
 //!   `first_chat_ms` 是执行方启动到这个列表第一次有会话（主列表、归档从启动起就在记，不是「第一次被问」的时刻）；
 //!   其余与直跑逐字节一致（同一段渲染代码）
 
-use crate::args::{ChatsArgs, Format, Global};
+use crate::args::{ChatsArgs, Format, Global, HistoryArgs, LinksArgs};
 use crate::chats::{self, Feed, Limits};
 use crate::forward::FwdArgs;
 use crate::login::{self, AuthSub, Prompter};
@@ -296,6 +296,40 @@ fn execute<B: Backend>(
             };
             ("chats", code)
         }
+        "history" => {
+            // 参数检查（含 clap 管的范围）都在 `history::query`：serde 绕过了 clap 也照样拦
+            let code = match serde_json::from_value::<HistoryArgs>(fa.params) {
+                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
+                Ok(a) => match crate::history::query(&a).and_then(|q| {
+                    crate::history::speech_ctx(a.tz.as_deref(), a.reveal).map(|cx| (q, cx))
+                }) {
+                    Err(f) => fail_with_to(sink, format, &f),
+                    Ok((q, cx)) => match crate::history::collect(
+                        ctx.b,
+                        ctx.stream,
+                        ctx.feed,
+                        &q,
+                        ctx.limits.sync,
+                    ) {
+                        Ok(p) => crate::history::render(sink, format, &a, &cx, &p, started),
+                        Err(f) => fail_with_to(sink, format, &f),
+                    },
+                },
+            };
+            ("history", code)
+        }
+        "links" => {
+            let code = match serde_json::from_value::<LinksArgs>(fa.params) {
+                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
+                Ok(a) => match crate::history::links_query(&a)
+                    .and_then(|q| crate::history::collect_links(ctx.b, ctx.stream, ctx.feed, &q))
+                {
+                    Ok(l) => crate::history::render_links(sink, format, a.reveal, &l, started),
+                    Err(f) => fail_with_to(sink, format, &f),
+                },
+            };
+            ("links", code)
+        }
         "auth" if fa.params["sub"] == "state" => {
             let r = login::auth_step(
                 ctx.b,
@@ -469,6 +503,29 @@ mod tests {
             ChatList::Main,
             vec![chat(1, 30, 2), chat(2, 20, 0), chat(3, 10, 1)],
         );
+        // `history` / `links` 用：会话 1 的三条消息，第 3 条带一个链接
+        let mut info = chat(1, 30, 2);
+        info.insert(
+            0,
+            json!({"@type": "updateUser", "user": {"@type": "user", "id": 1, "first_name": "林小雨", "last_name": "",
+                "usernames": null, "phone_number": "", "is_contact": true, "type": {"@type": "userTypeRegular"}}}),
+        );
+        b.set_chat(1, info);
+        let m = |id: i64, t: &str, entities: Value| {
+            json!({"@type": "message", "id": id, "chat_id": 1,
+                "sender_id": {"@type": "messageSenderUser", "user_id": 1}, "is_outgoing": false, "is_pinned": false,
+                "date": 1_793_014_200 + id * 60, "edit_date": 0, "media_album_id": "0",
+                "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": t, "entities": entities}}})
+        };
+        b.set_history(
+            1,
+            vec![
+                m(1, "第1条", json!([])),
+                m(2, "第2条", json!([])),
+                m(3, "看下路线图", json!([{"@type": "textEntity", "offset": 2, "length": 3,
+                    "type": {"@type": "textEntityTypeTextUrl", "url": "https://example.invalid/route"}}])),
+            ],
+        );
         b.push_net("connectionStateReady");
         b
     }
@@ -486,6 +543,7 @@ mod tests {
             limit,
             unread: false,
             cursor: None,
+            reveal: false,
         }
     }
 
@@ -640,6 +698,118 @@ mod tests {
         // 自己的日志只有命令名，不带会话名
         assert!(own.err.iter().all(|l| !l.contains("会话")));
         assert!(!ipc::socket_path(&p).exists(), "正常关后套接字删掉");
+    }
+
+    fn history_args() -> crate::args::HistoryArgs {
+        crate::args::HistoryArgs {
+            chat: "1".into(),
+            limit: 2,
+            before: None,
+            after: None,
+            detail: true,
+            full: true,
+            reveal: false,
+            local: false,
+            tz: Some("+08:00".to_owned()),
+        }
+    }
+
+    /// 直跑 `history`：同一段渲染代码写进 `Cap`
+    fn direct_history(format: Format, a: &crate::args::HistoryArgs) -> (u8, Cap) {
+        let p = profile("dhist", ServerKind::Main);
+        let b = backend();
+        let mut cap = Cap::default();
+        let cx =
+            crate::history::speech_ctx(Some("+08:00"), a.reveal).unwrap_or_else(|_| panic!("时区"));
+        let code = match crate::history::query(a)
+            .and_then(|q| crate::history::run(&b, &p, &q, Instant::now()))
+        {
+            Ok(pg) => crate::history::render(&mut cap, format, a, &cx, &pg, Instant::now()),
+            Err(f) => fail_with_to(&mut cap, format, &f),
+        };
+        (code, cap)
+    }
+
+    fn direct_links(format: Format, a: &crate::args::LinksArgs) -> (u8, Cap) {
+        let p = profile("dlink", ServerKind::Main);
+        let b = backend();
+        let mut cap = Cap::default();
+        let code = match crate::history::links_query(a)
+            .and_then(|q| crate::history::run_links(&b, &p, &q, Instant::now()))
+        {
+            Ok(l) => crate::history::render_links(&mut cap, format, a.reveal, &l, Instant::now()),
+            Err(f) => fail_with_to(&mut cap, format, &f),
+        };
+        (code, cap)
+    }
+
+    #[test]
+    fn forwarded_history_and_links_match_direct() {
+        let p = profile("fhist", ServerKind::Main);
+        let s = start_server(&p, Format::Json);
+        let a = history_args();
+        let params = serde_json::to_value(&a).unwrap();
+        for format in [Format::Json, Format::Text] {
+            let (dc, d) = direct_history(format, &a);
+            let (fc, f) = s.ask(format, "history", &params);
+            assert_eq!((dc, fc), (0, 0));
+            match format {
+                Format::Json => {
+                    assert_eq!(f.out.len(), 3, "两条消息 + 一行 result");
+                    assert_eq!(norm_json(&f.out), norm_json(&d.out));
+                    insta::assert_snapshot!("forwarded_history_json", norm_json(&f.out).join("\n"));
+                }
+                Format::Text => {
+                    assert_eq!(f.out, d.out);
+                    assert_eq!(norm_text(&f.err), norm_text(&d.err));
+                }
+            }
+        }
+        // 往前翻一页：执行方常驻的 Store 里已有消息，照样一致
+        let mut back = history_args();
+        back.before = Some(2);
+        let params = serde_json::to_value(&back).unwrap();
+        let (_, d) = direct_history(Format::Json, &back);
+        let (fc, f) = s.ask(Format::Json, "history", &params);
+        assert_eq!(fc, 0);
+        assert_eq!(norm_json(&f.out), norm_json(&d.out));
+
+        let la = crate::args::LinksArgs {
+            chat: "1".into(),
+            message: 3,
+            reveal: false,
+        };
+        let params = serde_json::to_value(&la).unwrap();
+        for format in [Format::Json, Format::Text] {
+            let (dc, d) = direct_links(format, &la);
+            let (fc, f) = s.ask(format, "links", &params);
+            assert_eq!((dc, fc), (0, 0));
+            assert_eq!(
+                norm_json_or_text(format, &f.out),
+                norm_json_or_text(format, &d.out)
+            );
+        }
+        // 范围检查在执行方补上（serde 绕过了 clap）
+        let mut bad = history_args();
+        bad.limit = 0;
+        let params = serde_json::to_value(&bad).unwrap();
+        let (code, _) = s.ask(Format::Json, "history", &params);
+        assert_eq!(code, 2);
+        let (code, own) = s.stop();
+        assert_eq!(code, 0);
+        // 自己的日志只有命令名，不带内容
+        assert!(
+            own.err
+                .iter()
+                .all(|l| !l.contains("路线图") && !l.contains("林小雨"))
+        );
+    }
+
+    fn norm_json_or_text(format: Format, lines: &[String]) -> Vec<String> {
+        match format {
+            Format::Json => norm_json(lines),
+            Format::Text => lines.to_vec(),
+        }
     }
 
     #[test]

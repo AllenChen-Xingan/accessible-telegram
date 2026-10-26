@@ -17,14 +17,41 @@ pub fn kind(doc: &Doc) -> &'static str {
     }
 }
 
-/// 一行 JSON 的值：`{"v":1,"kind":…,"data":<树>,"speech":{"brief":…}}`
+/// 一行 JSON 的值：`{"v":1,"kind":…,"data":<树>,"speech":{"brief":…}}`。
+/// 没展开（`cx.reveal` 为假）时 `data` 里的剧透原文遮掉（[`crate::tree::mask`]，R1；大总管授权 2026-10-26）
 pub fn value(doc: &Doc, cx: &SpeechCtx) -> Value {
+    let data = if cx.reveal {
+        json!(doc)
+    } else {
+        json!(crate::tree::mask::masked(doc))
+    };
     json!({
         "v": SCHEMA_V,
         "kind": kind(doc),
-        "data": doc,
+        "data": data,
         "speech": { "brief": speech::brief(doc, cx) },
     })
+}
+
+/// 除 `brief` 外还要哪几层读法（`history --detail` / `--full`）
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Layers {
+    pub detail: bool,
+    pub full: bool,
+}
+
+/// 同 [`value`]，`speech` 里按 `layers` 另带 `detail` / `full`
+pub fn value_with(doc: &Doc, cx: &SpeechCtx, layers: Layers) -> Value {
+    let mut v = value(doc, cx);
+    if let Some(sp) = v.get_mut("speech").and_then(Value::as_object_mut) {
+        if layers.detail {
+            sp.insert("detail".into(), json!(speech::detail(doc, cx)));
+        }
+        if layers.full {
+            sp.insert("full".into(), json!(speech::full(doc, cx)));
+        }
+    }
+    v
 }
 
 /// 一行（不含换行符）
