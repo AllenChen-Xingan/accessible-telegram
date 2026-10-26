@@ -4,6 +4,10 @@
 > **非轮规则：每轮有效工作必更新本文件**（倒序追加，新的在上，带日期与 commit hash）。
 > 每完成一个可命名的逻辑单元存一次；破坏性操作之前也存一次。这是给你自己留的后路，不是给别人看的历史。
 
+> ## 📁 #25 所有代码放 src/（2026-10-25）
+> - `src/tdlib-rs`（subtree，未改一行库代码）· `src/tdlib-build/build.sh`（按 `ea3f69c` 拉取编译 TDLib 1.8.69，181 s）· 根工作区 `src/atg-*` + exclude tdlib-rs · `atg-core` 特性 `tdlib-api` / `tdlib`
+> - **下一步**：#15 第 2 块 model + reducer
+
 > ## 🦴 #14 骨架完成（2026-10-25）
 > - `src/atg-cli` 骨架（子命令占位，输出契约格式 `not_implemented`）；`atg-core` 模块占位；禁打印两层（crate 根 deny + `scripts/check-no-debug.sh`，CI 已接）；45 测试
 > - 人定：所有代码放 `src/`（`CLAUDE.md`）→ issue #25（tdlib-rs 搬进 `src/tdlib-rs`，TDLib 用脚本拉取）

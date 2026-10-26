@@ -16,7 +16,7 @@ jobs:
       - name: any crates yet?
         id: crates
         run: |
-          if ls src/*/Cargo.toml >/dev/null 2>&1; then echo "has=1" >> "$GITHUB_OUTPUT"; else echo "src/ 下还没有 crate，跳过 Rust 检查"; echo "has=0" >> "$GITHUB_OUTPUT"; fi
+          if ls src/atg-*/Cargo.toml >/dev/null 2>&1; then echo "has=1" >> "$GITHUB_OUTPUT"; else echo "src/ 下还没有 crate，跳过 Rust 检查"; echo "has=0" >> "$GITHUB_OUTPUT"; fi
       - uses: dtolnay/rust-toolchain@stable
         if: steps.crates.outputs.has == '1'
         with:
@@ -30,6 +30,18 @@ jobs:
       - name: clippy
         if: steps.crates.outputs.has == '1'
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # td 模块里用 tdlib-rs 的代码挂在 tdlib-api 特性下，上一步不开特性就编不到它；
+      # tdlib-api 只拉类型、不链接，所以 clippy 不需要 TDLib 库。这是唯一碰 TDLib 对象的地方，禁打印 lint 必须管到
+      - name: clippy（atg-core 的 td 代码，tdlib-api 特性）
+        if: steps.crates.outputs.has == '1'
+        run: cargo clippy -p atg-core --features tdlib-api --all-targets -- -D warnings
       - name: test
         if: steps.crates.outputs.has == '1'
         run: cargo test --workspace
+      # src/tdlib-rs 是 fork 的 subtree、自成工作区，上面几步不碰它（atg-core 的 tdlib 特性默认关，不编 TDLib）。
+      # 这里只跑不需要 TDLib 库的两包：生成器（含 004 第一节第 2、5 件的测试）与解析器。tdlib-rs 包本身要 TDLib 库，跳过；
+      # 不对 subtree 跑 clippy -D warnings：上游代码，新版 clippy 的新 lint 会让 CI 为不归我们管的代码变红。
+      # 理由与本地全量验证见 docs/plan/004_tdlib-patch.md 第四节。
+      - name: test（tdlib-rs 生成器与解析器）
+        if: steps.crates.outputs.has == '1'
+        run: cargo test --manifest-path src/tdlib-rs/Cargo.toml -p tdlib-rs-gen -p tdlib-rs-parser
