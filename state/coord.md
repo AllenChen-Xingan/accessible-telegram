@@ -1,7 +1,7 @@
 # 大总管看板（coord）
 
 > 只有大总管跟人说话。手下做完、卡住、要名额，只报给大总管。
-> 大总管会话名：`telegram-accessibility-64`（2026-10-25 会话重启后；原 `-40`、更早 `-ca`）（换班后在这里改）。tmux 工作区：`aiw`。
+> 大总管会话名：`telegram-accessibility-1a`（2026-10-26 起；原 `-64`、`-40`、更早 `-ca`）（换班后在这里改）。tmux 工作区：`aiw`。
 > 做法依据：阳志平《AI 自主系统的高级玩法：建一个大总管》（2026-10-15，安仁书院）。
 
 ## Top 4（眼下最重要）
@@ -22,6 +22,12 @@
 
 | 窗口 | 任务 | 交代文件 | 现状页 | 状态 |
 |---|---|---|---|---|
+| `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **已报到** |
+| `cert`（会话 `telegram-accessibility-1c`） | 批次 b15 · 领 Apple 免费开发证书（人登录 Apple ID，其余手下做），给 #38 方案乙 | `_tmp/20261026-b15/cert.md` | `state/handoff/cert.md` | **完成，已收尾**（Apple Development 证书已建，SHA-1 DE6F6A93…，团队 XWFX…，有效到 2027-10-26；无弹框；窗口已关） |
+| `speech`（会话 `19-speech-96`） | 批次 b15 · #19 speech v0 + 快照（worktree `atg-wt/19-speech`，分支 `feat/19-speech`） | `_tmp/20261026-b15/speech.md` | worktree 内 `state/handoff/speech.md` | **完成，已收尾**（235 测试；V1–V23 落地；PR #47；窗口已关） |
+| `style`（会话 `20-style-e3`） | 批次 b15 · #20 读法规约 v0 草稿（worktree `atg-wt/20-style`，分支 `docs/20-style-v0`） | `_tmp/20261026-b15/style.md` | worktree 内 `state/handoff/style.md` | **完成，已收尾**（三份稿 60+ 例，V1–V23 回填；007 随 PR #48；窗口已关） |
+| `ipc`（会话 `22-ipc-54`） | 批次 b15 · #22 本机接口（worktree `atg-wt/22-ipc`，分支 `feat/22-local-ipc`） | `_tmp/20261026-b15/ipc.md` | worktree 内 `state/handoff/ipc.md` | **完成，已收尾**（解冲突后 255 测试；PR #46 已合并；窗口已关） |
+| `keychain`（会话 `telegram-accessibility-4a`） | 批次 b15 · #38 钥匙串弹框根治调研（MAIN，出 `docs/experiments/exp005-keychain-acl/`） | `_tmp/20261026-b15/keychain.md` | `state/handoff/keychain.md` | **完成，已收尾**（方案乙实测通过；人定 A1 + 乙；报告 `docs/experiments/exp005-keychain-acl/README.md`；窗口已关） |
 | `gpui`（会话 `telegram-accessibility-c5`） | 001 · 命门 1、2：GPUI 无障碍接口 | `_tmp/20261023-dispatch/gpui.md` | `state/handoff/gpui.md` | 完成，已收尾（窗口已关） |
 | `exp001`（会话 `telegram-accessibility-23`） | 实验：播报会不会打断朗读 | `_tmp/20261023-exp/exp001.md` | `state/handoff/exp001.md` | **完成，已收尾**；剩人工试听 |
 | `exp002`（会话 `telegram-accessibility-fc`） | 实验：TDLib 往返、重绘、冷启动分段计时 | `_tmp/20261023-exp/exp002.md` | `state/handoff/exp002.md` | **完成，已收尾**（拍板 1 坐实） |
@@ -74,6 +80,41 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **人定 #38（2026-10-26）**：A1 开发版照常用正式账号（静默签名口径同 P5）· 用乙 · #42 缓做 · 迁 test + main · atg-dev 先留 → 记入 007。落地块（乙第 1–5、7 条）待派；#49 实验索引补登
+
+- **人「可以直接帮我合并吧」（2026-10-26）**：#48 → #47 → #46 依次合并（`ATG_CONFIRMED=1`）；#19 #20 #22 关；三个 worktree 已删。仓库规则要求分支跟上 main，#47 先 update-branch；#46 由大总管 merge main、ipc 解冲突
+
+- **人「提交吧」（2026-10-26）**：PR #46（#22）· #47（#19，首个提交为纯移动）· #48（#20 + 007 拍板记录，从 MAIN 移入该分支）。#46 与 #47 在 cli.md / args.rs / main.rs 冲突 → 建议合并顺序 #48 → #47 → #46，#47 合后大总管 merge main 进 #22、ipc 解冲突
+
+- **2026-10-26**：speech 第四轮：夏令时 offset_at、`--fake` 报错等已修；--level 拆分 → #45；「007 / style 稿未提交」算依赖，提交后自然接上
+
+- **2026-10-26**：ipc 验收通过（242 测试；PR 描述 `_tmp/20261026-b15/pr-22.md`），**提交 / 推送被自动审核拦，问人时人中断 → 未提交，等人指示**。待问人：V12 文字紧挨表情加逗号（默认「好的，3 个👍」）· style 推及 ①②③（V13 单处键放末尾、V12/V16 推到会话项）+ 新缺口（匿名管理员 / 注销操作人 / 置顶查不到 / 群最后发送人注销）
+
+- **人定 V1–V23（2026-10-26）** → `docs/plan/007_decisions-b15.md`（V12/V13/V18 单选，其余全按建议）；style 回填稿、speech 改代码。speech 正式回报已收（231 过），待 V 题改完验收
+
+- **2026-10-26**：style 验收通过（第七轮清零）→ V1–V23 交人；speech 二轮自审 P0/P1 零，P2 → #44；ipc 自审 P0/P1 零，排队复测；cert 无自动化权限 → 人选自己在 Xcode 登录
+
+- **ipc 计时（2026-10-26）**：直跑 3 次 0.46–0.57 s（first_chat 68–73 ms），与 #18 一致，不是回退；6 s 只在刚停 serve 后那一次（推测 TDLib 换进程重连）。对照实验待做（要重编、会弹框），写进 PR 描述作后续
+
+- **speech 第二轮（2026-10-26）**：231 过；#18 快照未变；差异仅 V19 / V4 / V6 默认与新增夹具；进第二轮自审。人要「用 Chrome 弄证书」→ 免费证书只能在 Xcode 领，已打开 Xcode 请人登录
+
+- **ipc 冒烟（2026-10-26，正式档案只读）**：serve 起 103 s（等钥匙串弹框）；转发 0.39 / 0.04 s，直跑 6.03 s（比 #18 慢，已让查）；第 2 次转发与直跑去时间字段哈希一致；停干净
+
+- **人定（2026-10-26）#38**：先实测免费开发证书（乙），通了就用，不通做取钥匙小助手（丁）；注入风险 → #42（人「开 issue 堵上」）。⑧ 用户名 / author_signature → #43。keychain 交付已抽查（报告 + 5 文件、atg.exp005 清零），等人领证书后续测乙
+
+- **2026-10-26 keychain 结论**：分区名单按 cdhash 记（自签名无团队号）→ 重编必弹；实测可行：「取钥匙小助手」（稳定 cdhash + 核调用方签名 + hardened runtime）；⚠️ 开发版无 hardened runtime 可被 DYLD 注入取钥匙；未测：Apple 免费开发证书。人同意清 exp-hr（点「允许」）
+- **speech 批复**：收藏夹走 `my_id_changed` 事件（actions.md 加一行）；tombstone 加 `outgoing`；style 缺口 ④⑤⑥ 本块做、⑦⑧ 视成本
+- **style 交稿**：60 例 + V1–V23；第二轮仍有 P1 → 要求第三轮
+
+- **2026-10-26**：speech 全量 231 测试过，#18 快照逐字节未变，style C1–C15 15/15 一致；名额已还。style 顺带发现 → 开 #40（退格密码字节未清零，已核实）、#41（atg-review 字符串参数被忽略）
+
+- **ipc 方案 A–F（2026-10-26，大总管定，技术细节）**：`atg-cli serve` 常驻；只有 serve 监听（改 config-privacy）；只转发 `auth state`（改 cli.md:64）；路径超长拒启；转发中断 disconnected / 4；协议 v0 写进 config-privacy 第一节第 2 小节
+- **keychain 取证（2026-10-26）**：cargo 产物是链接器临时签名（按 cdhash，必弹）；atg-dev 重签后两次重编指定需求不变 → 下一步查分区名单
+
+- **speech 规约冲突（2026-10-26，大总管定，属技术细节）**：`speech --fixture PATH` 新增、`--scenario` 留给场景目录、`--level` 只做 brief / chat_brief；读法夹具迁到 `src/atg-core/fixtures/speech/`（testing.md 加一行）；已注销账号：User.deleted + ChatItem 可选字段、不升 v、缺省输出不变
+
+- **2026-10-26**：人「现在合并」→ PR #39 合并（`9087ac4`）、#18 关；人「好，都开始吧 / 并行多个」→ 批次 b15 四线并行，#19 #20 #22 同时 `status:active`（`specs/workflow.md` 允许一 worktree 一 active）；worktree 在 `5-App/atg-wt/`
 
 - **钥匙串每次重编译都弹框（2026-10-25）** → #38（推测自签名证书按 cdhash 认程序）；人定这次手动「始终允许」、根治另议。chats 手下自报一次未申请名额跑了 clippy + test（约 1 分钟，已提醒）
 
