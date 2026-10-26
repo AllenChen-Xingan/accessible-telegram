@@ -208,7 +208,8 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `message_pinned_changed` | `chat_id` `message_id` + 是否置顶（`updateMessageIsPinned` `:11233`） |
 | `chat_notification_changed` | `chat_id` + 会话自己的通知设置（`updateChatNotificationSettings` `:11367`） |
 | `scope_notification_changed` | 范围（私聊 / 群 / 频道）+ 全局通知设置（`updateScopeNotificationSettings` `:11489`）。**有效静音**由 store 合成：会话设成「跟随默认」时取它所属范围的设置（`002_roadmap.md` M2.3） |
-| `user_changed` | 用户节点 |
+| `user_changed` | 用户节点（含是否已注销：`user.type` 为 `userTypeDeleted`） |
+| `my_id_changed` | `user_id`：自己的用户 id（`updateOption` 的 `my_id`，登录后 TDLib 自己推，`AuthManager.cpp:348`；0 = 没有）。投影据此认出收藏夹、把系统消息里的自己读成「我」（`content-tree.md` 第三节第 4、6 小节） |
 | `file_progress` | `file_id` + 已下 / 总字节 |
 | `auth_step_changed` | `AuthStep`（不带提示语，理由同 `auth_state`） |
 | `net_state_changed` · `core_state_changed` | 新值 |
@@ -292,4 +293,5 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-25 按 b2 拍板同步（sync）：L1 按 F1 / A2 同官方客户端（GUI 发、CLI 默认不发）；`typing` 进 MVP；`delete`（给所有人）进 MVP（S1）；直发模式免一切 L2（D1）；代理不进 MVP（A5）；威胁边界按 P4 改写；本机接口下凭据由执行方重开（P1）；加 `chat_action` 事件（F6）
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：`test_dc_saved_only` 加第二个测试号例外（N7）；直发也免草稿与阅后即焚（N6）；开发测试时 L1 不再受红线限制（N3）
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第一节第 7 小节——写明 `CoreEvent` 即本表（乙6）；补 `message_ephemeral_changed`、`chat_draft_changed`、`chat_mention_count_changed` 三行；`send_succeeded` / `send_failed` 改为带整条消息；`messages_deleted` 补「未发出的不是撤回、没见过的待应答判定」（乙7）；`message_edited` 补编辑时间来源与 0（乙8）；`message_content_opened` 补只改原内容；`chat_last_message_changed` 补「新消息可只随它到达」；末尾补「喂给 store 的应答」
+- 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：第一节第 7 小节加 `my_id_changed`；`user_changed` 注明含是否已注销
 - 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：`auth_submit_phone` 加 `auth_phone_not_for_profile` 与可收的步骤；登录输入用 `Secret`；提交后按下一条授权更新判断；测试档案自动注册、名字写死 `Atg Test`

@@ -1,5 +1,9 @@
 //! 快照测试：TDLib JSON 夹具 → 树 → `brief` 读法 + JSON 行，一次把建树和读法一起测住。
-//! 夹具里的人名和内容全是编的（`.42cog/real.md`「隐私」）。
+//! 夹具在 `fixtures/speech/`，人名和内容全是编的（`.42cog/real.md`「隐私」；名字只取 `fixtures/names.txt`）。
+//! - `basic`：各种内容与系统消息 · `entities`：文本实体 · `cases`：路线图 M1.5 列的读法情形 ·
+//!   `chat_items`：会话项（`specs/style/chat-item.md` 的 C1–C15）
+//!
+//! 读法快照用 GUI 的按键（「按 M 收听」「按 D 展开」）；CLI 没有按键，`atg-cli` 的测试去掉按键后与这里逐行比对。
 //! 改了读法或树：跑 `INSTA_UPDATE=always cargo test -p atg-core` 生成新快照，**逐行看过差异**再入库。
 
 use atg_core::json;
@@ -11,11 +15,13 @@ fn cx() -> SpeechCtx {
     SpeechCtx {
         utc_offset: 8 * 3600,
         listen_key: Some('m'),
+        expand_key: Some('d'),
+        offset_at: None,
     }
 }
 
 fn world(name: &str) -> World {
-    let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/fixtures/speech/{name}.json", env!("CARGO_MANIFEST_DIR"));
     let src = std::fs::read_to_string(&path).expect("读夹具");
     World::from_json(&src).expect("解析夹具")
 }
@@ -62,6 +68,26 @@ fn entities_brief() {
 #[test]
 fn entities_json() {
     insta::assert_snapshot!(json_pretty(&world("entities").docs()));
+}
+
+#[test]
+fn cases_brief() {
+    insta::assert_snapshot!(briefs(&world("cases").docs()));
+}
+
+#[test]
+fn cases_json() {
+    insta::assert_snapshot!(json_pretty(&world("cases").docs()));
+}
+
+#[test]
+fn chat_items_brief() {
+    insta::assert_snapshot!(briefs(&world("chat_items").chat_items()));
+}
+
+#[test]
+fn chat_items_json() {
+    insta::assert_snapshot!(json_pretty(&world("chat_items").chat_items()));
 }
 
 #[test]

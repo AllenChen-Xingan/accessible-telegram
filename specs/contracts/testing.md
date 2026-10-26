@@ -42,6 +42,8 @@ src/atg-core/fixtures/
     users.jsonl
     history/<chat_id>.jsonl    每个会话的历史，从新到旧
     timeline.jsonl             可选：{"after_ms":1200,"update":{…TDLib JSON…}}
+  speech/<名>.json             读法夹具：TDLib 更新对象的 JSON 数组，按顺序喂 store（`tdjson::World`）；
+                               `atg-cli speech --fixture` 与 `atg-core` 的读法快照（`tests/snapshots/`）共用
   names.txt                    唯一允许用的假人名、假会话名清单
 ```
 
@@ -167,3 +169,4 @@ src/atg-core/fixtures/
 - 2026-10-25 按 b2 拍板同步（sync，大总管授权）：一库一进程按 P1；L1 按 F1 / A2；钥匙访问按 P2 × P4；直发矩阵编辑 / 删除 / 回应按 D1；T1、T2 结果，T2 写进第一节第 6 小节
 - 2026-10-25 按 b3 拍板（`docs/plan/005_decisions-b3.md`）同步（sync）：钥匙访问按 N2；发送闸矩阵加第二个测试号例外（N7）；第一节第 5 小节加第二个测试号
 - 2026-10-25 issue #17 登录（login，大总管授权，人定「全按建议，把现状写进契约」）：测试档案注册名字暂写死 `Atg Test`；登录次数计数（`flood.json`）未做，另开 issue
+- 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：夹具目录加 `speech/`（读法夹具，CLI `speech --fixture` 与读法快照共用）

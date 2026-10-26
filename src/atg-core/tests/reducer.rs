@@ -70,6 +70,7 @@ fn chat(chat_id: i64, order: i64) -> Chat {
         last_read_inbox: 0,
         last_read_outbox: 0,
         notify: ChatNotify::default(),
+        peer_user: None,
         last_message: None,
     }
 }
@@ -782,6 +783,7 @@ fn projection_fills_late_names_and_tombstone_sender() {
             id: LIN,
             first_name: "小雨".into(),
             last_name: String::new(),
+            deleted: false,
         }),
     );
     match project::message(&s, id(CHAT, 5)) {
@@ -790,7 +792,8 @@ fn projection_fills_late_names_and_tombstone_sender() {
                 t.sender,
                 Some(Sender::User {
                     user_id: LIN,
-                    name: Some("小雨".into())
+                    name: Some("小雨".into()),
+                    deleted: false,
                 })
             );
             assert_eq!(t.date, Some(Time(1_792_755_420)));
@@ -825,14 +828,16 @@ fn reply_sender_from_store_else_origin() {
         sender_of(6),
         Some(Sender::User {
             user_id: LIN,
-            name: None
+            name: None,
+            deleted: false,
         })
     );
     assert_eq!(
         sender_of(7),
         Some(Sender::User {
             user_id: 99,
-            name: None
+            name: None,
+            deleted: false,
         })
     );
 }
@@ -1208,6 +1213,7 @@ fn reply_and_pin_follow_swapped_id() {
         51,
         Body::Service(tree::Action::Pinned {
             pinned: id(CHAT, 1_000_001),
+            content: None,
         }),
     );
     pin.sender = SenderId::User(LIN);
@@ -1230,7 +1236,8 @@ fn reply_and_pin_follow_swapped_id() {
                     sender,
                     Some(Sender::User {
                         user_id: ME,
-                        name: None
+                        name: None,
+                        deleted: false,
                     })
                 );
             }
@@ -1240,12 +1247,10 @@ fn reply_and_pin_follow_swapped_id() {
     }
     match project::message(&s, id(CHAT, 51)) {
         Some(Doc::Service(sv)) => {
-            assert_eq!(
+            assert!(matches!(
                 sv.action,
-                tree::Action::Pinned {
-                    pinned: id(CHAT, 42)
-                }
-            )
+                tree::Action::Pinned { pinned, .. } if pinned == id(CHAT, 42)
+            ))
         }
         other => panic!("{other:?}"),
     }

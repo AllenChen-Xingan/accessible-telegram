@@ -146,7 +146,8 @@ expression: "json_pretty(&world(\"basic\").chat_items())"
           "title": "示例频道"
         },
         "date": "2026-10-23T09:30:00Z",
-        "outgoing": false
+        "outgoing": false,
+        "in_channel": true
       },
       "content": {
         "body": [

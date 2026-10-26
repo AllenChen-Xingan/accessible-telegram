@@ -196,12 +196,17 @@ pub fn event(v: &Value) -> CoreEvent {
         message_id: i(v, "message_id"),
     };
     match ty(v) {
+        // 只认 `my_id`；别的选项不进 store。值是 `optionValueInteger{value}`（int64，JSON 里是字符串）
+        "updateOption" if s(v, "name") == "my_id" => CoreEvent::MyIdChanged {
+            user_id: i(&v["value"], "value"),
+        },
         "updateUser" => {
             let u = &v["user"];
             CoreEvent::UserChanged(User {
                 id: i(u, "id"),
                 first_name: s(u, "first_name").to_owned(),
                 last_name: s(u, "last_name").to_owned(),
+                deleted: ty(&u["type"]) == "userTypeDeleted",
             })
         }
         "updateNewChat" => {
@@ -352,6 +357,10 @@ fn chat(c: &Value) -> Chat {
         last_read_inbox: i(c, "last_read_inbox_message_id"),
         last_read_outbox: i(c, "last_read_outbox_message_id"),
         notify: notify(&c["notification_settings"]),
+        peer_user: match ty(&c["type"]) {
+            "chatTypePrivate" | "chatTypeSecret" => Some(i(&c["type"], "user_id")),
+            _ => None,
+        },
         last_message: None,
     }
 }
@@ -504,6 +513,8 @@ fn body(c: &Value, chat_id: i64) -> Body {
     let user = |uid: i64| UserRef {
         user_id: uid,
         name: None,
+        is_me: false,
+        deleted: false,
     };
     Body::Service(match ty(c) {
         "messageChatAddMembers" => Action::MembersAdded {
@@ -528,6 +539,7 @@ fn body(c: &Value, chat_id: i64) -> Body {
                 chat_id,
                 message_id: i(c, "message_id"),
             },
+            content: None,
         },
         "messageBasicGroupChatCreate" | "messageSupergroupChatCreate" => Action::GroupCreated {
             title: s(c, "title").to_owned(),
