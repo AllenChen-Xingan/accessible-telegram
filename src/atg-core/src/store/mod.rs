@@ -510,6 +510,10 @@ impl Store {
                 self.users.insert(u.id, u);
             }
             CoreEvent::UserStatusChanged(s) => self.status = Some(s),
+            // 三条线的原值由后端的 `status()` 给；store 只存合成后的那个
+            CoreEvent::AuthStepChanged(_)
+            | CoreEvent::NetStateChanged(_)
+            | CoreEvent::CoreStateChanged(_) => {}
             CoreEvent::Unknown { .. } => {}
         }
     }

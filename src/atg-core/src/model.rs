@@ -6,8 +6,8 @@
 //! - **存下来的东西只放 id，名字一律投影时填**（[`crate::project`]）：发送人、转发来源、系统消息里提到的人
 //! - 不认识的 TDLib 类型落带 `td_type` 的变体，不崩
 //!
-//! 这里的类型不带任何 tdlib-rs 类型。映射（tdlib-rs → model）归 `td`（第一刀第 3 块）；
-//! 原型夹具的映射（TDLib JSON → model）在 [`crate::tdjson`]。
+//! 这里的类型不带任何 tdlib-rs 类型。映射（TDLib JSON → model）只有一份，在 [`crate::tdjson`]：
+//! 真实后端（`td`）把 tdlib-rs 的更新序列化回 TDLib JSON 交给它，夹具也走它。**别在 `td` 里另写映射**
 
 pub use crate::tree::{
     Action, Attachment, ChatKind, Content, MsgId, Reaction, Span, Time, Topic, UserStatus,
@@ -285,8 +285,8 @@ pub enum CoreEvent {
     SendFailed {
         old_id: MsgId,
         message: Message,
-        /// TDLib 的错误码（store 不用）。换成 `errors.md` 机读码归 `td` 的 `map_td_error`（第一刀第 3 块）
-        td_error_code: i32,
+        /// 失败原因，已过 [`crate::error::map_td_error`]（store 不用）
+        error: crate::error::CoreError,
         /// 能否重发（`messageSendingStateFailed.can_retry`，`actions.md` 事件 `send_failed`）
         can_retry: bool,
     },
@@ -334,8 +334,14 @@ pub enum CoreEvent {
     ScopeNotificationChanged { scope: NotifyScope, mute_for: i64 },
     /// `updateUser`
     UserChanged(User),
-    /// 合成后的用户状态（合成归 infra，`errors.md` 第一节第 3 小节）
+    /// 合成后的用户状态（`crate::status::user_status`，`errors.md` 第一节第 3 小节）
     UserStatusChanged(UserStatus),
+    /// 授权线变了（`auth_step_changed`；不带提示语）。由收线程从 `updateAuthorizationState` 合成
+    AuthStepChanged(crate::status::AuthStep),
+    /// 连接线变了（`net_state_changed`）。由收线程从 `updateConnectionState` 合成
+    NetStateChanged(crate::status::NetState),
+    /// 内核线变了（`core_state_changed`）：收线程监督产出
+    CoreStateChanged(crate::status::CoreState),
     /// 不认识的更新：只有类型名
     Unknown { td_type: String },
 }

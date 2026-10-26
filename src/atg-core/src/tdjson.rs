@@ -1,8 +1,9 @@
-//! 夹具输入：TDLib JSON → [`CoreEvent`]，再走「reducer → 投影」。
+//! TDLib JSON → [`CoreEvent`] 的映射（正式路径与夹具共用；入口 [`classify`]），外加夹具专用的 [`World`]。
+//! 夹具（fixture）= 手写的假 TDLib 数据，测试用。
 //!
-//! 正式路径是「tdlib-rs 类型 → model → reducer → 投影成树」（映射归 `td`，第一刀第 3 块）；
-//! 这个模块是它的夹具版：同样产出 [`CoreEvent`]，同样喂给 [`Store`]，同样用 [`crate::project`] 出树，
-//! 所以快照测的就是正式的 reducer 和投影，只有「JSON → 事件」这一段是夹具专用的。
+//! **正式路径也用这里的映射**：`td` 把 tdlib-rs 的 `Update` 原样序列化回 TDLib JSON，交给 [`classify`]
+//! （第一刀第 3 块定，免得维护两份映射）。所以快照测的就是正式的映射、reducer 和投影；
+//! 只有 [`World`]（夹具按顺序编序号喂 store）是夹具专用的。
 //!
 //! 夹具 = 一个 JSON 数组，元素是 TDLib 的更新对象，按顺序喂进来（`updateUser`、`updateNewChat`、
 //! `updateNewMessage`……），序号从 1 起递增。**建树在 [`World::docs`] 被调用时才做**——
@@ -10,11 +11,13 @@
 //!
 //! 一律用 `serde_json::Value` 逐字段取，字段缺了取默认值，不认识的类型落「未知」，绝不 panic。
 
+use crate::error::map_td_error;
 use crate::model::{
     Body, Chat, ChatList, ChatNotify, ChatPosition, CoreEvent, ForwardRef, Message, NotifyScope,
     OriginId, ReplyRef, SenderId, SendingState, User,
 };
 use crate::project;
+use crate::status::{AuthStep, CoreState, Lines, NetState};
 use crate::store::{Input, Store};
 use crate::tree::text::{self, Entity, EntityKind};
 use crate::tree::*;
@@ -65,10 +68,25 @@ enum Item {
 }
 
 /// 一份夹具喂完之后的「世界」：reducer 的状态 + 按到达顺序的条目
-#[derive(Default)]
 pub struct World {
     store: Store,
     order: Vec<Item>,
+    /// 三条线。夹具假定内核在跑、已登录（原型就是这样），连接 / 授权更新照正式规则合成状态
+    lines: Lines,
+}
+
+impl Default for World {
+    fn default() -> Self {
+        Self {
+            store: Store::default(),
+            order: Vec::new(),
+            lines: Lines {
+                core: CoreState::Running,
+                auth: AuthStep::Ready,
+                net: NetState::Connecting,
+            },
+        }
+    }
 }
 
 impl World {
@@ -84,9 +102,20 @@ impl World {
         Ok(w)
     }
 
-    /// 一条 TDLib 更新 → 事件 → reducer
+    /// 一条 TDLib 更新 → [`classify`] → 事件 → reducer（与正式路径同一个入口；授权、连接两条线照
+    /// [`crate::status::user_status`] 合成状态，正式路径在 `link` 里做同样的事）
     pub fn apply(&mut self, v: &Value) {
-        let ev = event(v);
+        let ev = match classify(v) {
+            Classified::Event(e) => e,
+            Classified::Auth(a) => {
+                self.lines.auth = a;
+                CoreEvent::UserStatusChanged(self.lines.user_status())
+            }
+            Classified::Net(n) => {
+                self.lines.net = n;
+                CoreEvent::UserStatusChanged(self.lines.user_status())
+            }
+        };
         match &ev {
             CoreEvent::NewMessage(m) => self.order.push(Item::Msg(m.id)),
             // 换了 id 的消息原位沿用新 id
@@ -138,7 +167,28 @@ impl World {
 
 // ───────────────────────── 更新 → 事件 ─────────────────────────
 
-/// 一条 TDLib 更新对象 → 事件。不认识的落 `Unknown`
+/// 收线程看一条更新时的三种去向：授权线、连接线（这两条由收线程自己维护、合成 [`UserStatus`]），
+/// 或交给 store 的事件。正式路径（`td`）与假后端都走这里，所以夹具测过的映射就是正式映射
+#[allow(clippy::large_enum_variant)]
+pub enum Classified {
+    Auth(AuthStep),
+    Net(NetState),
+    Event(CoreEvent),
+}
+
+/// 一条 TDLib 更新对象 → 去向。授权、连接两种截走；其余走 [`event`]
+pub fn classify(v: &Value) -> Classified {
+    match ty(v) {
+        "updateAuthorizationState" => {
+            Classified::Auth(AuthStep::from_td_type(ty(&v["authorization_state"])))
+        }
+        "updateConnectionState" => Classified::Net(NetState::from_td_type(ty(&v["state"]))),
+        _ => Classified::Event(event(v)),
+    }
+}
+
+/// 一条 TDLib 更新对象 → 事件。不认识的落 `Unknown`。授权、连接两种更新由 [`classify`] 先截走，
+/// 不经这里（经这里会落 `Unknown`）——外面一律调 [`classify`]
 pub fn event(v: &Value) -> CoreEvent {
     let chat_id = || i(v, "chat_id");
     let id = || MsgId {
@@ -199,7 +249,10 @@ pub fn event(v: &Value) -> CoreEvent {
                 CoreEvent::SendFailed {
                     old_id,
                     message: m,
-                    td_error_code: i32::try_from(i(&v["error"], "code")).unwrap_or(0),
+                    error: map_td_error(
+                        i32::try_from(i(&v["error"], "code")).unwrap_or(0),
+                        s(&v["error"], "message"),
+                    ),
                     can_retry: b(&v["message"]["sending_state"], "can_retry"),
                 }
             }
@@ -256,7 +309,6 @@ pub fn event(v: &Value) -> CoreEvent {
                 td_type: format!("updateScopeNotificationSettings/{other}"),
             },
         },
-        "updateConnectionState" => CoreEvent::UserStatusChanged(net_status(&v["state"])),
         other => CoreEvent::Unknown {
             td_type: other.to_owned(),
         },
@@ -677,17 +729,6 @@ fn reaction_kind(v: &Value) -> ReactionKind {
         other => ReactionKind::Unknown {
             td_type: other.to_owned(),
         },
-    }
-}
-
-/// 原型简化：假定内核在跑、已登录，只按连接状态合成。正式的三线合成归 infra 的
-/// `user_status(core, auth, net)`。不认识的连接状态按「正在连接」处理（不说已连接，宁可保守）
-fn net_status(v: &Value) -> UserStatus {
-    match ty(v) {
-        "connectionStateWaitingForNetwork" => UserStatus::Offline,
-        "connectionStateUpdating" => UserStatus::Syncing,
-        "connectionStateReady" => UserStatus::Online,
-        _ => UserStatus::Connecting,
     }
 }
 

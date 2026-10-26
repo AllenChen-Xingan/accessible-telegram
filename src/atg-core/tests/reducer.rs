@@ -662,7 +662,7 @@ fn send_failed_then_resend_keeps_first_key() {
         CoreEvent::SendFailed {
             old_id: p.id,
             message: failed.clone(),
-            td_error_code: 400,
+            error: atg_core::error::map_td_error(400, ""),
             can_retry: true,
         },
     );
@@ -1002,7 +1002,7 @@ fn resend_is_not_a_revoke_and_keeps_key() {
         CoreEvent::SendFailed {
             old_id: id(CHAT, 1_000_001),
             message: failed,
-            td_error_code: 500,
+            error: atg_core::error::map_td_error(500, ""),
             can_retry: true,
         },
     );
@@ -1363,7 +1363,7 @@ fn resent_vs_send_succeeded_any_order() {
             CoreEvent::SendFailed {
                 old_id: id(CHAT, 1_000_001),
                 message: failed,
-                td_error_code: 500,
+                error: atg_core::error::map_td_error(500, ""),
                 can_retry: true,
             },
         );
@@ -1718,7 +1718,7 @@ fn two_resends_out_of_order_keep_first_key() {
         CoreEvent::SendFailed {
             old_id: old,
             message: m,
-            td_error_code: 500,
+            error: atg_core::error::map_td_error(500, ""),
             can_retry: true,
         }
     };
@@ -1939,7 +1939,7 @@ fn long_resend_chain_keeps_first_key() {
             CoreEvent::SendFailed {
                 old_id: cur,
                 message: failed,
-                td_error_code: 500,
+                error: atg_core::error::map_td_error(500, ""),
                 can_retry: true,
             },
         );

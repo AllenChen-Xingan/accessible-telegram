@@ -24,6 +24,14 @@ bash src/tdlib-build/build.sh                # 约 3–4 分钟，只需一次
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 cargo build -p atg-core --features tdlib
 cargo clippy -p atg-core --features tdlib-api --all-targets -- -D warnings   # 不用库
+
+# 真连 Telegram 还要（都不入库）：仓库根 .env.local 写 ATG_API_ID / ATG_API_HASH（自己在 my.telegram.org 申请）；
+# 开发签名证书，只需一次：bash scripts/setup-dev-codesign.sh（codesign 第一次用它时钥匙串会问，选「始终允许」）。
+# 所有开发版都用同一个固定标识签名（-i atg.dev），本地库钥匙在钥匙串里才不弹框
+# 本机冒烟：测试服务器 → 授权状态到 wait_phone，然后正常关闭（不登录、不发消息）
+cargo build -p atg-core --features tdlib --example live_wait_phone
+codesign -s atg-dev -i atg.dev --force target/debug/examples/live_wait_phone
+DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" ATG_LIVE=1 target/debug/examples/live_wait_phone   # 程序里没写库搜索路径，要这样指给它
 ```
 
 依赖怎么接、CI 管到哪、怎么把 `tdlib-rs/` 的改动推回 fork：`docs/plan/004_tdlib-patch.md` 第二、三节。
