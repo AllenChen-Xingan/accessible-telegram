@@ -1,0 +1,17 @@
+[package]
+name = "tdlib-rs-parser"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/tdlib-rs-parser"
+keywords = [
+    "tdlib",
+    "telegram",
+    "parser",
+    "api",
+    "tdlib-rs",
+]
+description = "A parser for TDLib's Type Language definitions."
