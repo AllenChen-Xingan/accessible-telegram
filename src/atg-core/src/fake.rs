@@ -16,13 +16,19 @@
 //! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。
 //! 应答之前先等收线程把这批更新处理完（[`Feed::Barrier`]），与真实 TDLib「更新先于应答」一致。
 //! [`FakeBackend::push_net`] 推一条连接状态。
+//!
+//! 消息（第 8 块）：[`FakeBackend::set_chat`] 给 `chat_get` 时要推的更新（`updateNewChat`、`updateUser`……），
+//! [`FakeBackend::set_history`] 给某会话的消息（TDLib `message` 对象）。`history` 照 TDLib 的切法（`offset` 为 0
+//! 不含 `from` 那条、往旧；负 `offset` 含它、另给比它新的），返回从新到旧；[`FakeBackend::stall_history`] 让接下来
+//! 几次只回起点那一条；[`FakeBackend::short_first_history`]
+//! 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
 
 use crate::auth::{self, AuthPrompt};
-use crate::backend::{Backend, ChatsLoad, StatusReport, already_subscribed};
+use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::ChatList;
+use crate::model::{ChatId, ChatList, Message, MsgId};
 use crate::secret::Secret;
 use crate::status::{AuthStep, CoreState, NetState};
 use serde_json::{Value, json};
@@ -49,6 +55,12 @@ pub enum Call {
         use_test_dc: bool,
     },
     Subscribe,
+    /// `chat_get`
+    ChatGet(ChatId),
+    /// `history`：原样记下请求
+    History(HistoryReq),
+    /// `message_get`
+    MessageGet(MsgId),
     Shutdown,
     /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
     /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
@@ -100,6 +112,16 @@ pub struct FakeBackend {
     chats: Mutex<HashMap<ChatList, VecDeque<Vec<Value>>>>,
     /// 还剩几次 `chats_load` 照常应答；之后一直不应答（断网时转去问服务器的样子）。`None` = 一直照常
     chats_load_answers: Mutex<Option<u32>>,
+    /// `chat_get` 时推的更新
+    chat_info: Mutex<HashMap<ChatId, Vec<Value>>>,
+    /// 每个会话的消息（TDLib `message` 对象）
+    histories: Mutex<HashMap<ChatId, Vec<Value>>>,
+    /// 每个会话第一次 `history` 只回 1 条
+    short_first: Mutex<Option<std::collections::HashSet<ChatId>>>,
+    /// 停住：（先照常应答几次，再连着几次只回起点那一条）——TDLib 正从服务器拉、一直没拉到的样子
+    stall: Mutex<(u32, u32)>,
+    /// 每次 `history` 最多回几条（离起点最近的那几条，与 TDLib 只给内存里连着起点那一段同形）
+    cap: Mutex<Option<usize>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -138,6 +160,11 @@ impl FakeBackend {
             fail_next: Mutex::new(Vec::new()),
             chats: Mutex::new(HashMap::new()),
             chats_load_answers: Mutex::new(None),
+            chat_info: Mutex::new(HashMap::new()),
+            histories: Mutex::new(HashMap::new()),
+            short_first: Mutex::new(None),
+            stall: Mutex::new((0, 0)),
+            cap: Mutex::new(None),
         })
     }
 
@@ -150,6 +177,36 @@ impl FakeBackend {
     /// `updateChatPosition`）。再调一次是追加
     pub fn set_chats(&self, list: ChatList, chats: Vec<Vec<Value>>) {
         lock(&self.chats).entry(list).or_default().extend(chats);
+    }
+
+    /// `chat_get(id)` 时推这几条更新（`updateNewChat`、发送人的 `updateUser`……）；没设的会话 → `not_found`
+    pub fn set_chat(&self, id: ChatId, updates: Vec<Value>) {
+        lock(&self.chat_info).insert(id, updates);
+    }
+
+    /// 某会话的全部消息（TDLib `message` 对象，顺序无所谓）
+    pub fn set_history(&self, chat: ChatId, messages: Vec<Value>) {
+        lock(&self.histories).insert(chat, messages);
+    }
+
+    /// 每个会话第一次 `history` 只回 1 条（之后照常）
+    pub fn short_first_history(&self) {
+        *lock(&self.short_first) = Some(std::collections::HashSet::new());
+    }
+
+    /// 接下来 `n` 次 `history` 只回起点那一条，之后照常
+    pub fn stall_history(&self, n: u32) {
+        *lock(&self.stall) = (0, n);
+    }
+
+    /// 先照常应答 `ok` 次，再连着 `n` 次只回起点那一条，之后照常
+    pub fn stall_history_after(&self, ok: u32, n: u32) {
+        *lock(&self.stall) = (ok, n);
+    }
+
+    /// 每次 `history` 最多回 `c` 条（离起点最近的）
+    pub fn cap_history(&self, c: usize) {
+        *lock(&self.cap) = Some(c);
     }
 
     /// 前 `n` 次 `chats_load` 照常应答，之后一直不应答（测断网时加载卡住）
@@ -541,6 +598,123 @@ impl Backend for FakeBackend {
         Ok(ChatsLoad::Loaded)
     }
 
+    async fn chat_get(&self, chat: ChatId) -> Result<(), CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::ChatGet(chat));
+        self.ready_or_401("chat_get").await?;
+        let Some(updates) = lock(&self.chat_info).get(&chat).cloned() else {
+            return Err(CoreError::NotFound {
+                what: "chat",
+                td: None,
+            });
+        };
+        for u in updates {
+            self.push(u);
+        }
+        self.settle();
+        Ok(())
+    }
+
+    async fn history(&self, req: HistoryReq) -> Result<Vec<Message>, CoreError> {
+        self.started()?;
+        req.check()?;
+        lock(&self.calls).push(Call::History(req));
+        self.ready_or_401("history").await?;
+        if !lock(&self.chat_info).contains_key(&req.chat) {
+            return Err(CoreError::NotFound {
+                what: "chat",
+                td: None,
+            });
+        }
+        let mut all: Vec<Value> = lock(&self.histories)
+            .get(&req.chat)
+            .cloned()
+            .unwrap_or_default();
+        let id = |v: &Value| v["id"].as_i64().unwrap_or(0);
+        all.sort_by_key(|v| std::cmp::Reverse(id(v)));
+        // 照 TDLib 1.8.69 的切法（`td/telegram/OrderedMessage.cpp` `OrderedMessages::get_history`）：
+        // - `from` 为 0：从最新一条起（含它）往旧
+        // - `offset` 为 0：**不含** `from` 那条，从比它旧的起
+        // - `offset` 为 -k：`from` 那条算进去，另给比它新的 k-1 条，再往旧接上
+        let from_end = req.from == 0;
+        let k = usize::try_from(-i64::from(req.offset)).unwrap_or(0);
+        let newer_n = k.saturating_sub(1);
+        let mut newer: Vec<Value> = all
+            .iter()
+            .filter(|v| !from_end && id(v) > req.from)
+            .cloned()
+            .collect();
+        let skip = newer.len().saturating_sub(newer_n);
+        let newer = newer.split_off(skip);
+        let older: Vec<Value> = all
+            .iter()
+            .filter(|v| from_end || id(v) < req.from || (k > 0 && id(v) == req.from))
+            .cloned()
+            .collect();
+        // 停住：只回起点那一条（有的话），一条新的都不给——内存里只有它、更早的还在后台拉
+        let stalled = {
+            let mut st = lock(&self.stall);
+            if st.0 > 0 {
+                st.0 -= 1;
+                false
+            } else {
+                let s = st.1 > 0;
+                st.1 = st.1.saturating_sub(1);
+                s
+            }
+        };
+        // 从最新一条起时「起点」就是最新那条
+        let at_from = || {
+            if from_end {
+                all.first().cloned()
+            } else {
+                all.iter().find(|v| id(v) == req.from).cloned()
+            }
+        };
+        if stalled {
+            return Ok(at_from().iter().map(crate::tdjson::message).collect());
+        }
+        // TDLib 首次常只回 1 条（内存里只有挨着起点的那一条）：TDLib 给的总是连着起点的一段，所以是离起点最近的那条
+        let short = lock(&self.short_first)
+            .as_mut()
+            .is_some_and(|seen| seen.insert(req.chat));
+        if short {
+            let one = older.first().cloned().or_else(|| newer.last().cloned());
+            return Ok(one.iter().map(crate::tdjson::message).collect());
+        }
+        // 限了条数：留离起点最近的那几条（往新时是起点和紧挨着它的新的，往旧时是紧挨着它的旧的）
+        let (newer, older) = match *lock(&self.cap) {
+            Some(c) if k > 0 => {
+                let keep_newer = c.saturating_sub(1).min(newer.len());
+                let newer = newer[newer.len() - keep_newer..].to_vec();
+                let older = older.into_iter().take(c - keep_newer).collect();
+                (newer, older)
+            }
+            Some(c) => (newer, older.into_iter().take(c).collect()),
+            None => (newer, older),
+        };
+        let mut out: Vec<Value> = newer.into_iter().chain(older).collect();
+        out.truncate(usize::try_from(req.limit).unwrap_or(usize::MAX));
+        Ok(out.iter().map(crate::tdjson::message).collect())
+    }
+
+    async fn message_get(&self, id: MsgId) -> Result<Message, CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::MessageGet(id));
+        self.ready_or_401("message_get").await?;
+        lock(&self.histories)
+            .get(&id.chat_id)
+            .and_then(|ms| {
+                ms.iter()
+                    .find(|v| v["id"].as_i64() == Some(id.message_id))
+                    .map(crate::tdjson::message)
+            })
+            .ok_or(CoreError::NotFound {
+                what: "message",
+                td: None,
+            })
+    }
+
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {
         self.shared.wait_net(timeout, pred)
     }
@@ -575,6 +749,24 @@ impl Backend for FakeBackend {
                 what: "close_timeout",
             })
         }
+    }
+}
+
+impl FakeBackend {
+    /// 读消息这组的公共部分：注入的错误 → 内核故障 → 没登录回 401
+    async fn ready_or_401(&self, action: &'static str) -> Result<(), CoreError> {
+        let injected = self.take_failure(action);
+        link::guard(self.shared.clone(), async move {
+            match injected {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        })
+        .await??;
+        if self.step() != AuthStep::Ready {
+            return Err(map_td_error(401, "Unauthorized"));
+        }
+        Ok(())
     }
 }
 

@@ -12,6 +12,10 @@
 //!   （[`crate::store::Store::chat_list`]）；`wait_net` 供 CLI 等「补发完了」——离线期间漏掉的更新由服务器补送，
 //!   送完 TDLib 把连接状态从 `updating` 报成 `ready`
 //!
+//! - **消息**（第 8 块，T03 T06）：`chat_get`（`getChat`）· `history`（`getChatHistory`）· `message_get`（`getMessage`）。
+//!   都是 L0 只读：**不调 `openChat` / `viewMessages`，不标已读**（`actions.md` A1：CLI 的 history 不标）。会话、用户
+//!   经更新先进事件流（TDLib 先推 `updateNewChat` / `updateUser` 再给应答），消息本身随应答返回
+//!
 //! 发送等动作后续块加在这里，两份实现一起加。
 //!
 //! 线程：`start` 是异步的（等 `setTdlibParameters` 的应答），可放在任何执行器上；`shutdown` 阻塞到
@@ -21,7 +25,7 @@ use crate::auth::AuthPrompt;
 use crate::config::Profile;
 use crate::error::CoreError;
 use crate::link::EventStream;
-use crate::model::ChatList;
+use crate::model::{ChatId, ChatList, Message, MsgId};
 use crate::secret::Secret;
 use crate::status::{AuthStep, Lines, NetState};
 use crate::tree::UserStatus;
@@ -100,12 +104,49 @@ pub trait Backend {
     /// [`ChatsLoad::End`]（`actions.md` `chats_load`）。只认主列表、归档、文件夹；未知列表 → `invalid_input`
     async fn chats_load(&self, list: &ChatList, limit: u32) -> Result<ChatsLoad, CoreError>;
 
+    /// 让会话进 Store（`getChat`：会话经 `updateNewChat` 先进事件流，应答到时已在流里）。本地没有这个私聊时改用
+    /// `createPrivateChat(force=false)` 取已有的（收藏夹 = 与自己的私聊，会话 id 即自己的用户 id），**不新建会话**。
+    /// 找不到 → `not_found`
+    async fn chat_get(&self, chat: ChatId) -> Result<(), CoreError>;
+
+    /// 一段历史（`getChatHistory`，参数同 TDLib）：`from` 为 0 从最新一条起（含它）；`offset` 为 0 时**不含** `from` 那条、
+    /// 从比它旧的取（TDLib `OrderedMessage.cpp` `get_history`）；负数含它、另多取比它新的；`limit` 1–100，`offset` 为负时须不小于 `-offset`。返回从新到旧，条数由 TDLib 定，
+    /// 可能比要的少（首次常只回 1 条），调用方循环补。`local_only`：只取本地已有的、不联网。**不标已读**
+    async fn history(&self, req: HistoryReq) -> Result<Vec<Message>, CoreError>;
+
+    /// 一条消息（`getMessage`）。不在 → `not_found`。**不标已读**
+    async fn message_get(&self, id: MsgId) -> Result<Message, CoreError>;
+
     /// 等到连接线满足 `pred`（或内核故障 / 超时 → `None`）。「补发完了」（离线期间漏掉的更新已补送完）= 连接线到 `ready`
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState>;
 
     /// 发 `close`，等到 `authorizationStateClosed`（最多 `timeout`）。超时 → `internal`，故障 → `disconnected`；
     /// 两种都留着「运行中」标记，下次启动提示
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError>;
+}
+
+/// [`Backend::history`] 的请求：字段同 `getChatHistory`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryReq {
+    pub chat: ChatId,
+    pub from: i64,
+    pub offset: i32,
+    pub limit: u32,
+    pub local_only: bool,
+}
+
+impl HistoryReq {
+    /// 本地先查一遍参数（TDLib 也会拒，这里拒了就不发）：`limit` 1–100；`offset` -99–0；`offset` 为负时 `limit ≥ -offset`
+    pub fn check(&self) -> Result<(), CoreError> {
+        let ok = (1..=100).contains(&self.limit)
+            && (-99..=0).contains(&self.offset)
+            && i64::from(self.limit) >= -i64::from(self.offset);
+        if ok {
+            Ok(())
+        } else {
+            Err(CoreError::InvalidInput { td: None })
+        }
+    }
 }
 
 /// [`Backend::chats_load`] 的结果

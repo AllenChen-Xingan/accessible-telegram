@@ -1,0 +1,14 @@
+---
+source: src/atg-cli/src/history.rs
+expression: "[norm(&masked.out), shown.out.join(\"\\n\"),\nhidden_text.out.join(\"\\n\"),].join(\"\\n\")"
+---
+{"v":1,"kind":"link","at":"…","data":{"index":1,"text":"路线图","url":"https://example.invalid/route","hidden":false}}
+{"v":1,"kind":"link","at":"…","data":{"index":2,"text":"https://example.invalid/a","url":"https://example.invalid/a","hidden":false}}
+{"v":1,"kind":"link","at":"…","data":{"index":3,"text":"隐藏内容","url":null,"hidden":true}}
+{"v":1,"kind":"result","at":"…","data":{"command":"links","chat_id":-1001,"message_id":11,"count":3,"elapsed_ms":0}}
+链接 1，路线图，https://example.invalid/route
+链接 2，https://example.invalid/a
+链接 3，秘密，https://example.invalid/secret
+链接 1，路线图，https://example.invalid/route
+链接 2，https://example.invalid/a
+链接 3，隐藏内容

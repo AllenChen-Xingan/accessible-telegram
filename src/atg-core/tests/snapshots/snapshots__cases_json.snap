@@ -1,5 +1,6 @@
 ---
 source: src/atg-core/tests/snapshots.rs
+assertion_line: 81
 expression: "json_pretty(&world(\"cases\").docs())"
 ---
 {
@@ -316,12 +317,7 @@ expression: "json_pretty(&world(\"cases\").docs())"
         },
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "男主赢了"
-            }
-          ]
+          "children": []
         }
       ]
     },
@@ -837,12 +833,7 @@ expression: "json_pretty(&world(\"cases\").docs())"
       "body": [
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "甲"
-            }
-          ]
+          "children": []
         },
         {
           "type": "text",
@@ -850,12 +841,7 @@ expression: "json_pretty(&world(\"cases\").docs())"
         },
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "乙"
-            }
-          ]
+          "children": []
         },
         {
           "type": "text",

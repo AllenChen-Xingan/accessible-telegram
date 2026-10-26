@@ -150,18 +150,7 @@ pub fn collect<B: Backend>(
     q: &Query,
     limits: Limits,
 ) -> Result<Listing, Fail> {
-    match b.wait_auth(AUTH_TIMEOUT, &|s| s != AuthStep::WaitParameters) {
-        Some(AuthStep::Ready) => {}
-        Some(_) => return Err(Fail::Core(CoreError::AuthRequired { td: None })),
-        None if b.status().lines.core == CoreState::Faulted => {
-            return Err(Fail::Core(CoreError::Disconnected));
-        }
-        None => {
-            return Err(Fail::Core(CoreError::Internal {
-                what: "auth_state_timeout",
-            }));
-        }
-    }
+    ensure_ready(b)?;
 
     feed.watch(&q.list);
     feed.drain(stream);
@@ -235,6 +224,20 @@ pub fn collect<B: Backend>(
     })
 }
 
+/// 等授权线离开「等参数」；不是「已登录」→ `auth_required`（`history`、`links` 共用）
+pub fn ensure_ready<B: Backend>(b: &B) -> Result<(), Fail> {
+    match b.wait_auth(AUTH_TIMEOUT, &|s| s != AuthStep::WaitParameters) {
+        Some(AuthStep::Ready) => Ok(()),
+        Some(_) => Err(Fail::Core(CoreError::AuthRequired { td: None })),
+        None if b.status().lines.core == CoreState::Faulted => {
+            Err(Fail::Core(CoreError::Disconnected))
+        }
+        None => Err(Fail::Core(CoreError::Internal {
+            what: "auth_state_timeout",
+        })),
+    }
+}
+
 /// 把事件流喂进 Store，顺带记下各列表第一次有会话的时刻（从 `started` 起算：直跑是本进程启动，`serve` 是执行方启动）
 pub struct Feed {
     pump: Pump,
@@ -253,8 +256,13 @@ impl Feed {
         }
     }
 
-    fn store(&self) -> &Store {
+    pub fn store(&self) -> &Store {
         self.pump.store()
+    }
+
+    /// 历史应答、开窗口这类不经事件流的输入（`history`）
+    pub fn pump_mut(&mut self) -> &mut Pump {
+        &mut self.pump
     }
 
     /// 开始记这个列表第一次有会话的时刻（已经有了就记现在）

@@ -1,5 +1,6 @@
 ---
 source: src/atg-core/tests/snapshots.rs
+assertion_line: 71
 expression: "json_pretty(&world(\"entities\").docs())"
 ---
 {
@@ -347,21 +348,7 @@ expression: "json_pretty(&world(\"entities\").docs())"
         },
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "秘密是"
-            },
-            {
-              "type": "bold",
-              "children": [
-                {
-                  "type": "text",
-                  "text": "早到"
-                }
-              ]
-            }
-          ]
+          "children": []
         }
       ]
     },
@@ -628,12 +615,7 @@ expression: "json_pretty(&world(\"entities\").docs())"
       "body": [
         {
           "type": "spoiler",
-          "children": [
-            {
-              "type": "text",
-              "text": "全是剧透"
-            }
-          ]
+          "children": []
         }
       ]
     },

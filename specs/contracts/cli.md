@@ -27,10 +27,10 @@
 | `me` | 自己是谁 + `saved_chat_id` | `me` | — |
 | `pending [cancel CHAT_ID MSG_ID]` | 列出待发出的消息；`cancel` 撤销一条（`actions.md`「待发出的消息」） | `status` `pending_cancel` | T04 |
 | `status` | 内核 / 授权 / 连接三条线、合成后的用户状态、**待发出的消息** | `status` | T10 |
-| `chats [--list main\|archive] [-n N] [--unread] [--cursor C]` | 列会话，一行一个；`-n` 默认 100；会话行的 `speech.brief` 即会话项读法（`chat_brief`） | `chats_load` + Store | T02 |
+| `chats [--list main\|archive] [-n N] [--unread] [--cursor C] [--reveal]` | 列会话，一行一个；会话项最后一条里的隐藏内容默认遮住（规则同 `history`，正本 `content-tree.md` 第八节），`--reveal` 才出原文；加 `--redact` 报 `not_implemented`（会话名和最后一条是原文，打码还没做）；`-n` 默认 100；会话行的 `speech.brief` 即会话项读法（`chat_brief`） | `chats_load` + Store | T02 |
 | `next-unread [--after CHAT_ID]` | 下一个有未读的会话；没有就零行 + `result{count:0}`，退出码 0（「没有」不算错） | Store | T09 |
-| `history CHAT_ID [-n N] [--from MSG_ID] [--local]` | 从新到旧列消息，一行一条。`--from` **不含**起点那条；CLI 内部循环补满 N 条（TDLib 首次常只回 1 条）。**不标已读** | `history` | T03 |
-| `links CHAT_ID MSG_ID` | 列出这条消息里的链接（文字 + 地址） | `message_links` | T06 |
+| `history CHAT_ID [-n N] [--before MSG_ID \| --after MSG_ID] [--detail] [--full] [--reveal] [--local]` | 列消息，一行一条，**从旧到新**（阅读顺序）。都不给 `--before` / `--after` 时按 F2 落点（「进会话落在第一条未读」，人定，`docs/plan/003_decisions-b2.md`）：有未读就从第一条未读（已读位置之后第一条别人发的）起往新取 N 条；没有未读取最新 N 条；会话从没读过（已读位置为 0）也取最新 N 条——要落到第一条未读就得从整段历史最旧的一条起，把整个会话拉一遍，太慢，这是取舍不是 bug。`--before X`（别名 `--from`）取比 X 旧的、`--after X` 取比 X 新的，都**不含** X。`-n` 默认 20（1–1000）。CLI 内部循环补满 N 条（TDLib 首次常只回 1 条）；只有空应答（或往新翻到了最后一条）才算到头；TDLib 不空却没给新的（往新翻时只拿回起点那一条，即比它新的还没进内存；往旧翻正常不会，万一应答里只有起点或更新的也算）就等一下再要（150 ms、300 ms），连着 3 次还是这样就停：这一页可能不满 N 条，`result.data.partial` 为真（稍后重试同一条命令即可）；本页拿到了消息时，**停住的那一侧**（往旧是 `more`、往新是 `more_newer`）照为真、照给游标，另一侧照常判断；**一条都没拿到**时没有游标可给，两侧都为假，只看 `partial`。「起点」指每次向 TDLib 要的那一处（第一次是 X，之后是上一批最边上那条）；「还没进内存」指 TDLib 自己的本地缓存里还没有、它正在后台拉，所以稍后重试有用。加 `--redact` 报 `not_implemented`（打码还没做，不悄悄输出原文）。`--detail` 另带 `speech.detail`（日期、回复谁、转发自、已编辑、表情回应、话题名、送达状态；句子是 AI 草稿，要等人开着读屏听过才定，措辞会变，别依赖）；`--full` 另带 `speech.full`（全文，保留换行与标点）；隐藏内容一律只读「隐藏内容」：剧透的字在读法和 `data` 里都遮住（`specs/content-tree.md` 第八节）；18+ 遮挡的媒体只读「图片，隐藏内容」这类说法，**说明文字照读、`data` 里照常输出**（同 GUI）；`--reveal` 才读、才出原文——相当于 GUI 里人按了展开隐藏内容的键（R1，`content-tree.md` 第九节）。文字模式一行一条；加 `--full` 时全文保留换行，一条可能占几行（JSON 模式换行在字符串里，不受影响）。`--local` 只取本地已有的。**不标已读** | `history` | T03 |
+| `links CHAT_ID MSG_ID [--reveal]` | 列出这条消息里的链接，一行一个 `kind:"link"`；落在剧透里、或链接文字里套着剧透的链接 `hidden:true`（同 `content-tree.md` 第八节的遮挡规则），文字读「隐藏内容」、地址为 `null`，`--reveal` 才给出。`links` 不分页（一条消息的链接一次出完），`result.data` 不带 `more` / `next_cursor`（字段见下方结尾行一节）。加 `--redact` 报 `not_implemented` | `message_links` | T06 |
 | `download CHAT_ID MSG_ID` | 下载这条消息的附件，输出进度事件与本地路径 | `file_download` | T07 |
 | `open (--link URL \| --file CHAT_ID MSG_ID)` | 用系统打开；协议与类型白名单，先输出 `plan` 再确认（`actions.md` `open_link` / `open_file`） | `open_link` `open_file` | T06 T07 |
 | `mute CHAT_ID (on\|off)` | 静音 / 取消静音 | `mute` | T05 |
@@ -42,7 +42,7 @@
 | `watch [--chat CHAT_ID]` | 订阅更新，持续输出事件，Ctrl+C 结束 | `subscribe` | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
-| `speech --fixture PATH [--level brief\|chat_brief]` | 只打印读法：夹具文件（TDLib 更新对象的 JSON 数组，按顺序喂进 store，读法夹具在 `src/atg-core/fixtures/speech/`）→ 树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息 / 系统消息 / 撤回占位 / 状态一行；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法都在 `speech.brief`；CLI 没有按键，不读「按 D 展开」「按 M 收听」。`result.data` 带 `level`、`count`、`tz`、`utc_offset_s`：给了 `--tz` 时 `tz:"fixed"`、`utc_offset_s` 是那个固定偏移（秒）；跟系统时区时 `tz:"system"`、`utc_offset_s` 为 `null`（每个钟点按它自己的时间点取偏移，夏令时前后不同，没有对所有行都成立的一个值）。读不了、不是 JSON 数组 → `usage`。以后有场景目录再加 `--scenario NAME`；`detail` 归 `show` / `history --detail`（M1.6） | 无（直接调 `speech`） | 定标 |
+| `speech --fixture PATH [--level brief\|chat_brief] [--reveal]` | 只打印读法：夹具文件（TDLib 更新对象的 JSON 数组，按顺序喂进 store，读法夹具在 `src/atg-core/fixtures/speech/`）→ 树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息 / 系统消息 / 撤回占位 / 状态一行；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法都在 `speech.brief`；CLI 没有按键，不读「按 D 展开」「按 M 收听」。`result.data` 带 `level`、`count`、`tz`、`utc_offset_s`：给了 `--tz` 时 `tz:"fixed"`、`utc_offset_s` 是那个固定偏移（秒）；跟系统时区时 `tz:"system"`、`utc_offset_s` 为 `null`（每个钟点按它自己的时间点取偏移，夏令时前后不同，没有对所有行都成立的一个值）。隐藏内容默认遮住（规则同上，`content-tree.md` 第八节），`--reveal` 才出原文。读不了、不是 JSON 数组 → `usage`。以后有场景目录再加 `--scenario NAME`；`detail` 归 `show` / `history --detail`（M1.6） | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
 | `serve` | 常驻当执行方：占着档案、开本机接口，替后起的 `atg-cli` 执行转来的命令；起好输出一行 `status`（另带 `listening:true`），Ctrl+C / SIGTERM 后先做完手上的请求，输出 `result`（`reason:"interrupted"` · `served`：执行了几个请求 · `refused`：拒绝了几个非本用户的连接），退出码 0（同 `watch`：被打断就是正常结束）；再按一次立刻以 130 退出、不出结尾行。没有登录入口：要登录先停掉它。细则 `config-privacy.md` 第一节第 2 小节 | — | — |
 | `version` | 版本、TDLib 版本、外壳版本 `v`。`atg-cli --version` 是它的别名，输出相同；不能和别的子命令同用（`usage`） | — | — |
@@ -64,7 +64,7 @@
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
 
-**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的暂行定义**（#18，事件本身随 `watch` 落地前）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。
+**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的暂行定义**（#18，事件本身随 `watch` 落地前）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
 ### 3. 每行 JSON 的外壳
 
@@ -79,7 +79,7 @@
 | `at` | ✅ | 这一行**输出的时间**，RFC3339 UTC，毫秒，以 `Z` 结尾 |
 | `seq` | 仅 `event` | 收线程给更新编的递增序号（架构方案第一节第 3 小节第 3 条），断了能看出来 |
 | `data` | ✅ | 见下表 |
-| `speech` | 可选 | 读法：`brief` / `detail` / `chat_brief`，由 `atg-core::speech` 生成，与 GUI 读的同一句 |
+| `speech` | 可选 | 读法：`brief` / `detail` / `full` / `chat_brief`，由 `atg-core::speech` 生成，与 GUI 读的同一句 |
 
 | `kind` | `data` 是什么 |
 |---|---|
@@ -89,6 +89,7 @@
 | `event` | `{"type":"<事件名>", …}`，事件名与字段只登记在 `actions.md` 第一节第 7 小节 |
 | `plan` | `SendPlan`（`actions.md` 第一节第 6 小节） |
 | `version` | 各版本号 |
+| `link` | `links` 的一行：`index`（从 1 起）· `text` · `url`（隐藏时 `null`）· `hidden`（链接落在剧透里，或链接文字里套着剧透） |
 | `playback` | `play` 的状态：`state`（`playing` / `paused` / `stopped` / `finished`）· `position_s` · `duration_s` · `speed` |
 | `result` | 见下 |
 | `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有三个自有码 `usage`、`interrupted`、`not_implemented` |
@@ -104,6 +105,7 @@
 ```
 
 - 列表类命令的 `result.data` 统一带：`count`（本页条数）· `more` · `next_cursor`（`more` 为真时才有；`history` 的游标就是本页最旧那条的 `message_id`；`chats` 的游标是本页最后一个会话的 `<order>:<会话 id>`）· `total`（TDLib 给得出才有）
+- `history` 的 `result.data` 另带：`chat_id` · `next_cursor` 交给 `--before`（`history` 没有 `--cursor`）· `more_newer` / `newer_cursor`（往新还有；游标 = 本页最新那条的 `message_id`，交给 `--after`）· `first_unread`（**本页里**第一条未读的 `message_id`；为 `null` 有两种情况：会话没有未读，或未读不在这一页——如 `--before` 往旧翻的页）· `landing`（`first_unread` / `latest` / `before` / `after`）· `synced`（同 `chats`：等到补发完了没有，`false` 时未读位置可能是旧的）· `partial`（没拉全就停了，见上）。文字模式在第一条未读上面另起一行「以下为未读」（F2）。`links` 的 `result.data` 带 `chat_id`、`message_id`、`count`
 - `chats` 的 `result.data` 另带（可选字段，`v` 不加一）：`list`（`main` / `archive`）· `synced` · `load_timed_out`（加载到 10 秒上限提前停了）· `first_chat_ms`（进程启动到这个列表第一次有会话的毫秒数；列表是空的为 `null`；经本机接口转发时是**执行方**进程，见 `config-privacy.md` 第一节第 2 小节）。会话行的读法在 `speech.brief`（即会话项读法 `chat_brief` 那一句）
 - `send` 的 `result` 带最终 `message_id`：**退出码 0 = 服务器已收下**；`send_failed` 时输出 `error`，`code` 来自失败原因
 - 每条命令 `result.data` 的完整字段由 `schema` 给出（第 6 小节）
@@ -194,3 +196,9 @@
 - 2026-10-26 issue #19 speech（大总管授权 2026-10-26）：`speech` 改成 `--fixture PATH`（TDLib 更新 JSON 数组），`--level` 只留 `brief` / `chat_brief`；`--scenario` 等场景目录、`detail` 归 M1.6
 - 2026-10-26 issue #22 本机接口（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：加 `serve` 子命令；`auth state` 可经本机接口转发，其余登录命令仍不转；协议只在 `config-privacy.md`
 - 2026-10-26 issue #22 自审后（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：登记 `serve` 的 `listening`、`reason` / `served` / `refused` 与两次 Ctrl+C 的退出码；退出码 130 行与结尾行例外补 `serve`；`first_chat_ms` 转发时的含义；「完全一样」改为时间字段例外；登出不转的理由
+- 2026-10-26 issue #21 history（大总管授权 2026-10-26，属技术细节；F2 人定原意不变）：`history` 改为从旧到新、按 F2 落点，加 `--before`（`--from` 留作别名）/ `--after` / `--detail` / `--full` / `--reveal`，`-n` 默认 20；`result.data` 加 `more_newer`、`newer_cursor`、`first_unread`、`landing`、`synced`；加 `kind:"link"` 与 `links --reveal`
+- 2026-10-26 issue #21 自审后（大总管授权 2026-10-26；R1「隐藏内容默认遮住」的延伸）：`data` 里的隐藏内容默认遮住（`content-tree.md` 第八节）；`chats`、`speech` 也认 `--reveal`；外壳 `speech` 登记 `full`；写明从没读过的会话为何取最新、`first_unread` 为 `null` 的两种情况、`next_cursor` 交给 `--before`、`history` 也等补发、文字模式 `--full` 一条可能占几行
+- 2026-10-26 issue #21 第二轮自审后（大总管授权 2026-10-26，属技术细节）：`history` 补不满时的语义（`partial`、`more` 照为真）；18+ 遮挡说明文字照出；`--redact` 在 `history` / `links` 报 `not_implemented`；`chats`、`speech` 行写明 `--reveal` 管什么
+- 2026-10-26 issue #21 第三轮自审后（大总管授权 2026-10-26，属技术细节）：`chats` 也对 `--redact` 报 `not_implemented`；`links` 写明隐藏范围、不分页、`--redact`；`history` 写明停住的样子与重试次数、间隔
+- 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：停住且一条没拿到时 `more` 为假、只看 `partial`；`chats` / `speech` 的遮挡说法改为指向 `content-tree.md` 第八节；`links` 的 `result` 字段与 `link` 行的 `hidden` 范围对齐
+- 2026-10-26 issue #21 第五、六轮自审后（大总管授权 2026-10-26，属技术细节）：`chats` 行只留指针；`history` 写明往旧也可能停住、停住时只有停住的那一侧照为真、「起点」「进内存」指什么

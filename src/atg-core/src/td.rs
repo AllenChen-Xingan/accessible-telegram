@@ -21,15 +21,16 @@ pub use real::{TdBackend, TdConfig, tdlib_version};
 #[cfg(feature = "tdlib-api")]
 mod real {
     use crate::auth::{self, AuthPrompt};
-    use crate::backend::{Backend, ChatsLoad, StatusReport, already_subscribed};
+    use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
     use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
-    use crate::model::ChatList;
+    use crate::model::{ChatId, ChatList, Message, MsgId};
     use crate::secret::{self, Secret};
     use crate::status::{AuthStep, CoreState, NetState};
+    use crate::tdjson;
     use serde_json::{Value, json};
     use std::future::Future;
     use std::path::{Path, PathBuf};
@@ -149,6 +150,38 @@ mod real {
                 return CoreError::Disconnected;
             }
             map_td_error(e.code, &e.message)
+        }
+
+        /// 读消息这组的错误：TDLib 对查不到的会话 / 消息回 400 / 404 带「not found」，归 `not_found`；
+        /// 日志只记动作名与机读码
+        fn read_error(&self, action: &'static str, e: &types::Error) -> CoreError {
+            let mapped = if e.message.to_ascii_lowercase().contains("not found") {
+                CoreError::NotFound {
+                    what: action,
+                    td: None,
+                }
+            } else {
+                self.map_error(e)
+            };
+            logline::info(
+                "read_failed",
+                &[
+                    Field::Name("action", action),
+                    Field::Name("code", mapped.code()),
+                ],
+            );
+            mapped
+        }
+
+        /// tdlib-rs 的消息序列化回 TDLib JSON，走唯一一份映射（`tdjson::message`）；失败回 `None` 并记一笔，调用方把它报成 `internal{td_message_reserialize_failed}`（整次报错，不丢那一条）
+        fn map_message(m: types::Message) -> Option<Message> {
+            match serde_json::to_value(enums::Message::Message(m)) {
+                Ok(v) => Some(tdjson::message(&v)),
+                Err(_) => {
+                    logline::warn("td_message_reserialize_failed", &[]);
+                    None
+                }
+            }
         }
     }
 
@@ -448,6 +481,70 @@ mod real {
                     logline::info("chats_load_failed", &[Field::Name("code", e.code())]);
                     Err(e)
                 }
+            }
+        }
+
+        async fn chat_get(&self, chat: ChatId) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(self.shared.clone(), functions::get_chat(chat, id)).await?;
+            match r {
+                Ok(_) => Ok(()),
+                // 本地还没有这个私聊（如收藏夹）：取已有的，force=false 不新建（大总管授权 2026-10-26）
+                Err(_) if chat > 0 => link::guard(
+                    self.shared.clone(),
+                    functions::create_private_chat(chat, false, id),
+                )
+                .await?
+                .map(|_| ())
+                .map_err(|e| self.read_error("chat", &e)),
+                Err(e) => Err(self.read_error("chat", &e)),
+            }
+        }
+
+        async fn history(&self, req: HistoryReq) -> Result<Vec<Message>, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            req.check()?;
+            let limit = i32::try_from(req.limit).unwrap_or(100);
+            let r = link::guard(
+                self.shared.clone(),
+                functions::get_chat_history(
+                    req.chat,
+                    req.from,
+                    req.offset,
+                    limit,
+                    req.local_only,
+                    id,
+                ),
+            )
+            .await?;
+            match r {
+                // 有一条转不回来就整次报错，不悄悄丢：丢了会让这一页缺一条，若只剩它还会被当成「到头了」
+                Ok(enums::Messages::Messages(ms)) => ms
+                    .messages
+                    .into_iter()
+                    .flatten()
+                    .map(|m| {
+                        Self::map_message(m).ok_or(CoreError::Internal {
+                            what: "td_message_reserialize_failed",
+                        })
+                    })
+                    .collect(),
+                Err(e) => Err(self.read_error("history", &e)),
+            }
+        }
+
+        async fn message_get(&self, mid: MsgId) -> Result<Message, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(
+                self.shared.clone(),
+                functions::get_message(mid.chat_id, mid.message_id, id),
+            )
+            .await?;
+            match r {
+                Ok(enums::Message::Message(m)) => Self::map_message(m).ok_or(CoreError::Internal {
+                    what: "td_message_reserialize_failed",
+                }),
+                Err(e) => Err(self.read_error("message", &e)),
             }
         }
 

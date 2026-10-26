@@ -187,6 +187,62 @@ pub fn chats(
     }
 }
 
+/// `history`：选档案、起真实后端、取一页（`--fake` 场景目录还没做）
+pub fn history(
+    g: &Global,
+    q: &crate::history::Query,
+    started: std::time::Instant,
+) -> Result<crate::history::Page, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "history",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, started);
+        Err(Fail::NotImplemented {
+            command: "history",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::history::run(&b, &profile, q, started)
+    }
+}
+
+/// `links`：同上
+pub fn links(
+    g: &Global,
+    q: &crate::history::LinksQuery,
+    started: std::time::Instant,
+) -> Result<crate::history::LinkList, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "links",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, started);
+        Err(Fail::NotImplemented {
+            command: "links",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::history::run_links(&b, &profile, q, started)
+    }
+}
+
 /// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn drive<B: Backend>(

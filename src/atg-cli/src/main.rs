@@ -1,8 +1,8 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
 //! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
-//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；本机接口（第 9 块）：`serve` 常驻当执行方，
-//! 档案被占时 `chats` / `auth state` 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
+//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；`history` / `links`（第 8 块，T03 T06）；
+//! 本机接口（第 9 块）：`serve` 常驻当执行方，档案被占时 `chats` / `history` / `links` / `auth state` 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
 //! `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
@@ -21,6 +21,9 @@ mod args;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod chats;
 mod forward;
+// 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod history;
 mod login;
 mod out;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
@@ -88,6 +91,8 @@ fn main() -> ExitCode {
         Command::Auth { step } => run_job(&cli.global, format, Job::Auth(step.sub()), started),
         Command::Logout => run_job(&cli.global, format, Job::Logout, started),
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
+        Command::History(a) => run_history(&cli.global, format, &a, started),
+        Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
         Command::Speech(_) if cli.global.fake.is_some() => fail(
@@ -197,6 +202,10 @@ fn chats_query(a: &args::ChatsArgs) -> Result<chats::Query, Fail> {
 /// `chats`：一行一个会话（`kind:"chat"`，`data` 是 `ChatItem`，`speech.brief` 是会话项读法）+ 一行 `result`。
 /// 文字模式每行一句读法，统计写标准错误。档案被占就转给执行方
 fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Instant) -> ExitCode {
+    // 会话项带名字和最后一条的正文：同 history / links，打码没做之前不悄悄出原文
+    if let Some(f) = no_redact(g, "chats") {
+        return fail_with(format, &f);
+    }
     let q = match chats_query(a) {
         Ok(q) => q,
         Err(f) => return fail_with(format, &f),
@@ -226,6 +235,7 @@ fn render_chats(
         offset_at: None,
         listen_key: None,
         expand_key: None,
+        reveal: a.reveal,
     };
     for item in &listing.items {
         let doc = atg_core::tree::Doc::ChatItem(item.clone());
@@ -237,7 +247,7 @@ fn render_chats(
                 }
                 emit_to(sink, &line);
             }
-            Format::Text => sink.out(&atg_core::speech::chat_brief(item)),
+            Format::Text => sink.out(&atg_core::speech::chat_brief_with(item, a.reveal)),
         }
     }
     match format {
@@ -279,6 +289,67 @@ fn render_chats(
         }
     }
     0
+}
+
+/// `--redact`（打码）还没做：吐名字、正文、链接的命令（`chats`、`history`、`links`）不能悄悄忽略它照样出原文，
+/// 先报 `not_implemented`
+fn no_redact(g: &args::Global, command: &'static str) -> Option<Fail> {
+    g.redact.then_some(Fail::NotImplemented {
+        command,
+        message_zh: "--redact 打码还没做；这条命令会输出名字和正文，请先不加 --redact",
+    })
+}
+
+/// `history`：一行一条消息（`kind:"message"`，从旧到新）+ 一行 `result`。不标已读。档案被占就转给执行方
+fn run_history(
+    g: &args::Global,
+    format: Format,
+    a: &args::HistoryArgs,
+    started: Instant,
+) -> ExitCode {
+    if let Some(f) = no_redact(g, "history") {
+        return fail_with(format, &f);
+    }
+    // 用法错误在本地就报（与直跑一样）
+    let (q, cx) = match history::query(a)
+        .and_then(|q| history::speech_ctx(g.tz.as_deref(), a.reveal).map(|cx| (q, cx)))
+    {
+        Ok(x) => x,
+        Err(f) => return fail_with(format, &f),
+    };
+    // 读法时区是全局选项，执行方那边没有：填进参数随请求带过去（`config-privacy.md` 协议 v0）
+    let mut params = serde_json::to_value(a).unwrap_or_default();
+    if let Some(o) = params.as_object_mut() {
+        o.insert("tz".into(), json!(g.tz));
+    }
+    if let Some(code) = forward::try_forward(g, format, "history", &params) {
+        return ExitCode::from(code);
+    }
+    let code = match session::history(g, &q, started) {
+        Ok(p) => history::render(&mut Stdio, format, a, &cx, &p, started),
+        Err(f) => out::fail_with_to(&mut Stdio, format, &f),
+    };
+    ExitCode::from(code)
+}
+
+/// `links`：一行一个链接（`kind:"link"`）+ 一行 `result`。不标已读。档案被占就转给执行方
+fn run_links(g: &args::Global, format: Format, a: &args::LinksArgs, started: Instant) -> ExitCode {
+    if let Some(f) = no_redact(g, "links") {
+        return fail_with(format, &f);
+    }
+    let q = match history::links_query(a) {
+        Ok(q) => q,
+        Err(f) => return fail_with(format, &f),
+    };
+    let params = serde_json::to_value(a).unwrap_or_default();
+    if let Some(code) = forward::try_forward(g, format, "links", &params) {
+        return ExitCode::from(code);
+    }
+    let code = match session::links(g, &q, started) {
+        Ok(l) => history::render_links(&mut Stdio, format, a.reveal, &l, started),
+        Err(f) => out::fail_with_to(&mut Stdio, format, &f),
+    };
+    ExitCode::from(code)
 }
 
 /// `version`：一行 `kind:"version"` + 一行 `result`
