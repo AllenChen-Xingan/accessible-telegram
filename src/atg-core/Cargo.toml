@@ -4,11 +4,22 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "无障碍 Telegram 的能力层：内容树、读法（原型阶段不接 TDLib）"
+description = "无障碍 Telegram 的能力层：内容树、读法（接 TDLib 走 tdlib 特性，默认关）"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# 打过补丁的 tdlib-rs（src/tdlib-rs，fork 的 subtree）。默认不编：编它要先有 TDLib 库
+# （bash src/tdlib-build/build.sh，再设 LOCAL_TDLIB_PATH）。只有 `td` 模块许用（scripts/check-no-debug.sh 守着）。
+tdlib-rs = { path = "../tdlib-rs/tdlib-rs", optional = true }
+
+[features]
+# 代码开关：td 模块里用 tdlib-rs 的代码一律挂 #[cfg(feature = "tdlib-api")]。
+# 只拉进生成的类型、不选链接方式，所以 check / clippy 不需要 TDLib 库（CI 靠它把这段代码也纳入 clippy）；
+# 单开它去 build / test 会在链接时缺符号——要跑就开下面的 tdlib
+tdlib-api = ["dep:tdlib-rs"]
+# 真接 TDLib：链接 LOCAL_TDLIB_PATH 下的库。cargo build -p atg-core --features tdlib
+tdlib = ["tdlib-api", "tdlib-rs/local-tdlib"]
 
 [dev-dependencies]
 insta = "1"

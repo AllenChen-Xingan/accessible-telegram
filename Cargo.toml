@@ -1,8 +1,13 @@
 # 作品区 src/ 的目录语义以这里为准：每个 crate 在 .42cog/cog.md 实体表里各占一行。
+#
+# 成员只有本项目自己的 crate（src/atg-*）。src/tdlib-rs 是 fork 搬进来的补丁库（git subtree），
+# 自带 [workspace]，原样保留，以便 `git subtree push` 推回 fork；它不是成员，由 atg-core 以 path 依赖引用
+# （见 docs/plan/004_tdlib-patch.md 第二节）。exclude 必须写：位于工作区目录下的 path 依赖默认会被当成成员。
+# src/tdlib-build 是脚本，不是 crate。
 [workspace]
 resolver = "2"
-members = ["src/*"]
-exclude = ["src/README.md"]
+members = ["src/atg-*"]
+exclude = ["src/tdlib-rs"]
 
 [workspace.package]
 edition = "2024"

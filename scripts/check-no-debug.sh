@@ -51,7 +51,7 @@ if [[ -n "$hits" ]]; then
   echo "$hits"
   fail=1
 fi
-hits="$(grep -lE '^\s*tdlib-rs\s*=' src/atg-*/Cargo.toml | grep -v '^src/atg-core/' || true)"
+hits="$(grep -lE '^\s*tdlib-rs\s*=|package\s*=\s*"tdlib-rs"' src/atg-*/Cargo.toml | grep -v '^src/atg-core/' || true)"
 if [[ -n "$hits" ]]; then
   echo "✗ 只有 atg-core 许依赖 tdlib-rs：${hits}"
   fail=1

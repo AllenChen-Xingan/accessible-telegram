@@ -1,28 +1,29 @@
-# src — 作品区
+# src — 作品区：所有代码都在这里
 
-> 装**我产出的东西**。这个系统存在的理由，最后都要落在这里。
+> 规则（人定 2026-10-25，`CLAUDE.md` 第五节）：本项目写的、Telegram 要用的、要编译的代码一律放 `src/`，每个部件占一个根子目录。
+> 每个子目录在 `.42cog/cog.md` 实体表里各占一行（是什么 · 谁产生 · 谁是谁的输入）；Rust 工作区成员以根 `Cargo.toml` 为准。
 
-## ⛔ 先定一件事：作品单位是什么
+| 目录 | 是什么 | 归谁 |
+|---|---|---|
+| `atg-core/` | 能力层 crate：内容树、读法；`td` 模块接 TDLib（`tdlib-api` 只拉类型 / `tdlib` 真链接，默认都关） | 本项目 |
+| `atg-cli/` | 命令行入口 crate（JSON 行输出，AI 的首选接口），见 `atg-cli/README.md` | 本项目 |
+| `atg-gui/` | 界面入口 crate（GPUI），还没建 | 本项目 |
+| `tdlib-rs/` | 打过补丁的 tdlib-rs（Rust 绑定 + 代码生成器 + TL 解析器三包），fork `AllenChen-Xingan/tdlib-rs` 分支 `atg/tdlib-1.8.69` 的 `git subtree`。**自成工作区，不是根工作区成员**；改动要对上游有意义，好推回 fork。说明见 `tdlib-rs/ATG.md` | fork（上游代码 + 我们的补丁） |
+| `tdlib-build/` | 拉取并编译 TDLib C++ 库的脚本。TDLib 源码**不进库**，按锁定提交拉到 `_build/<时间戳>/` | 本项目 |
 
-这个目录现在是空的，**脚本不替你决定里面怎么分**——
-**目录名是人给的；目录语义谁填，要看这个领域有没有现成约定。**
-⛔ **没约定的地方你不写，AI 每次都会替你猜一个，而且每次猜的不一样。**
+## 常用命令
 
-| 领域 | 作品区 | ⭐ 作品单位 | 形态 |
-|---|---|---|---|
-| 编程 | `src/` | 模块 / 包 | 主干越走越粗，fork 极少 |
-| 教研 | `lectures/` | 一讲 `chNN/` | 并列，互不依赖 |
-| 内容 / 营销 | `content/` | 一次投放 | 平铺，不分叉 |
-| 科研 | `papers/` `patents/` `devices/` `research/` | ⭐ **一条假设** `hNNN-<短名>/` | 反复分叉，且不回并 |
+```sh
+cargo fmt --all --check && bash scripts/check-no-debug.sh
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace                       # 不编 TDLib
+cargo test --manifest-path src/tdlib-rs/Cargo.toml -p tdlib-rs-gen -p tdlib-rs-parser
 
-⭐ **科研那一行值得多看一眼**：成果形态（论文 / 专利 / 设备）是**结果**，
-**而组织单位是【假设】**——一条假设可能验证失败、永远不成论文，
-**但判据、实验、结论都在，它照样是一件完整的作品。**
-⇒ **作品区叫什么，随你打算产出什么；下面一律按假设分。**
+# 要接 TDLib 时
+bash src/tdlib-build/build.sh                # 约 3–4 分钟，只需一次
+export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
+cargo build -p atg-core --features tdlib
+cargo clippy -p atg-core --features tdlib-api --all-targets -- -D warnings   # 不用库
+```
 
-## 定完写进 `.42cog/cog.md`
-
-在实体表里，**这里的每类子目录各占一行**，写三件事：
-**是什么 · 谁产生 · 谁是谁的输入。**
-
-⛔ 只留在脑子里不算数——**下一个会话的 AI 只读得到那张表。**
+依赖怎么接、CI 管到哪、怎么把 `tdlib-rs/` 的改动推回 fork：`docs/plan/004_tdlib-patch.md` 第二、三节。

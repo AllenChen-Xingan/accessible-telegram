@@ -24,14 +24,18 @@ Five changes:
 
 ## Using it from atg-core
 
+Since 2026-10-25 this branch lives inside the atg repo as a `git subtree` at
+`src/tdlib-rs` (it keeps its own `[workspace]`; the atg workspace excludes it).
+`atg-core` uses it through a path dependency:
+
 ```toml
 # src/atg-core/Cargo.toml
-[dependencies]
-tdlib-rs = { git = "https://github.com/AllenChen-Xingan/tdlib-rs", branch = "atg/tdlib-1.8.69", features = ["local-tdlib"] }
-```
+tdlib-rs = { path = "../tdlib-rs/tdlib-rs", optional = true }
 
-Pin a commit (`rev = "<sha>"`) once the branch is pushed, so `Cargo.lock` and
-the TDLib build stay in step.
+[features]
+tdlib-api = ["dep:tdlib-rs"]                    # types only; check / clippy need no TDLib
+tdlib = ["tdlib-api", "tdlib-rs/local-tdlib"]  # links the TDLib build below
+```
 
 `local-tdlib` reads `LOCAL_TDLIB_PATH` at build time. It must be a folder with
 `lib/libtdjson.1.8.69.dylib`, the `lib/libtdjson.dylib` symlink (the link step
@@ -40,57 +44,44 @@ folder into `OUT_DIR/tdlib` and sets an rpath to it, so the binary does not
 depend on `LOCAL_TDLIB_PATH` after it is built (it does depend on `OUT_DIR`
 staying put — fine for development, not for a shipped app bundle).
 
-```sh
-export LOCAL_TDLIB_PATH=<prefix>     # e.g. the install prefix below
-cargo build
-```
+## Building TDLib 1.8.69 (macOS)
 
-## Building TDLib 1.8.69 (macOS arm64)
-
-Needs cmake, gperf, OpenSSL 3 (`brew --prefix openssl@3`). Build outside the
-TDLib source tree; TDLib writes generated files into the tree it builds.
+From the atg repo root, one command (about 3 minutes on an M-series Mac):
 
 ```sh
-git clone --shared <td checkout at 1.8.69> td-src
-cmake -S td-src -B build -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$PWD/tdlib" \
-  -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-  -DCMAKE_OSX_ARCHITECTURES=arm64
-cmake --build build --target tdjson -j8
+bash src/tdlib-build/build.sh
+export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"   # latest finished build
 ```
 
-⚠️ The source path must not contain spaces: TDLib passes
-`-Wl,-exported_symbols_list,<source dir>/tdclientjson_export_list` unquoted
-and the link fails with `no such file or directory`. Build through a
-space-free symlink if needed. The build directory's `CMakeCache.txt` then
-records the symlink path, so to rebuild in place the same symlink must exist;
-otherwise configure a fresh build directory.
+The script fetches TDLib at commit `ea3f69ce11aef458bfbb09869b809ede4447486f`,
+builds only the `tdjson` target in Release, and lays out the prefix in
+`_build/<timestamp>/tdlib`. It needs git, cmake, gperf and Homebrew's
+`openssl@3`, and never installs them. It works around two TDLib build quirks:
 
-The `tdjson` target alone is not installable with `cmake --install` (it
-expects every target). Lay out the prefix by hand:
-
-```sh
-mkdir -p tdlib/lib tdlib/include/td/telegram
-cp -P build/libtdjson*.dylib tdlib/lib/
-cp td-src/td/telegram/td_json_client.h td-src/td/telegram/td_log.h tdlib/include/td/telegram/
-cp build/td/telegram/tdjson_export.h tdlib/include/td/telegram/
-```
+- TDLib passes `-Wl,-exported_symbols_list,<source dir>/tdclientjson_export_list`
+  unquoted, so a source path containing spaces breaks the link step. The script
+  builds through a temporary space-free symlink.
+- The `tdjson` target alone is not installable with `cmake --install` (it
+  expects every target), so the script copies the dylibs and the three headers
+  (`td_json_client.h`, `td_log.h`, `tdjson_export.h`) by hand.
 
 The resulting `libtdjson.1.8.69.dylib` (~25 MB) links
 `/opt/homebrew/opt/openssl@3/lib/lib{ssl,crypto}.3.dylib` by absolute path;
-removing `openssl@3` from Homebrew breaks it. On an M-series Mac with `-j8`
-the `tdjson` target took about 3½ minutes.
+removing `openssl@3` from Homebrew breaks it.
 
 ## Checking it
 
+From `src/tdlib-rs`:
+
 ```sh
-export LOCAL_TDLIB_PATH=<prefix>
+export LOCAL_TDLIB_PATH="$(bash ../tdlib-build/build.sh path)"
 # upstream's get_me example reads API_ID / API_HASH with env!() at compile
 # time; placeholders are enough to compile it (it is not run here)
 export API_ID=0 API_HASH=compile-only
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --features tdlib-rs/local-tdlib -- -D warnings
 cargo test  --workspace --features tdlib-rs/local-tdlib --lib --bins --tests
+unset API_ID API_HASH
 cargo run   -p tdlib-rs --example version_check --features local-tdlib
 ```
 
@@ -99,8 +90,8 @@ they are build-script snippets that read `CARGO_CFG_TARGET_OS`, which only
 exists inside a build script, so they panic under `cargo test` (before this
 patch too; upstream's `make test` excludes the `tdlib-rs` package).
 
-Results on 2026-10-25 (macOS arm64): see `docs/plan/004_tdlib-patch.md` in the
-atg repo (section 四). 
+Results (macOS arm64): see `docs/plan/004_tdlib-patch.md` in the atg repo
+(section 四).
 
 `version_check` prints `getOption("version")` (must be `1.8.69`) and the first
 authorization state. With `API_ID` / `API_HASH` set at run time it also
