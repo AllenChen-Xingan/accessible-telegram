@@ -21,14 +21,15 @@ pub use real::{TdBackend, TdConfig, tdlib_version};
 #[cfg(feature = "tdlib-api")]
 mod real {
     use crate::auth::{self, AuthPrompt};
-    use crate::backend::{Backend, StatusReport, already_subscribed};
+    use crate::backend::{Backend, ChatsLoad, StatusReport, already_subscribed};
     use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
+    use crate::model::ChatList;
     use crate::secret::{self, Secret};
-    use crate::status::{AuthStep, CoreState};
+    use crate::status::{AuthStep, CoreState, NetState};
     use serde_json::{Value, json};
     use std::future::Future;
     use std::path::{Path, PathBuf};
@@ -420,6 +421,42 @@ mod real {
             let id = self.client_id().ok_or_else(Self::not_started)?;
             auth::prepare_logout(self.step())?;
             self.auth_request("logout", functions::log_out(id)).await
+        }
+
+        async fn chats_load(&self, list: &ChatList, limit: u32) -> Result<ChatsLoad, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let td_list = match list {
+                ChatList::Main => enums::ChatList::Main,
+                ChatList::Archive => enums::ChatList::Archive,
+                ChatList::Folder(f) => {
+                    enums::ChatList::Folder(types::ChatListFolder { chat_folder_id: *f })
+                }
+                ChatList::Unknown { .. } => return Err(CoreError::InvalidInput { td: None }),
+            };
+            let limit = i32::try_from(limit).unwrap_or(i32::MAX);
+            let r = link::guard(
+                self.shared.clone(),
+                functions::load_chats(Some(td_list), limit, id),
+            )
+            .await?;
+            match r {
+                Ok(()) => Ok(ChatsLoad::Loaded),
+                // 没有更多了：TDLib 用 404 表示，吞掉（`actions.md` `chats_load`）
+                Err(e) if e.code == 404 => Ok(ChatsLoad::End),
+                Err(e) => {
+                    let e = self.map_error(&e);
+                    logline::info("chats_load_failed", &[Field::Name("code", e.code())]);
+                    Err(e)
+                }
+            }
+        }
+
+        fn wait_net(
+            &self,
+            timeout: Duration,
+            pred: &dyn Fn(&NetState) -> bool,
+        ) -> Option<NetState> {
+            self.shared.wait_net(timeout, pred)
         }
 
         fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

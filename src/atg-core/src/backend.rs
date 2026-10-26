@@ -8,7 +8,11 @@
 //!   每个动作先查当前授权步骤，不收这项输入 → `auth_wrong_state`，不发给 TDLib。**提交成功只表示 TDLib
 //!   收下了**；下一步是什么看下一条授权状态更新（[`Backend::wait_auth_update`]）
 //!
-//! 会话（#18）、发送等动作后续块加在这里，两份实现一起加。
+//! - **会话**（第 5 块，T02）：`chats_load`（`loadChats`）。会话本身经更新进 Store，列表顺序是 Store 查询
+//!   （[`crate::store::Store::chat_list`]）；`wait_net` 供 CLI 等「补发完了」——离线期间漏掉的更新由服务器补送，
+//!   送完 TDLib 把连接状态从 `updating` 报成 `ready`
+//!
+//! 发送等动作后续块加在这里，两份实现一起加。
 //!
 //! 线程：`start` 是异步的（等 `setTdlibParameters` 的应答），可放在任何执行器上；`shutdown` 阻塞到
 //! `authorizationStateClosed` 或超时（退出路径上用，GUI 也在退出时调）。
@@ -17,8 +21,9 @@ use crate::auth::AuthPrompt;
 use crate::config::Profile;
 use crate::error::CoreError;
 use crate::link::EventStream;
+use crate::model::ChatList;
 use crate::secret::Secret;
-use crate::status::{AuthStep, Lines};
+use crate::status::{AuthStep, Lines, NetState};
 use crate::tree::UserStatus;
 use std::time::Duration;
 
@@ -90,9 +95,26 @@ pub trait Backend {
     /// （`logging_out` → `closing` → `closed`），本地库被清空；调用方照常 `shutdown`
     async fn logout(&self) -> Result<(), CoreError>;
 
+    /// 再加载一批会话（`loadChats`）：会话与位置经 `updateNewChat` / `updateChatPosition` 等进事件流，
+    /// **应答到之前这批更新已在流里**（同一条收线程按序处理）。TDLib 回 404 = 已到底，这里吞掉回
+    /// [`ChatsLoad::End`]（`actions.md` `chats_load`）。只认主列表、归档、文件夹；未知列表 → `invalid_input`
+    async fn chats_load(&self, list: &ChatList, limit: u32) -> Result<ChatsLoad, CoreError>;
+
+    /// 等到连接线满足 `pred`（或内核故障 / 超时 → `None`）。「补发完了」（离线期间漏掉的更新已补送完）= 连接线到 `ready`
+    fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState>;
+
     /// 发 `close`，等到 `authorizationStateClosed`（最多 `timeout`）。超时 → `internal`，故障 → `disconnected`；
     /// 两种都留着「运行中」标记，下次启动提示
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError>;
+}
+
+/// [`Backend::chats_load`] 的结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatsLoad {
+    /// 加载了一批（条数由 TDLib 定，可能比要的少）
+    Loaded,
+    /// 已到底（TDLib 回 404）
+    End,
 }
 
 /// 一个后端只许一个订阅者：第二次取流时报的错

@@ -1,7 +1,7 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
-//! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01，
-//! 真实后端要 `--features tdlib`）。其余子命令输出一行 `not_implemented` 错误。
+//! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
+//! `chats`（第 5 块，T02）。真实后端要 `--features tdlib`。其余子命令输出一行 `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
 #![cfg_attr(
@@ -15,6 +15,9 @@
 )]
 
 mod args;
+// 列会话的流程只有真实后端调；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod chats;
 mod login;
 mod out;
 mod session;
@@ -77,6 +80,7 @@ fn main() -> ExitCode {
         Command::Login => run_job(&cli.global, format, Job::Login, started),
         Command::Auth { step } => run_job(&cli.global, format, Job::Auth(step.sub()), started),
         Command::Logout => run_job(&cli.global, format, Job::Logout, started),
+        Command::Chats(a) => run_chats(&cli.global, format, &a, started),
         other => {
             let name = other.name();
             fail(
@@ -120,6 +124,88 @@ fn run_job(g: &args::Global, format: Format, job: Job, started: Instant) -> Exit
         }
         Err(f) => fail_with(format, &f),
     }
+}
+
+/// `chats`：一行一个会话（`kind:"chat"`，`data` 是 `ChatItem`，`speech.brief` 是会话项读法）+ 一行 `result`。
+/// 文字模式每行一句读法，统计写标准错误
+fn run_chats(g: &args::Global, format: Format, a: &args::ChatsArgs, started: Instant) -> ExitCode {
+    let after = match a.cursor.as_deref().map(chats::Cursor::parse) {
+        None => None,
+        Some(Some(c)) => Some(c),
+        Some(None) => {
+            return fail(
+                format,
+                Code::Usage,
+                "--cursor 不对：用上一页 result 里的 next_cursor",
+                json!({}),
+            );
+        }
+    };
+    let q = chats::Query {
+        list: a.list.list(),
+        limit: usize::try_from(a.limit).unwrap_or(usize::MAX),
+        unread: a.unread,
+        after,
+    };
+    let listing = match session::chats(g, &q, started) {
+        Ok(l) => l,
+        Err(f) => return fail_with(format, &f),
+    };
+    // 会话项读法不读时间，时区不影响；`--tz` 留给读消息的命令
+    let cx = atg_core::speech::SpeechCtx {
+        utc_offset: 0,
+        listen_key: None,
+    };
+    for item in &listing.items {
+        let doc = atg_core::tree::Doc::ChatItem(item.clone());
+        match format {
+            Format::Json => {
+                let mut line = atg_core::json::value(&doc, &cx);
+                if let Some(o) = line.as_object_mut() {
+                    o.insert("at".into(), json!(out::now_rfc3339_ms()));
+                }
+                emit(&line);
+            }
+            Format::Text => text_line(&atg_core::speech::chat_brief(item)),
+        }
+    }
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match format {
+        Format::Json => {
+            let mut data = json!({
+                "command": "chats",
+                "list": a.list.name(),
+                "count": listing.items.len(),
+                "more": listing.more,
+                "synced": listing.synced,
+                "load_timed_out": listing.load_timed_out,
+                "first_chat_ms": listing.first_chat_ms,
+                "elapsed_ms": elapsed_ms,
+            });
+            if let (Some(d), Some(c)) = (data.as_object_mut(), &listing.next_cursor) {
+                d.insert("next_cursor".into(), json!(c));
+            }
+            emit(&envelope("result", data));
+        }
+        Format::Text => {
+            let first = listing.first_chat_ms.map_or_else(
+                || "列表是空的".to_owned(),
+                |ms| format!("冷启动到第一条会话 {ms} 毫秒"),
+            );
+            let synced = if listing.synced {
+                ""
+            } else {
+                "；没等到同步完，未读数可能是旧的"
+            };
+            let more = match (listing.load_timed_out, listing.more) {
+                (true, _) => "；加载超时（可能断网），只列出了本地已有的",
+                (false, true) => "；还有更多",
+                (false, false) => "",
+            };
+            eprintln!("共 {} 个会话；{first}{synced}{more}", listing.items.len());
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// `version`：一行 `kind:"version"` + 一行 `result`

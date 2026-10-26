@@ -11,7 +11,6 @@ const PLACEHOLDERS: &[&str] = &[
     "me",
     "pending",
     "status",
-    "chats",
     "next-unread",
     "history",
     "links",
@@ -86,14 +85,14 @@ fn version_is_a_version_line_plus_result() {
 #[test]
 fn global_options_work_before_and_after_subcommand() {
     for args in [
-        &["--format", "text", "chats"][..],
-        &["chats", "--format", "text"][..],
-        &["chats", "-n", "3", "--format=text"][..],
+        &["--format", "text", "history"][..],
+        &["history", "--format", "text"][..],
+        &["history", "-n", "3", "--format=text"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         let s = String::from_utf8(out.stdout).unwrap();
-        assert!(s.contains("chats"), "{args:?}: {s}");
+        assert!(s.contains("history"), "{args:?}: {s}");
         assert!(!s.trim_start().starts_with('{'), "文字模式不出 JSON：{s}");
     }
 }
@@ -191,4 +190,31 @@ fn without_tdlib_login_says_how_to_build() {
             .unwrap()
             .contains("--features tdlib")
     );
+}
+
+#[test]
+fn chats_bad_arguments_are_usage_errors() {
+    for args in [
+        &["chats", "--cursor", "abc"][..],
+        &["chats", "--list", "folder"][..],
+        &["chats", "-n", "0"][..],
+        &["chats", "-n", "x"][..],
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "usage", "{args:?}");
+    }
+}
+
+#[test]
+fn chats_with_fake_scenario_is_not_implemented_yet() {
+    // 场景目录还没做：说清楚，不碰档案、不联网
+    let out = run(&["chats", "--fake", "basic", "--list", "archive", "--unread"]);
+    assert_eq!(out.status.code(), Some(1));
+    let ls = lines(&out);
+    assert_eq!(ls.len(), 1);
+    assert_eq!(ls[0]["data"]["code"], "not_implemented");
+    assert_eq!(ls[0]["data"]["command"], "chats");
 }

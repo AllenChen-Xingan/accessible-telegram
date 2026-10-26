@@ -6,7 +6,8 @@
 //! - 不带 `--test-dc`：打开 `--profile`（默认 `main`）。`main` 第一次用时按正式档案新建；别的名字必须已存在
 //!   （档案种类只由档案自己的标记定，不由选项定）
 //!
-//! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake` 的场景目录还没做（列会话那块做）。
+//! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake` 的场景目录还没做（要假时钟与时间线，
+//! `testing.md` 第一节第 3 小节，留给用到它的块；`chats` 的逻辑由假后端单测覆盖）。
 //! 起不来时照样调 `shutdown` 收尾（客户端建好之后才失败的情况，`td.rs` 头部）。
 
 use crate::args::Global;
@@ -99,7 +100,7 @@ pub fn run(g: &Global, job: Job, on_step: &mut dyn FnMut(AuthStep)) -> Result<Va
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: job_name(job),
-            message_zh: "假后端的场景目录还没做（列会话那块做），登录请连测试服务器：--test-dc",
+            message_zh: "假后端的场景目录还没做，登录请连测试服务器：--test-dc",
         });
     }
     // 没编进 TDLib 就在碰档案目录之前说清楚
@@ -127,6 +128,22 @@ pub fn job_name(job: Job) -> &'static str {
     }
 }
 
+/// 真实后端（本进程唯一的一个）
+#[cfg(feature = "tdlib")]
+pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
+    use atg_core::error::Holder;
+    use atg_core::keystore::Keychain;
+    use atg_core::td::{TdBackend, TdConfig};
+    let log_dir = config::default_log_dir().map_err(Fail::Core)?;
+    TdBackend::new(TdConfig {
+        env_file: config::default_env_file(),
+        keystore: Box::new(Keychain),
+        log_dir,
+        holder: Holder::Cli,
+    })
+    .map_err(Fail::Core)
+}
+
 #[cfg(feature = "tdlib")]
 fn real(
     profile: &Profile,
@@ -134,18 +151,36 @@ fn real(
     p: &mut dyn Prompter,
     on_step: &mut dyn FnMut(AuthStep),
 ) -> Result<Value, Fail> {
-    use atg_core::error::Holder;
-    use atg_core::keystore::Keychain;
-    use atg_core::td::{TdBackend, TdConfig};
-    let log_dir = config::default_log_dir().map_err(Fail::Core)?;
-    let b = TdBackend::new(TdConfig {
-        env_file: config::default_env_file(),
-        keystore: Box::new(Keychain),
-        log_dir,
-        holder: Holder::Cli,
-    })
-    .map_err(Fail::Core)?;
+    let b = td_backend()?;
     drive(&b, profile, job, p, on_step)
+}
+
+/// `chats`：选档案、起真实后端、列（`--fake` 场景目录还没做）
+pub fn chats(
+    g: &Global,
+    q: &crate::chats::Query,
+    started: std::time::Instant,
+) -> Result<crate::chats::Listing, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "chats",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, started);
+        Err(Fail::NotImplemented {
+            command: "chats",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::chats::run(&b, &profile, q, started)
+    }
 }
 
 /// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）

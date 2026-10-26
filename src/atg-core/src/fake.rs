@@ -11,15 +11,22 @@
 //! （已登录的推到 `ready`）；每步提交按账号核对，对了就推下一步的授权状态（TDLib JSON 形状，带提示字段，
 //! 走与真实后端同一段 [`AuthPrompt::from_td`]），错了回 TDLib 会回的那个错误（经 `map_td_error`）。
 //! [`FakeBackend::fail_next`] 给某一步注入一次错误。记账只记动作名，**不记输入的值**。
+//!
+//! 会话（第 5 块）：[`FakeBackend::set_chats`] 给某个列表排好一串会话（每个会话是几条 TDLib JSON 更新）。
+//! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。
+//! 应答之前先等收线程把这批更新处理完（[`Feed::Barrier`]），与真实 TDLib「更新先于应答」一致。
+//! [`FakeBackend::push_net`] 推一条连接状态。
 
 use crate::auth::{self, AuthPrompt};
-use crate::backend::{Backend, StatusReport, already_subscribed};
+use crate::backend::{Backend, ChatsLoad, StatusReport, already_subscribed};
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::link::{self, EventStream, Shared, Step};
+use crate::model::ChatList;
 use crate::secret::Secret;
-use crate::status::{AuthStep, CoreState};
+use crate::status::{AuthStep, CoreState, NetState};
 use serde_json::{Value, json};
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
@@ -46,6 +53,11 @@ pub enum Call {
     /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
     /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
     Auth(&'static str),
+    /// `chats_load`：哪个列表、要几个
+    ChatsLoad {
+        list: ChatList,
+        limit: u32,
+    },
 }
 
 /// 假账号：登录各步该输什么。测试数据，值都是编的
@@ -65,6 +77,8 @@ pub struct FakeAuth {
 
 enum Feed {
     Update(Value),
+    /// 收线程处理完它之前的所有更新后回一声（更新先于应答）
+    Barrier(mpsc::Sender<()>),
     Crash,
     End,
 }
@@ -82,6 +96,10 @@ pub struct FakeBackend {
     run: Mutex<Option<(Profile, Option<ProfileLock>)>>,
     auth: Mutex<Option<FakeAuth>>,
     fail_next: Mutex<Vec<(&'static str, CoreError)>>,
+    /// 每个列表还没交出去的会话；一个会话 = 几条更新
+    chats: Mutex<HashMap<ChatList, VecDeque<Vec<Value>>>>,
+    /// 还剩几次 `chats_load` 照常应答；之后一直不应答（断网时转去问服务器的样子）。`None` = 一直照常
+    chats_load_answers: Mutex<Option<u32>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -96,6 +114,11 @@ impl FakeBackend {
         let handle = link::spawn_receiver(shared.clone(), move || {
             match rx.recv_timeout(Duration::from_millis(20)) {
                 Ok(Feed::Update(v)) => Step::Update(v),
+                // 读到它时，前面的更新都已处理完（收线程处理完一条才回来取下一条）
+                Ok(Feed::Barrier(done)) => {
+                    let _ = done.send(());
+                    Step::Idle
+                }
                 Ok(Feed::Crash) => panic!("fake receiver crash"),
                 Ok(Feed::End) | Err(RecvTimeoutError::Disconnected) => Step::End,
                 Err(RecvTimeoutError::Timeout) => Step::Idle,
@@ -113,12 +136,41 @@ impl FakeBackend {
             run: Mutex::new(None),
             auth: Mutex::new(None),
             fail_next: Mutex::new(Vec::new()),
+            chats: Mutex::new(HashMap::new()),
+            chats_load_answers: Mutex::new(None),
         })
     }
 
     /// 给一个假账号（`start` 之前设）
     pub fn set_auth(&self, a: FakeAuth) {
         *lock(&self.auth) = Some(a);
+    }
+
+    /// 给某个列表排好会话（按 TDLib 的顺序交出；每个会话是几条 TDLib JSON 更新，如 `updateNewChat` +
+    /// `updateChatPosition`）。再调一次是追加
+    pub fn set_chats(&self, list: ChatList, chats: Vec<Vec<Value>>) {
+        lock(&self.chats).entry(list).or_default().extend(chats);
+    }
+
+    /// 前 `n` 次 `chats_load` 照常应答，之后一直不应答（测断网时加载卡住）
+    pub fn hang_chats_load_after(&self, n: u32) {
+        *lock(&self.chats_load_answers) = Some(n);
+    }
+
+    /// 推一条连接状态（`connectionStateReady` 这类类型名）
+    pub fn push_net(&self, td_type: &str) {
+        self.push(json!({
+            "@type": "updateConnectionState",
+            "state": { "@type": td_type },
+        }));
+    }
+
+    /// 等收线程处理完已喂进去的更新（最多 5 秒；收线程没了就不等）
+    fn settle(&self) {
+        let (tx, rx) = mpsc::channel();
+        if lock(&self.feed).send(Feed::Barrier(tx)).is_ok() {
+            let _ = rx.recv_timeout(Duration::from_secs(5));
+        }
     }
 
     /// 下一次 `action`（记账里的名字）回这个错误，一次性
@@ -439,6 +491,58 @@ impl Backend for FakeBackend {
         self.push_auth("authorizationStateClosing");
         self.push_auth("authorizationStateClosed");
         Ok(())
+    }
+
+    async fn chats_load(&self, list: &ChatList, limit: u32) -> Result<ChatsLoad, CoreError> {
+        self.started()?;
+        // 本地检查拦下的不记账（同登录那组）
+        if let ChatList::Unknown { .. } = list {
+            return Err(CoreError::InvalidInput { td: None });
+        }
+        lock(&self.calls).push(Call::ChatsLoad {
+            list: list.clone(),
+            limit,
+        });
+        let hang = match lock(&self.chats_load_answers).as_mut() {
+            Some(0) => true,
+            Some(n) => {
+                *n -= 1;
+                false
+            }
+            None => false,
+        };
+        let injected = self.take_failure("chats_load");
+        link::guard(self.shared.clone(), async move {
+            if hang {
+                std::future::pending::<()>().await;
+            }
+            match injected {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        })
+        .await??;
+        if self.step() != AuthStep::Ready {
+            return Err(map_td_error(401, "Unauthorized"));
+        }
+        let batch: Vec<Vec<Value>> = {
+            let mut all = lock(&self.chats);
+            let q = all.entry(list.clone()).or_default();
+            let n = q.len().min(usize::try_from(limit).unwrap_or(usize::MAX));
+            q.drain(..n).collect()
+        };
+        if batch.is_empty() {
+            return Ok(ChatsLoad::End);
+        }
+        for update in batch.into_iter().flatten() {
+            self.push(update);
+        }
+        self.settle();
+        Ok(ChatsLoad::Loaded)
+    }
+
+    fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {
+        self.shared.wait_net(timeout, pred)
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

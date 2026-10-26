@@ -15,7 +15,7 @@ use crate::auth::AuthPrompt;
 use crate::error::CoreError;
 use crate::logline::{self, Field};
 use crate::model::CoreEvent;
-use crate::status::{AuthStep, CoreState, Lines};
+use crate::status::{AuthStep, CoreState, Lines, NetState};
 use crate::store::Input;
 use crate::tdjson::{self, Classified};
 use crate::tree::UserStatus;
@@ -261,6 +261,30 @@ impl Shared {
             let now = Instant::now();
             if now >= deadline {
                 return false;
+            }
+            st = self
+                .cond
+                .wait_timeout(st, deadline - now)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+    }
+
+    /// 等到连接线满足 `pred`（或故障），最多等 `timeout`。列会话时等「补发完了」用
+    pub fn wait_net(
+        &self,
+        timeout: Duration,
+        pred: impl Fn(&NetState) -> bool,
+    ) -> Option<NetState> {
+        let deadline = Instant::now() + timeout;
+        let mut st = lock(&self.state);
+        loop {
+            if pred(&st.lines.net) {
+                return Some(st.lines.net.clone());
+            }
+            let now = Instant::now();
+            if st.lines.core == CoreState::Faulted || now >= deadline {
+                return None;
             }
             st = self
                 .cond
