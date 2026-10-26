@@ -43,3 +43,6 @@ skill 草稿完成，codex 自审 11 轮后满足人定停止线（第 10、11 �
 - 测试脚本 `tests/run-tests.sh`（故意构造的假值）可 `--force-secrets` 附给 codex——人「同意」
 - `--previous` 传入的 **codex 自己上一轮输出**里、经手下逐条确认是 codex 自造示例的命中：以后每轮都可放行，记录里列明——人选「以后每轮都可放行，列明即可」
 - 其他文件的命中照旧要人确认；`src/tdlib-rs/.github` 里上游的公开测试凭据不放行，审 `src/` 时排除
+
+- 密钥赋值最短长度：**保持 12 位**（人定 2026-10-25，与「只防常见写法、松一点」一致）
+- scanskill 新版已覆盖安装（含 `privacy-scan.sh`、`--force` / `--force-secrets` 两档）；剩余 P2 → #34

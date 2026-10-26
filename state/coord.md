@@ -30,8 +30,9 @@
 | `arch`（会话 `telegram-accessibility-8a`） | 写架构方案 `docs/plan/001_arch-stack.md` | `_tmp/20261025-batch/arch.md` | `state/handoff/arch.md` | **完成，已收尾**（三视角自审 + codex 评审 7 条全修，记录 `docs/reviews/002_arch-codex.md`；窗口已关）；第七节 10 条待人拍板 |
 | `exp004`（会话 `telegram-accessibility-e7`） | 新消息提示不打断朗读（7 种模式） | `_tmp/20261023-exp/exp004.md` | `state/handoff/exp004.md` | **完成，已收尾**（自动 7/7；窗口已关）；剩人工试听 11 步 |
 | `codesign`（会话 `telegram-accessibility-e2`） | 批次 b11 · 运行 `scripts/setup-dev-codesign.sh` 建自签名开发证书 `atg-dev`（密码框人亲手输） | `_tmp/20261025-b11/codesign.md` | `state/handoff/codesign.md` | **完成，已收尾**（证书 `atg-dev` 已建，有效到 2036-10-23；窗口已关） |
+| `login`（会话 `telegram-accessibility-b9`） | 批次 b13 · issue #17 第一刀第 4 块：`atg-cli login` / `logout`（测试服务器 + 99966 测试号验证） | `_tmp/20261025-b13/login.md` | `state/handoff/login.md` | **完成，已收尾**（login / logout / auth；输错原因可读已验；测试服务器正确码被拒 → #35；人用正式号跑 `live/login-main.sh` 验证；窗口已关） |
 | `tdlib`（会话 `telegram-accessibility-6e`） | 批次 b9 · issue #16 第一刀第 3 块：接 TDLib（收线程、关闭、监督、Backend 两份、加密 + 钥匙串、测试服务器） | `_tmp/20261025-b9/tdlib.md` | `state/handoff/tdlib.md` | **完成，已收尾**（接 TDLib；160 测试；测试服务器冒烟到 wait_phone、凭据 0 次；codex 待补审 #32；窗口已关） |
-| `scanskill`（会话 `telegram-accessibility-c8`） | 批次 b10 · 按人拍板改 `codex-review`：拆 `privacy-scan.sh`、放松扫描（禁区仍硬拦）、顺手 #29 | `_tmp/20261025-b10/scanskill.md` | `state/handoff/scanskill.md` | 已报到 |
+| `scanskill`（会话 `telegram-accessibility-c8`） | 批次 b10 · 按人拍板改 `codex-review`：拆 `privacy-scan.sh`、放松扫描（禁区仍硬拦）、顺手 #29 | `_tmp/20261025-b10/scanskill.md` | `state/handoff/scanskill.md` | **完成，已收尾**（新版 codex-review 已覆盖安装，旧版备份在草稿区；自测 195/195；剩余 P2 开 issue；待 codex 补审 #32；窗口已关） |
 | `codexskill`（会话 `telegram-accessibility-12`） | 批次 b8 · 专门的 skill `codex-review`（Opus 子代理用 skill-creator 起草），真跑审 004 | `_tmp/20261025-b8/codexskill.md` | `state/handoff/codexskill.md` | **完成，已收尾**（skill `codex-review` 已装到 `2-aartifacts/skills/` + 软链接；codex 自审 11 轮收敛；记录 `docs/reviews/006_codex-review-skill-codex.md`；剩余 P2 → #29；窗口已关） |
 | `model`（会话 `telegram-accessibility-89`） | 批次 b7 · issue #15 第一刀第 2 块：model + reducer + 投影 | `_tmp/20261025-b7/model.md` | `state/handoff/model.md` | **完成，已收尾**（model + reducer + 投影 + 缓存上限 + 唯一写入口；115 测试；codex 十三轮收敛，余 P2 → #30；窗口已关） |
 | `srcmove`（会话 `telegram-accessibility-32`） | 批次 b6 · issue #25：tdlib-rs 已 subtree 进 `src/tdlib-rs`，调工作区 / TDLib 拉取编译脚本 / CI / 文档 | `_tmp/20261025-b6/srcmove.md` | `state/handoff/srcmove.md` | **完成，已收尾**（方案 B；`src/tdlib-build/build.sh`；特性 tdlib-api / tdlib；旧克隆与 161449 已删；窗口已关） |
@@ -72,6 +73,12 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **正式账号登录成功（2026-10-25）**：人要求「你直接帮我登录吧」，大总管用 expect 代输手机号与人给的验证码（`auth phone` → `auth code`），档案 main 已登录；号码与验证码未落盘（扫描确认）。#35 已补评论
+
+- **人定（2026-10-25）**：登录验证改用人自己的正式账号，人在「终端」App 亲手输入手机号 / 验证码 / 二步密码（AI 不经手）；login 手下写 `src/atg-cli/live/login-main.sh`，人跑。测试服务器问题 → #35
+
+- **2026-10-25**：PR #33 合并、#16 关；#17 `status:active`，分支 `feat/17-cli-login`
 
 - **codesign 授权（2026-10-25）**：人要求代输登录密码；自动模式拦下「写密码进文件」后，人退出自动模式并说「在试一下」→ 大总管直接运行 `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -l atg-dev`（只限 atg-dev），实测 codesign 不再弹框。密码未写入任何文件；已提醒人密码出现在对话记录里
 
