@@ -13,7 +13,7 @@
 2. **每条命令以恰好一行 `result` 或 `error` 结尾**。读的一方看到它就知道结束了，不用猜
 3. **退出码和最后一行一致**：`result` → 0；`error` → 第 4 小节的码
 
-**例外只有三个**：`schema`（输出一个 JSON 文档，无结尾行）· `--format text`（给人看，不是 JSON）· `--help`（给人看）。另：`serve` 被第二次 Ctrl+C / SIGTERM 强行打断时立刻以 130 退出，不出结尾行。`version` 不是例外：一行 `kind:"version"` + `result`。
+**例外只有三个**：`schema`（输出一个 JSON 文档，无结尾行）· `--format text`（给人看，不是 JSON）· `--help`（给人看）。另：`serve`、`watch` 被第二次 Ctrl+C / SIGTERM 强行打断时立刻以 130 退出，不出结尾行（第一次照常收尾；SIGTERM 与 Ctrl+C 同样处理）；`watch` 的标准输出读方先走了（`watch | head`）时以 0 退出、结尾行写不出去（第 5 小节）。`version` 不是例外：一行 `kind:"version"` + `result`。
 
 ### 2. 子命令
 
@@ -39,7 +39,7 @@
 | `show CHAT_ID MSG_ID` | 一条消息的全部细节（含被回复的那条），`speech` 带 `detail`。**不标已读** | `message_get` `replied_message_get` | T06 T07 |
 | `search chats QUERY [-n N]` / `search messages QUERY [--chat CHAT_ID] [-n N] [--cursor C]` | 搜索 | `search_*` | T08 |
 | `send CHAT_ID (--text T \| --text-file PATH) [--reply-to MSG_ID] [--dry-run]` | 先输出一行 `plan`，再按闸要求确认，**等到 `send_succeeded` / `send_failed` 才输出结尾行**；30 秒内都没等到 → `error(send_outcome_unknown)` 带临时 id，**不许重发**，用 `pending` 查；`--dry-run` 只输出 `plan` | `send_text_prepare` `send_text` | T04 |
-| `watch [--chat CHAT_ID]` | 订阅更新，持续输出事件，Ctrl+C 结束 | `subscribe` | T05 T10 |
+| `watch [--chat CHAT_ID] [--reveal]` | 订阅更新，持续输出事件，Ctrl+C 结束（第 5 小节）。新消息与正在输入带 `notify` v0 的判定；消息的隐藏内容默认遮住（规则同 `history`），`--reveal` 才出原文；`--chat` 可写 `saved`；加 `--redact` 报 `not_implemented`。**不标已读** | `subscribe`；`--chat` 时另有 `chat_get`（先把会话装进 store、确认它在，找不到报 `not_found`）+ 成对的 `chat_open` / `chat_close`；碰到设置还没取到的论坛话题时 `forum_topic_get`（只读） | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X` · `stop`；标准输出每次状态变化一行 `kind:"playback"`（`state` · `position_s` · `duration_s` · `speed`）；播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"`），退出码 0；Ctrl+C 按 130。默认不标已听，`--mark-listened` 走 `mark_listened` 的把关（A1） | `file_download` `mark_listened` | T07 |
 | `speech --fixture PATH [--level brief\|chat_brief] [--reveal]` | 只打印读法：夹具文件（TDLib 更新对象的 JSON 数组，按顺序喂进 store，读法夹具在 `src/atg-core/fixtures/speech/`）→ 树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息 / 系统消息 / 撤回占位 / 状态一行；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法都在 `speech.brief`；CLI 没有按键，不读「按 D 展开」「按 M 收听」。`result.data` 带 `level`、`count`、`tz`、`utc_offset_s`：给了 `--tz` 时 `tz:"fixed"`、`utc_offset_s` 是那个固定偏移（秒）；跟系统时区时 `tz:"system"`、`utc_offset_s` 为 `null`（每个钟点按它自己的时间点取偏移，夏令时前后不同，没有对所有行都成立的一个值）。隐藏内容默认遮住（规则同上，`content-tree.md` 第八节），`--reveal` 才出原文。读不了、不是 JSON 数组 → `usage`。以后有场景目录再加 `--scenario NAME`；`detail` 归 `show` / `history --detail`（M1.6） | 无（直接调 `speech`） | 定标 |
@@ -64,7 +64,7 @@
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
 
-**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的暂行定义**（#18，事件本身随 `watch` 落地前）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
+**什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的定义**（#18 暂定，#53 起由收线程合成成事件，`actions.md` 第一节第 7 小节）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
 ### 3. 每行 JSON 的外壳
 
@@ -125,17 +125,37 @@
 | 8 | 发送被拒或人取消 | `send_refused` `cancelled` |
 | 9 | 本地档案被占用且本机接口连不上 / 本地库钥匙不对 | `profile_busy` `db_key_invalid` |
 | 10 | 发送结果未知（已交出，没等到成败） | `send_outcome_unknown` |
-| 130 | Ctrl+C 中断（`watch`、`serve` 除外；`serve` 被第二次打断时是 130，无结尾行） | `interrupted` |
+| 130 | Ctrl+C 中断（`watch`、`serve` 除外：第一次是正常结束、退出码 0；被第二次打断时才是 130，无结尾行） | `interrupted` |
 
 ### 5. 流式（`watch`）
 
+**输出什么**
 - 先输出一行 `status`，然后每个事件一行 `kind:"event"`，带 `seq`
-- 启动后补发的积压更新照常输出；补完时输出 `sync_done` 事件，读的一方据此区分「历史补发」和「真正的新消息」
-- 合并规则与 GUI 相同（架构方案第一节第 3 小节第 4 条）：积压太多时同一会话的「最后一条 / 未读数」只输出最新一次，并输出 `coalesced` 事件
+- 启动后补发的积压更新照常输出；补完时输出 `sync_done` 事件，读的一方据此区分「历史补发」和「真正的新消息」（「补发」「积压」说的是同一批：离线期间漏掉、刚连上时一下子补送来的更新）
 - `seq` 断了（读的一方发现跳号）：说明有东西没看到，重跑 `chats` / `history` 拿全量
-- `watch --chat ID` 会成对调 `chat_open` / `chat_close`（超级群、频道只有打开的会话才推新消息）；不带 `--chat` 时，超级群和频道的新消息**可能收不到**，以 `chat_last_message_changed` 为准（未核 TDLib 实际行为）
-- 标准输出被读的一方堵住时不丢事件、不崩；内核侧照常合并
-- Ctrl+C：输出 `result`（`data.reason:"interrupted"`）后以 0 退出——对 `watch` 来说被打断就是正常结束
+- 带消息的事件（`new_message`、`message_content_changed` 等内容变化、`chat_last_message_changed`、`send_succeeded` / `send_failed`）：`data` 里有 `chat_id`、`message_id`，`data.message` 是消息节点（内容树，隐藏内容按 `--reveal` 遮），`speech.brief` 是这条的读法
+- 通知设置三种事件（`chat_notification_changed`、`scope_notification_changed`、`forum_topic_changed`）：设置都放在 `data.settings`。`mute_for`：收到这条时还要静音多少秒，0 = 不静音（剩余秒数，不是到期时刻）· `disable_mention`：真 = 提及（@ 我、回复我）不再穿透静音 · `disable_pinned`：真 = 置顶消息不提示 · 会话、话题的另带 `use_default_mute_for` / `use_default_disable_mention` / `use_default_disable_pinned`：真 = 这一项跟随上一层（话题 → 会话 → 范围），自己那一项的值不算数。名字是 TDLib `disable_mention_notifications` / `disable_pinned_message_notifications` 的缩写
+- `watch --chat ID` 会成对调 `chat_open` / `chat_close`（超级群、频道只有打开的会话才推新消息；只为订阅，不标已读）。**它不过滤**：所有会话的事件照样输出，`--chat` 只决定替哪个会话打开、哪个是正在输入要看的「当前会话」；不带 `--chat` 时，超级群和频道的新消息**可能收不到**，以 `chat_last_message_changed` 为准（未核 TDLib 实际行为）
+- 合并（积压太多时同一会话的「最后一条 / 未读数」只输出最新一次，并输出 `coalesced` 事件；架构方案第一节第 3 小节第 4 条）：**v0 没做**，事件逐条照出、不出 `coalesced`
+- 处理落后警告（直跑；调研 003 收10 叫「积压监控」，与上面补发那批「积压」不是一回事）：TDLib 的更新先由内核的收线程（后台专门收更新的线程）收进一条队列，`watch` 每轮把队列里攒下、还没处理的事件一次取空，取出的条数就是「已收进来、还没来得及处理」的事件数；超过 2000 条在标准错误记一句「待处理 N 条事件」，结束时再记一句「单次最多待处理 N 条」。阈值是 AI 给的初值（真实账号 1 分钟冒烟量到最大 188 条）；经本机接口订阅时执行方不记
+- `--format text`：每条新消息一句读法（要提示的前面加「新消息，」）、播的那次正在输入一句、`sync_done` 一句「同步完成，之后的是新消息」（有重连汇总时前面先接汇总那句，这一行算要提示的），其余事件不出；结尾一句统计
+
+**提示判定** `data.notify`：`{"alert":bool,"reason":"…","sound":bool,"burst":N}`
+- 出现在：`new_message`；`chat_last_message_changed`——只当它带的那条消息**比这个会话见过的都新**、且发送时间不早于补发结束前 60 秒（防时钟偏差的余量）时才判（删掉最新一条后「最后一条」会退回旧的；补发后才加载进来的会话带着早先的最后一条——都不算新来的）；`chat_action` 的正在输入。同一条消息只判一次
+- `alert` 提不提示；`sound` 出不出提示音：**同一会话**离上一次出声不到 7 秒的提示不出声，不同会话各响各的（人定 2026-10-26）；`burst`：这个会话的连发计数——从出声的那条算 1，之后不出声的依次加一，下一次出声又从 1 数起；不提示的为 0。正在输入与重连汇总只出读法或一声、不计连发：`burst` 恒为 0（正在输入另 `sound` 恒为 `false`）
+- **重连汇总**（人定 2026-10-26）：「断网重连」指启动后已补发完过一次、之后连接线又离开过 `ready`（真断网，或只是 TDLib 报「更新中」）。这之后补发来的消息照旧逐条 `backlog` 不提示；补发结束那条 `sync_done` 上，把它们**按那一刻的状态**逐条再判一遍（补发里后到的已读位置、静音变化都算进去：断网期间在手机上读过的不算），按其余规则仍该提示的汇成一声。所以超过 1 小时的、别处已读的、静音的、论坛话题设置到那时还没取到的都不计（本次运行没加载过的论坛话题会漏数：取话题设置要等 `watch` 把这一轮从队列里取到的事件全喂完才去做，而补发结束的 `sync_done` 通常和补发消息在同一轮里，判汇总时设置还没到）；补发途中又断一次的，几段合成一次汇总；最多记 1 万条，超过的不计，N 最多 10000，读法不另说「还有更多」。`data.notify` 为 `{"alert":true,"reason":"reconnect_summary","sound":true,"burst":0}`，`data.missed` 为 `{"messages":N,"chats":M}`（本该提示的条数、涉及几个会话），`speech.brief`「断网期间收到 N 条，涉及 M 个会话」（句子待人实听）；文字模式这一行是「断网期间收到 N 条，涉及 M 个会话。同步完成，之后的是新消息」（前面不加「新消息，」，计进结尾行的 `alerts`）。启动时的第一次补发不汇总；补发里没有本该提示的也不汇总（那条 `sync_done` 照旧不带 `notify`）。汇总这一声不占各会话的 7 秒窗：紧接着来的新消息照常出声
+- 按固定顺序判、先中先停（正本 `notify.rs` 头部的顺序：积压 → 自己发的 / 收藏夹 / 未知会话 → 别处已读 → 太旧 → 话题设置未取到 → 置顶 → 静音），所以一条消息只报最先命中的那个理由（如静音会话里自己发的报 `outgoing`）
+- 理由 `reason`。提示：`new`（新消息）· `mention`（这条含未读的提及、提及通知没关、**发送人那个会话没静音**——同 TDLib，提及按发送人的静音判，群本身静没静音不看，所以静音群里也照样提示；「提及」按 TDLib 的 `contains_unread_mention`：@ 你，**以及回复你的消息**都算）· `typing` · `reconnect_summary`（只在 `sync_done` 上，见上「重连汇总」）。新消息不提示：`backlog`（补发结束前；重连后的补发也算）· `outgoing`（自己发的，含还没发出、发送失败的）· `saved`（收藏夹）· `unknown_chat`（store 里还没有这个会话，判不了静音，宁可不吵）· `topic_unknown`（论坛话题的设置还没取到：TDLib 只给加载过的话题推设置，`watch` 碰到时去 `getForumTopic` 取一次，取到之前这个话题的消息不提示）· `read_elsewhere`（别处已读：消息 id 不大于「已读到」位置——会话的与论坛话题的取较大那个——即你在手机等别的设备上已经读过）· `too_old`（比现在早 1 小时以上）· `pinned_off`（「某人置顶了一条消息」那条系统提示，且置顶通知关了）· `muted_sender`（含提及，但你静音了发送人：他在群里 @ 你也不响）· `muted_topic` / `muted_chat` / `muted_scope`（有效静音落在哪一层；「有效」= 从话题往会话、再往范围——私聊 / 群 / 频道三档默认设置——逐层找，哪层没设成「跟随上一层」就用哪层）。正在输入不提示：`not_open_chat` · `not_private` · `already_announced` · `user_busy`（人正在朗读或按键，GUI 用）· `outgoing`（是自己在别的设备上输入）
+- 正在输入：只在 `--chat` 打开的私聊里、**一轮**里第一次时 `alert:true`，`speech.brief` 是「对方正在输入」。一轮 = 同一个（会话，话题，发送人）从开始输入到 TDLib 推来「停了」（`chatActionCancel`：对方 5.5 秒没再输入，或发出了消息）；停了之后再输入是新一轮，再播一次。CLI 没有朗读和按键，人一律算「停下了」（N5 的判断在 GUI）。出声由 GUI 播报器做（M4.3），`watch` 只给判定
+- 规则正本在 `src/atg-core/src/notify.rs` 头部。其中的默认值已由人定（2026-10-26：出声窗按会话分开、重连汇总两条改，其余按默认；界面做出来后实听再调），题面与结果在 `state/handoff/watch.md`「要人定的事」（大总管写进 `docs/plan/` 拍板记录后改指那里）
+
+**怎么结束**（结尾行 `result.data`：`command:"watch"` · `reason:"interrupted"` · `events`（写出过的事件行数）· `alerts`（其中要提示的）· `elapsed_ms`）
+- Ctrl+C / SIGTERM：输出 `result` 后以 0 退出——对 `watch` 来说被打断就是正常结束；再按一次立刻以 130 退出、不出结尾行（第一节第 1 小节）
+- 标准输出的读方走了（管道断了，如 `watch | head`）：不再写，照常收尾（关会话、关后端），以 0 退出，结尾行写不出去
+- 后端故障（内核收更新的那条线程崩了或意外退出）：一行 `error(disconnected)`，退出码 4，不出 `result`
+- 标准输出被读的一方堵住时（直跑）不丢事件、不崩：事件在内核的无界通道里等着
+
+**档案被 `serve` / 界面占着**：经本机接口流式订阅（`config-privacy.md` 第一节第 2 小节「流式订阅」），输出与直跑相同，例外六处：① 中途接入时执行方已补发完（按它自己喂到的事件判），`status` 之后立刻补一行 `sync_done`：它的 `seq` 等于执行方最后喂过的那条事件的序号，之后的事件从它加一起连续（这一行之前没有别的事件行，不算跳号）；「最后一条变了」那条 60 秒余量的参照点是接入那一刻，不是执行方补发结束的时刻；② 执行方给一个订阅者写一帧最多等 60 秒，等不到就摘掉它（发起方看到连接断了，报 `error(disconnected)`、退出码 4），这 60 秒里执行方的别的订阅者、别的请求也跟着等；③ 执行方上已挂满 8 个 `watch` 时报 `usage`（退出码 2，说明写「已到上限」；不是参数错）；④ 发起方 Ctrl+C 时，结尾行由发起方在本地按它收到的行写（`events`、`alerts` 是本地数的）；⑤ 执行方被第二次打断（130 退出）时，订阅的一方看到的是 `error(disconnected)`、退出码 4；⑥ 接入时执行方正在重连补发（之前补发完过）：这个订阅者也当重连，补发结束时汇总**它接入之后**看到的那些——这时的 N、M 只是断网期间的一部分，读法照旧
 
 ### 6. 给 AI 的自描述
 
@@ -202,3 +222,5 @@
 - 2026-10-26 issue #21 第三轮自审后（大总管授权 2026-10-26，属技术细节）：`chats` 也对 `--redact` 报 `not_implemented`；`links` 写明隐藏范围、不分页、`--redact`；`history` 写明停住的样子与重试次数、间隔
 - 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：停住且一条没拿到时 `more` 为假、只看 `partial`；`chats` / `speech` 的遮挡说法改为指向 `content-tree.md` 第八节；`links` 的 `result` 字段与 `link` 行的 `hidden` 范围对齐
 - 2026-10-26 issue #21 第五、六轮自审后（大总管授权 2026-10-26，属技术细节）：`chats` 行只留指针；`history` 写明往旧也可能停住、停住时只有停住的那一侧照为真、「起点」「进内存」指什么
+- 2026-10-26 issue #53 watch（按 003 大总管采纳 2026-10-26；流式订阅大总管授权 2026-10-26）：`watch` 加 `--reveal`、`--chat saved`、`--redact` 报 `not_implemented`；第 5 小节写明带消息的事件、`data.notify` 的形状与理由、正在输入、文字模式、结尾行字段、管道断了、经本机接口订阅；`chat_open` 不标已读；第 1 小节例外加 `watch`（第二次打断 130、管道断了无结尾行）与 SIGTERM；退出码 130 行改口径；「什么时候算数据齐了」的 `sync_done` 由暂行定义改为收线程合成的事件；第 5 小节整节重写（输出 / 判定 / 结束 / 经本机接口的例外），`--chat` 不过滤、`data.settings` 字段含义、`topic_unknown`
+- 2026-10-26 issue #53 人定（经大总管）：提示音的 7 秒窗与连发计数改为按会话各算一份；重连补发结束时汇总一声（`reason:"reconnect_summary"`、`data.missed`、汇总读法待实听），文字模式也出；短自审后：汇总改为补发结束时按那时的状态再判、写明「断网重连」的触发、不计的几类、几段合并、不占 7 秒窗、中途接入时的口径

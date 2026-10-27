@@ -28,7 +28,7 @@ use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subsc
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::{ChatId, ChatList, Message, MsgId};
+use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::secret::Secret;
 use crate::status::{AuthStep, CoreState, NetState};
 use serde_json::{Value, json};
@@ -61,6 +61,11 @@ pub enum Call {
     History(HistoryReq),
     /// `message_get`
     MessageGet(MsgId),
+    /// `chat_open` / `chat_close`
+    ChatOpen(ChatId),
+    ChatClose(ChatId),
+    /// `forum_topic_get`
+    ForumTopicGet(ChatId, i64),
     Shutdown,
     /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
     /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
@@ -114,6 +119,8 @@ pub struct FakeBackend {
     chats_load_answers: Mutex<Option<u32>>,
     /// `chat_get` 时推的更新
     chat_info: Mutex<HashMap<ChatId, Vec<Value>>>,
+    /// `forum_topic_get` 回的话题（TDLib `forumTopic` JSON）
+    forum_topics: Mutex<HashMap<(ChatId, i64), Value>>,
     /// 每个会话的消息（TDLib `message` 对象）
     histories: Mutex<HashMap<ChatId, Vec<Value>>>,
     /// 每个会话第一次 `history` 只回 1 条
@@ -161,6 +168,7 @@ impl FakeBackend {
             chats: Mutex::new(HashMap::new()),
             chats_load_answers: Mutex::new(None),
             chat_info: Mutex::new(HashMap::new()),
+            forum_topics: Mutex::new(HashMap::new()),
             histories: Mutex::new(HashMap::new()),
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
@@ -182,6 +190,11 @@ impl FakeBackend {
     /// `chat_get(id)` 时推这几条更新（`updateNewChat`、发送人的 `updateUser`……）；没设的会话 → `not_found`
     pub fn set_chat(&self, id: ChatId, updates: Vec<Value>) {
         lock(&self.chat_info).insert(id, updates);
+    }
+
+    /// `forum_topic_get(chat, topic)` 回这个话题（TDLib `forumTopic` 对象）；没设的 → `not_found`
+    pub fn set_forum_topic(&self, chat: ChatId, topic_id: i64, topic: Value) {
+        lock(&self.forum_topics).insert((chat, topic_id), topic);
     }
 
     /// 某会话的全部消息（TDLib `message` 对象，顺序无所谓）
@@ -613,6 +626,42 @@ impl Backend for FakeBackend {
         }
         self.settle();
         Ok(())
+    }
+
+    async fn chat_open(&self, chat: ChatId) -> Result<(), CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::ChatOpen(chat));
+        self.ready_or_401("chat_open").await?;
+        if !lock(&self.chat_info).contains_key(&chat) {
+            return Err(CoreError::NotFound {
+                what: "chat",
+                td: None,
+            });
+        }
+        Ok(())
+    }
+
+    async fn chat_close(&self, chat: ChatId) -> Result<(), CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::ChatClose(chat));
+        self.ready_or_401("chat_close").await?;
+        Ok(())
+    }
+
+    async fn forum_topic_get(
+        &self,
+        chat: ChatId,
+        topic_id: i64,
+    ) -> Result<ForumTopicState, CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::ForumTopicGet(chat, topic_id));
+        self.ready_or_401("forum_topic_get").await?;
+        let t = lock(&self.forum_topics).get(&(chat, topic_id)).cloned();
+        t.map(|t| crate::tdjson::forum_topic(&t))
+            .ok_or(CoreError::NotFound {
+                what: "forum_topic",
+                td: None,
+            })
     }
 
     async fn history(&self, req: HistoryReq) -> Result<Vec<Message>, CoreError> {

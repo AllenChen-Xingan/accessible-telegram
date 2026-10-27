@@ -43,7 +43,7 @@ impl User {
 // ───────────────────────── 消息 ─────────────────────────
 
 /// 发送人（只有 id，名字投影时查）
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SenderId {
     User(UserId),
     Chat(ChatId),
@@ -120,6 +120,8 @@ pub struct Message {
     pub edited: Option<Time>,
     pub reactions: Vec<Reaction>,
     pub sending: SendingState,
+    /// 含未读的提及（`contains_unread_mention`：@ 我、回复我都算）：提及通知没关时按发送人的静音判（`notify`）
+    pub mentions_me: bool,
 }
 
 impl Message {
@@ -209,13 +211,58 @@ pub struct ChatPosition {
     pub is_pinned: bool,
 }
 
-/// 会话自己的通知设置（只取静音相关的两项）
+/// 会话（或论坛话题）自己的通知设置：静音、提及通知、置顶通知三项（`chatNotificationSettings`，`td_api.tl:3811`）。
+/// 每项都有「跟随上一层」开关：话题 → 会话 → 范围（私聊 / 群 / 频道），按 003 收1 逐层取，见 [`crate::notify`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChatNotify {
-    /// 跟随范围设置
+    /// 静音跟随上一层
     pub use_default_mute_for: bool,
-    /// 还要静音多少秒；0 = 不静音
+    /// 还要静音多少秒；0 = 不静音（收到时的剩余秒数，话题层要换成绝对到期时间，见 `notify`）
     pub mute_for: i64,
+    /// 提及通知跟随上一层
+    pub use_default_disable_mention: bool,
+    /// 关掉了「@ 我的消息穿透静音」
+    pub disable_mention: bool,
+    /// 置顶通知跟随上一层
+    pub use_default_disable_pinned: bool,
+    /// 关掉了置顶消息的通知
+    pub disable_pinned: bool,
+}
+
+/// 范围（私聊 / 群 / 频道）的默认通知设置（`scopeNotificationSettings`，`td_api.tl:3823`；只取三项）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ScopeNotify {
+    pub mute_for: i64,
+    pub disable_mention: bool,
+    pub disable_pinned: bool,
+}
+
+/// `getForumTopic` 的应答里 store 要的那两样（话题没加载过时 TDLib 不推 `updateForumTopic`，要主动取）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForumTopicState {
+    pub last_read_inbox: i64,
+    pub notify: ChatNotify,
+}
+
+/// 论坛话题的通知状态（store 里存的那份）：静音到期已换成绝对时刻
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TopicNotify {
+    pub notify: ChatNotify,
+    /// 静音到这个 Unix 毫秒；0 = 不静音；`i64::MAX` = 没有收到时刻（夹具），当一直静音
+    pub muted_until_ms: i64,
+    pub last_read_inbox: i64,
+}
+
+/// 「正在输入」这类会话动作（`ChatAction`）。第一阶段只认正在输入与取消，其余落 `Other`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChatActionKind {
+    /// `chatActionTyping`
+    Typing,
+    /// `chatActionCancel`：停了（TDLib 5.5 秒没续也会自己推它，003 收5）
+    Cancel,
+    Other {
+        td_type: String,
+    },
 }
 
 /// 通知范围（`NotificationSettingsScope`）：会话「跟随默认」时取所属范围的设置
@@ -334,8 +381,30 @@ pub enum CoreEvent {
     ChatTitleChanged { chat_id: ChatId, title: String },
     /// `updateChatNotificationSettings`
     ChatNotificationChanged { chat_id: ChatId, notify: ChatNotify },
-    /// `updateScopeNotificationSettings`（只取 `mute_for`）
-    ScopeNotificationChanged { scope: NotifyScope, mute_for: i64 },
+    /// `updateScopeNotificationSettings`（取静音、提及、置顶三项）
+    ScopeNotificationChanged {
+        scope: NotifyScope,
+        notify: ScopeNotify,
+    },
+    /// `updateForumTopic`：论坛话题自己的通知设置与已读位置（003 收1；`td_api.tl:11484`）
+    ForumTopicChanged {
+        chat_id: ChatId,
+        topic_id: i64,
+        last_read_inbox: i64,
+        notify: ChatNotify,
+        /// 收线程收到它的时刻（Unix 毫秒）。话题静音到期 TDLib 不再推更新，store 拿它把剩余秒数换成绝对到期时刻
+        /// （003 收2）；映射本身不碰时钟，留 `None`，由收线程填（夹具没有：静音的话题当一直静音）
+        received_ms: Option<i64>,
+    },
+    /// `updateChatAction`：谁在某会话（某话题）里正在输入（003 收5：键 = 会话 + 话题 + 发送人）
+    ChatAction {
+        chat_id: ChatId,
+        topic: Option<Topic>,
+        sender: SenderId,
+        action: ChatActionKind,
+    },
+    /// 启动或重连后补发结束（连接线到 `ready`；`cli.md`「什么时候算数据齐了」）。由收线程合成
+    SyncDone,
     /// `updateUser`
     UserChanged(User),
     /// `updateOption` 的 `my_id`：自己的用户 id（登录后 TDLib 自己推，TDLib 1.8.69 源码 `td/telegram/AuthManager.cpp:348`）。

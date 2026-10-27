@@ -244,6 +244,16 @@ pub struct Feed {
     started: Instant,
     /// 问过的列表 → 第一次有会话的毫秒数
     first: Vec<(ChatList, Option<u64>)>,
+    /// `watch` 的订阅者（直跑时是本进程的标准输出，`serve` 时是各个连进来的 `watch`）：每喂完一条事件就交给它们，
+    /// 所以不论是空闲时喂、还是别的命令（`chats`、`history`）中途喂，订阅者都不漏
+    pub hub: crate::watch::Hub,
+    /// 喂过的最后一个序号（中途接入的 `watch` 补 `sync_done` 时用）
+    last_seq: u64,
+    /// 喂到的事件里，最近一次补发已结束（见过 `sync_done`，之后连接线没再离开 ready）。中途接入的 `watch` 按它判，
+    /// 不按后端此刻的连接线：收线程先改连接线、事件还排在流里没喂，两者会差一截
+    synced: bool,
+    /// 喂到的事件里见过至少一次 `sync_done`（之后不在补发中的话，就是重连补发）
+    ever_synced: bool,
 }
 
 impl Feed {
@@ -253,7 +263,35 @@ impl Feed {
             pump: Pump::default(),
             started,
             first: vec![(ChatList::Main, None), (ChatList::Archive, None)],
+            hub: crate::watch::Hub::default(),
+            last_seq: 0,
+            synced: false,
+            ever_synced: false,
         }
+    }
+
+    pub fn ever_synced(&self) -> bool {
+        self.ever_synced
+    }
+
+    pub fn synced(&self) -> bool {
+        self.synced
+    }
+
+    fn note_sync(&mut self, event: &atg_core::model::CoreEvent) {
+        use atg_core::model::CoreEvent;
+        match event {
+            CoreEvent::SyncDone => {
+                self.synced = true;
+                self.ever_synced = true;
+            }
+            CoreEvent::NetStateChanged(n) if *n != NetState::Ready => self.synced = false,
+            _ => {}
+        }
+    }
+
+    pub fn last_seq(&self) -> u64 {
+        self.last_seq
     }
 
     pub fn store(&self) -> &Store {
@@ -287,15 +325,32 @@ impl Feed {
         }
     }
 
-    /// 不等：把已到的事件全喂完
-    pub fn drain(&mut self, stream: &mut EventStream) {
+    /// 不等：把已到的事件全喂完，回喂了几条（`watch` 拿它看处理落后多少）
+    pub fn drain(&mut self, stream: &mut EventStream) -> usize {
+        let mut fed = 0;
         loop {
             let batch = stream.try_batch(512);
             if batch.is_empty() {
-                return;
+                return fed;
             }
-            // 这里不开会话窗口，不会要求重拉
-            let _ = self.pump.apply_batch(batch);
+            fed += batch.len();
+            if let Some(e) = batch.last() {
+                self.last_seq = e.seq;
+            }
+            for e in &batch {
+                self.note_sync(&e.event);
+            }
+            if self.hub.is_empty() {
+                // 这里不开会话窗口，不会要求重拉
+                let _ = self.pump.apply_batch(batch);
+            } else {
+                // 有订阅者：一条一条喂，每条喂完交给订阅者（判提示要看喂过之后的 store）
+                for e in batch {
+                    let (seq, event) = (e.seq, e.event.clone());
+                    let _ = self.pump.apply(e.into_input());
+                    self.hub.on_event(self.pump.store(), seq, &event);
+                }
+            }
             self.note_first();
         }
     }
