@@ -83,6 +83,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|---|---|---|
 | `chat_open(chat: ChatId)` | `Ack` | `not_found` | L0 | `openChat`（`:14188`）；让 TDLib 推这个会话的实时更新（超级群 / 频道只有打开的会话才推）。**`chat_open` 本身绝不隐式调 `viewMessages`**（频道浏览量也靠它涨）；GUI 进会话时另行**显式**调 `mark_read` 标到最新一条（F1）；必须与 `chat_close` 配对 |
 | `chat_close(chat: ChatId)` | `Ack` | — | L0 | `closeChat`（`:14191`） |
+| `forum_topic_get(chat: ChatId, topic_id: i64)` | 话题的「已读到」位置 + 通知设置 | `not_found` `invalid_input`（话题 id 超出 int32，本地先拒） | L0 | `getForumTopic`（`td_api.tl:13632`），只读、不标已读。话题没加载过时 TDLib 不推它的 `updateForumTopic`，服务器推来的设置变更也丢掉（TDLib 1.8.69 `ForumTopicManager.cpp:659-662`），所以 `notify` 判到一个还没设置的话题时请调用方取一次；应答进 store 时只在还没有这个话题时收，不盖掉之后推来的更新 |
 | `history(chat: ChatId, from: MessageId, offset: i32, limit: u32, local_only: bool)` | `Vec<Message>`（从新到旧） | `not_found` · `invalid_input`（`limit` 不在 1–100、`offset` 不在 -99–0、`offset` 为负时 `limit < -offset`：本地先拒，不发） | L0 | `getChatHistory`（`:12758`），参数同 TDLib（`from` 为 0 = 最新一条起；`offset` 为 0 时**不含** `from` 那条、往旧取（TDLib 1.8.69 `OrderedMessage.cpp` `get_history`）；负 `offset` 含它、另取比它新的，往新翻页用（CLI 那层去掉 X 本身）。应答为空 = TDLib 已经自己从本地库 / 服务器拉过、确实没有了；不空但短 = 它只给了内存里连着的那段，再要能拿到更多）；带请求代次（架构方案第一节第 3 小节第 6 条）。F2 落点、循环补满、从旧到新排在 CLI 里做 |
 | `message_get(id: MsgId)` | `Message` | `not_found` | L0 | `getMessage`（`:12418`）；`MsgId` 即 `tree` 的 `MsgId` |
 | `replied_message_get(id: MsgId)` | `Option<Message>` | — | L0 | `getRepliedMessage`（`:12436`）；T06「回复谁」 |
@@ -193,7 +194,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `message_content_changed` | `chat_id` `message_id` + 新内容节点（替代内容、投票结果、语音转文字等原内容的变化都走它，store 整体替换原内容，不做局部合并；临时内容另走下一行） |
 | `message_ephemeral_changed` | `chat_id` `message_id` + 新的临时内容节点，或空（临时内容消失）（`updateMessageEphemeralContent` `td_api.tl:11223`）。有临时内容时显示它、不显示原内容（`content-tree.md` 第三节第 2 小节） |
 | `message_edited` | `chat_id` `message_id` + 编辑时间（`updateMessageEdited` `:11230`）。**字段更新里编辑时间只认它**；整条消息（新消息、历史）自带的 `edit_date` 照收；**0 = 没有编辑时间**（拍板 006 乙8） |
-| `chat_action` | `chat_id` + 话题 + 发送人 + 动作种类（`updateChatAction` `td_api.tl:11530`；第一阶段只认「正在输入」`chatActionTyping` `:6960`，其余落 `other{td_type}`）。播不播由 `notify` 判（F6：只在当前打开的私聊、停手后播一次「对方正在输入」） |
+| `chat_action` | `chat_id` + 话题 + 发送人 + 动作种类（`updateChatAction` `td_api.tl:11530`；第一阶段只认「正在输入」`chatActionTyping` `:6960` 与「停了」`chatActionCancel` `:7002`，其余落 `other{td_type}`）。**以 `(chat_id, 话题, 发送人)` 为键**；过期靠 TDLib 推的取消（5.5 秒没续、或对方发出消息，TDLib 自己推 `chatActionCancel`），本地不计时（调研 `docs/research/003_send-receive-prior-art/README.md` 第一节的条目「收5」）。播不播由 `notify` 判（F6：只在当前打开的私聊、停手后播一次「对方正在输入」；N5：停手 = 人自己停下，不在朗读、不在按键） |
 | `messages_deleted` | `chat_id` + `message_ids` + `is_permanent` + `from_cache`（`updateDeleteMessages`，`td_api.tl:11523`）。**只有 `is_permanent` 为真且 `from_cache` 为假才是撤回**、才留「已撤回」占位；`from_cache`（只是清缓存）和非永久（暂时不可访问）都不许显示成撤回。另两条（拍板 006 乙7）：**待发送 / 发送失败的消息被删不是撤回**（自己取消，或 TDLib 重发时先删掉失败那条，`MessagesManager.cpp:25221-25223`）；**没见过原消息的删除待应答判定**——先留占位，后到的历史应答说它没发出去就拿掉，说它已发出就补记发送人和时间 |
 | `send_succeeded` | `chat_id` + 临时 id + **发出后的整条消息**（含最终 `message_id`；`updateMessageSendSucceeded` `:11208` 就带整条，内容可能被服务器改过） |
 | `send_failed` | `chat_id` + 临时 id + 失败后的整条消息（TDLib 也给它新 id，`:11214`）+ 错误（`errors.md` 的 `code`）+ 能否 `resend` |
@@ -206,16 +207,17 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `message_unread_reactions` | `chat_id` `message_id` + 未读回应（`updateMessageUnreadReactions` `:11257`；会话的未读回应数 `updateChatUnreadReactionCount` `:11387` 并入 `chat_read_inbox` 一类，写明字段） |
 | `message_content_opened` | `chat_id` `message_id`（`updateMessageContentOpened` `:11244`：已听 / 已看）。只改原内容，临时内容不动（TDLib 只改 `m->content`，`MessagesManager.cpp:9300-9312`） |
 | `message_pinned_changed` | `chat_id` `message_id` + 是否置顶（`updateMessageIsPinned` `:11233`） |
-| `chat_notification_changed` | `chat_id` + 会话自己的通知设置（`updateChatNotificationSettings` `:11367`） |
-| `scope_notification_changed` | 范围（私聊 / 群 / 频道）+ 全局通知设置（`updateScopeNotificationSettings` `:11489`）。**有效静音**由 store 合成：会话设成「跟随默认」时取它所属范围的设置（`002_roadmap.md` M2.3） |
+| `chat_notification_changed` | `chat_id` + 会话自己的通知设置：**静音**（`mute_for`）、**提及通知**（`disable_mention_notifications`）、**置顶通知**（`disable_pinned_message_notifications`）三项，各带「跟随上一层」开关（`updateChatNotificationSettings` `:11367`，`chatNotificationSettings` `:3811`） |
+| `scope_notification_changed` | 范围（私聊 / 群 / 频道）+ 这一档的静音、提及通知、置顶通知三项（`updateScopeNotificationSettings` `:11489`，`scopeNotificationSettings` `:3823`） |
+| `forum_topic_changed` | `chat_id` + 论坛话题 id + 话题的「已读到」位置 + 话题自己的通知设置（也是静音 / 提及 / 置顶三项，形状同会话那份；`updateForumTopic` `:11484`）。**有效值**（静音、提及、置顶各自）按「话题 → 会话 → 私聊 / 群 / 频道三档」逐层取：哪层设成「跟随上一层」就往上找（同一份调研的「收1」；`002_roadmap.md` M2.3）。**话题静音按绝对到期时间判**：TDLib 话题静音到期不再推更新（TDLib 1.8.69 源码 `resources/td/td/telegram/ForumTopicManager.cpp:796` 的 TODO），所以收线程给它记下收到的时刻，store 拿它把剩余秒数换成绝对到期时刻存下（store 自己不碰时钟；常驻执行方上中途接入的订阅者也从 store 拿得到）；会话与范围的到期 TDLib 自己推，按剩余秒数 > 0 判（同上「收2」） |
 | `user_changed` | 用户节点（含是否已注销：`user.type` 为 `userTypeDeleted`） |
 | `my_id_changed` | `user_id`：自己的用户 id（`updateOption` 的 `my_id`，登录后 TDLib 自己推，`AuthManager.cpp:348`；0 = 没有）。投影据此认出收藏夹、把系统消息里的自己读成「我」（`content-tree.md` 第三节第 4、6 小节） |
 | `file_progress` | `file_id` + 已下 / 总字节 |
 | `auth_step_changed` | `AuthStep`（不带提示语，理由同 `auth_state`） |
 | `net_state_changed` · `core_state_changed` | 新值 |
 | `user_status_changed` | 合成后的 `UserStatus`（`errors.md` 第一节第 3 小节），读的一方不必自己合成 |
-| `sync_done` | — （启动或重连补发结束） |
-| `coalesced` | `dropped`：合并掉的中间态条数 |
+| `sync_done` | — （启动或重连补发结束）。由收线程合成：连接线变到 `ready` 时紧跟 `net_state_changed` 推一条（定义见 `cli.md`「什么时候算数据齐了」：#18 暂定，#53 起由收线程合成） |
+| `coalesced` | `dropped`：合并掉的中间态条数（**v0 没做**：`watch` 不合并，不出这个事件；`cli.md` 第一节第 5 小节） |
 | `unknown_update` | 只有 `td_type`，不带内容（与 `tree` 的「未知」节点同理） |
 
 每个事件带 `seq`。
@@ -299,3 +301,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-26 issue #21 自审后（大总管授权 2026-10-26，属技术细节）：`chat_get` 返回 `Ack` 并登记 `createPrivateChat(force=false)` 后备；`message_links` 登记先 `getMessage` 与 `hidden`；`history` 写明含不含起点
 - 2026-10-26 issue #21 第三轮自审后（大总管授权 2026-10-26，属技术细节）：`message_links` 标明是组合、不是 `Backend` 动作；`history` 登记本地参数检查的 `invalid_input`
 - 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：`message_links` 的说法改清楚（什么叫「不是 `Backend` 动作」、GUI 照同样两步）
+- 2026-10-26 issue #53 watch（按 003 大总管采纳 2026-10-26，建议第 5、6 条）：第一节第 7 小节——`chat_action` 写明键为 `(chat_id, 话题, 发送人)`、过期靠 TDLib 推取消；`chat_notification_changed` / `scope_notification_changed` 加提及通知、置顶通知两项；新增 `forum_topic_changed`（话题通知设置与已读位置），有效值按「话题 → 会话 → 三档」取、话题静音按绝对到期时间判；`sync_done` 写明由收线程在连接线到 `ready` 时合成；`coalesced` 注明 v0 没做；动作表加 `forum_topic_get`（`getForumTopic`，L0 只读：话题没加载过时 TDLib 不推它的设置）

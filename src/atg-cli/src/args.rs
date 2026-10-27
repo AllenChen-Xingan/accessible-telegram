@@ -114,8 +114,8 @@ pub enum Command {
     Search(Rest),
     /// 发消息（须确认）
     Send(Rest),
-    /// 订阅更新
-    Watch(Rest),
+    /// 订阅更新：一行一个事件，新消息带读法与提不提示的判定；Ctrl+C 结束。不标已读
+    Watch(WatchArgs),
     /// 草稿：`draft set` / `draft clear`
     Draft(Rest),
     /// 播放语音
@@ -196,6 +196,21 @@ pub struct HistoryArgs {
     #[arg(long)]
     pub local: bool,
     /// 读法时区：不是本子命令的参数，是全局选项 `--tz`，由发起方填进来随请求带给执行方
+    #[arg(skip)]
+    #[serde(default)]
+    pub tz: Option<String>,
+}
+
+/// `watch` 的参数（经本机接口转发时原样序列化过去，另带读法时区 `tz`）。契约 `specs/contracts/cli.md`
+#[derive(Args, Serialize, Deserialize)]
+pub struct WatchArgs {
+    /// 打开这个会话订阅（数字 id，或 saved）：超级群、频道只有打开的会话才推新消息；也是「当前会话」，对方正在输入只在它是私聊时播。不过滤：所有会话的事件照样输出。不标已读
+    #[arg(long, value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: Option<String>,
+    /// 隐藏内容照出原文，等于人按了展开键（规则同 history）
+    #[arg(long)]
+    pub reveal: bool,
+    /// 读法时区：全局选项 `--tz`，由发起方填进来随请求带给执行方
     #[arg(skip)]
     #[serde(default)]
     pub tz: Option<String>,

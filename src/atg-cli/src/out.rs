@@ -149,6 +149,11 @@ pub trait Sink {
     fn out(&mut self, line: &str);
     /// 标准错误的一行（不含换行；给人看）
     fn err(&mut self, line: &str);
+    /// 同 [`Sink::out`]，另回写成没有（标准输出的读方走了就是 `false`）。流式转发靠它发现 `watch | head` 这类读方先退出
+    fn out_ok(&mut self, line: &str) -> bool {
+        self.out(line);
+        true
+    }
 }
 
 /// 本进程的标准输出 / 标准错误
@@ -156,9 +161,12 @@ pub struct Stdio;
 
 impl Sink for Stdio {
     fn out(&mut self, line: &str) {
+        let _ = self.out_ok(line);
+    }
+
+    fn out_ok(&mut self, line: &str) -> bool {
         let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{line}");
-        let _ = out.flush();
+        writeln!(out, "{line}").and_then(|()| out.flush()).is_ok()
     }
 
     fn err(&mut self, line: &str) {

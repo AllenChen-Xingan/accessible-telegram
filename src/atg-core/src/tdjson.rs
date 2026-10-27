@@ -13,8 +13,9 @@
 
 use crate::error::map_td_error;
 use crate::model::{
-    Body, Chat, ChatList, ChatNotify, ChatPosition, CoreEvent, ForwardRef, Message, NotifyScope,
-    OriginId, ReplyRef, SenderId, SendingState, User,
+    Body, Chat, ChatActionKind, ChatList, ChatNotify, ChatPosition, CoreEvent, ForumTopicState,
+    ForwardRef, Message, NotifyScope, OriginId, ReplyRef, ScopeNotify, SenderId, SendingState,
+    User,
 };
 use crate::project;
 use crate::status::{AuthStep, CoreState, Lines, NetState};
@@ -314,6 +315,25 @@ pub fn event(v: &Value) -> CoreEvent {
                 td_type: format!("updateScopeNotificationSettings/{other}"),
             },
         },
+        "updateForumTopic" => CoreEvent::ForumTopicChanged {
+            chat_id: chat_id(),
+            topic_id: i(v, "forum_topic_id"),
+            last_read_inbox: i(v, "last_read_inbox_message_id"),
+            notify: notify(&v["notification_settings"]),
+            received_ms: None,
+        },
+        "updateChatAction" => CoreEvent::ChatAction {
+            chat_id: chat_id(),
+            topic: topic(&v["topic_id"]),
+            sender: sender(&v["sender_id"]),
+            action: match ty(&v["action"]) {
+                "chatActionTyping" => ChatActionKind::Typing,
+                "chatActionCancel" => ChatActionKind::Cancel,
+                other => ChatActionKind::Other {
+                    td_type: other.to_owned(),
+                },
+            },
+        },
         other => CoreEvent::Unknown {
             td_type: other.to_owned(),
         },
@@ -321,9 +341,14 @@ pub fn event(v: &Value) -> CoreEvent {
 }
 
 fn scope_event(v: &Value, scope: NotifyScope) -> CoreEvent {
+    let n = &v["notification_settings"];
     CoreEvent::ScopeNotificationChanged {
         scope,
-        mute_for: i(&v["notification_settings"], "mute_for"),
+        notify: ScopeNotify {
+            mute_for: i(n, "mute_for"),
+            disable_mention: b(n, "disable_mention_notifications"),
+            disable_pinned: b(n, "disable_pinned_message_notifications"),
+        },
     }
 }
 
@@ -369,6 +394,42 @@ fn notify(n: &Value) -> ChatNotify {
     ChatNotify {
         use_default_mute_for: b(n, "use_default_mute_for"),
         mute_for: i(n, "mute_for"),
+        use_default_disable_mention: b(n, "use_default_disable_mention_notifications"),
+        disable_mention: b(n, "disable_mention_notifications"),
+        use_default_disable_pinned: b(n, "use_default_disable_pinned_message_notifications"),
+        disable_pinned: b(n, "disable_pinned_message_notifications"),
+    }
+}
+
+/// `forumTopic` 对象（`getForumTopic` 的应答）→ store 要的已读位置与通知设置
+pub fn forum_topic(t: &Value) -> ForumTopicState {
+    ForumTopicState {
+        last_read_inbox: i(t, "last_read_inbox_message_id"),
+        notify: notify(&t["notification_settings"]),
+    }
+}
+
+/// `MessageTopic` → 话题；没有 → `None`
+fn topic(t: &Value) -> Option<Topic> {
+    match ty(t) {
+        "" => None,
+        "messageTopicThread" => Some(Topic::Thread {
+            thread_id: i(t, "message_thread_id"),
+        }),
+        // 话题名不在消息里，投影时查（v0 还没有话题缓存，留空）
+        "messageTopicForum" => Some(Topic::Forum {
+            topic_id: i(t, "forum_topic_id"),
+            name: None,
+        }),
+        "messageTopicDirectMessages" => Some(Topic::DirectMessages {
+            topic_id: i(t, "direct_messages_chat_topic_id"),
+        }),
+        "messageTopicSavedMessages" => Some(Topic::SavedMessages {
+            topic_id: i(t, "saved_messages_topic_id"),
+        }),
+        other => Some(Topic::Unknown {
+            td_type: other.to_owned(),
+        }),
     }
 }
 
@@ -420,27 +481,7 @@ pub fn message(m: &Value) -> Message {
     });
     let album_id = Some(str_or_num(&m["media_album_id"])).filter(|a| !a.is_empty() && a != "0");
 
-    let t = &m["topic_id"];
-    let topic = match ty(t) {
-        "" => None,
-        "messageTopicThread" => Some(Topic::Thread {
-            thread_id: i(t, "message_thread_id"),
-        }),
-        // 话题名不在消息里，投影时查（v0 还没有话题缓存，留空）
-        "messageTopicForum" => Some(Topic::Forum {
-            topic_id: i(t, "forum_topic_id"),
-            name: None,
-        }),
-        "messageTopicDirectMessages" => Some(Topic::DirectMessages {
-            topic_id: i(t, "direct_messages_chat_topic_id"),
-        }),
-        "messageTopicSavedMessages" => Some(Topic::SavedMessages {
-            topic_id: i(t, "saved_messages_topic_id"),
-        }),
-        other => Some(Topic::Unknown {
-            td_type: other.to_owned(),
-        }),
-    };
+    let topic = topic(&m["topic_id"]);
 
     let edit = i(m, "edit_date");
     let reason = s(&m["restriction_info"], "restriction_reason");
@@ -464,6 +505,7 @@ pub fn message(m: &Value) -> Message {
             "messageSendingStateFailed" => SendingState::Failed,
             _ => SendingState::Sent,
         },
+        mentions_me: b(m, "contains_unread_mention"),
     };
     msg.enforce();
     msg

@@ -93,7 +93,7 @@ pub struct Head {
 }
 
 /// `MessageTopic`（`td_api.tl:3422-3431`）
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Topic {

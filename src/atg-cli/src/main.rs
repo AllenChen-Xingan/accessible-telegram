@@ -30,10 +30,14 @@ mod out;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
 mod session;
+mod signals;
 mod speech;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
+// 直跑只有真实后端起；不编 TDLib 时只有单测与执行方用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod watch;
 
 use args::{Cli, Command, Format};
 use atg_core::status::AuthStep;
@@ -94,6 +98,7 @@ fn main() -> ExitCode {
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
+        Command::Watch(a) => run_watch(&cli.global, format, &a, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
         Command::Speech(_) if cli.global.fake.is_some() => fail(
             format,
@@ -330,6 +335,33 @@ fn run_history(
         Err(f) => out::fail_with_to(&mut Stdio, format, &f),
     };
     ExitCode::from(code)
+}
+
+/// `watch`：一行 `status`、每个事件一行、Ctrl+C 后一行 `result`（退出码 0）。不标已读。档案被占就经本机接口流式订阅
+fn run_watch(g: &args::Global, format: Format, a: &args::WatchArgs, started: Instant) -> ExitCode {
+    if let Some(f) = no_redact(g, "watch") {
+        return fail_with(format, &f);
+    }
+    let (q, cx) = match watch::query(a)
+        .and_then(|q| history::speech_ctx(g.tz.as_deref(), a.reveal).map(|cx| (q, cx)))
+    {
+        Ok(x) => x,
+        Err(f) => return fail_with(format, &f),
+    };
+    let mut params = serde_json::to_value(a).unwrap_or_default();
+    if let Some(o) = params.as_object_mut() {
+        o.insert("tz".into(), json!(g.tz));
+    }
+    signals::install();
+    if let Some(code) =
+        forward::try_forward_stream(g, format, "watch", &params, &signals::STOP, started)
+    {
+        return ExitCode::from(code);
+    }
+    match session::watch(g, &q, cx, format, started) {
+        Ok(code) => ExitCode::from(code),
+        Err(f) => fail_with(format, &f),
+    }
 }
 
 /// `links`：一行一个链接（`kind:"link"`）+ 一行 `result`。不标已读。档案被占就转给执行方

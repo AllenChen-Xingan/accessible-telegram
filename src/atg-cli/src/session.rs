@@ -215,6 +215,46 @@ pub fn history(
     }
 }
 
+/// `watch`：选档案、起真实后端、订阅到 Ctrl+C（输出由 `watch` 自己写标准输出，回退出码）
+pub fn watch(
+    g: &Global,
+    q: &crate::watch::Query,
+    cx: atg_core::speech::SpeechCtx,
+    format: crate::args::Format,
+    started: std::time::Instant,
+) -> Result<u8, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "watch",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, cx, format, started);
+        Err(Fail::NotImplemented {
+            command: "watch",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        Ok(crate::watch::run(
+            &b,
+            &profile,
+            q,
+            cx,
+            format,
+            &crate::signals::STOP,
+            Box::new(crate::watch::StdoutLines::default()),
+            crate::watch::now_ms,
+            started,
+        ))
+    }
+}
+
 /// `links`：同上
 pub fn links(
     g: &Global,

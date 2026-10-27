@@ -27,7 +27,7 @@ mod real {
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
-    use crate::model::{ChatId, ChatList, Message, MsgId};
+    use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
     use crate::secret::{self, Secret};
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
@@ -481,6 +481,45 @@ mod real {
                     logline::info("chats_load_failed", &[Field::Name("code", e.code())]);
                     Err(e)
                 }
+            }
+        }
+
+        async fn chat_open(&self, chat: ChatId) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            // 只 openChat：绝不顺手调 viewMessages（不标已读，`actions.md` `chat_open`）
+            link::guard(self.shared.clone(), functions::open_chat(chat, id))
+                .await?
+                .map_err(|e| self.read_error("chat", &e))
+        }
+
+        async fn chat_close(&self, chat: ChatId) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            link::guard(self.shared.clone(), functions::close_chat(chat, id))
+                .await?
+                .map_err(|e| self.read_error("chat", &e))
+        }
+
+        async fn forum_topic_get(
+            &self,
+            chat: ChatId,
+            topic_id: i64,
+        ) -> Result<ForumTopicState, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let topic =
+                i32::try_from(topic_id).map_err(|_| CoreError::InvalidInput { td: None })?;
+            let r = link::guard(
+                self.shared.clone(),
+                functions::get_forum_topic(chat, topic, id),
+            )
+            .await?;
+            match r {
+                // 同其余映射：序列化回 TDLib JSON 交给 `tdjson`，不另写一份
+                Ok(t) => serde_json::to_value(&t)
+                    .map(|v| crate::tdjson::forum_topic(&v))
+                    .map_err(|_| CoreError::Internal {
+                        what: "td_forum_topic_reserialize_failed",
+                    }),
+                Err(e) => Err(self.read_error("forum_topic", &e)),
             }
         }
 

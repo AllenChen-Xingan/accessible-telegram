@@ -827,7 +827,7 @@ mod tests {
         }
     }
 
-    /// 只调了只读的那几个：没有 openChat / viewMessages 这类（后端上本来就没有，记账里也不许出现别的）
+    /// 只调了只读的那几个：没有 openChat（后端有 `chat_open`，归 `watch --chat`，history 不许调）、也没有 viewMessages 这类
     fn only_reads(b: &FakeBackend) {
         for c in b.calls() {
             assert!(

@@ -22,22 +22,22 @@
 | `auth_wrong_state` | 当前授权步骤不收这个输入（如等密码时送了验证码） | `expected`：当前的 `AuthStep` 值 | 否 |
 | `rate_limited` | 限流：TDLib 429 `Too Many Requests: retry after N`，服务器 `FLOOD_WAIT_N`，群慢速模式 `SLOWMODE_WAIT_N` | `retry_after_s` | 是，**等够秒数**才许再发（L2 除外，见第 5 小节） |
 | `account_limited` | 账号被限制的信号：`PEER_FLOOD`（发给陌生人太多）、`PHONE_NUMBER_FLOOD`（登录太多）、码 420 的其余情况 | — | 否；收到后**停掉全部 L2 动作和登录**，直到人处理 |
-| `not_found` | 会话 / 消息 / 用户不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what` | 否 |
+| `not_found` | 会话 / 消息 / 用户 / 论坛话题不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what`（`chat` · `message` · `forum_topic`……） | 否 |
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等） | — | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
-| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 90 秒没回话，发起方也报它，说明换成「替你执行的进程中途退出了」或「90 秒没回话」，退出码同为 4（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
+| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 90 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「90 秒没回话」，退出码同为 4；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
 | `profile_busy` | 同一个本地库已被另一个进程占用，且这条命令没法经本机接口转过去（见 `config-privacy.md`「一库一进程」「本机接口」）。说明按场景换：占着的是一次性命令 →「稍后重试，或先开着 atg-cli serve」；占着的是常驻执行方而命令不转（登录、登出）→「请先停掉它再跑」；又起一个 `serve` →「已经有常驻进程在服务」 | `holder`：能查到就写是 CLI 还是 GUI | 否（不自动重试；要不要稍后再跑由调用方按说明定） |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但在时限内既没等到成功也没等到失败（如 CLI `send` 30 秒超时） | `chat_id` · 临时 `message_id` | **否**。不许重发；用 `status` 查这条待发消息的下落，或 `pending_cancel` 撤销 |
 | `cancelled` | 人在确认步骤按了取消（只指这个；Ctrl+C 见下方「CLI 自有码」） | — | 否 |
-| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
+| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_forum_topic_reserialize_failed`（同下一条，发生在 `watch` 取论坛话题设置时；`watch` 只在标准错误记码、照常继续）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
 
-**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
+**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对；另：执行方上同时挂着的 `watch` 已到上限 8 个时也借用它，说明写「已到上限」，`config-privacy.md` 第一节第 2 小节「流式订阅」）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 
 **`error.data` 的字段**（CLI 原样输出；GUI 读 `message_zh`）：
 
@@ -164,3 +164,4 @@
 - 2026-10-26 issue #22 自审后（ipc，大总管授权 2026-10-26，属技术细节；P1 人定原意不变）：`profile_busy` 按场景换说明（通用说明恢复原句）；「能不能重试」一列统一成「否（不自动重试）」再说调用方能做什么；`internal.what` 登记本机接口的几个值
 - 2026-10-26 issue #21 history（大总管授权 2026-10-26，属技术细节）：`internal.what` 登记 `me_unknown`、`td_message_reserialize_failed`
 - 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：`td_message_reserialize_failed` 在 `history` 里也整条报错、不再丢一条；说明改成给看错误码的人读得懂
+- 2026-10-26 issue #53 watch（大总管授权 2026-10-26，属技术细节）：`usage` 另指执行方 `watch` 订阅者已满；`disconnected` 补「流式 `watch` 不用 90 秒超时」「60 秒写不出被摘掉」两种；`internal.what` 登记 `td_forum_topic_reserialize_failed`，`not_found.what` 可为 `forum_topic`

@@ -16,17 +16,19 @@
 //!   `first_chat_ms` 是执行方启动到这个列表第一次有会话（主列表、归档从启动起就在记，不是「第一次被问」的时刻）；
 //!   其余与直跑逐字节一致（同一段渲染代码）
 
-use crate::args::{ChatsArgs, Format, Global, HistoryArgs, LinksArgs};
+use crate::args::{ChatsArgs, Format, Global, HistoryArgs, LinksArgs, WatchArgs};
 use crate::chats::{self, Feed, Limits};
 use crate::forward::FwdArgs;
 use crate::login::{self, AuthSub, Prompter};
 use crate::out::{Code, Fail, Sink, Stdio, emit_to, envelope, fail_to, fail_with_to};
 use crate::session::Job;
+use crate::watch::{LineOut, Sub, Watcher};
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
 use atg_core::ipc::{Accepted, Conn, Frame, Listener, PROTOCOL_V, ReadError, Request};
 use atg_core::link::{EventStream, block_on};
+use atg_core::model::CoreEvent;
 use atg_core::secret::Secret;
 use atg_core::status::{AuthStep, CoreState};
 use serde_json::json;
@@ -80,12 +82,12 @@ pub fn run(g: &Global, format: Format, started: Instant) -> ExitCode {
         if g.unsafe_direct_send {
             Stdio.err("atg-cli serve: 直发模式还没做（发送在第二阶段），这次运行照常确认");
         }
-        signals::install();
+        crate::signals::install();
         ExitCode::from(serve(
             &b,
             &profile,
             format,
-            &signals::STOP,
+            &crate::signals::STOP,
             &mut Stdio,
             Limits::DEFAULT,
             started,
@@ -129,7 +131,9 @@ pub fn serve<B: Backend>(
     let mut faulted = false;
     while !stop.load(Ordering::SeqCst) {
         match listener.accept(POLL) {
-            Ok(None) => feed.drain(&mut stream),
+            Ok(None) => {
+                feed.drain(&mut stream);
+            }
             Ok(Some(Accepted::Refused)) => {
                 refused += 1;
                 own.err("atg-cli serve: 拒绝了一个不是本用户的连接");
@@ -149,9 +153,24 @@ pub fn serve<B: Backend>(
             // 接不了（如文件句柄用完）：歇一下再接
             Err(_) => std::thread::sleep(POLL),
         }
+        crate::watch::fetch_topics(b, &mut feed);
+        for c in feed.hub.reap() {
+            close_chat(b, c, own);
+        }
         if b.status().lines.core == CoreState::Faulted {
             faulted = true;
             break;
+        }
+    }
+    // 挂着的 watch 一并收尾：正常停是 result（interrupted）+ 0；故障是 disconnected
+    let closing = if faulted {
+        feed.hub.fail_all(&Fail::Core(CoreError::Disconnected))
+    } else {
+        feed.hub.finish_all()
+    };
+    if !faulted {
+        for c in closing {
+            close_chat(b, c, own);
         }
     }
     // 先删套接字再放锁（关后端时放），中间没有「锁空着、旧套接字还在」的窗口让后来者误连
@@ -181,6 +200,13 @@ pub fn serve<B: Backend>(
         )),
     }
     0
+}
+
+/// 关掉替 `watch` 开的会话（与 `chat_open` 配对）；出错只记一句
+fn close_chat<B: Backend>(b: &B, chat: atg_core::model::ChatId, own: &mut dyn Sink) {
+    if let Err(e) = block_on(b.chat_close(chat)) {
+        own.err(&format!("atg-cli serve: 关闭会话时出错（{}）", e.code()));
+    }
 }
 
 /// 起好后的那一行 `status`
@@ -219,13 +245,23 @@ struct Ctx<'a, B: Backend> {
 /// 读请求 → 执行 → 写回 `exit` 帧；在自己的标准错误记一句（不记参数）。没读到请求（探一下就断、超时）回 `false`
 fn handle<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, own: &mut dyn Sink) -> bool {
     let started = Instant::now();
+    // 先只当 JSON 读，看版本号；对上了再按请求的形状解析（以后的版本加了字段、改了 origin 也能说清是版本不对）
+    let first = conn.recv::<serde_json::Value>();
+    // `watch` 是流式的：连接交给订阅者表，不占着这个「一个处理完才接下一个」的循环（协议 v0「流式订阅」）
+    if let Ok(v) = &first
+        && v.get("v").and_then(serde_json::Value::as_u64) == Some(u64::from(PROTOCOL_V))
+        && let Ok(req) = serde_json::from_value::<Request>(v.clone())
+        && req.command == "watch"
+    {
+        join_watch(ctx, conn, &req, own);
+        return true;
+    }
     let mut sink = ConnSink {
         conn: &mut conn,
         broken: false,
     };
     let bad = |what| Fail::Core(CoreError::Internal { what });
-    // 先只当 JSON 读，看版本号；对上了再按请求的形状解析（以后的版本加了字段、改了 origin 也能说清是版本不对）
-    let (name, code) = match sink.conn.recv::<serde_json::Value>() {
+    let (name, code) = match first {
         // 连上就断：发起方探一下执行方在不在
         Err(ReadError::Closed) => return false,
         Err(ReadError::TimedOut | ReadError::Io) => {
@@ -262,6 +298,120 @@ fn handle<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, own: &mut dyn Sink) -> bo
         crate::elapsed_ms(started)
     ));
     true
+}
+
+/// 一个 `watch` 接进来：检查参数 → 写 `status` → 挂进订阅者表（之后喂的每条事件都写给它）→ 有 `--chat` 就替它开会话。
+/// 中途出错就写一行 `error` + `exit`，不挂。执行方已经补发完的，先补一行 `sync_done`，之后的都算新消息
+fn join_watch<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, req: &Request, own: &mut dyn Sink) {
+    let bad = |what| Fail::Core(CoreError::Internal { what });
+    let mut refuse = |conn: &mut Conn, format: Format, f: &Fail| {
+        let mut sink = ConnSink {
+            conn,
+            broken: false,
+        };
+        let code = fail_with_to(&mut sink, format, f);
+        if !sink.broken {
+            let _ = sink.conn.send(&Frame::Exit { code });
+        }
+        own.err(&format!("atg-cli serve: watch → 退出码 {code}"));
+    };
+    let Ok(fa) = serde_json::from_value::<FwdArgs>(req.args.clone()) else {
+        return refuse(&mut conn, Format::Json, &bad("ipc_bad_request"));
+    };
+    let format = fa.format;
+    let Ok(a) = serde_json::from_value::<WatchArgs>(fa.params) else {
+        return refuse(&mut conn, format, &bad("ipc_bad_request"));
+    };
+    let parsed = crate::watch::query(&a)
+        .and_then(|q| crate::history::speech_ctx(a.tz.as_deref(), a.reveal).map(|cx| (q, cx)));
+    let (q, cx) = match parsed {
+        Ok(x) => x,
+        Err(f) => return refuse(&mut conn, format, &f),
+    };
+    if ctx.feed.hub.len() >= crate::watch::MAX_SUBSCRIBERS {
+        return refuse(
+            &mut conn,
+            format,
+            // 容量满了不是参数错，但第一阶段没有更贴切的码；说明里讲清楚
+            &Fail::Usage(WATCH_FULL_ZH),
+        );
+    }
+    if let Err(f) = chats::ensure_ready(ctx.b) {
+        return refuse(&mut conn, format, &f);
+    }
+    let mut out = ConnOut { conn };
+    if !out.line(&crate::watch::status_line(ctx.b, format)) {
+        return;
+    }
+    // 先把流里已到的喂完（给已挂着的订阅者），再按 Feed 自己喂到的状态判「已补发完」：
+    // 后端的连接线可能已到 ready，补发来的消息和 sync_done 却还排在流里
+    ctx.feed.drain(ctx.stream);
+    let mut watcher = Watcher::new(cx, format, None, crate::watch::now_ms);
+    if ctx.feed.synced() {
+        watcher.mark_synced();
+        // 执行方早已补发完：它那条 sync_done 这个订阅者没看到，补一行（序号沿用最后喂过的那个）
+        if let Some(line) =
+            watcher.render(ctx.feed.store(), ctx.feed.last_seq(), &CoreEvent::SyncDone)
+            && !out.line(&line)
+        {
+            return;
+        }
+    } else if ctx.feed.ever_synced() {
+        watcher.mark_reconnecting();
+    }
+    ctx.feed.hub.add(Sub {
+        out: Box::new(out),
+        watcher,
+        chat: None,
+        dead: false,
+    });
+    if let Some(c) = q.chat {
+        let opened = crate::watch::resolve(ctx.b, ctx.stream, ctx.feed, c).and_then(|id| {
+            // 同一会话已有别的订阅者替它开着：不再开（关时按引用计数配对）
+            if ctx.feed.hub.opened(id) == 0 {
+                block_on(ctx.b.chat_open(id)).map_err(Fail::Core)?;
+            }
+            Ok(id)
+        });
+        match opened {
+            Ok(id) => ctx.feed.hub.open_chat(id),
+            Err(f) => {
+                let code = ctx.feed.hub.fail_last(&f);
+                own.err(&format!("atg-cli serve: watch → 退出码 {code}"));
+                return;
+            }
+        }
+    }
+    own.err(&format!(
+        "atg-cli serve: watch 接入（现有 {} 个）",
+        ctx.feed.hub.len()
+    ));
+}
+
+/// 订阅者表满了（上限 [`crate::watch::MAX_SUBSCRIBERS`]）
+const WATCH_FULL_ZH: &str = "执行方上同时挂着的 watch 已到上限，先停掉一个再订阅";
+
+/// 订阅者的出口：本机接口的连接
+struct ConnOut {
+    conn: Conn,
+}
+
+impl LineOut for ConnOut {
+    fn line(&mut self, line: &str) -> bool {
+        self.conn
+            .send(&Frame::Out {
+                line: line.to_owned(),
+            })
+            .is_ok()
+    }
+
+    fn gone(&self) -> bool {
+        atg_core::ipc::peer_closed(self.conn.stream())
+    }
+
+    fn finish(&mut self, code: u8) {
+        let _ = self.conn.send(&Frame::Exit { code });
+    }
 }
 
 /// 按命令名派发；返回（记日志用的命令名，退出码）
@@ -410,32 +560,6 @@ impl Sink for ConnSink<'_> {
         self.send(&Frame::Err {
             line: line.to_owned(),
         });
-    }
-}
-
-/// Ctrl+C / SIGTERM → 退出标志
-#[cfg(feature = "tdlib")]
-mod signals {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    pub static STOP: AtomicBool = AtomicBool::new(false);
-
-    extern "C" fn on_signal(_: libc::c_int) {
-        // 第一次：只立标志，正常关（正在处理的请求先做完）。第二次：不管在做什么，立刻以 130 退出。
-        // 两步都是异步信号安全的
-        if STOP.swap(true, Ordering::SeqCst) {
-            // SAFETY: _exit 是异步信号安全的
-            unsafe { libc::_exit(130) }
-        }
-    }
-
-    pub fn install() {
-        let h = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
-        // SAFETY: 处理函数只写一个原子量，是异步信号安全的
-        unsafe {
-            libc::signal(libc::SIGINT, h);
-            libc::signal(libc::SIGTERM, h);
-        }
     }
 }
 
@@ -1009,5 +1133,196 @@ mod tests {
         let p = profile("len", ServerKind::Main);
         let len = ipc::socket_path(&p).as_os_str().len();
         assert!(len <= ipc::SOCKET_PATH_MAX, "{len}");
+    }
+
+    /// 收集流式转发的输出（另一条线程里写，这边看）
+    #[derive(Clone, Default)]
+    struct Shared(Arc<std::sync::Mutex<Vec<String>>>);
+
+    impl Sink for Shared {
+        fn out(&mut self, line: &str) {
+            self.0.lock().unwrap().push(line.to_owned());
+        }
+        fn err(&mut self, _: &str) {}
+    }
+
+    impl Shared {
+        fn wait(&self, what: &str, pred: impl Fn(&Value) -> bool) -> Value {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(v) = self
+                    .0
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|l| serde_json::from_str::<Value>(l).unwrap())
+                    .find(|v| pred(v))
+                {
+                    return v;
+                }
+                assert!(Instant::now() < deadline, "没等到{what}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+
+    fn wait_call(b: &FakeBackend, c: &atg_core::fake::Call) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !b.calls().contains(c) {
+            assert!(Instant::now() < deadline, "没等到调用");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// 起一个 `watch` 客户端线程（流式转发），回（输出，停它的开关，线程）
+    fn watch_client(p: &Profile, params: Value) -> (Shared, &'static AtomicBool, JoinHandle<u8>) {
+        let out = Shared::default();
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let (mut sink, pc) = (out.clone(), p.clone());
+        let h = std::thread::spawn(move || {
+            crate::forward::forward_stream(
+                ipc::connect(&pc),
+                &CoreError::ProfileBusy {
+                    holder: Some(Holder::Cli),
+                },
+                Format::Json,
+                "watch",
+                &params,
+                stop,
+                Instant::now(),
+                &mut sink,
+            )
+        });
+        (out, stop, h)
+    }
+
+    #[test]
+    fn watch_streams_through_executor_and_detaches() {
+        use atg_core::fake::Call;
+        let p = profile("watch", ServerKind::Main);
+        let b = Arc::new(backend());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (st, pc, bb) = (stop.clone(), p.clone(), b.clone());
+        let server = std::thread::spawn(move || {
+            let mut cap = Cap::default();
+            let code = serve(
+                &*bb,
+                &pc,
+                Format::Json,
+                &st,
+                &mut cap,
+                fast(),
+                Instant::now(),
+            );
+            (code, cap)
+        });
+        let path = ipc::socket_path(&p);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(ipc::connect_at(&path), Connect::Ok(_)) {
+            assert!(Instant::now() < deadline, "执行方没起来");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        // 第一个 watch 打开会话 1：执行方早已补发完，先补一行 sync_done
+        let (out1, stop1, c1) =
+            watch_client(&p, json!({"chat": "1", "reveal": false, "tz": "+08:00"}));
+        out1.wait("status", |v| v["kind"] == "status");
+        out1.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+        wait_call(&b, &Call::ChatOpen(1));
+        // 第二个 watch 不开会话
+        let (out2, _stop2, c2) = watch_client(&p, json!({"reveal": false}));
+        out2.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+
+        // 来一条新消息：两个都收到，判为要提示（执行方用真时钟，消息时间取现在）
+        let now = crate::watch::now_ms() / 1000;
+        b.push(json!({"@type": "updateNewMessage", "message": {"@type": "message", "id": 10, "chat_id": 1,
+            "sender_id": {"@type": "messageSenderUser", "user_id": 1}, "is_outgoing": false, "date": now,
+            "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": "第10条", "entities": []}}}}));
+        for out in [&out1, &out2] {
+            let m = out.wait("新消息", |v| {
+                v["data"]["type"] == "new_message" && v["data"]["message_id"] == 10
+            });
+            assert_eq!(m["data"]["notify"]["alert"], true, "{m}");
+            assert!(m["speech"]["brief"].as_str().unwrap().contains("第10条"));
+        }
+
+        // 第一个按 Ctrl+C：本地出结尾行、退出码 0；执行方发现它走了，配对关掉会话
+        stop1.store(true, Ordering::SeqCst);
+        assert_eq!(c1.join().unwrap(), 0);
+        let r = out1.wait("结尾行", |v| v["kind"] == "result");
+        assert_eq!(r["data"]["reason"], "interrupted");
+        assert_eq!(r["data"]["alerts"], 1);
+        wait_call(&b, &Call::ChatClose(1));
+
+        // 执行方停：还挂着的那个收到执行方的结尾行，退出码 0
+        stop.store(true, Ordering::SeqCst);
+        assert_eq!(c2.join().unwrap(), 0);
+        let r = out2.wait("结尾行", |v| v["kind"] == "result");
+        assert_eq!(r["data"]["command"], "watch");
+        let (code, _) = server.join().unwrap();
+        assert_eq!(code, 0);
+        // 开、关各一次
+        let calls = b.calls();
+        assert_eq!(calls.iter().filter(|c| **c == Call::ChatOpen(1)).count(), 1);
+        assert_eq!(
+            calls.iter().filter(|c| **c == Call::ChatClose(1)).count(),
+            1
+        );
+    }
+
+    /// 读方写两行就走（`watch | head -n 2`）：发起方发现写不出去就退出（0），执行方摘掉它、配对关会话
+    #[test]
+    fn forwarded_watch_ends_when_stdout_reader_leaves() {
+        use atg_core::fake::Call;
+        struct Head(usize);
+        impl Sink for Head {
+            fn out(&mut self, _: &str) {}
+            fn err(&mut self, _: &str) {}
+            fn out_ok(&mut self, _: &str) -> bool {
+                self.0 = self.0.saturating_sub(1);
+                self.0 > 0
+            }
+        }
+        let p = profile("whead", ServerKind::Main);
+        let b = Arc::new(backend());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (st, pc, bb) = (stop.clone(), p.clone(), b.clone());
+        let server = std::thread::spawn(move || {
+            let mut cap = Cap::default();
+            serve(
+                &*bb,
+                &pc,
+                Format::Json,
+                &st,
+                &mut cap,
+                fast(),
+                Instant::now(),
+            )
+        });
+        let path = ipc::socket_path(&p);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(ipc::connect_at(&path), Connect::Ok(_)) {
+            assert!(Instant::now() < deadline, "执行方没起来");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let never: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        // 第 1 行 status 写成，第 2 行（补的 sync_done）写不出去
+        let code = crate::forward::forward_stream(
+            ipc::connect(&p),
+            &CoreError::ProfileBusy {
+                holder: Some(Holder::Cli),
+            },
+            Format::Json,
+            "watch",
+            &json!({"chat": "1", "reveal": false}),
+            never,
+            Instant::now(),
+            &mut Head(2),
+        );
+        assert_eq!(code, 0);
+        wait_call(&b, &Call::ChatOpen(1));
+        wait_call(&b, &Call::ChatClose(1));
+        stop.store(true, Ordering::SeqCst);
+        assert_eq!(server.join().unwrap(), 0);
     }
 }
