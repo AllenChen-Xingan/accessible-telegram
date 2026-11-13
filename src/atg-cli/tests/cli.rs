@@ -5,7 +5,8 @@ use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
-    "login", "auth", "logout", "speech", "history", "links", "watch", "send", "resend",
+    "login", "auth", "logout", "chats", "speech", "history", "links", "watch", "send", "resend",
+    "serve",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -124,6 +125,25 @@ fn help_is_for_humans_exit_0() {
     for name in PLACEHOLDERS.iter().chain(DONE) {
         assert!(s.contains(name), "--help 里缺 {name}");
     }
+}
+
+/// 两张表合起来恰好是全部子命令（另加 `version`、`help`）：新加子命令少登记一处就红（自审第 9 轮 P2）
+#[test]
+fn command_tables_cover_every_subcommand() {
+    let out = run(&["--help"]);
+    let s = String::from_utf8(out.stdout).unwrap();
+    let mut listed: Vec<&str> = s
+        .lines()
+        .skip_while(|l| !l.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  "))
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+    let mut known: Vec<&str> = DONE.iter().chain(PLACEHOLDERS).copied().collect();
+    known.extend(["version", "help"]);
+    listed.sort_unstable();
+    known.sort_unstable();
+    assert_eq!(listed, known);
 }
 
 /// 登录这组命令的外壳（真实后端要 TDLib 与终端，这里只测不联网就能判定的路径）

@@ -681,7 +681,7 @@ mod real {
 
         async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
             let id = self.client_id().ok_or_else(Self::not_started)?;
-            match req.kind {
+            match req.into_kind() {
                 SealedKind::Message { request, preview } => {
                     // 交给 TDLib 的就是摘要算过的那份 JSON：逐段反序列化成 tdlib-rs 的类型，不另组一份
                     let bad = || CoreError::Internal {

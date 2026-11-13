@@ -1,11 +1,9 @@
 //! `atg-cli`：无障碍 Telegram 的命令行入口。契约：`specs/contracts/cli.md`。
 //!
-//! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
-//! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；`history` / `links`（第 8 块，T03 T06）；
-//! `send` / `resend`（M2.1 / M2.2，T04：发送闸、发文字与回复、重发）；
-//! 本机接口（第 9 块）：`serve` 常驻当执行方，档案被占时 `chats` / `history` / `links` / `auth state` / `send` / `resend`
-//! 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
-//! `not_implemented` 错误。
+//! 子命令各做什么：见 `specs/contracts/cli.md` 第一节第 2 小节；哪些已做、哪些还占名（输出一行 `not_implemented`）：
+//! 见 `tests/cli.rs` 的 `DONE` / `PLACEHOLDERS`（测试管着它们恰好覆盖 `--help` 的全部子命令）。这里不列（架构守则第 6 条，#60）。
+//! 本机接口：`serve` 常驻当执行方，档案被占时能转的命令自动转过去（`forward`），能转哪些见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」。
+//! 真实后端要 `--features tdlib`。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
 #![cfg_attr(
@@ -303,7 +301,7 @@ fn render_chats(
     0
 }
 
-/// `--redact`（打码）还没做：吐名字、正文、链接的命令（`chats`、`history`、`links`）不能悄悄忽略它照样出原文，
+/// `--redact`（打码）还没做：吐名字、正文、链接的命令不能悄悄忽略它照样出原文（哪些命令调它，搜本函数的调用处），
 /// 先报 `not_implemented`
 fn no_redact(g: &args::Global, command: &'static str) -> Option<Fail> {
     g.redact.then_some(Fail::NotImplemented {

@@ -43,7 +43,8 @@ pub enum SendRefusedReason {
     ReplyDropped,
     /// TDLib 的预览把消息放进了别的话题
     TopicChanged,
-    /// 正文太长，Touch ID 确认框放不下全文（人看不到全文就不让按；用直发模式或以后的界面发）
+    /// 正文太长，Touch ID 确认框放不下全文（人看不到全文就不让按；拆成几条短的再发。提示里不提直发模式：
+    /// 那等于教发起方（多半是 AI）自己绕过人的确认，自审第 11 轮）
     TooLongToConfirm,
 }
 
@@ -308,7 +309,7 @@ impl CoreError {
                 }
                 SendRefusedReason::TopicChanged => "这条会落到别的话题里，已拦下没发",
                 SendRefusedReason::TooLongToConfirm => {
-                    "内容太长，确认框放不下全文，没有发；请拆短，或用直发模式"
+                    "内容太长，确认框放不下全文（连同会话名要放进确认框，通常只有几十个字），没有发；请拆成几条短的再发"
                 }
                 SendRefusedReason::TestDcSavedOnly => "测试服务器上只许发自己的收藏夹",
                 SendRefusedReason::AuthFailed => "没有通过 Touch ID 或系统密码，没有发",

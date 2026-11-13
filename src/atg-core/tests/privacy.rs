@@ -296,6 +296,7 @@ fn send_types_debug_never_leaks_content() {
         id: 5,
         drops_reply: false,
         text: Some(s("重发正文")),
+        reply: atg_core::send::ResendReply::None,
     };
     assert_clean("ResendItem", format!("{item:?}"));
 }

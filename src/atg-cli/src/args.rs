@@ -24,9 +24,8 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
-/// 全局选项：放在子命令前后都可以。现在起作用的：`--format`、`--test-dc`、`--profile`（登录这组与 `chats`、`history`、`links`）、
-/// `--tz`（`speech`、`history`）。
-/// 其余收下不用（帮助里标了「还没做」）；例外：`--redact` 在 `chats`、`history`、`links` 上报 `not_implemented`，免得以为打了码
+/// 全局选项：放在子命令前后都可以。各选项的含义见 `specs/contracts/cli.md` 的全局选项表；没做的在帮助里标了「还没做」。
+/// 例外：`--redact` 在会输出名字、正文的命令上报 `not_implemented`（`main::no_redact`），免得以为打了码
 #[derive(Args)]
 pub struct Global {
     /// 选测试服务器档案，并断言它是测试服务器
@@ -41,7 +40,7 @@ pub struct Global {
     /// 输出格式
     #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
     pub format: Format,
-    /// 打码输出，用于贴进 issue：只留类型、计数、时间、状态、错误码，名字和正文换成「类型 + 长度」。还没做：chats、history、links 加了它会报 not_implemented（免得以为打了码），别的命令收下不用
+    /// 打码输出，用于贴进 issue：只留类型、计数、时间、状态、错误码，名字和正文换成「类型 + 长度」。还没做：会输出名字、正文的命令加了它报 not_implemented（免得以为打了码），别的命令收下不用
     #[arg(long, global = true)]
     pub redact: bool,
     /// 直发模式：本次运行发消息免确认（细则见 `specs/contracts/actions.md` 第一节第 5 小节）
@@ -50,7 +49,7 @@ pub struct Global {
     /// 遇到 Telegram 限流（要求过 N 秒再试）就等够再继续，默认立刻报 rate_limited。还没做
     #[arg(long, global = true)]
     pub wait: bool,
-    /// 读法里报钟点用的时区偏移：+08:00、-05:30、+0800、+8、Z 或 UTC。默认取系统时区。speech、history 用（会话项不读时间）
+    /// 读法里报钟点用的时区偏移：+08:00、-05:30、+0800、+8、Z 或 UTC。默认取系统时区。读消息时间的命令用（会话项不读时间）
     #[arg(long, global = true, value_name = "OFFSET", allow_hyphen_values = true)]
     pub tz: Option<String>,
 }
@@ -126,7 +125,7 @@ pub enum Command {
     Speech(SpeechArgs),
     /// 机读自描述
     Schema(Rest),
-    /// 常驻：占着档案、开本机接口，替后起的 atg-cli 执行命令（chats、history、links、auth state），Ctrl+C 结束
+    /// 常驻：占着档案、开本机接口，替后起的 atg-cli 执行命令（能转哪些见 specs/contracts/config-privacy.md），Ctrl+C 结束
     Serve,
     /// 版本
     Version,
@@ -239,10 +238,11 @@ pub struct SendArgs {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
-    /// 要发的文字
+    /// 要发的文字。正式服务器默认要人按 Touch ID 确认，正文连同会话名得放进确认框，只能很短（通常几十个字），
+    /// 放不下就拒（send_refused，reason too_long_to_confirm），拆成几条短的再发
     #[arg(long, value_name = "T")]
     pub text: Option<String>,
-    /// 从文件读要发的文字（UTF-8，64 KB 以内）
+    /// 从文件读要发的文字（UTF-8，64 KB 以内；Telegram 一条最多 4096 字，超了会被拒，不自动拆条）
     #[arg(long, value_name = "PATH")]
     pub text_file: Option<std::path::PathBuf>,
     /// 回复本会话里的哪条（话题群里话题取被回复那条的）

@@ -8,7 +8,7 @@
 //! 5. 连上了却没等到 `exit` 帧就断了，或两帧之间 [`FRAME_TIMEOUT`] 没动静 → `disconnected`，退出码 4；
 //!    **发送类（`send`、`resend`）例外**：执行方可能已经交出，报 `send_outcome_unknown`（退出码 10，不许重跑）
 //!
-//! 转的命令：只读且不带秘密的 `chats`、`history`、`links`、`auth state`；发送类 `send`、`resend`（闸在执行方；断在半路按「结果未知」报，不叫人重跑）。`--unsafe-direct-send` 不随请求过去：直发听执行方的（N1：`docs/plan/005_decisions-b3.md` 表里那一行），
+//! 转哪些命令见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类闸在执行方、断在半路按「结果未知」报；流式的 `watch` 走 [`try_forward_stream`]（不设帧超时，Ctrl+C 在本地出结尾行）。`--unsafe-direct-send` 不随请求过去：直发听执行方的（N1：`docs/plan/005_decisions-b3.md` 表里那一行），
 //! 连上之后在标准错误说一声。档案不存在、种类不对等情况不在这里报，交回直跑的路径照常报。
 //!
 //! 不转的命令（登录这组、`serve` 自己）撞上占着档案的常驻进程时，用 [`busy_reason`] 换一句对路的说明。

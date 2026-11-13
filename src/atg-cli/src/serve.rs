@@ -7,7 +7,7 @@
 //! - 标准输出：起好后一行 `status`（带 `listening:true`），结束时一行 `result`（`reason:"interrupted"`，退出码 0，
 //!   同 `watch` 被打断算正常结束）；后端故障就以 `disconnected` 结尾，好让人重开
 //! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）
-//! - 能执行的：`chats`、`history`、`links`、`auth state`、`send`、`resend`（凭据由本进程的闸开；本进程以 `--unsafe-direct-send` 启动才直发）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
+//! - 能执行的见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类的凭据由本进程的闸开（本进程以 `--unsafe-direct-send` 启动才直发）；流式的 `watch` 挂进订阅者表（`join_watch`）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
 //!   版本号不对、请求形状不对回 `internal{ipc_version_mismatch | ipc_bad_request}`（这时还不知道要哪种格式，一律 JSON）
 //! - 只连上就断的（发起方探一下执行方在不在）不记
 //! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，

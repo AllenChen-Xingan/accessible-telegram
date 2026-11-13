@@ -1001,7 +1001,7 @@ impl Backend for FakeBackend {
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
         self.started()?;
         self.ready_or_401("submit").await?;
-        match req.kind {
+        match req.into_kind() {
             SealedKind::Message { request, preview } => {
                 let chat = request["chat_id"].as_i64().unwrap_or(0);
                 lock(&self.calls).push(Call::Submit {

@@ -22,7 +22,7 @@
 //! - [`gate`]：发送闸（确认凭据、三种确认方式、直发防重复与留痕）· [`send`]：发文字、回复、重发的流程 ·
 //!   [`localauth`]：macOS 上的 Touch ID / 系统密码（发送闸的人工确认）
 //!
-//! 骨架占位（后续块填）：[`notify`]
+//! 提示（#53）：[`notify`]：提不提示的判定 v0（新消息、正在输入、重连汇总；`watch` 用）
 //!
 //! 架构见 `docs/plan/001_arch-stack.md`，树的规约见 `specs/content-tree.md`。
 //!

@@ -64,7 +64,15 @@ pub enum SendOrigin {
 
 /// 只能在本 crate 里造的「交给 TDLib 的请求」：后端的交出口只收它，所以 crate 外的代码绕不过闸
 pub struct Sealed<'a> {
-    pub(crate) kind: SealedKind<'a>,
+    // 私有：只有本模块（验过凭据之后）造得出；后端用 [`Sealed::into_kind`] 取（codex 016 第 1 轮 #7）
+    kind: SealedKind<'a>,
+}
+
+impl<'a> Sealed<'a> {
+    /// 后端的交出口拆开用
+    pub(crate) fn into_kind(self) -> SealedKind<'a> {
+        self.kind
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -164,12 +172,13 @@ impl Gated for TextPlan {
 pub fn confirm_body(text: &str) -> String {
     let chars = text.chars().count();
     let lines = text.lines().count().max(1);
+    // 这里的「行」是原文的换行行数，不是确认框里折出来的视觉行（那个由 `gate::fits_confirm_box` 数）
     format!("共 {chars} 字 {lines} 行：\n{}", flatten(text))
 }
 
 /// 压成一段给人看：看不见的字符转义、换行显示成 ⏎
 fn flatten(text: &str) -> String {
-    gate::visible(text).replace('\n', "⏎")
+    gate::confirm_visible(text).replace('\n', "⏎")
 }
 
 fn origin_zh(o: SendOrigin) -> &'static str {
@@ -194,7 +203,7 @@ pub fn target_zh(t: &ChatTarget) -> String {
             ChatKind::Unknown { .. } => "会话",
         }
     };
-    format!("{kind} · {} · id {}", gate::visible(&t.title), t.id)
+    format!("{kind} · {} · id {}", gate::confirm_visible(&t.title), t.id)
 }
 
 /// 要发什么
@@ -601,13 +610,42 @@ pub fn send_and_wait<B: Backend>(
     timeout: Duration,
     on_event: &mut dyn FnMut(Envelope),
 ) -> Result<(ConfirmMode, MsgId, Waited), CoreError> {
-    let sub = crate::link::block_on(send_text(b, plan, token))?;
+    let started = std::time::Instant::now();
+    let sub = submit_within(b, plan, plan.mode, timeout, send_text(b, plan, token))?;
     let (mode, temp) = (sub.mode, sub.temp);
-    let w = wait(stream, &[temp], timeout, on_event)
-        .pop()
-        .unwrap_or(Waited::Unknown(UnknownWhy::Timeout));
+    let w = wait(
+        stream,
+        &[temp],
+        timeout.saturating_sub(started.elapsed()),
+        on_event,
+    )
+    .pop()
+    .unwrap_or(Waited::Unknown(UnknownWhy::Timeout));
     finish(b, plan, sub, &w);
     Ok((mode, temp, w))
+}
+
+/// 交出（验凭据 → 复核 → 交给 TDLib）也算进同一个上限：TDLib 迟迟不回交出的应答时，命令与 serve 不许一直卡着
+/// （codex 016 第 1 轮 #3）。到点还没回 → 可能已经交出，按结果未知记账并报 `send_outcome_unknown`（`timeout`）
+fn submit_within<B: Backend, T>(
+    b: &B,
+    plan: &dyn Gated,
+    mode: ConfirmMode,
+    timeout: Duration,
+    fut: impl std::future::Future<Output = Result<T, CoreError>>,
+) -> Result<T, CoreError> {
+    match crate::link::block_on_timeout(fut, timeout) {
+        Some(r) => r,
+        None => {
+            b.gate()
+                .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+            Err(CoreError::SendOutcomeUnknown {
+                chat_id: Some(plan.target()),
+                temp_message_id: 0,
+                why: UnknownWhy::Timeout,
+            })
+        }
+    }
 }
 
 // ───────────────────────── 重发 ─────────────────────────
@@ -622,6 +660,51 @@ pub struct ResendItem {
     /// 要重发的正文（确认时给人看全文；凭据也绑它）。不是纯文字的消息（图片、文件……）是 `None`：确认框里
     /// 展示不了，正式服务器默认模式下拒
     pub text: Option<String>,
+    /// 重发后仍保留的回复关系（确认时给人看、凭据也绑它；codex 016 第 1 轮 #4）。会被去掉的（`drops_reply`）记 `None`
+    pub reply: ResendReply,
+}
+
+/// 重发那条回复的是谁
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub enum ResendReply {
+    /// 不是回复，或重发时回复关系会被去掉
+    None,
+    /// 回复某条消息（可能在别的会话）
+    Message(MsgId),
+    /// 回复的对象 TDLib 给了、本项目认不出（如回复动态）
+    Unknown,
+}
+
+impl ResendReply {
+    fn of(m: &Message, drops: bool) -> Self {
+        match (&m.reply_to, drops) {
+            (_, true) | (None, _) => Self::None,
+            (Some(ReplyRef::Message { target, .. }), _) => Self::Message(*target),
+            (Some(ReplyRef::Unknown { .. }), _) => Self::Unknown,
+        }
+    }
+
+    /// 确认说明里的那段（不是回复 → 空）
+    fn zh(self, chat: ChatId) -> String {
+        match self {
+            Self::None => String::new(),
+            Self::Message(t) if t.chat_id == chat => format!("（回复 id {} 那条）", t.message_id),
+            Self::Message(t) => format!(
+                "（回复别的会话 id {} 里 id {} 那条）",
+                t.chat_id, t.message_id
+            ),
+            Self::Unknown => "（回复的对象认不出）".into(),
+        }
+    }
+
+    fn json(self) -> Value {
+        match self {
+            Self::None => Value::Null,
+            Self::Message(t) => json!({"chat_id": t.chat_id, "message_id": t.message_id}),
+            Self::Unknown => json!("unknown"),
+        }
+    }
 }
 
 /// 消息里能给人确认的正文：纯文字消息的全文；带媒体、系统消息给不出全文 → `None`
@@ -695,8 +778,17 @@ impl Gated for ResendPlan {
             .items
             .iter()
             .map(|i| match &i.text {
-                Some(t) => format!("id {} 那条，{}", i.id, confirm_body(t)),
-                None => format!("id {} 那条：不是纯文字，这里看不到内容", i.id),
+                Some(t) => format!(
+                    "id {} 那条{}，{}",
+                    i.id,
+                    i.reply.zh(self.target.id),
+                    confirm_body(t)
+                ),
+                None => format!(
+                    "id {} 那条{}：不是纯文字，这里看不到内容",
+                    i.id,
+                    i.reply.zh(self.target.id)
+                ),
             })
             .collect();
         format!(
@@ -709,7 +801,7 @@ impl Gated for ResendPlan {
     }
 }
 
-/// 重发凭据绑的摘要：请求 + 每条重发后的回复关系 + 每条的正文（人确认的就是这些）
+/// 重发凭据绑的摘要：请求 + 每条重发后的回复关系（去不去掉、回复谁）+ 每条的正文（人确认的就是这些）
 fn resend_digest(
     request: &Value,
     items: &[ResendItem],
@@ -718,29 +810,25 @@ fn resend_digest(
 ) -> [u8; 32] {
     let drops: Vec<bool> = items.iter().map(|i| i.drops_reply).collect();
     let texts: Vec<Option<&str>> = items.iter().map(|i| i.text.as_deref()).collect();
+    let replies: Vec<Value> = items.iter().map(|i| i.reply.json()).collect();
     gate::digest(
-        &json!({"request": request, "drops_reply": drops, "texts": texts}),
+        &json!({"request": request, "drops_reply": drops, "texts": texts, "replies": replies}),
         account,
         server,
     )
 }
 
-/// `resend_prepare`：逐条查失败态（`actions.md` `resend_prepare`）
-pub async fn prepare_resend<B: Backend>(
+/// 逐条查失败态、取正文与回复关系（准备时用；交出前再取一次与计划比对，codex 016 第 2 轮 #2）
+async fn load_items<B: Backend>(
     b: &B,
     chat: ChatId,
     ids: &[i64],
-    origin: SendOrigin,
-) -> Result<ResendPlan, CoreError> {
-    let me = b.me().await?;
-    let mut target = b.chat_target(chat).await?;
-    target.saved = target.id == me.saved_chat_id;
-    let mode = b.gate().mode_for(target.id)?;
+) -> Result<Vec<ResendItem>, CoreError> {
     let mut items = Vec::new();
     for &id in ids {
         let f = b
             .failed_info(MsgId {
-                chat_id: target.id,
+                chat_id: chat,
                 message_id: id,
             })
             .await?
@@ -773,7 +861,7 @@ pub async fn prepare_resend<B: Backend>(
         }
         let m = b
             .message_get(MsgId {
-                chat_id: target.id,
+                chat_id: chat,
                 message_id: id,
             })
             .await?;
@@ -781,8 +869,24 @@ pub async fn prepare_resend<B: Backend>(
             id,
             drops_reply: f.need_drop_reply,
             text: confirmable_text(&m),
+            reply: ResendReply::of(&m, f.need_drop_reply),
         });
     }
+    Ok(items)
+}
+
+/// `resend_prepare`：逐条查失败态（`actions.md` `resend_prepare`）
+pub async fn prepare_resend<B: Backend>(
+    b: &B,
+    chat: ChatId,
+    ids: &[i64],
+    origin: SendOrigin,
+) -> Result<ResendPlan, CoreError> {
+    let me = b.me().await?;
+    let mut target = b.chat_target(chat).await?;
+    target.saved = target.id == me.saved_chat_id;
+    let mode = b.gate().mode_for(target.id)?;
+    let items = load_items(b, target.id, ids).await?;
     let request = json!({
         "@type": "resendMessages",
         "chat_id": target.id,
@@ -808,6 +912,20 @@ pub async fn resend<B: Backend>(
     token: ConfirmToken,
 ) -> Result<Vec<Option<Submitted>>, CoreError> {
     let mode = b.gate().verify(token, plan)?;
+    // 交出前复核（codex 016 第 2 轮 #2）：从准备到交出最长 60 秒、还等了人确认，这期间失败态、正文、回复关系
+    // 可能变了（别的设备重发了、被删了、被编辑了）。重取一遍与人确认过的那份比，不一样就拒，什么都不交出
+    let now = load_items(b, plan.target.id, &plan.items.iter().map(|i| i.id).collect::<Vec<_>>())
+        .await
+        .map_err(|_| CoreError::SendRefused {
+            reason: SendRefusedReason::ContentMismatch,
+            last: None,
+        })?;
+    if now != plan.items {
+        return Err(CoreError::SendRefused {
+            reason: SendRefusedReason::ContentMismatch,
+            last: None,
+        });
+    }
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::Resend {
@@ -850,7 +968,9 @@ pub fn resend_and_wait<B: Backend>(
     timeout: Duration,
     on_fed: &mut dyn FnMut(Fed),
 ) -> Result<(ConfirmMode, Vec<ResendOutcome>), CoreError> {
-    let news = crate::link::block_on(resend(b, plan, token))?;
+    let started = std::time::Instant::now();
+    let news = submit_within(b, plan, plan.mode, timeout, resend(b, plan, token))?;
+    let timeout = timeout.saturating_sub(started.elapsed());
     let mode = news
         .iter()
         .flatten()
@@ -905,7 +1025,8 @@ pub fn resend_plan_json(plan: &ResendPlan) -> Value {
         "action": "resend",
         "target": target_json(&plan.target),
         "messages": plan.items.iter().map(|i| json!({"message_id": i.id, "drops_reply": i.drops_reply,
-            "text": i.text, "hidden_chars": i.text.as_deref().map(gate::hidden_count)})).collect::<Vec<_>>(),
+            "text": i.text, "hidden_chars": i.text.as_deref().map(gate::hidden_count),
+            "reply_to": i.reply.json()})).collect::<Vec<_>>(),
         "origin": plan.origin,
         "confirm": plan.mode,
         "digest": plan.digest_hex(),
@@ -1410,6 +1531,47 @@ mod tests {
     }
 
     #[test]
+    fn resend_confirm_shows_and_binds_the_reply_target() {
+        // codex 016 第 1 轮 #4：带回复的失败消息重发时，人要知道它回复谁；回复对象也进摘要
+        let mut r = rig("rs-reply", false, true, Ok(()));
+        r.b.script_sends(vec![FakeSend::Fail {
+            code: 400,
+            message: "X".into(),
+            can_retry: true,
+        }]);
+        let Waited::Failed { message, .. } =
+            send_once(&mut r, ME, &draft("回你", Some(5)), false).unwrap()
+        else {
+            panic!("应当失败");
+        };
+        let plan = block_on(prepare_resend(
+            &r.b,
+            ME,
+            &[message.id.message_id],
+            SendOrigin::Cli,
+        ))
+        .unwrap();
+        assert_eq!(
+            plan.items()[0].reply,
+            ResendReply::Message(MsgId {
+                chat_id: ME,
+                message_id: 5
+            })
+        );
+        assert!(
+            plan.confirm_text().contains("（回复 id 5 那条）"),
+            "{}",
+            plan.confirm_text()
+        );
+        let mut other = plan.items.clone();
+        other[0].reply = ResendReply::None;
+        assert_ne!(
+            resend_digest(&plan.request, &other, ME, ServerKind::Test),
+            plan.digest
+        );
+    }
+
+    #[test]
     fn resend_confirm_shows_the_text_and_binds_it() {
         let mut r = rig("rs-show", false, false, Ok(()));
         r.b.script_sends(vec![FakeSend::Fail {
@@ -1466,6 +1628,33 @@ mod tests {
         let e = send_once(&mut r, 888, &draft("好的", None), false).unwrap_err();
         assert_eq!(refused_reason(e), SendRefusedReason::TooLongToConfirm);
         assert_eq!(r.asks.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn resend_rechecks_before_submitting() {
+        // codex 016 第 2 轮 #2：准备到交出之间那条被改了 → 拒、什么都不交出；没变 → 照常交出
+        let failed = |text: &str| {
+            let mut m = msg(ME, 100, text, Value::Null);
+            m["sending_state"] = json!({"@type": "messageSendingStateFailed",
+                "error": {"@type": "error", "code": 400, "message": "X"}, "can_retry": true,
+                "need_another_sender": false, "need_another_reply_quote": false, "need_drop_reply": false,
+                "required_paid_message_star_count": 0, "retry_after": 0.0});
+            m
+        };
+        let r = rig("recheck", false, true, Ok(()));
+        r.b.set_history(ME, vec![failed("周末见")]);
+        let plan = block_on(prepare_resend(&r.b, ME, &[100], SendOrigin::Cli)).unwrap();
+        r.b.set_history(ME, vec![failed("改过的话")]);
+        let t = r.b.gate().issue(&plan, false).unwrap();
+        let e = block_on(resend(&r.b, &plan, t)).unwrap_err();
+        assert_eq!(refused_reason(e), SendRefusedReason::ContentMismatch);
+        assert!(r.b.submitted().is_empty());
+        // 没变：真的交出了重发
+        r.b.set_history(ME, vec![failed("周末见")]);
+        let plan = block_on(prepare_resend(&r.b, ME, &[100], SendOrigin::Cli)).unwrap();
+        let t = r.b.gate().issue(&plan, false).unwrap();
+        block_on(resend(&r.b, &plan, t)).unwrap();
+        assert_eq!(r.b.submitted().len(), 1);
     }
 
     #[test]

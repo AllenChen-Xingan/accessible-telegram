@@ -18,7 +18,7 @@ use crate::history::{self, ChatRef};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
 use atg_core::error::CoreError;
-use atg_core::gate::ConfirmMode;
+use atg_core::gate::{ConfirmMode, Gated};
 use atg_core::link::{EventStream, block_on};
 use atg_core::model::Message;
 use atg_core::project;
@@ -140,6 +140,11 @@ fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
         other => out::fail_with_to(sink, format, other),
     }
 }
+
+/// 要人按 Touch ID / 输系统密码前，在标准错误说一句人话（JSON 计划行里只有 `confirm:"human_auth"`，人看不懂；
+/// 系统框可能被别的窗口挡住，读屏用户也不一定马上找到）
+pub const HUMAN_AUTH_PROMPT_ZH: &str =
+    "atg-cli：请在弹出的系统框里按 Touch ID 或输入系统密码，确认这次发送（60 秒内）";
 
 /// 直发模式直跑时的开场：标准错误一句醒目提示 + 标准输出第一行 `status`（`actions.md` 第一节第 5 小节）
 pub fn direct_banner<B: Backend>(b: &B, sink: &mut dyn Sink, format: Format) {
@@ -275,6 +280,9 @@ fn run_send<B: Backend>(
         return Ok(0);
     }
 
+    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
+        sink.err(HUMAN_AUTH_PROMPT_ZH);
+    }
     let token = b.gate().issue(&plan, p.again).map_err(Fail::Core)?;
     let (mode, temp, waited) =
         send::send_and_wait(b, &plan, token, stream, timeout, &mut |env| feed.apply(env))
@@ -436,6 +444,9 @@ fn run_resend<B: Backend>(
         return Ok(0);
     }
     // 重发不进直发防重复（`Gated::dedup` 为假），`again` 对它不起作用，传什么都一样
+    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
+        sink.err(HUMAN_AUTH_PROMPT_ZH);
+    }
     let token = b.gate().issue(&plan, false).map_err(Fail::Core)?;
     let (mode, outcomes) =
         send::resend_and_wait(b, &plan, token, stream, timeout, &mut |fed| match fed {
@@ -449,6 +460,7 @@ fn run_resend<B: Backend>(
     let mut items = Vec::new();
     // 第一条没成功的那条的错误：结尾 `error` 行的码、字段、退出码都从它来（与 send 同一条路）
     let mut first: Option<CoreError> = None;
+    let mut unknown: Option<CoreError> = None;
     for o in outcomes {
         let old = o.old;
         let Some((temp, w)) = o.result else {
@@ -476,7 +488,7 @@ fn run_resend<B: Backend>(
             }
             Waited::Unknown(why) => {
                 items.push(json!({"message_id": old, "outcome": "unknown", "temp_message_id": temp.message_id, "why": why}));
-                first.get_or_insert(CoreError::SendOutcomeUnknown {
+                unknown.get_or_insert(CoreError::SendOutcomeUnknown {
                     chat_id: Some(chat_id),
                     temp_message_id: temp.message_id,
                     why,
@@ -484,9 +496,25 @@ fn run_resend<B: Backend>(
             }
         }
     }
-    let ok = items.iter().filter(|i| i["outcome"] == "succeeded").count();
-    let zh = format!("重发了 {} 条，成功 {ok} 条", p.ids.len());
-    let Some(e) = first else {
+    let count = |o: &str| items.iter().filter(|i| i["outcome"] == o).count();
+    let (ok, failed, unsure) = (count("succeeded"), count("failed"), count("unknown"));
+    let mut zh = format!("重发了 {} 条，成功 {ok} 条", p.ids.len());
+    if failed > 0 {
+        zh.push_str(&format!("，失败 {failed} 条"));
+    }
+    if unsure > 0 {
+        let ids: Vec<String> = items
+            .iter()
+            .filter(|i| i["outcome"] == "unknown")
+            .map(|i| i["message_id"].to_string())
+            .collect();
+        zh.push_str(&format!(
+            "，结果未知 {unsure} 条（id {}：可能已发出、会自动补发，不要再重发）",
+            ids.join("、")
+        ));
+    }
+    // 结尾行的码：有结果未知的就报它（退出码 10，最要紧的是别重发），否则报第一条失败（codex 016 第 2 轮 #3）
+    let Some(e) = unknown.or(first) else {
         finish_line(
             sink,
             format,
@@ -497,7 +525,7 @@ fn run_resend<B: Backend>(
         return Ok(0);
     };
     // 有没成功的：结尾行是 `error`（退出码与最后一行一致），码与字段取第一条没成功的那条；未知的那条不许重发
-    let msg = format!("{zh}；第一条没成功的：{}", e.message_zh());
+    let msg = format!("{zh}；{}", e.message_zh());
     Ok(l2_fail(
         sink,
         format,
@@ -701,6 +729,8 @@ mod tests {
         assert_eq!(plan["kind"], "plan");
         assert_eq!(plan["data"]["confirm"], "human_auth");
         assert_eq!(plan["data"]["target"]["saved"], true);
+        // 弹框前在标准错误说一句人话（自审第 12 轮 P2）
+        assert!(cap.err.iter().any(|l| l == HUMAN_AUTH_PROMPT_ZH));
         assert!(b.submitted().is_empty());
     }
 
@@ -784,6 +814,58 @@ mod tests {
         assert_eq!(r["data"]["items"][0]["message_id"], failed_id);
         assert_eq!(r["data"]["items"][0]["outcome"], "succeeded");
         assert!(r["data"]["items"][0]["new_message_id"].as_i64().is_some());
+    }
+
+    /// 几条一起重发，一条又失败、一条结果未知：结尾报结果未知（退出码 10），说明里逐项计数、点名未知那条不要再重发
+    /// （codex 016 第 2 轮 #3：原来只报第一条失败，文字模式看不到未知项）
+    #[test]
+    fn mixed_resend_reports_unknown_first() {
+        let b = backend(false, true);
+        let fail = || FakeSend::Fail {
+            code: 400,
+            message: "MESSAGE_TOO_LONG".into(),
+            can_retry: true,
+        };
+        b.script_sends(vec![fail(), fail(), fail(), FakeSend::Silent]);
+        let p = profile(ServerKind::Test);
+        let (code, cap) = crate::history::with_backend(&b, &p, Instant::now(), |b, st, fe| {
+            let mut ids = Vec::new();
+            for text in ["测试一", "测试二"] {
+                let mut c = Cap::default();
+                execute_send(
+                    b,
+                    st,
+                    fe,
+                    &params("saved", text),
+                    &mut c,
+                    Format::Json,
+                    Instant::now(),
+                    Duration::from_millis(500),
+                );
+                ids.push(last(&c)["data"]["message_id"].as_i64().unwrap());
+            }
+            let mut second = Cap::default();
+            let c = execute_resend(
+                b,
+                st,
+                fe,
+                &resend_params(ids),
+                &mut second,
+                Format::Json,
+                Instant::now(),
+                Duration::from_millis(500),
+            );
+            Ok((c, second))
+        })
+        .unwrap_or_else(|_| panic!("起不来"));
+        assert_eq!(code, 10);
+        let e = last(&cap);
+        assert_eq!(e["data"]["code"], "send_outcome_unknown");
+        let zh = e["data"]["message_zh"].as_str().unwrap();
+        assert!(
+            zh.contains("失败 1 条") && zh.contains("结果未知 1 条") && zh.contains("不要再重发"),
+            "{zh}"
+        );
     }
 
     /// 重发又失败：结尾是 error，码与字段取那一条，items 照带

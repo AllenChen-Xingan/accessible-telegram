@@ -20,7 +20,7 @@
 | 代理设置（含代理密码 / 密钥） | TDLib 本地库里（`addProxy` 存的，随库加密）；本项目不另存 | 否 |
 | 直发防重复记录 | `profiles/<档案>/send-guard.json`（0600，整体重写：先写临时文件再改名）：只有还算数的直发提交（已发出 / 失败的留 10 分钟，结果未知的留 24 小时），每条时间 · `chat_id` · 指纹（HMAC，密钥由本地库钥匙带标签派生、只在内存里）· 状态；**不记内容、不记名字**（`actions.md` 第一节第 5 小节「重复提交拦截」） | 否 |
 | 账号被限标记 | `profiles/<档案>/account-limited`（0600，内容只有写入时的 Unix 秒）：收到 `account_limited` 后写下，之后启动的进程照样停掉全部 L2；人处理好之后手动删掉才恢复（`errors.md` 第一节第 4 小节） | 否 |
-| 直发留痕 | `profiles/<档案>/direct-send.log`：每条直发一行，只有时间、进程、id、类型、结果，不记内容（`actions.md` 第一节第 5 小节），保留 30 天 | 否 |
+| 直发留痕 | `profiles/<档案>/direct-send.log`：每条直发两行（交出前「已提交」、等到结果后一行），只有时间、进程、id、类型、结果，不记内容（`actions.md` 第一节第 5 小节），保留 30 天 | 否 |
 | 本机接口套接字 | `profiles/<档案>/atg.sock`（第 2 小节「本机接口」；Unix 套接字路径上限约 104 字节，开工时核） | 否 |
 | 限流记录 | `profiles/<档案>/flood.json`：各类动作「到什么时候之前不许再发」、`account_limited` 标记（`errors.md` 第一节第 5 小节） | 否 |
 | 日志 | `~/Library/Logs/atg/`（本项目日志 `atg-<进程>.log`，TDLib 日志 `tdlib-<档案>.log`） | 否 |

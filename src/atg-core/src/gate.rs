@@ -149,16 +149,99 @@ pub trait Gated {
     }
 }
 
-/// Touch ID 确认框的说明区最多放几个字、几行（系统面板高度固定，放不下的被截掉）。**估计值，没在真弹框上量过**
-/// （待实测，`state/handoff/send.md`）；取得保守些，宁可多拒
-/// macOS 还会在说明前面加一句「“atg-cli”想要……」，系统密码兜底框的版式也不同——量出来之前取得很紧（自审第 8 轮 P1）。
-/// 量了以后改这两个数，并把实测记进契约
-pub const CONFIRM_MAX_CHARS: usize = 120;
-pub const CONFIRM_MAX_LINES: usize = 4;
+// Touch ID 确认框的说明区放得下多少（系统面板高度固定，放不下的被截掉）。下面三个数都是**估计值，没在真弹框上量过**：
+// 待人在场时用 `localauth` 的刻度尺测试实测（`ruler_popup`，交接记录里叫「冒烟 B」，`state/handoff/send2.md`），
+// 量了以后改这三个数，并把实测记进契约 `actions.md` 第一节第 4 小节第 4 条。取得保守些，宁可多拒：macOS 还会在
+// 说明前面加一句「“atg-cli”想要……」，系统密码兜底框的版式也不同（自审第 8 轮 P1）。
+// 「自审第 N 轮」= `atg-review` 多视角自审的轮次，记录在 `state/handoff/send.md` 与 `send2.md`。
 
-/// 整段确认说明放不放得下：行数与字数都不超（会话名、来源那几行也算，不只算正文）
+/// 整段说明最多几个字（字符数）。估计值，待实测（见上）
+pub const CONFIRM_MAX_CHARS: usize = 120;
+/// 最多几个**视觉行**：系统框会把长的一行自动折成几行，按折完的算，不按换行符数（自审第 9 轮 P1：只数换行符时，
+/// 表头几行一折，排在最后的正文先被截掉，人按下去等于确认了没看到的话）。估计值，待实测（见上）
+pub const CONFIRM_MAX_LINES: usize = 6;
+/// 一个视觉行估计能放几列（一个汉字 2 列，即约 20 个汉字）。估计值，待实测（见上）
+pub const CONFIRM_LINE_COLS: usize = 40;
+
+/// 一个字符占几列。**白名单**：空格 1 列；宽度能估、最宽也就一个汉字的文字区块 2 列（框里是比例字体，大写拉丁
+/// 字母 W、M 也差不多一个汉字宽，所以不按「半角 1 列」算，自审第 10 轮 P1）；**其余一律按占满一整行算**——
+/// 有些字形比汉字宽好几倍（如 U+FDFD 合字、楔形文字），按 2 列估就会把排在后面的正文挤出框（自审第 12 轮 P1）。
+/// 多算不少算，宁可多拒
+fn cols(c: char) -> usize {
+    match c {
+        ' ' => 1,
+        c if width_known(c) => 2,
+        _ => CONFIRM_LINE_COLS,
+    }
+}
+
+/// 确认框里宽度可估（不超过一个汉字）的字符：ASCII 与拉丁、希腊、西里尔字母，常用标点与符号，中日韩文字与
+/// 标点、假名、谚文，全角形式，常见 emoji，以及确认说明自己用到的 ⏎ ⇥ ·
+fn width_known(c: char) -> bool {
+    matches!(u32::from(c),
+        0x21..=0x7E            // ASCII 可见字符
+        | 0xA0..=0x24F         // 拉丁补充与扩展
+        | 0x370..=0x3FF        // 希腊
+        | 0x400..=0x4FF        // 西里尔
+        | 0x2010..=0x205E      // 常用标点（零宽、双向控制已被 visible 转义）
+        | 0x2100..=0x23FF      // 字母式符号、箭头、数学、技术符号（含 ⏎ ⇥）
+        | 0x2460..=0x27BF      // 带圈数字、制表符号、几何图形、杂项符号、装饰符号
+        | 0x3000..=0x30FF      // 中日韩标点、平假名、片假名
+        | 0x3400..=0x4DBF      // 汉字扩展 A
+        | 0x4E00..=0x9FFF      // 汉字
+        | 0xAC00..=0xD7AF      // 谚文音节
+        | 0xFF00..=0xFFEF      // 全角与半角形式
+        | 0x1F300..=0x1FAFF    // 常见 emoji
+    )
+}
+
+/// 一个逻辑行折成几个视觉行。框按词折行：放不下的词整个挪到下一行（不在词中间断），单个词比一行还长才按字断。
+/// 空行也占一行
+fn wrapped(line: &str) -> usize {
+    let (mut lines, mut cur) = (1, 0);
+    for (i, word) in line.split(' ').enumerate() {
+        // 每个空格都占 1 列，行首、连续的也算（codex 016 第 2 轮 #1：行首一串空格曾被算成零宽）；
+        // 放不下就折到下一行，并把它算在新行里（多算不少算）
+        if i > 0 {
+            if cur + 1 > CONFIRM_LINE_COLS {
+                lines += 1;
+                cur = 0;
+            }
+            cur += 1;
+        }
+        let w: usize = word.chars().map(cols).sum();
+        if w == 0 || cur + w <= CONFIRM_LINE_COLS {
+            cur += w;
+            continue;
+        }
+        if cur > 0 {
+            lines += 1;
+        }
+        // 从新的一行起放这个词；比一行还长就按字断成几行
+        let extra = w.saturating_sub(1) / CONFIRM_LINE_COLS;
+        lines += extra;
+        cur = w - extra * CONFIRM_LINE_COLS;
+    }
+    lines
+}
+
+/// 一段说明在确认框里折成几个视觉行（逐个逻辑行按 [`wrapped`] 折）
+pub fn confirm_visual_lines(text: &str) -> usize {
+    text.lines().map(wrapped).sum()
+}
+
+/// 整段确认说明放不放得下：视觉行数与字数都不超（会话名、来源那几行也算，不只算正文）。还含制表符的一律放不下：
+/// 制表符在框里跳到下一个制表位，比一个汉字宽得多，越过最后一个还会折行，估不准（自审第 11 轮 P1）。
+/// 正常路径上 [`confirm_visible`] 已把它换成 ⇥，这里是兜底
 pub fn fits_confirm_box(text: &str) -> bool {
-    text.lines().count() <= CONFIRM_MAX_LINES && text.chars().count() <= CONFIRM_MAX_CHARS
+    !text.contains('\t')
+        && confirm_visual_lines(text) <= CONFIRM_MAX_LINES
+        && text.chars().count() <= CONFIRM_MAX_CHARS
+}
+
+/// 放进确认框的文字：[`visible`] 之外再把制表符换成看得见、宽度可估的 ⇥（终端与计划行里的制表符照常保留）
+pub fn confirm_visible(s: &str) -> String {
+    visible(s).replace('\t', "⇥")
 }
 
 /// 摘要：请求 JSON 的字节（不做 Unicode 规范化）+ 自己的账号 id + 服务器类别，SHA-256
@@ -418,9 +501,24 @@ impl Gate {
         let key = f.guard_key.as_ref().ok_or(CoreError::Internal {
             what: "gate_not_started",
         })?;
-        // 留痕是条件：先确认能追加
-        open_append(&dir.join(DIRECT_LOG_FILE)).map_err(|_| CoreError::Internal {
-            what: "direct_log_unwritable",
+        // 留痕是条件：交出前先真写一行「已提交」（只打开文件不够：磁盘满时照样打得开，会先发后写不进去，
+        // codex 016 第 1 轮 #5）。等到结果后再写一行结果
+        let now = unix_now();
+        let line = DirectLogLine {
+            at: now,
+            proc: self.proc,
+            pid: std::process::id(),
+            chat_id: plan.target(),
+            temp_id: 0,
+            final_id: None,
+            kind: plan.kind(),
+            result: Outcome::Submitted,
+            error: None,
+        };
+        append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
+            CoreError::Internal {
+                what: "direct_log_unwritable",
+            }
         })?;
         if plan.dedup() {
             let store = GuardStore::new(dir.join(GUARD_FILE));
@@ -573,9 +671,9 @@ impl GuardStore {
                     Outcome::Unknown | Outcome::Submitted => UNKNOWN_HOLD_S,
                     Outcome::Succeeded | Outcome::Failed => DUP_WINDOW_S,
                 };
-                // 时间在「现在」之后一分钟以上的记录不认：本机时钟被往回拨过，或文件被改过。容一分钟是给
-                // 同一秒内前后写读的进程留的余量；丢掉只会少拦，不会误拦
-                now.saturating_sub(e.at) < hold && e.at <= now + 60
+                // 时间在「现在」之后的记录（本机时钟被往回拨过）照样算数、留到时钟追上再过期：丢掉就等于回拨
+                // 时钟能解除防重复，刚提交、结果未知的那条能被再发一次（codex 016 第 1 轮 #1）。多拦了用 --again 放行
+                e.at > now || now - e.at < hold
             })
             .collect()
     }
@@ -589,8 +687,9 @@ impl GuardStore {
     }
 
     pub fn record(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
-        // 旧文件坏了：丢掉重来（只影响防重复，不影响别的）
-        let mut entries = Self::live(now, self.load().unwrap_or_default());
+        // 读不了（含文件坏了）就不写：拿空表覆盖会抹掉别的发送的防重复记录（codex 016 第 1 轮 #2）。
+        // 调用方据此拒直发；文件坏了要人删掉 send-guard.json 才恢复
+        let mut entries = Self::live(now, self.load()?);
         entries.push(GuardEntry {
             at: now,
             chat_id: chat,
@@ -602,7 +701,8 @@ impl GuardStore {
 
     /// 把最近一条「已提交」的改成结果；找不到就补一条
     pub fn settle(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
-        let mut entries = Self::live(now, self.load().unwrap_or_default());
+        // 同 [`Self::record`]：读不了就不覆盖（「已提交」留着，照样按结果未知拦）
+        let mut entries = Self::live(now, self.load()?);
         match entries
             .iter_mut()
             .rev()
@@ -811,8 +911,9 @@ mod tests {
             g.after_outcome(mode, &p, -1, Some(9), Outcome::Succeeded, None);
         }
         assert!(!dir.join(GUARD_FILE).exists());
+        // 每次两行：交出前「已提交」+ 等到结果后一行
         let log = fs::read_to_string(dir.join(DIRECT_LOG_FILE)).unwrap();
-        assert_eq!(log.lines().count(), 2);
+        assert_eq!(log.lines().count(), 4);
         assert!(log.contains("\"kind\":\"resend\""));
     }
 
@@ -1014,9 +1115,21 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode_bits & 0o777, 0o600);
+        // 留痕两行：交出前「已提交」（证明写得进去，codex 016 第 1 轮 #5），等到结果后一行结果
         let log = fs::read_to_string(dir.join(DIRECT_LOG_FILE)).unwrap();
-        assert_eq!(log.lines().count(), 1);
-        assert!(log.contains("\"result\":\"succeeded\""));
+        assert_eq!(log.lines().count(), 2);
+        assert!(
+            log.lines()
+                .next()
+                .unwrap()
+                .contains("\"result\":\"submitted\"")
+        );
+        assert!(
+            log.lines()
+                .nth(1)
+                .unwrap()
+                .contains("\"result\":\"succeeded\"")
+        );
 
         // 明确失败的不拦
         let p2 = plan(777, 7);
@@ -1047,6 +1160,30 @@ mod tests {
         s.record(2000 + UNKNOWN_HOLD_S + 5, 777, "cd", Outcome::Submitted)
             .unwrap();
         assert_eq!(s.load().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn clock_turned_back_does_not_lift_the_guard() {
+        // codex 016 第 1 轮 #1：时钟往回拨，比「现在」还晚的记录照样拦，等时钟追上再过期
+        let dir = temp_dir("rollback");
+        let s = GuardStore::new(dir.join(GUARD_FILE));
+        s.record(10_000, 777, "ab", Outcome::Unknown).unwrap();
+        assert!(s.hit(10_000 - 3600, 777, "ab").unwrap().is_some());
+        s.record(10_000 - 3600, 778, "cd", Outcome::Submitted)
+            .unwrap();
+        assert_eq!(s.load().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn unreadable_guard_file_is_never_overwritten() {
+        // codex 016 第 1 轮 #2：读不了（这里是文件坏了）就不写，免得拿空表抹掉别的记录；直发因此被拒
+        let dir = temp_dir("corrupt");
+        let path = dir.join(GUARD_FILE);
+        fs::write(&path, b"{not json").unwrap();
+        let s = GuardStore::new(path.clone());
+        assert!(s.record(1000, 777, "ab", Outcome::Submitted).is_err());
+        assert!(s.settle(1000, 777, "ab", Outcome::Succeeded).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"{not json");
     }
 
     #[test]
@@ -1141,5 +1278,64 @@ mod tests {
         assert_eq!(visible("a\u{202E}b"), "a\\u{202E}b");
         assert_eq!(visible("x\u{200B}y\u{1b}[31m"), "x\\u{200B}y\\u{001B}[31m");
         assert_eq!(visible("第一行\n第二行"), "第一行\n第二行");
+    }
+
+    #[test]
+    fn confirm_box_counts_wrapped_lines_not_newlines() {
+        // 自审第 9 轮 P1：4 个逻辑行、总字数也不超，但每行都长到要折——按视觉行算就放不下
+        let long_line = "字".repeat(CONFIRM_LINE_COLS / 2 + 1);
+        let text = [long_line.as_str(); 4].join("\n");
+        assert!(text.chars().count() <= CONFIRM_MAX_CHARS);
+        assert_eq!(confirm_visual_lines(&text), 8);
+        assert!(!fits_confirm_box(&text));
+        // 拉丁字母与汉字同按 2 列；空行也占一行
+        assert_eq!(confirm_visual_lines(&"字".repeat(CONFIRM_LINE_COLS / 2)), 1);
+        assert_eq!(
+            confirm_visual_lines(&"W".repeat(CONFIRM_LINE_COLS / 2 + 1)),
+            2
+        );
+        assert_eq!(confirm_visual_lines("一\n\n二"), 3);
+        // 按词折：一行剩的放不下下一个词，整个词挪下去（字符一个个塞是 2 行，按词折要 3 行）
+        let word = "W".repeat(CONFIRM_LINE_COLS / 2 - 2);
+        let three = [word.as_str(); 3].join(" ");
+        assert_eq!(confirm_visual_lines(&three), 3);
+        // 比一行还长的词按字断
+        assert_eq!(confirm_visual_lines(&"x".repeat(CONFIRM_LINE_COLS * 2)), 4);
+        assert!(fits_confirm_box("发给 收藏夹 · id 1\n好的"));
+    }
+
+    #[test]
+    fn tabs_never_reach_the_confirm_box() {
+        // 自审第 11 轮 P1：一串制表符看着是空白、却能把后半句挤出框；换成 ⇥ 后按 2 列估，兜底见到制表符就拒
+        assert_eq!(confirm_visible("好的\t\t后半句"), "好的⇥⇥后半句");
+        assert!(!fits_confirm_box("好的\t后半句"));
+        assert!(fits_confirm_box(&confirm_visible("好的\t后半句")));
+    }
+
+    #[test]
+    fn glyphs_of_unknown_width_take_a_whole_line() {
+        // 自审第 12 轮 P1：比汉字宽好几倍的字形不能按 2 列估；白名单外的一个字就占满一行
+        let wide = format!("好{}把这句藏到框外", "\u{FDFD}".repeat(6));
+        assert!(confirm_visual_lines(&wide) > CONFIRM_MAX_LINES);
+        assert!(!fits_confirm_box(&wide));
+        assert!(!fits_confirm_box(&format!("好{}", "\u{1242B}".repeat(6))));
+        // 常见文字照常
+        assert!(fits_confirm_box("好的，周末见 OK 👍 Привет"));
+    }
+
+    #[test]
+    fn every_space_takes_a_column() {
+        // codex 016 第 2 轮 #1：行首、连续的空格都占位，一串空格能把正文推到下一行
+        assert_eq!(confirm_visual_lines(&" ".repeat(CONFIRM_LINE_COLS)), 1);
+        assert_eq!(confirm_visual_lines(&" ".repeat(CONFIRM_LINE_COLS + 1)), 2);
+        let pushed = format!("{}转账", " ".repeat(CONFIRM_LINE_COLS - 1));
+        assert_eq!(confirm_visual_lines(&pushed), 2);
+        // 完整的确认说明：会话名 + 来源 + 字数行 + 一串空格加两个字的正文
+        let text = format!(
+            "发给 私聊 · 林小雨周末爬山 · id 777\n来自命令行，可能是 AI，网络断了也会在恢复后发出\n共 52 字 1 行：\n{}转账",
+            " ".repeat(50)
+        );
+        assert!(confirm_visual_lines(&text) >= 7, "{}", confirm_visual_lines(&text));
+        assert!(!fits_confirm_box(&text));
     }
 }
