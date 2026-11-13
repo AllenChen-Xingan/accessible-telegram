@@ -4,13 +4,13 @@
 
 ## 做到哪
 
-- [x] exp007 解码、exp008 端侧转写（含 `.app` 方式授权补测）、设计 `docs/experiments/exp008-local-stt/design.md`（大总管与 arch 已定）
-- [x] atg-review 自审（第一次误审了 src/，结果已转大总管开 #65；第二次审本人文档，P1×3 已改）
-- [x] codex 017：13 轮收敛（第 12、13 轮无 P0/P1），P1×17 / P2×22 全部属实并改，无剩余 P2。记录 `docs/reviews/017_exp007-008-codex.md`
-- [x] PR1 下载（实体：`FileRef` · `file_download` · `download` 子命令 · voice 组合模块）：编译测试全绿（2026-11-13）
-- [~] PR2 播放：`atg-audio`（decode / player / queue）· `Doc::Playback` · `play` · `mark_listened`（+ `Message.self_destruct`）：编译测试全绿（2026-11-13）；PR 描述草稿 MAIN `_tmp/20261113-b18/pr-media.md`
-- [ ] PR3 转写：`Transcript` 与表 · stt 与辅助程序 · `transcribe` · `stt_unavailable`
-- [ ] codex 018（代码）
+- [x] exp007、exp008、设计 `docs/experiments/exp008-local-stt/design.md`（大总管与 arch 已定）
+- [x] codex 017（实验 + 设计）13 轮收敛
+- [x] PR #85（下载 + 播放，8ba74c7，大总管选合成一个）：代码、契约、测试全绿；atg-review 自审（P1 1 条已修）；codex 018 三轮收敛（第 2、3 轮无 P0/P1）；超线文件全比 main 短（arch d 方案）。PR 草稿 MAIN `_tmp/20261113-b18/pr-media.md`，大总管提交并开 PR
+- [ ] 合 main（#52 发送，PR #90）进 feat/4-voice：10 个冲突已解（两边功能都留；Submit 进 fake/call.rs、td/tests.rs 换成 main 版；超线文件仍全比 main 短）；全量 test、三遍 clippy（含 tdlib-api 与 atg-cli/tdlib）、fmt、check-no-debug 全绿（#79 偶发一次，重跑过），名额已还，等大总管提交合并
+- [ ] 测试缺口 issue（标记请求进行中取消且失败）：大总管开
+- [~] 下一个 PR：转写（#59）。草稿在 scratch（`…/scratchpad/pr3/`）：`stt-helper/main.swift`、`build.sh`、`stt.rs`（协议、选语种表、看门 + 守卫生命周期）、`fake-helpers/*.sh`（8 个假辅助程序：正常、无版本行、版本不对、卡死、缺行、坏 JSON 带暗号、单边失败、全不可用）。**都未编译**。等本 PR 合并、大总管从新 main 开分支后挪进 `src/atg-audio/`
+- [ ] 人：终端里听一条、暂停一次（M2.6 验收）；收藏夹语音验下载与解码；读法实听；断网转写
 
 ## PR1 改了哪些文件
 

@@ -29,9 +29,13 @@ use crate::backend::{
 };
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
+use crate::gate::{Gate, NoAuth};
 use crate::link::{self, EventStream, Shared, Step};
+use crate::model::FailedInfo;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
+use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
+use crate::send::{Answer, Sealed, SealedKind};
 use crate::status::{AuthStep, CoreState, NetState};
 use crate::tree::FileRef;
 use serde_json::{Value, json};
@@ -45,6 +49,25 @@ mod call;
 mod files;
 
 pub use call::Call;
+
+/// 一次真发送之后「TDLib」怎么推结果
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FakeSend {
+    /// 推 `updateMessageSendSucceeded`（正式 id 由假后端编）
+    Succeed,
+    /// 推 `updateMessageSendFailed`
+    Fail {
+        code: i32,
+        message: String,
+        can_retry: bool,
+    },
+    /// 待发那条被删（`updateDeleteMessages`，不来失败）
+    Delete,
+    /// 什么都不推（等到超时）
+    Silent,
+    /// `sendMessage` 当场回错（还没造出待发消息）
+    Reject(CoreError),
+}
 
 /// `start` 怎么回
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +132,21 @@ pub struct FakeBackend {
     stall: Mutex<(u32, u32)>,
     /// 每次 `history` 最多回几条（离起点最近的那几条，与 TDLib 只给内存里连着起点那一段同形）
     cap: Mutex<Option<usize>>,
+    /// 发送闸
+    gate: Gate,
+    /// 自己的用户 id（`me()`）；没设 → 401
+    me_id: Mutex<Option<i64>>,
+    forums: Mutex<Vec<ChatId>>,
+    no_reply: Mutex<Vec<MsgId>>,
+    /// 接下来的几次预览是否「把回复去掉」（按次取，取完照常保留）
+    preview_drops: Mutex<VecDeque<bool>>,
+    /// 下一次预览时先跑它（测「凭据已验过、复核预览还没回」那一刻发生的事）
+    preview_hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// 接下来的几次真发送怎么推结果（取完默认成功）
+    send_script: Mutex<VecDeque<FakeSend>>,
+    next_id: Mutex<i64>,
+    /// 真交出去的请求（测试核对交给「TDLib」的就是确认过的那份）
+    submitted: Mutex<Vec<Value>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -118,7 +156,13 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 impl FakeBackend {
     /// 新建并立刻起收线程（测试可以在 `start` 之前就喂更新）
     pub fn new() -> Result<Self, CoreError> {
+        Self::with_gate(Gate::new(false, Holder::Cli, Box::new(NoAuth)))
+    }
+
+    /// 带指定的发送闸（直发模式、假认证器）
+    pub fn with_gate(gate: Gate) -> Result<Self, CoreError> {
         let (shared, stream) = Shared::new();
+        shared.watch_send_limits(gate.limits());
         let (tx, rx) = mpsc::channel::<Feed>();
         let handle = link::spawn_receiver(shared.clone(), move || {
             match rx.recv_timeout(Duration::from_millis(20)) {
@@ -154,7 +198,128 @@ impl FakeBackend {
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
             cap: Mutex::new(None),
+            gate,
+            me_id: Mutex::new(None),
+            forums: Mutex::new(Vec::new()),
+            no_reply: Mutex::new(Vec::new()),
+            preview_drops: Mutex::new(VecDeque::new()),
+            preview_hook: Mutex::new(None),
+            send_script: Mutex::new(VecDeque::new()),
+            next_id: Mutex::new(1_000_000),
+            submitted: Mutex::new(Vec::new()),
         })
+    }
+
+    /// 自己的用户 id（收藏夹的会话 id 同它）
+    pub fn set_me(&self, user_id: i64) {
+        *lock(&self.me_id) = Some(user_id);
+        // 同 TDLib：登录后推 `updateOption my_id`
+        self.push(json!({"@type": "updateOption", "name": "my_id",
+            "value": {"@type": "optionValueInteger", "value": user_id.to_string()}}));
+    }
+
+    /// 这个会话是话题群
+    pub fn set_forum(&self, chat: ChatId) {
+        lock(&self.forums).push(chat);
+    }
+
+    /// 这条消息不能回复
+    pub fn set_no_reply(&self, id: MsgId) {
+        lock(&self.no_reply).push(id);
+    }
+
+    /// 接下来几次预览是否把回复去掉（TDLib 遇到被回复那条不在 / 不能回复时就这样，发6）
+    /// 下一次预览（交给 TDLib 的 `only_preview`）回来之前先跑 `hook`
+    pub fn on_next_preview(&self, hook: impl FnOnce() + Send + 'static) {
+        *lock(&self.preview_hook) = Some(Box::new(hook));
+    }
+
+    pub fn script_previews(&self, drops: &[bool]) {
+        lock(&self.preview_drops).extend(drops.iter().copied());
+    }
+
+    /// 接下来几次真发送的结果
+    pub fn script_sends(&self, s: Vec<FakeSend>) {
+        lock(&self.send_script).extend(s);
+    }
+
+    /// 真交出去的请求（预览不算）
+    pub fn submitted(&self) -> Vec<Value> {
+        lock(&self.submitted).clone()
+    }
+
+    fn new_id(&self) -> i64 {
+        let mut n = lock(&self.next_id);
+        *n += 1;
+        *n
+    }
+
+    /// 自己发的一条（TDLib `message` 对象形状），正文与回复、话题取自请求
+    fn own_message(&self, chat: ChatId, id: i64, request: &Value, state: Value) -> Value {
+        let me = lock(&self.me_id).unwrap_or(0);
+        let reply = &request["reply_to"];
+        let mut m = json!({
+            "@type": "message", "id": id, "chat_id": chat,
+            "sender_id": {"@type": "messageSenderUser", "user_id": me},
+            "is_outgoing": true, "date": 1_792_755_420,
+            "content": {"@type": "messageText", "text": request["input_message_content"]["text"].clone()},
+            "topic_id": request["topic_id"].clone(),
+            "sending_state": state,
+        });
+        if reply.is_object() {
+            m["reply_to"] = json!({"@type": "messageReplyToMessage", "chat_id": chat,
+                "message_id": reply["message_id"].clone()});
+        }
+        m
+    }
+
+    fn find_message(&self, id: MsgId) -> Option<Value> {
+        lock(&self.histories).get(&id.chat_id).and_then(|ms| {
+            ms.iter()
+                .find(|m| m["id"].as_i64() == Some(id.message_id))
+                .cloned()
+        })
+    }
+
+    /// 真发一条之后按剧本推结果（推在应答之前：结果比应答先到，发4）
+    fn play_send(&self, chat: ChatId, temp: i64, request: &Value) {
+        let step = lock(&self.send_script)
+            .pop_front()
+            .unwrap_or(FakeSend::Succeed);
+        match step {
+            FakeSend::Succeed => {
+                let id = self.new_id();
+                let m = self.own_message(chat, id, request, Value::Null);
+                // 发出的那条留在会话里（之后 `message_get` / `failed_info` 找得到）
+                lock(&self.histories)
+                    .entry(chat)
+                    .or_default()
+                    .push(m.clone());
+                self.push(json!({"@type": "updateMessageSendSucceeded", "old_message_id": temp, "message": m}));
+            }
+            FakeSend::Fail {
+                code,
+                message,
+                can_retry,
+            } => {
+                let id = self.new_id();
+                let err = json!({"@type": "error", "code": code, "message": message});
+                let st = json!({"@type": "messageSendingStateFailed", "error": err.clone(),
+                    "can_retry": can_retry, "need_another_sender": false, "need_another_reply_quote": false,
+                    "need_drop_reply": false, "required_paid_message_star_count": 0, "retry_after": 0.0});
+                let m = self.own_message(chat, id, request, st);
+                // 失败的那条留在会话里（重发时要找得到）
+                lock(&self.histories)
+                    .entry(chat)
+                    .or_default()
+                    .push(m.clone());
+                self.push(json!({"@type": "updateMessageSendFailed", "old_message_id": temp, "message": m, "error": err}));
+            }
+            FakeSend::Delete => self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
+                "message_ids": [temp], "is_permanent": true, "from_cache": false})),
+            FakeSend::Silent | FakeSend::Reject(_) => {}
+        }
+        self.settle();
     }
 
     /// 给一个假账号（`start` 之前设）
@@ -383,6 +548,12 @@ impl Backend for FakeBackend {
         *lock(&self.previous_unclean) = profile.previous_unclean();
         profile.mark_running()?;
         *lock(&self.run) = Some((profile.clone(), Some(profile_lock)));
+        // 假后端的「库钥匙」是写死的：只用来派生防重复指纹的密钥
+        self.gate.set_server(
+            profile.kind().use_test_dc(),
+            profile.dir(),
+            crate::gate::derive_guard_key(b"fake-db-key", profile.name()),
+        );
         let answer = lock(&self.start).clone();
         link::guard(self.shared.clone(), async move {
             match answer {
@@ -755,6 +926,176 @@ impl Backend for FakeBackend {
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {
         self.shared.wait_net(timeout, pred)
+    }
+
+    fn gate(&self) -> &Gate {
+        &self.gate
+    }
+
+    async fn me(&self) -> Result<Me, CoreError> {
+        self.started()?;
+        self.ready_or_401("me").await?;
+        let id = lock(&self.me_id).ok_or(map_td_error(401, "Unauthorized"))?;
+        let test_number = lock(&self.auth)
+            .as_ref()
+            .is_some_and(|a| auth::is_test_number(&a.phone));
+        let me = Me {
+            user_id: id,
+            saved_chat_id: id,
+            test_number,
+        };
+        self.gate.set_me(me);
+        Ok(me)
+    }
+
+    async fn chat_target(&self, chat: ChatId) -> Result<ChatTarget, CoreError> {
+        self.started()?;
+        self.ready_or_401("chat_target").await?;
+        let updates = lock(&self.chat_info).get(&chat).cloned();
+        let c = updates
+            .iter()
+            .flatten()
+            .find(|u| u["@type"] == "updateNewChat" && u["chat"]["id"].as_i64() == Some(chat))
+            .map(|u| crate::tdjson::chat_object(&u["chat"]))
+            .ok_or(CoreError::NotFound {
+                what: "chat",
+                td: None,
+            })?;
+        Ok(ChatTarget {
+            id: c.id,
+            kind: c.kind,
+            title: c.title,
+            is_forum: lock(&self.forums).contains(&chat),
+            saved: false,
+        })
+    }
+
+    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError> {
+        self.started()?;
+        self.ready_or_401("can_reply").await?;
+        self.find_message(id).ok_or(CoreError::NotFound {
+            what: "message",
+            td: None,
+        })?;
+        Ok(!lock(&self.no_reply).contains(&id))
+    }
+
+    async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError> {
+        self.started()?;
+        self.ready_or_401("failed_info").await?;
+        let m = self.find_message(id).ok_or(CoreError::NotFound {
+            what: "message",
+            td: None,
+        })?;
+        Ok(crate::tdjson::failed_info(&m))
+    }
+
+    async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
+        self.started()?;
+        self.ready_or_401("submit").await?;
+        match req.into_kind() {
+            SealedKind::Message { request, preview } => {
+                let chat = request["chat_id"].as_i64().unwrap_or(0);
+                lock(&self.calls).push(Call::Submit {
+                    chat,
+                    preview,
+                    resend: false,
+                });
+                if !lock(&self.chat_info).contains_key(&chat) {
+                    return Err(CoreError::NotFound {
+                        what: "chat",
+                        td: None,
+                    });
+                }
+                if preview {
+                    let hook = lock(&self.preview_hook).take();
+                    if let Some(hook) = hook {
+                        hook();
+                    }
+                    let mut r = request.clone();
+                    if lock(&self.preview_drops).pop_front().unwrap_or(false) {
+                        r["reply_to"] = Value::Null;
+                    }
+                    let m = self.own_message(chat, 0, &r, Value::Null);
+                    return Ok(Answer::Message(crate::tdjson::message(&m)));
+                }
+                let rejected = {
+                    let mut script = lock(&self.send_script);
+                    match script.front() {
+                        Some(FakeSend::Reject(e)) => {
+                            let e = e.clone();
+                            script.pop_front();
+                            Some(e)
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(e) = rejected {
+                    return Err(e);
+                }
+                lock(&self.submitted).push(request.clone());
+                let temp = self.new_id();
+                let pending = self.own_message(
+                    chat,
+                    temp,
+                    request,
+                    json!({"@type": "messageSendingStatePending", "sending_id": request["options"]["sending_id"].clone()}),
+                );
+                self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
+                self.play_send(chat, temp, request);
+                Ok(Answer::Message(crate::tdjson::message(&pending)))
+            }
+            SealedKind::Resend { request } => {
+                let chat = request["chat_id"].as_i64().unwrap_or(0);
+                let ids: Vec<i64> = request["message_ids"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(Value::as_i64).collect())
+                    .unwrap_or_default();
+                lock(&self.calls).push(Call::Submit {
+                    chat,
+                    preview: false,
+                    resend: true,
+                });
+                let mut out = Vec::new();
+                for id in ids {
+                    let old = self.find_message(MsgId {
+                        chat_id: chat,
+                        message_id: id,
+                    });
+                    let ok = old
+                        .as_ref()
+                        .and_then(crate::tdjson::failed_info)
+                        .is_some_and(|f| f.can_retry);
+                    let Some(old) = old.filter(|_| ok) else {
+                        out.push(None);
+                        continue;
+                    };
+                    lock(&self.submitted).push(
+                        json!({"@type": "resendMessages", "chat_id": chat, "message_ids": [id]}),
+                    );
+                    let temp = self.new_id();
+                    let request = json!({"input_message_content": {"text": old["content"]["text"].clone()},
+                        "topic_id": old["topic_id"].clone(), "reply_to": null});
+                    let pending = self.own_message(
+                        chat,
+                        temp,
+                        &request,
+                        json!({"@type": "messageSendingStatePending", "sending_id": 0}),
+                    );
+                    // TDLib 重发时先删掉失败那条（不是撤回），再造一条待发的
+                    lock(&self.histories)
+                        .entry(chat)
+                        .or_default()
+                        .retain(|m| m["id"].as_i64() != Some(id));
+                    self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
+                        "message_ids": [id], "is_permanent": true, "from_cache": false}));
+                    self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
+                    self.play_send(chat, temp, &request);
+                    out.push(Some(crate::tdjson::message(&pending)));
+                }
+                Ok(Answer::Resent(out))
+            }
+        }
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

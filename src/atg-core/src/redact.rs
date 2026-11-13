@@ -8,6 +8,7 @@
 //! 加了带文字字段的新类型：派生里去掉 `Debug`、加 `#[cfg_attr(test, derive(Debug))]`，再登记到下面。
 
 use crate::model as m;
+use crate::send as s;
 use crate::tree as t;
 
 macro_rules! redacted_debug {
@@ -51,4 +52,10 @@ redacted_debug!(
     "model::Message" => m::Message,
     "model::Chat" => m::Chat,
     "model::CoreEvent" => m::CoreEvent,
+    "model::ChatTarget" => m::ChatTarget,
+    "send::Draft" => s::Draft,
+    "send::TextPlan" => s::TextPlan,
+    "send::ResendItem" => s::ResendItem,
+    "send::ResendPlan" => s::ResendPlan,
+    "send::Waited" => s::Waited,
 );

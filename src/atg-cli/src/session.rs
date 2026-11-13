@@ -132,9 +132,10 @@ pub fn job_name(job: Job) -> &'static str {
     }
 }
 
-/// 真实后端（本进程唯一的一个）
+/// 真实后端（本进程唯一的一个）。`direct`：本进程是不是以 `--unsafe-direct-send` 启动的（只有发送类命令和
+/// `serve` 会传真；别的命令不发东西，闸用不到）
 #[cfg(feature = "tdlib")]
-pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
+pub fn td_backend_with(direct: bool) -> Result<atg_core::td::TdBackend, Fail> {
     use atg_core::error::Holder;
     use atg_core::keystore::Keychain;
     use atg_core::td::{TdBackend, TdConfig};
@@ -144,8 +145,19 @@ pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
         keystore: Box::new(Keychain),
         log_dir,
         holder: Holder::Cli,
+        gate: atg_core::gate::Gate::new(
+            direct,
+            Holder::Cli,
+            atg_core::gate::system_authenticator(),
+        ),
     })
     .map_err(Fail::Core)
+}
+
+/// 不发东西的命令用的真实后端（闸照常在，但不是直发）
+#[cfg(feature = "tdlib")]
+pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
+    td_backend_with(false)
 }
 
 #[cfg(feature = "tdlib")]
@@ -379,4 +391,122 @@ pub fn drive<B: Backend>(
         eprintln!("atg-cli: 关闭时出错（{}）", e.code());
     }
     r
+}
+
+/// `send` 直跑：选档案、起真实后端（直发与否看本进程的 `--unsafe-direct-send`）、发、关。输出直接写标准输出
+pub fn send(
+    g: &Global,
+    format: crate::args::Format,
+    p: &crate::send::SendParams,
+    started: std::time::Instant,
+) -> u8 {
+    l2_run(g, format, "send", started, &mut |b, stream, feed, sink| {
+        crate::send::execute_send(
+            b,
+            stream,
+            feed,
+            p,
+            sink,
+            format,
+            started,
+            atg_core::send::RESULT_TIMEOUT,
+        )
+    })
+}
+
+/// `resend` 直跑
+pub fn resend(
+    g: &Global,
+    format: crate::args::Format,
+    p: &crate::send::ResendParams,
+    started: std::time::Instant,
+) -> u8 {
+    l2_run(
+        g,
+        format,
+        "resend",
+        started,
+        &mut |b, stream, feed, sink| {
+            crate::send::execute_resend(
+                b,
+                stream,
+                feed,
+                p,
+                sink,
+                format,
+                started,
+                atg_core::send::RESULT_TIMEOUT,
+            )
+        },
+    )
+}
+
+/// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
+#[cfg(feature = "tdlib")]
+type L2Body<'a> = dyn FnMut(
+        &atg_core::td::TdBackend,
+        &mut atg_core::link::EventStream,
+        &mut crate::chats::Feed,
+        &mut dyn crate::out::Sink,
+    ) -> u8
+    + 'a;
+
+/// 不编 TDLib 时只为通过类型检查（`l2_run` 在那种构建里直接报 `not_implemented`，用不到它）
+#[cfg(not(feature = "tdlib"))]
+type L2Body<'a> = dyn FnMut(
+        &atg_core::fake::FakeBackend,
+        &mut atg_core::link::EventStream,
+        &mut crate::chats::Feed,
+        &mut dyn crate::out::Sink,
+    ) -> u8
+    + 'a;
+
+/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的 `--unsafe-direct-send`）→
+/// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
+fn l2_run(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    started: std::time::Instant,
+    body: &mut L2Body<'_>,
+) -> u8 {
+    use crate::out::{Stdio, fail_with_to};
+    if g.fake.is_some() {
+        return fail_with_to(
+            &mut Stdio,
+            format,
+            &Fail::NotImplemented {
+                command,
+                message_zh: "假后端的场景目录还没做；要用测试服务器（--test-dc）",
+            },
+        );
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (started, body);
+        fail_with_to(
+            &mut Stdio,
+            format,
+            &Fail::NotImplemented {
+                command,
+                message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+            },
+        )
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let r = open_profile(g).and_then(|profile| {
+            let b = td_backend_with(g.unsafe_direct_send)?;
+            crate::history::with_backend(&b, &profile, started, |b, stream, feed| {
+                if b.gate().direct() {
+                    crate::send::direct_banner(b, &mut Stdio, format);
+                }
+                Ok(body(b, stream, feed, &mut Stdio))
+            })
+        });
+        match r {
+            Ok(code) => code,
+            Err(f) => fail_with_to(&mut Stdio, format, &f),
+        }
+    }
 }

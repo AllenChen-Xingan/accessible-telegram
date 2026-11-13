@@ -7,7 +7,7 @@
 //! - 标准输出：起好后一行 `status`（带 `listening:true`），结束时一行 `result`（`reason:"interrupted"`，退出码 0，
 //!   同 `watch` 被打断算正常结束）；后端故障就以 `disconnected` 结尾，好让人重开
 //! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）
-//! - 能执行的：`chats`、`history`、`links`、`auth state`。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
+//! - 能执行的见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类的凭据由本进程的闸开（本进程以 `--unsafe-direct-send` 启动才直发）；流式的 `watch` 挂进订阅者表（`join_watch`）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
 //!   版本号不对、请求形状不对回 `internal{ipc_version_mismatch | ipc_bad_request}`（这时还不知道要哪种格式，一律 JSON）
 //! - 只连上就断的（发起方探一下执行方在不在）不记
 //! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，
@@ -75,12 +75,14 @@ pub fn run(g: &Global, format: Format, started: Instant) -> ExitCode {
         {
             return ExitCode::from(crate::out::busy_to(&mut Stdio, format, &e, m));
         }
-        let b = match crate::session::td_backend() {
+        let b = match crate::session::td_backend_with(g.unsafe_direct_send) {
             Ok(b) => b,
             Err(f) => return ExitCode::from(fail_with_to(&mut Stdio, format, &f)),
         };
         if g.unsafe_direct_send {
-            Stdio.err("atg-cli serve: 直发模式还没做（发送在第二阶段），这次运行照常确认");
+            Stdio.err(
+                "⚠️ atg-cli serve：直发模式已开启——转来的发送不再确认，到本进程退出为止（--unsafe-direct-send）",
+            );
         }
         crate::signals::install();
         ExitCode::from(serve(
@@ -223,8 +225,8 @@ fn status_line<B: Backend>(b: &B, format: Format, own: &mut dyn Sink) {
                     "net": r.lines.net,
                     "user_status": r.status,
                     "pending_sends": [],
-                    "direct_send": false,
-                    "direct_sent": 0,
+                    "direct_send": b.gate().direct(),
+                    "direct_sent": b.gate().direct_sent(),
                     "listening": true,
                 }),
             ),
@@ -468,6 +470,49 @@ fn execute<B: Backend>(
             };
             ("history", code)
         }
+        "send" => {
+            let code = match serde_json::from_value::<crate::send::SendParams>(fa.params) {
+                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
+                Ok(p) => {
+                    // 执行方以直发启动：发起方要和直跑一样先看到醒目提示与 status 行
+                    if ctx.b.gate().direct() {
+                        crate::send::direct_banner(ctx.b, sink, format);
+                    }
+                    crate::send::execute_send(
+                        ctx.b,
+                        ctx.stream,
+                        ctx.feed,
+                        &p,
+                        sink,
+                        format,
+                        started,
+                        atg_core::send::RESULT_TIMEOUT,
+                    )
+                }
+            };
+            ("send", code)
+        }
+        "resend" => {
+            let code = match serde_json::from_value::<crate::send::ResendParams>(fa.params) {
+                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
+                Ok(p) => {
+                    if ctx.b.gate().direct() {
+                        crate::send::direct_banner(ctx.b, sink, format);
+                    }
+                    crate::send::execute_resend(
+                        ctx.b,
+                        ctx.stream,
+                        ctx.feed,
+                        &p,
+                        sink,
+                        format,
+                        started,
+                        atg_core::send::RESULT_TIMEOUT,
+                    )
+                }
+            };
+            ("resend", code)
+        }
         "links" => {
             let code = match serde_json::from_value::<LinksArgs>(fa.params) {
                 Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
@@ -620,9 +665,14 @@ mod tests {
     fn backend() -> FakeBackend {
         let b = FakeBackend::new().unwrap();
         b.set_auth(FakeAuth {
+            // 测试号段（编的）：测试档案上发收藏夹走测试豁免
+            phone: "+9996612345".into(),
             logged_in: true,
             ..FakeAuth::default()
         });
+        // `send` 用：自己是 9，收藏夹即与 9 的私聊
+        b.set_me(9);
+        b.set_chat(9, chat(9, 5, 0));
         b.set_chats(
             ChatList::Main,
             vec![chat(1, 30, 2), chat(2, 20, 0), chat(3, 10, 1)],
@@ -746,7 +796,8 @@ mod tests {
                 let o = v.as_object_mut().unwrap();
                 o.insert("at".into(), json!("<at>"));
                 if let Some(d) = o.get_mut("data").and_then(Value::as_object_mut) {
-                    for k in ["elapsed_ms", "first_chat_ms"] {
+                    // `digest` 里有每次随机的 sending_id
+                    for k in ["elapsed_ms", "first_chat_ms", "digest"] {
                         if d.contains_key(k) {
                             d.insert(k.into(), json!("<ms>"));
                         }
@@ -778,6 +829,54 @@ mod tests {
                 out
             })
             .collect()
+    }
+
+    /// `send` 经本机接口转发与直跑逐行一致（测试档案发收藏夹：测试豁免，不弹框）；快照固定输出形状
+    #[test]
+    fn forwarded_send_matches_direct() {
+        for format in [Format::Json, Format::Text] {
+            let p = profile("send", ServerKind::Test);
+            let s = start_server(&p, format);
+            let params = json!({"chat": "saved", "text": "测试", "reply_to": null, "dry_run": false,
+                "again": false, "tz": "+08:00"});
+            let (fc, f) = s.ask(format, "send", &params);
+            let _ = s.stop();
+
+            let pd = profile("sendd", ServerKind::Test);
+            let b = backend();
+            let sp: crate::send::SendParams = serde_json::from_value(params).unwrap();
+            let mut cap = Cap::default();
+            let dc = crate::history::with_backend(&b, &pd, Instant::now(), |b, st, fe| {
+                Ok(crate::send::execute_send(
+                    b,
+                    st,
+                    fe,
+                    &sp,
+                    &mut cap,
+                    format,
+                    Instant::now(),
+                    Duration::from_secs(2),
+                ))
+            })
+            .unwrap_or_else(|_| panic!("直跑起不来"));
+            assert_eq!((fc, dc), (0, 0), "{f:?}", f = f.out);
+            match format {
+                Format::Json => {
+                    assert_eq!(norm_json(&f.out), norm_json(&cap.out));
+                    let kinds: Vec<String> = cap
+                        .out
+                        .iter()
+                        .map(|l| serde_json::from_str::<Value>(l).unwrap()["kind"].to_string())
+                        .collect();
+                    assert_eq!(kinds, ["\"plan\"", "\"message\"", "\"result\""]);
+                    insta::assert_snapshot!("send_json", norm_json(&cap.out).join("\n"));
+                }
+                Format::Text => {
+                    assert_eq!(f.out, cap.out);
+                    insta::assert_snapshot!("send_text", cap.out.join("\n"));
+                }
+            }
+        }
     }
 
     #[test]
@@ -973,11 +1072,15 @@ mod tests {
         let (code, f) = s.ask(Format::Json, "auth", &json!({"sub": "code"}));
         assert_eq!(code, 2);
         assert!(f.out[0].contains("\"usage\""));
-        let (code, f) = s.ask(Format::Json, "send", &json!({}));
+        let (code, f) = s.ask(Format::Json, "delete", &json!({}));
         assert_eq!(code, 1);
         let v: Value = serde_json::from_str(&f.out[0]).unwrap();
         assert_eq!(v["data"]["code"], "not_implemented");
-        assert_eq!(v["data"]["command"], "send");
+        assert_eq!(v["data"]["command"], "delete");
+        // 发送的参数形状不对：不执行
+        let (code, f) = s.ask(Format::Json, "send", &json!({}));
+        assert_eq!(code, 1);
+        assert!(f.out[0].contains("ipc_bad_request"));
         // 参数形状不对
         let (code, f) = s.ask(Format::Json, "chats", &json!({"limit": "x"}));
         assert_eq!(code, 1);
@@ -1011,7 +1114,7 @@ mod tests {
         drop(ipc::connect(&p));
         let (_, own) = s.stop();
         let r: Value = serde_json::from_str(own.out.last().unwrap()).unwrap();
-        assert_eq!(r["data"]["served"], 7);
+        assert_eq!(r["data"]["served"], 8);
         assert!(own.err.iter().all(|l| !l.contains("超时")));
     }
 

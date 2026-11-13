@@ -84,6 +84,37 @@ mod roundtrip {
         ]
     }
 
+    /// 交给 TDLib 的就是摘要算过的那份 JSON：它必须能逐段原样反序列化成 tdlib-rs 的请求类型
+    /// （`TdBackend::submit` 就是这么取的），且回序列化后不丢字段——否则摘要绑的和交出的就不是同一份
+    #[test]
+    fn send_request_json_maps_onto_tdlib_types() {
+        use tdlib_rs::{enums, types};
+        let topic = crate::model::Topic::Forum {
+            topic_id: 3,
+            name: None,
+        };
+        for (reply, topic) in [(None, None), (Some(5), Some(&topic))] {
+            let r = crate::send::text_request(777, "好的 e\u{301}", reply, topic, 42);
+            let t: Option<enums::MessageTopic> =
+                serde_json::from_value(r["topic_id"].clone()).unwrap();
+            let rep: Option<enums::InputMessageReplyTo> =
+                serde_json::from_value(r["reply_to"].clone()).unwrap();
+            let o: types::MessageSendOptions =
+                serde_json::from_value(r["options"].clone()).unwrap();
+            let c: enums::InputMessageContent =
+                serde_json::from_value(r["input_message_content"].clone()).unwrap();
+            assert_eq!(t.is_some(), topic.is_some());
+            assert_eq!(rep.is_some(), reply.is_some());
+            assert_eq!(o.sending_id, 42);
+            assert!(!o.only_preview);
+            let enums::InputMessageContent::InputMessageText(x) = c else {
+                panic!("不是文字");
+            };
+            assert!(!x.clear_draft);
+            assert_eq!(x.text.text, "好的 e\u{301}");
+        }
+    }
+
     /// 映射只有一份的前提：tdlib-rs 的 `Update` 序列化回去，与 TDLib 原样 JSON 走 `tdjson::classify` / `event`
     /// 得到同一个结果（`td` 的来源就是这么喂收线程的）
     #[test]

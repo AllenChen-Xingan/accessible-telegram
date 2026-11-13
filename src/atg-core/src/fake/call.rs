@@ -35,4 +35,10 @@ pub enum Call {
         list: ChatList,
         limit: u32,
     },
+    /// 交出口：`sendMessage`（`preview` 为真是只预览）或 `resendMessages`。只记会话与种类，不记内容
+    Submit {
+        chat: ChatId,
+        preview: bool,
+        resend: bool,
+    },
 }

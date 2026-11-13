@@ -1,0 +1,7 @@
+---
+source: src/atg-cli/src/serve.rs
+expression: "norm_json(&cap.out).join(\"\\n\")"
+---
+{"v":1,"kind":"plan","at":"<at>","data":{"action":"send_text","target":{"chat_id":9,"kind":{"type":"private"},"title":"会话9","is_forum":false,"saved":true},"text":"测试","hidden_chars":0,"reply_to":null,"topic":null,"origin":"cli","confirm":"test_exempt","digest":"<ms>","note_zh":"若网络中断，恢复后仍会发出","reply_brief":null}}
+{"v":1,"kind":"message","data":{"type":"message","id":{"chat_id":9,"message_id":1000002},"head":{"sender":{"type":"user","user_id":9,"name":null},"date":"2026-10-23T11:37:00Z","outgoing":true},"content":{"body":[{"type":"text","text":"测试"}]},"tail":{"delivery":"sent"}},"speech":{"brief":"我：测试，19:37"},"at":"<at>"}
+{"v":1,"kind":"result","at":"<at>","data":{"command":"send","chat_id":9,"message_id":1000002,"temp_message_id":1000001,"confirm":"test_exempt","elapsed_ms":"<ms>"}}
