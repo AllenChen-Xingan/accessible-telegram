@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
-    "login", "auth", "logout", "speech", "history", "links", "send", "resend",
+    "login", "auth", "logout", "speech", "history", "links", "watch", "send", "resend",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -20,7 +20,6 @@ const PLACEHOLDERS: &[&str] = &[
     "delete",
     "show",
     "search",
-    "watch",
     "draft",
     "play",
     "schema",
@@ -344,6 +343,8 @@ fn history_and_links_usage_errors() {
         &["history", "saved", "--tz", "+99", "--fake", "x"][..],
         &["links", "saved", "--fake", "x"][..],
         &["links", "nope", "5", "--fake", "x"][..],
+        &["watch", "--chat", "abc", "--fake", "x"][..],
+        &["watch", "--tz", "+99", "--fake", "x"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -359,6 +360,7 @@ fn history_takes_negative_chat_ids() {
     for args in [
         &["history", "-1001", "--fake", "x"][..],
         &["links", "-1001", "7", "--fake", "x"][..],
+        &["watch", "--chat", "-1001", "--fake", "x"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");
@@ -374,6 +376,7 @@ fn redact_refused_until_done() {
         &["history", "saved", "--redact"][..],
         &["links", "saved", "5", "--redact"][..],
         &["chats", "--redact"][..],
+        &["watch", "--redact"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");

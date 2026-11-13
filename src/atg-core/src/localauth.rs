@@ -102,9 +102,20 @@ mod tests {
         }
         let ruler: Vec<String> = "ABCDEFGH"
             .chars()
-            .map(|row| (1..=6).map(|k| format!("字字字字字字字字{row}{k}")).collect())
+            .map(|row| {
+                (1..=6)
+                    .map(|k| format!("字字字字字字字字{row}{k}"))
+                    .collect()
+            })
             .collect();
         let got = LocalAuth.authenticate(&ruler.join("\n"));
-        println!("刻度尺弹框结果：{}", if got.is_ok() { "按了通过" } else { "取消或未过" });
+        println!(
+            "刻度尺弹框结果：{}",
+            if got.is_ok() {
+                "按了通过"
+            } else {
+                "取消或未过"
+            }
+        );
     }
 }

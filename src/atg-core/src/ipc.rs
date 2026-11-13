@@ -76,6 +76,29 @@ pub fn peer_uid(s: &UnixStream) -> io::Result<u32> {
     }
 }
 
+/// 对端已经关了连接（不读、不等：看一眼有没有读到结尾）。流式订阅时执行方靠它发现 `watch` 已走，
+/// 不必等到下一次写失败。对端还发着别的东西、或暂时没东西，都算没关
+pub fn peer_closed(s: &UnixStream) -> bool {
+    let mut b = [0u8; 1];
+    // SAFETY: fd 在 `s` 活着期间有效；缓冲在本栈上、长度 1；MSG_PEEK 不取走数据，MSG_DONTWAIT 不阻塞
+    let n = unsafe {
+        libc::recv(
+            s.as_raw_fd(),
+            b.as_mut_ptr().cast(),
+            1,
+            libc::MSG_PEEK | libc::MSG_DONTWAIT,
+        )
+    };
+    match n {
+        0 => true,
+        n if n > 0 => false,
+        _ => !matches!(
+            io::Error::last_os_error().kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+        ),
+    }
+}
+
 /// 对端是本用户才放行；查不到也不放行
 pub fn peer_allowed(peer: io::Result<u32>, me: u32) -> bool {
     matches!(peer, Ok(uid) if uid == me)

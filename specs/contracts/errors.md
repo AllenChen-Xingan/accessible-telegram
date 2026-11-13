@@ -22,24 +22,24 @@
 | `auth_wrong_state` | 当前授权步骤不收这个输入（如等密码时送了验证码） | `expected`：当前的 `AuthStep` 值 | 否 |
 | `rate_limited` | 限流：TDLib 429 `Too Many Requests: retry after N`，服务器 `FLOOD_WAIT_N`，群慢速模式 `SLOWMODE_WAIT_N` | `retry_after_s` | 是，**等够秒数**才许再发（L2 除外，见第 5 小节） |
 | `account_limited` | 账号被限制的信号：`PEER_FLOOD`（发给陌生人太多）、`PHONE_NUMBER_FLOOD`（登录太多）、码 420 的其余情况 | — | 否；收到后**停掉全部 L2 动作和登录**，直到人处理 |
-| `not_found` | 会话 / 消息 / 用户不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what` | 否 |
+| `not_found` | 会话 / 消息 / 用户 / 论坛话题不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what`（`chat` · `message` · `forum_topic`……） | 否 |
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等） | — | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
-| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话，发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
+| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
 | `profile_busy` | 同一个本地库已被另一个进程占用，且这条命令没法经本机接口转过去（见 `config-privacy.md`「一库一进程」「本机接口」）。说明按场景换：占着的是一次性命令 →「稍后重试，或先开着 atg-cli serve」；占着的是常驻执行方而命令不转（登录、登出）→「请先停掉它再跑」；又起一个 `serve` →「已经有常驻进程在服务」 | `holder`：能查到就写是 CLI 还是 GUI | 否（不自动重试；要不要稍后再跑由调用方按说明定） |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但没等到成功或失败：时限内都没来（CLI `send` 30 秒）· 待发那条被删（TDLib 不来失败，可能已送达）· 等的途中连接断了 | `chat_id` · `temp_message_id`（临时 id，与 `send` 其余各行同名；交出途中就断了、没拿到临时 id 时为 0；经本机接口转发时断开，会话写的是 `saved` 而发起方认不出 id 的，`chat_id` 为 `null`）· `why`（`timeout` / `pending_deleted` / `disconnected`） | **否**。不许重发；用 `status` / `pending` 查这条待发消息的下落（这两个命令做好之前：去会话里看最近的消息，没发出的下次启动会自动补发）。`pending_cancel` 只是尽力撤销（请求已发出就照样送达，`actions.md`「待发出的消息」），不是补救 |
 | `cancelled` | 人在确认步骤按了取消（只指这个；Ctrl+C 见下方「CLI 自有码」） | — | 否 |
-| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
+| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_forum_topic_reserialize_failed`（同下一条，发生在 `watch` 取论坛话题设置时；`watch` 只在标准错误记码、照常继续）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `too_long_to_confirm`（正文太长、Touch ID 确认框放不下全文：人看不到全文就不让按；拆短或用直发模式）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（经 SSH 运行、本机没设登录密码）。
 
 `invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）。
 
-**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
+**CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对；另：执行方上同时挂着的 `watch` 已到上限 8 个时也借用它，说明写「已到上限」，`config-privacy.md` 第一节第 2 小节「流式订阅」）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 
 **`error.data` 的字段**（CLI 原样输出；GUI 读 `message_zh`）：
 
@@ -173,3 +173,4 @@
 - 2026-10-26 issue #52 自审第 5 轮后（send，大总管授权；默认取法列进待人定）：`send_refused.reason` 加 `too_long_to_confirm`
 - 2026-10-26 issue #52 自审第 7 轮后（send，属技术细节，大总管授权）：`send_outcome_unknown` 的临时 id 字段改名 `temp_message_id`（与 `send` 的 `result` / `error` 各行一致，免得被当成正式 id 拿去重发）
 - 2026-10-26 issue #52 自审第 8 轮后（send，属技术细节，大总管授权）：`account_limited` 落盘为档案目录的 `account-limited` 文件（第 4 小节原已要求），之后的进程照停，人删文件才恢复
+- 2026-10-26 issue #53 watch（大总管授权 2026-10-26，属技术细节）：`usage` 另指执行方 `watch` 订阅者已满；`disconnected` 补「流式 `watch` 不用 90 秒超时」「60 秒写不出被摘掉」两种；`internal.what` 登记 `td_forum_topic_reserialize_failed`，`not_found.what` 可为 `forum_topic`

@@ -62,6 +62,14 @@ pub enum Input {
     /// `resendMessages` 的应答：失败的那条 `old` 重发成了 `new`（TDLib 按请求顺序逐条返回）。
     /// 新的那条沿用旧的稳定键。删除失败那条的更新照常到（不当撤回）
     Resent { old: MsgId, new: MsgId },
+    /// `getForumTopic` 的应答（`received_ms`：收到应答的时刻，换静音到期用）。**只在 store 里还没有这个话题时收**：
+    /// 应答可能比之后推来的 `updateForumTopic` 旧，不许盖掉它
+    TopicLoaded {
+        chat_id: ChatId,
+        topic_id: i64,
+        state: ForumTopicState,
+        received_ms: i64,
+    },
 }
 
 /// 发历史请求时记下的东西：哪个会话、当时的代次、当时最后一条更新的序号
@@ -228,7 +236,9 @@ pub struct Store {
     versions: HashMap<MsgId, Version>,
     /// 活消息各字段最后一次被更新的序号
     fields: HashMap<MsgId, FieldSeqs>,
-    scope_mute: HashMap<NotifyScope, i64>,
+    scope_notify: HashMap<NotifyScope, ScopeNotify>,
+    /// 论坛话题的通知状态（话题静音已按收到时刻换成绝对到期时刻；中途接入的订阅者也从这里取）
+    topics: HashMap<(ChatId, i64), TopicNotify>,
     status: Option<UserStatus>,
     generation: u64,
     window: Option<Window>,
@@ -249,6 +259,20 @@ pub struct Store {
     requests: u64,
     /// 自己的用户 id（事件 `my_id_changed`）；还不知道是 `None`
     me: Option<UserId>,
+}
+
+/// 话题设置 → 存下的状态：剩余静音秒数按收到时刻换成绝对到期时刻；没有收到时刻（夹具）当一直静音
+fn topic_notify(s: ForumTopicState, received_ms: Option<i64>) -> TopicNotify {
+    let muted_until_ms = match (s.notify.mute_for > 0, received_ms) {
+        (false, _) => 0,
+        (true, Some(r)) => r.saturating_add(s.notify.mute_for.saturating_mul(1000)),
+        (true, None) => i64::MAX,
+    };
+    TopicNotify {
+        notify: s.notify,
+        muted_until_ms,
+        last_read_inbox: s.last_read_inbox,
+    }
 }
 
 /// 纯函数形式：旧状态 + 一件事 → 新状态
@@ -296,6 +320,16 @@ impl Store {
                 }
             }
             Input::HistoryLoaded { ticket, messages } => self.history(ticket, messages),
+            Input::TopicLoaded {
+                chat_id,
+                topic_id,
+                state,
+                received_ms,
+            } => {
+                self.topics
+                    .entry((chat_id, topic_id))
+                    .or_insert_with(|| topic_notify(state, Some(received_ms)));
+            }
             Input::Resent { old, new } => {
                 // 只记一条链；新的那条后来又换过 id 的，稳定键沿链自然传过去
                 if old != new {
@@ -348,7 +382,15 @@ impl Store {
     }
     /// 范围的静音秒数；没收到过该范围的设置是 `None`
     pub fn scope_mute(&self, scope: NotifyScope) -> Option<i64> {
-        self.scope_mute.get(&scope).copied()
+        self.scope_notify.get(&scope).map(|n| n.mute_for)
+    }
+    /// 论坛话题的通知状态；没收到过是 `None`
+    pub fn topic_notify(&self, chat_id: ChatId, topic_id: i64) -> Option<TopicNotify> {
+        self.topics.get(&(chat_id, topic_id)).copied()
+    }
+    /// 范围的默认通知设置（静音、提及、置顶）；没收到过是 `None`
+    pub fn scope_notify(&self, scope: NotifyScope) -> Option<ScopeNotify> {
+        self.scope_notify.get(&scope).copied()
     }
 
     /// 本次运行内稳定的消息键：换过 id 的给最初那个，没换过的就是它自己
@@ -511,9 +553,26 @@ impl Store {
                     c.notify = notify;
                 }
             }
-            CoreEvent::ScopeNotificationChanged { scope, mute_for } => {
-                self.scope_mute.insert(scope, mute_for);
+            CoreEvent::ScopeNotificationChanged { scope, notify } => {
+                self.scope_notify.insert(scope, notify);
             }
+            // 话题静音到期 TDLib 不再推更新：按收线程记下的收到时刻换成绝对到期时刻（store 自己不碰时钟）
+            CoreEvent::ForumTopicChanged {
+                chat_id,
+                topic_id,
+                last_read_inbox,
+                notify,
+                received_ms,
+            } => {
+                let state = ForumTopicState {
+                    last_read_inbox,
+                    notify,
+                };
+                self.topics
+                    .insert((chat_id, topic_id), topic_notify(state, received_ms));
+            }
+            // 正在输入归 `notify`；补发结束只给订阅方看
+            CoreEvent::ChatAction { .. } | CoreEvent::SyncDone => {}
             // 0 = 没有（登出后 TDLib 会把选项清掉）
             CoreEvent::MyIdChanged { user_id } => self.me = (user_id != 0).then_some(user_id),
             CoreEvent::UserChanged(u) => {
@@ -953,6 +1012,7 @@ mod tests {
             edited: None,
             reactions: vec![],
             sending: SendingState::Sent,
+            mentions_me: false,
         }
     }
 

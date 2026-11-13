@@ -138,6 +138,10 @@ impl Shared {
         }
         if new.net != old.net {
             Self::emit(&mut st, CoreEvent::NetStateChanged(new.net.clone()));
+            // 补发结束（`sync_done`，`cli.md`「什么时候算数据齐了」）：启动或重连后连接线到 ready
+            if new.net == NetState::Ready {
+                Self::emit(&mut st, CoreEvent::SyncDone);
+            }
         }
         let status = new.user_status();
         if status != st.status {
@@ -404,10 +408,36 @@ fn run(shared: &Shared, source: &mut dyn FnMut() -> Step) -> bool {
                     }
                 }
                 Classified::Net(net) => shared.set_lines(|l| l.net = net),
-                Classified::Event(e) => shared.event(e),
+                Classified::Event(e) => shared.event(stamp(e)),
             },
         }
     }
+}
+
+/// 话题通知设置记下收到的时刻（话题静音到期 TDLib 不再推更新，store 要拿它换绝对到期时刻；003 收2）
+fn stamp(e: CoreEvent) -> CoreEvent {
+    match e {
+        CoreEvent::ForumTopicChanged {
+            chat_id,
+            topic_id,
+            last_read_inbox,
+            notify,
+            received_ms: None,
+        } => CoreEvent::ForumTopicChanged {
+            chat_id,
+            topic_id,
+            last_read_inbox,
+            notify,
+            received_ms: Some(now_ms()),
+        },
+        other => other,
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
 // ───────────────────────── 事件流 ─────────────────────────

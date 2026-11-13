@@ -22,11 +22,11 @@
 
 | 窗口 | 任务 | 交代文件 | 现状页 | 状态 |
 |---|---|---|---|---|
-| `send` | 批次 b17 · #52 发送闸 + send（worktree `atg-wt/52-send`） | `_tmp/20261026-b17/send.md` | worktree 内 `state/handoff/send.md` | 已派 |
-| `watch` | 批次 b17 · #53 watch（worktree `atg-wt/53-watch`） | `_tmp/20261026-b17/watch.md` | worktree 内 `state/handoff/watch.md` | 已派 |
-| `prior`（会话 `telegram-accessibility-8b`） | 批次 b17 · 系统分析 003：发 / 收消息的开源先例（Rust 为主），结论给 #52 #53 | `_tmp/20261026-b17/prior.md` | `state/handoff/prior.md` | **完成，已收尾**（003；窗口已关；待提交） |
+| `send`（会话 `52-send-59`） | 批次 b17 · #52 发送闸 + send（worktree `atg-wt/52-send`） | `_tmp/20261026-b17/send.md` | worktree 内 `state/handoff/send.md` | **进行中** |
+| `watch`（会话 `53-watch-36`） | 批次 b17 · #53 watch（worktree `atg-wt/53-watch`） | `_tmp/20261026-b17/watch.md` | worktree 内 `state/handoff/watch.md` | **完成，已收尾**（321 测试；人定 notify 两条落地；拍板 009） |
+| `prior`（会话 `telegram-accessibility-8b`） | 批次 b17 · 系统分析 003：发 / 收消息的开源先例（Rust 为主），结论给 #52 #53 | `_tmp/20261026-b17/prior.md` | `state/handoff/prior.md` | **完成，已收尾**（003；PR #55 已合并；窗口已关） |
 | `signing`（会话 `38-signing-65`） | 批次 b16 · #38 落地：开发版改用 Apple Development 签名、迁移 test / main 真条目（worktree `atg-wt/38-signing`，分支 `feat/38-dev-signing`） | `_tmp/20261026-b16/signing.md` | worktree 内 `state/handoff/signing.md` | **完成，已收尾**（255 测试；test / main 迁移不弹框；atg-dev 已删；exp006；PR 见下） |
-| `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **已交付**（284 测试；自审第 5、6 轮清零；待提交） |
+| `history`（会话 `21-history-86`） | 批次 b16 · #21 `atg-cli history`（worktree `atg-wt/21-history`，分支 `feat/21-history`；收藏夹只读冒烟） | `_tmp/20261026-b16/history.md` | worktree 内 `state/handoff/history.md` | **完成，已收尾**（PR #56 已合并；窗口已关） |
 | `cert`（会话 `telegram-accessibility-1c`） | 批次 b15 · 领 Apple 免费开发证书（人登录 Apple ID，其余手下做），给 #38 方案乙 | `_tmp/20261026-b15/cert.md` | `state/handoff/cert.md` | **完成，已收尾**（Apple Development 证书已建，SHA-1 DE6F6A93…，团队 XWFX…，有效到 2027-10-26；无弹框；窗口已关） |
 | `speech`（会话 `19-speech-96`） | 批次 b15 · #19 speech v0 + 快照（worktree `atg-wt/19-speech`，分支 `feat/19-speech`） | `_tmp/20261026-b15/speech.md` | worktree 内 `state/handoff/speech.md` | **完成，已收尾**（235 测试；V1–V23 落地；PR #47；窗口已关） |
 | `style`（会话 `20-style-e3`） | 批次 b15 · #20 读法规约 v0 草稿（worktree `atg-wt/20-style`，分支 `docs/20-style-v0`） | `_tmp/20261026-b15/style.md` | worktree 内 `state/handoff/style.md` | **完成，已收尾**（三份稿 60+ 例，V1–V23 回填；007 随 PR #48；窗口已关） |
@@ -72,7 +72,7 @@
 
 | 名额 | 当前持有 |
 |---|---|
-| 重编译 / 全量测试（1 个） | history（2026-10-26，首编修错，持有至告一段落） |
+| 重编译 / 全量测试（1 个） | 空 |
 
 排队（先来先得；GPUI 首次编译最重，之后共享 `_build/20261023-154000`）：
 
@@ -84,6 +84,14 @@
 2. ~~exp004：补跑~~ ✅ 7/7 通过（79.7 秒，2026-10-25）
 
 ## 发现（实验中途）
+
+- **人定 notify（2026-10-26）**：第 2 条 7 秒窗按会话分开；第 10 条重连补发后响一声并汇总；其余 9 条先按默认、实听再调。send：超 150 字默认拒发（待人定）
+
+- **待人定（watch 10 条 notify 默认值）**：正本在 `atg-wt/53-watch/state/handoff/watch.md`「要人定的事」，收尾时一次问人
+
+- **人（2026-10-26）**：同意 send 往收藏夹真发 2 条 + 重复拦截验证；同意测 Touch ID（B，人在场）。send 结果未知记录改留 24 h；watch 未加载的论坛话题先不提示（topic_unknown，默认待人定）
+
+- **watch 冒烟（2026-10-26，main 只读 60 s）**：265 事件，首个 81 ms、sync_done 564 ms，积压峰值 188；提示 0（backlog 6、too_old 3），不弹框。unknown_update 占 213（同 #44 方向）。自审第 2 轮 P1：转发时读方断开发现不了，修中
 
 - **人定 B17-2（2026-10-26）**：直发模式重复提交 → 拦下（A），机制归 #52 设计评审。003 八条契约建议大总管全采纳：1、2、3、7、8 → #52；5、6 → #53；发送状态读法、notify 行为先默认后交人。history 第五、六轮连续干净，最终复测中
 

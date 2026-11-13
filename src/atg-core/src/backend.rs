@@ -30,7 +30,7 @@ use crate::error::CoreError;
 use crate::gate::Gate;
 use crate::link::EventStream;
 use crate::model::FailedInfo;
-use crate::model::{ChatId, ChatList, Message, MsgId};
+use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed};
@@ -142,6 +142,23 @@ pub trait Backend {
     /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览）或 `resendMessages`。[`Sealed`] 只能由
     /// [`crate::send`] 在闸验过凭据后造（预览除外：预览不发），crate 外调不到
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError>;
+
+    /// 打开会话（`openChat`，L0）：只为让 TDLib 推这个会话的实时更新（超级群、频道只有打开的会话才推）。
+    /// **绝不隐式调 `viewMessages`，不标已读**（`actions.md` `chat_open`；CLI 的 `watch --chat` 用）。必须与
+    /// [`Backend::chat_close`] 配对。找不到 → `not_found`
+    async fn chat_open(&self, chat: ChatId) -> Result<(), CoreError>;
+
+    /// 关闭会话（`closeChat`，L0），与 [`Backend::chat_open`] 配对
+    async fn chat_close(&self, chat: ChatId) -> Result<(), CoreError>;
+
+    /// 一个论坛话题的已读位置与通知设置（`getForumTopic`，L0，只读）。话题没加载过时 TDLib 不推它的
+    /// `updateForumTopic`（连设置变更也丢掉，`ForumTopicManager.cpp:659-662`），`notify` 要按话题判静音就得主动取。
+    /// 找不到 → `not_found`
+    async fn forum_topic_get(
+        &self,
+        chat: ChatId,
+        topic_id: i64,
+    ) -> Result<ForumTopicState, CoreError>;
 
     /// 等到连接线满足 `pred`（或内核故障 / 超时 → `None`）。「补发完了」（离线期间漏掉的更新已补送完）= 连接线到 `ready`
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState>;

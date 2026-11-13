@@ -56,6 +56,7 @@ fn msg(chat_id: i64, message_id: i64, body: Body) -> Message {
         edited: None,
         reactions: vec![],
         sending: SendingState::Sent,
+        mentions_me: false,
     }
 }
 
@@ -875,6 +876,7 @@ fn inherited_mute_uses_scope_setting() {
     c.notify = ChatNotify {
         use_default_mute_for: true,
         mute_for: 0,
+        ..ChatNotify::default()
     };
     let mut s = feed([CoreEvent::ChatAdded {
         chat: c,
@@ -886,7 +888,10 @@ fn inherited_mute_uses_scope_setting() {
         &mut s,
         CoreEvent::ScopeNotificationChanged {
             scope: NotifyScope::Group,
-            mute_for: 3600,
+            notify: ScopeNotify {
+                mute_for: 3600,
+                ..ScopeNotify::default()
+            },
         },
     );
     assert!(item(&s).muted);
