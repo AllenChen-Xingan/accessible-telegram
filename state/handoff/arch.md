@@ -1,6 +1,6 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
-- **手上**：第一段——体检报告 · 门槛脚本 · 守则 · 自审 + codex（编号 019）
+- **手上**：第一段已完成（PR #86 草稿，等 #52 合并）；第二段 R1 设计已采纳，等通知开工
 - **做到哪**（2026-11-13）：
   - ✅ `scripts/check-file-size.py`（600 行 + 棘轮；`--write-baseline --rev REV` 按某提交记基线，`--tighten` 只降不升）· 基线 `scripts/file-size-baseline.json`（按 main 记 14 个）
   - ✅ `scripts/check-sources.py`（五条检查：error-codes · exit-codes · subcommands · versions · workspace；前四条在 main 与 #52 分支都绿）
@@ -18,7 +18,9 @@
   - ✅ 给 fix 线意见：`block_on_until` 放 link.rs；禁裸 block_on 用 clippy disallowed-methods，由 fix 线 #78 一并做（010 R10）
   - ✅ codex 019 门槛第 1 轮：P1×2、P2×1 属实已修（自测改用夹具并拆三个文件；守卫拆成只管授权的 guard()；收工判据对齐停止线）。记录 `docs/reviews/019_arch-budget-codex.md`
   - ✅ codex 019 收敛：门槛 9 轮（第 8、9 轮全零）、方案文档 5 轮（第 4、5 轮无 P0/P1）；累计采纳 23 / 提出 23，零驳回；衍生 #81（退出码 / 错误码表由代码生成，R11）、#82（schema 子命令其余部分）。Q1 人定 A 已写进 010
-  - ✅ PR 草稿 MAIN `_tmp/20261113-b18/pr-arch.md`；等大总管开 PR
+  - ✅ 大总管验收通过，提交 `8cd9605`，草稿 PR #86（Closes #41）
+  - ✅ 第二段 R1 设计（见下）大总管已采纳
+- **下一步**：等大总管通知 #52 合并 → `git fetch` + `git merge origin/main` → `--write-baseline --rev origin/main` 重记基线（大总管提交，连同 010 的 S17）→ #86 转可合并 → 合并后大总管应用 ruleset → 开工 R1a / R1b
   - ⚠️ 自报：拆自测时跑过一次 `git rm --cached`（git 写操作，违反共同规矩第 3 条）；文件从未 add，命令失败，`git diff --cached` 实查为空，索引没变。已报大总管
 - **大总管已定**：#52 先合，门槛 PR 后进；合并后 `--write-baseline --rev main` 重记，第二段最先拆 #52 的三个超线文件（R1）
 - **要人定**：无。Q1 人定 A（2026-11-13，用 `schemars`），已写进 010 第六节、排进 R9
@@ -54,3 +56,49 @@
 - 控制命令文本协议归 CLI、GUI 直接给 `player::Cmd` → 可以；但「控制命令有哪些」只在 `player::Cmd` 定义一次，CLI 解析和 GUI 键位都指向它
 - `play` 打印的每一行 `kind:"playback"` 也是要读出来的东西：请做成树节点（`Doc::Playback`），句子归 `speech`，别在 `play.rs` 里拼中文（这是 010 第三节的规矩，watch 现在就犯了这条，第二段收）
 - 新文件都 < 600 行 ✓；`download` 的「起后端 → 取 → 关」请用现有的一份（`history::with_backend` 那种），010 第四节要收成一份，别再加第六份
+
+## 第二段 R1 设计：拆 #52 新增的三个超线文件（2026-11-13，只设计、未动代码）
+
+依据：`feat/52-send` @ `f7e654e`（#52 合并前还会变，开工前按合并后的 main 重核行号）。010 第五节 R1。
+原则：**只按职责挪，不改逻辑**；对外路径不变（模块根 `send.rs`、`gate.rs` 留着做根，`pub use` 把原来的公开名字原样导出，调用方一行不改）；模块根不改名成 `mod.rs`（基线认路径）；每个新文件 ≤ 600；测试同样 ≤ 600，超了按主题分。
+
+### ① `atg-core/src/gate.rs`（1372 = 产品 853 + 测试 519）
+
+| 新文件 | 搬什么（按 f7e654e 行号） | 约行数 |
+|---|---|---|
+| `gate.rs`（根） | 常量（TTL、窗口、文件名）、`pub use` 导出 | ~70 |
+| `gate/token.rs` | 凭据：`ConfirmMode`、`ConfirmToken`、`sealed`、`Gated`（77–165） | ~90 |
+| `gate/display.rs` | 「给人看的文字」：确认框宽度 / 行数（166–265）+ `visible`、`hidden_count`（793–854） | ~170 |
+| `gate/digest.rs` | `digest`、`derive_guard_key`、`fingerprint`、`hex`（266–304） | ~40 |
+| `gate/auth.rs` | `Authenticator`、`NoAuth`、`system_authenticator`（305–333） | ~30 |
+| `gate/check.rs` | 闸本体：`Facts`、`Gate`、`Outcome`、`refused`（334–635） | ~300 |
+| `gate/guard_store.rs` | 防重复记录与直发日志：`GuardEntry`、`GuardStore`、`write_atomic`、直发日志（636–792） | ~160 |
+| `gate/tests.rs` | 原样搬（519） | 519 |
+
+### ② `atg-core/src/send.rs`（1688 = 产品 1055 + 测试 633）
+
+| 新文件 | 搬什么 | 约行数 |
+|---|---|---|
+| `send.rs`（根） | 常量、`SendOrigin`、`Sealed`/`SealedKind`、`Answer`、`pub use` | ~100 |
+| `send/text.rs` | 发文字：`TextPlan` 及其 `Gated`、`Draft`、`text_request`、`prepare_text`、`preview_check`、`check_kept`、`send_text`、`submit_failed`（94–497） | ~400 |
+| `send/wait.rs` | 等结果：`Waited`、`verdict`、`wait`、`finish`、`send_and_wait`、`submit_within`（498–651） | ~155 |
+| `send/resend.rs` | 重发：`ResendItem` … `resend_and_wait`（652–1012） | ~360 |
+| `send/plan.rs` | 计划行：`plan_json`、`resend_plan_json`、`target_json`（1013–1056） | ~45 |
+| `send/tests/{text,wait,resend}.rs` | 633 行按主题分三份（`send/tests.rs` 只留 `mod` 几行） | 各 ≤ 300 |
+
+### ③ `atg-cli/src/send.rs`（971 = 产品 555 + 测试 416）
+
+只把测试挪成 `send/tests.rs`（剩 555）。其余问题不在 R1 里挪，交给对应项，免得挪两遍：`resolve`/`chat_ref`（第 4 份 `saved` 解析）→ R4；`echo`/`project_one`（输出一行）→ R5 的 `out::emit_doc`；`emit_plan`、`finish_line` 的中文句子 → R6。
+
+### 顺带看到、**不在 R1 里改**（记进 010，各归其项）
+
+- `gate::lock` 是第 4 份 `lock<T>`（fake、link、td 各一份）→ R8（S13）
+- `gate::unix_now`（秒）与 `link::now_ms`、`watch::now_ms` 又一组「现在」→ R8（S10）
+- `gate::write_atomic` 与 `config::write_private` 都是「写私有文件」，前者原子、后者不是 → 新 S17：收成一个（取原子的那份），R8
+- core `send.rs` 里的中文句子（`QUEUE_NOTE_ZH`、`CONFIRM_QUEUE_ZH`、`origin_zh`、`target_zh`、`confirm_body`）和 `plan_json` 手拼的计划行 → R6（`Doc::Plan`，句子归 `speech`）；`gate/display.rs` 是确认框的排版规则，不是读法，留在 gate
+
+### 分 PR 与验收
+
+- **两个 PR**：R1a = core 的 `gate.rs` + `send.rs`（同一族、同一批人审）；R1b = cli `send.rs` 挪测试。每个都只碰 ≤ 4 个实体（闸、发送、重发、测试）
+- 验收：`cargo fmt --check`、`clippy -D warnings`（含 `tdlib-api` 特性）、`cargo test --workspace`、`check-no-debug.sh`（领名额）；`check-file-size.py --tighten` 收紧基线并一起提交；`git diff --stat` 证明是纯挪动（新增行 ≈ 删除行，差额只在 `mod` / `use` 行）；对外 `pub` 名字清单前后一致（`cargo doc` 或 `grep '^pub'` 对比）
+- 前置：#52 合并、本 PR #86 合并（基线在库里）；开工前与 fix 线（#78 动 `link.rs`、`deadlines.rs`）、media 线确认不撞这三个文件

@@ -67,6 +67,7 @@
 | S14 | 一行要不要提示 | `notify::Verdict.alert`（结构化） | `forward.rs:217–240` `count_line` 文字模式下拿中文前缀「新消息，」「对方正在输入」「断网期间收到」**重判**这一行要不要提示——读法句子成了协议，改一个字计数就错（media 线自审发现，已核实） | 执行方转发的每一帧事件带结构化的 `alert` 标记（文字模式也带，不只是那行字），发起方按标记计数，不再解析句子；这样与 `cli.md` 第一节第 5 小节例外④「Ctrl+C 时发起方按收到的行在本地写结尾」一致；随 R5、R6 |
 | S15 | 「哪些命令能转发」的文字说明 | 同 S3 | `serve.rs:10`、`forward.rs:10` 的模块注释和 `args.rs:127` `Serve` 的文档注释（即 `--help` 那条，D4）三处都写「chats、history、links、auth state」，**漏了已经能转的 `watch`**（media 线自审发现） | 注释不再列清单，只指向登记表（守则第 6 条）；随 R5 |
 | S16 | `src/` 下哪些目录是 crate | 根 `Cargo.toml` `members = ["src/atg-*"]` | `src/` 下的目录名（以 `atg-` 开头却没有 `Cargo.toml` 会让所有 cargo 命令失败） | 比对 ✅ `workspace`（守则第 10 条） |
+| S17 | 写私有文件 | — | `config::write_private`（非原子）与 #52 的 `gate::write_atomic`（原子）各一份 | 收成一份（取原子的），R8 |
 
 `find-duplicates.py`（skill 自带）另报 7 组同名类型（`Query`×3、`Cap`×3、`Feed`、`Shared`、`Head`、`Origin`、`Message`）：都是各模块自己的东西、同名不同事；其中 `Cap` 是 CLI 测试里的输出替身，`history` 与 `serve` 那两份可在 `atg-cli` 测试里合一，`watch` 那份接口不同、单留（S11）。其余不动。
 
