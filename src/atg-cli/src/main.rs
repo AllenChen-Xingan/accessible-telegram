@@ -2,7 +2,9 @@
 //!
 //! 已做：`version` / `--version` / `--help`；登录这组 `login` · `auth *` · `logout`（第一刀第 4 块，T01）；
 //! `chats`（第 5 块，T02）；`speech --fixture`（第 6 块，读法定标）；`history` / `links`（第 8 块，T03 T06）；
-//! 本机接口（第 9 块）：`serve` 常驻当执行方，档案被占时 `chats` / `history` / `links` / `auth state` 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
+//! `send` / `resend`（M2.1 / M2.2，T04：发送闸、发文字与回复、重发）；
+//! 本机接口（第 9 块）：`serve` 常驻当执行方，档案被占时 `chats` / `history` / `links` / `auth state` / `send` / `resend`
+//! 自动转过去（`forward`）。真实后端要 `--features tdlib`。其余子命令输出一行
 //! `not_implemented` 错误。
 
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：同 `atg-core` 根上那行（另有 `scripts/check-no-debug.sh` 补 clippy 管不到的）
@@ -26,6 +28,9 @@ mod forward;
 mod history;
 mod login;
 mod out;
+// 发送的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod send;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
@@ -92,6 +97,8 @@ fn main() -> ExitCode {
         Command::Logout => run_job(&cli.global, format, Job::Logout, started),
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
         Command::History(a) => run_history(&cli.global, format, &a, started),
+        Command::Send(a) => run_send(&cli.global, format, &a, started),
+        Command::Resend(a) => run_resend(&cli.global, format, &a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
@@ -298,6 +305,44 @@ fn no_redact(g: &args::Global, command: &'static str) -> Option<Fail> {
         command,
         message_zh: "--redact 打码还没做；这条命令会输出名字和正文，请先不加 --redact",
     })
+}
+
+/// `send`：一行 `plan` → 按闸确认 → 回显发出的那条 + `result`（或 `error`）。档案被占就转给执行方（闸在执行方，
+/// 直发参数听执行方的）
+fn run_send(g: &args::Global, format: Format, a: &args::SendArgs, started: Instant) -> ExitCode {
+    if let Some(f) = no_redact(g, "send") {
+        return fail_with(format, &f);
+    }
+    let p = match send::send_params(a, g.tz.as_deref()) {
+        Ok(p) => p,
+        Err(f) => return fail_with(format, &f),
+    };
+    let params = serde_json::to_value(&p).unwrap_or_default();
+    if let Some(code) = forward::try_forward(g, format, "send", &params) {
+        return ExitCode::from(code);
+    }
+    ExitCode::from(session::send(g, format, &p, started))
+}
+
+/// `resend`：同 `send` 的路子
+fn run_resend(
+    g: &args::Global,
+    format: Format,
+    a: &args::ResendArgs,
+    started: Instant,
+) -> ExitCode {
+    if let Some(f) = no_redact(g, "resend") {
+        return fail_with(format, &f);
+    }
+    let p = match send::resend_params(a, g.tz.as_deref()) {
+        Ok(p) => p,
+        Err(f) => return fail_with(format, &f),
+    };
+    let params = serde_json::to_value(&p).unwrap_or_default();
+    if let Some(code) = forward::try_forward(g, format, "resend", &params) {
+        return ExitCode::from(code);
+    }
+    ExitCode::from(session::resend(g, format, &p, started))
 }
 
 /// `history`：一行一条消息（`kind:"message"`，从旧到新）+ 一行 `result`。不标已读。档案被占就转给执行方

@@ -97,6 +97,23 @@ pub enum SendingState {
     Failed,
 }
 
+/// 失败消息的发送状态（`messageSendingStateFailed`，`td_api.tl:3458-3465`）：`resend` 准备时逐项查
+#[derive(Debug, Clone, PartialEq)]
+pub struct FailedInfo {
+    /// TDLib 说这条能不能重发
+    pub can_retry: bool,
+    /// 还要等几秒才能重发（0 = 现在就行）
+    pub retry_after: f64,
+    /// 要换个身份才能重发（原来以频道或匿名管理员身份发的，那个身份现在用不了）
+    pub need_another_sender: bool,
+    /// 原来引用的那段已经不在，要换引用才能重发
+    pub need_another_reply_quote: bool,
+    /// 重发时 TDLib 会去掉回复关系（被回复那条已不能回复）
+    pub need_drop_reply: bool,
+    /// 要付多少 Telegram Stars（付费私信 / 付费群）才能发；0 = 不用付
+    pub required_paid_message_star_count: i64,
+}
+
 #[derive(Clone, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Message {
@@ -351,4 +368,29 @@ pub enum CoreEvent {
     CoreStateChanged(crate::status::CoreState),
     /// 不认识的更新：只有类型名
     Unknown { td_type: String },
+}
+
+// ───────────────────────── 发送准备时的查询结果（`Backend` 的 L0 查询返回它们）─────────────────────────
+
+/// 自己是谁（`me()`；每次进入已登录都重算）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Me {
+    pub user_id: UserId,
+    /// 收藏夹的会话 id（TDLib 里就是自己的用户 id）
+    pub saved_chat_id: ChatId,
+    /// 当前登录号是不是 `99966` 开头的测试号
+    pub test_number: bool,
+}
+
+/// 目标会话：种类、名字、id（确认时一起给人看，改名叫「收藏夹」的会话骗不过去）。带会话名：`Debug` 脱敏（`redact`）
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct ChatTarget {
+    pub id: ChatId,
+    pub kind: ChatKind,
+    pub title: String,
+    /// 论坛群（话题群）
+    pub is_forum: bool,
+    /// 是自己的收藏夹（按用户 id 判，不认名字）
+    pub saved: bool,
 }

@@ -5,9 +5,10 @@
 //! 3. 连上：发一行请求，把应答的 `out` / `err` 帧原样写到本进程的标准输出 / 标准错误，按 `exit` 帧的码退出
 //! 4. 连不上：再探一次锁，已经空了（占着的一次性命令刚退）就改直跑；还占着 → `profile_busy`，不抢锁，
 //!    说明里提示稍后重试或常开 `serve`
-//! 5. 连上了却没等到 `exit` 帧就断了，或两帧之间 [`FRAME_TIMEOUT`] 没动静 → `disconnected`，退出码 4
+//! 5. 连上了却没等到 `exit` 帧就断了，或两帧之间 [`FRAME_TIMEOUT`] 没动静 → `disconnected`，退出码 4；
+//!    **发送类（`send`、`resend`）例外**：执行方可能已经交出，报 `send_outcome_unknown`（退出码 10，不许重跑）
 //!
-//! 只转只读且不带秘密的命令：`chats`、`history`、`links`、`auth state`。`--unsafe-direct-send` 不随请求过去：直发听执行方的（N1），
+//! 转的命令：只读且不带秘密的 `chats`、`history`、`links`、`auth state`；发送类 `send`、`resend`（闸在执行方；断在半路按「结果未知」报，不叫人重跑）。`--unsafe-direct-send` 不随请求过去：直发听执行方的（N1：`docs/plan/005_decisions-b3.md` 表里那一行），
 //! 连上之后在标准错误说一声。档案不存在、种类不对等情况不在这里报，交回直跑的路径照常报。
 //!
 //! 不转的命令（登录这组、`serve` 自己）撞上占着档案的常驻进程时，用 [`busy_reason`] 换一句对路的说明。
@@ -30,13 +31,22 @@ pub struct FwdArgs {
 }
 
 /// 两帧之间最多等多久：一条 `chats` 最长约 30 秒（等授权 + 加载 + 等补发各 10 秒），执行方还可能先在处理
-/// 别人的请求，留足两条的量
-pub const FRAME_TIMEOUT: Duration = Duration::from_secs(90);
+/// 别人的请求；`send` 出完 `plan` 之后要等人按 Touch ID（最多 60 秒）再等结果（最多 30 秒），中间没有帧——留足
+pub const FRAME_TIMEOUT: Duration = Duration::from_secs(150);
 
 /// 执行方中途退出时给人的话
 pub const EXECUTOR_GONE_ZH: &str = "替你执行的进程中途退出了，结果不完整，请重试";
 /// 执行方太久没回话
-pub const EXECUTOR_SILENT_ZH: &str = "替你执行的进程 90 秒没回话，已放弃；可以重试";
+pub const EXECUTOR_SILENT_ZH: &str = "替你执行的进程 150 秒没回话，已放弃；可以重试";
+/// 发送类命令转发途中断了：执行方可能已经交出，不能叫人重试
+pub const EXECUTOR_GONE_SEND_ZH: &str =
+    "替你执行的进程中途断了，消息可能已经发出；不要重发，先去会话里看一眼";
+
+/// 会发东西的命令（断了不能当「可以再跑一次」）
+fn is_l2(command: &str) -> bool {
+    matches!(command, "send" | "resend")
+}
+
 /// 占着档案的进程没开本机接口（一次性命令）
 pub const BUSY_ONESHOT_ZH: &str =
     "本地档案正被另一个命令占着，它不接转发；稍后重试，或先开着 atg-cli serve";
@@ -130,6 +140,11 @@ pub fn forward(
             Ok(Frame::Out { line }) => sink.out(&line),
             Ok(Frame::Err { line }) => sink.err(&line),
             Ok(Frame::Exit { code }) => return code,
+            // 发送类：执行方可能已交出，按「结果未知」报（退出码 10，不许重发），不按「可以再跑一次」的断线报
+            Err(_) if is_l2(command) => {
+                let chat = params["chat"].as_str().and_then(|c| c.parse::<i64>().ok());
+                return crate::out::emit_send_unknown(sink, format, chat, EXECUTOR_GONE_SEND_ZH);
+            }
             Err(e) => {
                 let msg = match e {
                     ReadError::TimedOut => EXECUTOR_SILENT_ZH,

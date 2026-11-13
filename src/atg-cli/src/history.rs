@@ -161,7 +161,7 @@ pub fn run_links<B: Backend>(
     })
 }
 
-fn with_backend<B: Backend, T>(
+pub(crate) fn with_backend<B: Backend, T>(
     b: &B,
     profile: &Profile,
     started: Instant,
@@ -206,7 +206,7 @@ fn resolve<B: Backend>(
 }
 
 /// 让会话进 Store（`getChat`），找不到 → `not_found`
-fn load_chat<B: Backend>(
+pub(crate) fn load_chat<B: Backend>(
     b: &B,
     stream: &mut EventStream,
     feed: &mut Feed,

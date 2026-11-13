@@ -24,11 +24,15 @@ mod real {
     use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
     use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
+    use crate::gate::{self, Gate};
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
+    use crate::model::FailedInfo;
     use crate::model::{ChatId, ChatList, Message, MsgId};
+    use crate::model::{ChatTarget, Me};
     use crate::secret::{self, Secret};
+    use crate::send::{Answer, Sealed, SealedKind};
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
     use serde_json::{Value, json};
@@ -60,6 +64,8 @@ mod real {
         pub log_dir: PathBuf,
         /// 本进程是 CLI 还是 GUI（写进档案锁，别人打不开时能说清是谁占着）
         pub holder: Holder,
+        /// 发送闸（直发与否只由启动参数定，建后端时交进来）
+        pub gate: Gate,
     }
 
     struct Running {
@@ -287,11 +293,17 @@ mod real {
             let creds = config::load_api_credentials(&self.cfg.env_file)?;
             let key = self.cfg.keystore.get_or_create(profile.name())?;
             let key_b64 = secret::base64(key.expose());
+            // 直发防重复的指纹密钥：由库钥匙带标签派生，只在内存里（B17-2）
+            let guard_key = gate::derive_guard_key(key.expose(), profile.name());
             drop(key);
             quiet_tdlib_log(&self.cfg.log_dir, profile.name())?;
             profile.mark_running()?;
 
             let use_test_dc = profile.kind().use_test_dc();
+            // 闸只认这里实际传给 `setTdlibParameters` 的值
+            self.cfg
+                .gate
+                .set_server(use_test_dc, profile.dir(), guard_key);
             let client_id = tdlib_rs::create_client();
             let receiver = link::spawn_receiver(self.shared.clone(), source(client_id))?;
             *lock(&self.run) = Some(Running {
@@ -556,6 +568,158 @@ mod real {
             self.shared.wait_net(timeout, pred)
         }
 
+        fn gate(&self) -> &Gate {
+            &self.cfg.gate
+        }
+
+        async fn me(&self) -> Result<Me, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(self.shared.clone(), functions::get_me(id)).await?;
+            let enums::User::User(u) = r.map_err(|e| self.read_error("me", &e))?;
+            // 收藏夹 = 与自己的私聊，会话 id 即用户 id；让它进本地（不新建别的会话）
+            self.chat_get(u.id).await?;
+            let me = Me {
+                user_id: u.id,
+                saved_chat_id: u.id,
+                test_number: auth::is_test_number(&u.phone_number),
+            };
+            self.cfg.gate.set_me(me);
+            Ok(me)
+        }
+
+        async fn chat_target(&self, chat: ChatId) -> Result<ChatTarget, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            self.chat_get(chat).await?;
+            let r = link::guard(self.shared.clone(), functions::get_chat(chat, id)).await?;
+            let c = r.map_err(|e| self.read_error("chat", &e))?;
+            let v = serde_json::to_value(&c).map_err(|_| CoreError::Internal {
+                what: "td_chat_reserialize_failed",
+            })?;
+            let mapped = tdjson::chat_object(&v);
+            let is_forum = if v["type"]["@type"] == "chatTypeSupergroup" {
+                let sg = v["type"]["supergroup_id"].as_i64().unwrap_or(0);
+                let r = link::guard(self.shared.clone(), functions::get_supergroup(sg, id)).await?;
+                let enums::Supergroup::Supergroup(g) =
+                    r.map_err(|e| self.read_error("supergroup", &e))?;
+                g.is_forum
+            } else {
+                false
+            };
+            Ok(ChatTarget {
+                id: mapped.id,
+                kind: mapped.kind,
+                title: mapped.title,
+                is_forum,
+                saved: false,
+            })
+        }
+
+        async fn can_reply(&self, mid: MsgId) -> Result<bool, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(
+                self.shared.clone(),
+                functions::get_message_properties(mid.chat_id, mid.message_id, id),
+            )
+            .await?;
+            let enums::MessageProperties::MessageProperties(p) =
+                r.map_err(|e| self.read_error("message", &e))?;
+            Ok(p.can_be_replied)
+        }
+
+        async fn failed_info(&self, mid: MsgId) -> Result<Option<FailedInfo>, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(
+                self.shared.clone(),
+                functions::get_message(mid.chat_id, mid.message_id, id),
+            )
+            .await?;
+            let m = r.map_err(|e| self.read_error("message", &e))?;
+            let v = serde_json::to_value(&m).map_err(|_| CoreError::Internal {
+                what: "td_message_reserialize_failed",
+            })?;
+            Ok(tdjson::failed_info(&v))
+        }
+
+        async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            match req.kind {
+                SealedKind::Message { request, preview } => {
+                    // 交给 TDLib 的就是摘要算过的那份 JSON：逐段反序列化成 tdlib-rs 的类型，不另组一份
+                    let bad = || CoreError::Internal {
+                        what: "send_request_shape",
+                    };
+                    let part = |k: &str| request[k].clone();
+                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
+                    let topic: Option<enums::MessageTopic> =
+                        serde_json::from_value(part("topic_id")).map_err(|_| bad())?;
+                    let reply: Option<enums::InputMessageReplyTo> =
+                        serde_json::from_value(part("reply_to")).map_err(|_| bad())?;
+                    let mut options: types::MessageSendOptions =
+                        serde_json::from_value(part("options")).map_err(|_| bad())?;
+                    options.only_preview = preview;
+                    let content: enums::InputMessageContent =
+                        serde_json::from_value(part("input_message_content")).map_err(|_| bad())?;
+                    logline::info(
+                        "send_submit",
+                        &[Field::Name(
+                            "kind",
+                            if preview { "preview" } else { "send" },
+                        )],
+                    );
+                    let r = link::guard(
+                        self.shared.clone(),
+                        functions::send_message(chat, topic, reply, Some(options), content, id),
+                    )
+                    .await?;
+                    match r {
+                        Ok(enums::Message::Message(m)) => Self::map_message(m)
+                            .map(Answer::Message)
+                            .ok_or(CoreError::Internal {
+                                what: "td_message_reserialize_failed",
+                            }),
+                        Err(e) => {
+                            let e = self.map_error(&e);
+                            logline::info("send_failed", &[Field::Name("code", e.code())]);
+                            Err(e)
+                        }
+                    }
+                }
+                SealedKind::Resend { request } => {
+                    // 同发文字：交出去的就是摘要算过的那份，逐字段取，不另组
+                    let bad = || CoreError::Internal {
+                        what: "send_request_shape",
+                    };
+                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
+                    let ids: Vec<i64> = serde_json::from_value(request["message_ids"].clone())
+                        .map_err(|_| bad())?;
+                    let quote: Option<types::InputTextQuote> =
+                        serde_json::from_value(request["quote"].clone()).map_err(|_| bad())?;
+                    let paid = request["paid_message_star_count"]
+                        .as_i64()
+                        .ok_or_else(bad)?;
+                    logline::info("send_submit", &[Field::Name("kind", "resend")]);
+                    let r = link::guard(
+                        self.shared.clone(),
+                        functions::resend_messages(chat, ids, quote, paid, id),
+                    )
+                    .await?;
+                    match r {
+                        Ok(enums::Messages::Messages(ms)) => Ok(Answer::Resent(
+                            ms.messages
+                                .into_iter()
+                                .map(|m| m.and_then(Self::map_message))
+                                .collect(),
+                        )),
+                        Err(e) => {
+                            let e = self.map_error(&e);
+                            logline::info("send_failed", &[Field::Name("code", e.code())]);
+                            Err(e)
+                        }
+                    }
+                }
+            }
+        }
+
         fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {
             let Some(client_id) = self.client_id() else {
                 return Ok(());
@@ -690,6 +854,37 @@ mod tests {
                 json!({"@type": "updateAuthorizationState",
                    "authorization_state": {"@type": "authorizationStateWaitPhoneNumber"}}),
             ]
+        }
+
+        /// 交给 TDLib 的就是摘要算过的那份 JSON：它必须能逐段原样反序列化成 tdlib-rs 的请求类型
+        /// （`TdBackend::submit` 就是这么取的），且回序列化后不丢字段——否则摘要绑的和交出的就不是同一份
+        #[test]
+        fn send_request_json_maps_onto_tdlib_types() {
+            use tdlib_rs::{enums, types};
+            let topic = crate::model::Topic::Forum {
+                topic_id: 3,
+                name: None,
+            };
+            for (reply, topic) in [(None, None), (Some(5), Some(&topic))] {
+                let r = crate::send::text_request(777, "好的 e\u{301}", reply, topic, 42);
+                let t: Option<enums::MessageTopic> =
+                    serde_json::from_value(r["topic_id"].clone()).unwrap();
+                let rep: Option<enums::InputMessageReplyTo> =
+                    serde_json::from_value(r["reply_to"].clone()).unwrap();
+                let o: types::MessageSendOptions =
+                    serde_json::from_value(r["options"].clone()).unwrap();
+                let c: enums::InputMessageContent =
+                    serde_json::from_value(r["input_message_content"].clone()).unwrap();
+                assert_eq!(t.is_some(), topic.is_some());
+                assert_eq!(rep.is_some(), reply.is_some());
+                assert_eq!(o.sending_id, 42);
+                assert!(!o.only_preview);
+                let enums::InputMessageContent::InputMessageText(x) = c else {
+                    panic!("不是文字");
+                };
+                assert!(!x.clear_draft);
+                assert_eq!(x.text.text, "好的 e\u{301}");
+            }
         }
 
         /// 映射只有一份的前提：tdlib-rs 的 `Update` 序列化回去，与 TDLib 原样 JSON 走 `tdjson::classify` / `event`

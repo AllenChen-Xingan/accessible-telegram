@@ -260,6 +260,12 @@ impl Feed {
         self.pump.store()
     }
 
+    /// 喂一条事件（发送等结果时逐条喂，不丢）
+    pub fn apply(&mut self, env: atg_core::link::Envelope) {
+        let _ = self.pump.apply_batch(vec![env]);
+        self.note_first();
+    }
+
     /// 历史应答、开窗口这类不经事件流的输入（`history`）
     pub fn pump_mut(&mut self) -> &mut Pump {
         &mut self.pump

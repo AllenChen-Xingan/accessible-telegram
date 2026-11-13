@@ -10,12 +10,17 @@
 //! - [`tdjson`]：TDLib JSON → `CoreEvent` 的映射（夹具与真实后端共用）
 //!
 //! 接 TDLib（第一刀第 3 块）：
-//! - [`backend`]：`Backend` 特征（意图级动作：生命周期、登录）· [`auth`]：登录的提示、号码校验、测试号规则（第 4 块）
+//! - [`backend`]：`Backend` 特征（意图级动作：生命周期、登录、会话、消息、发送的查询与唯一交出口）· [`auth`]：登录的提示、号码校验、测试号规则（第 4 块）
 //! - [`td`]：真实后端（`tdlib-api` / `tdlib` 特性）· [`fake`]：假后端
 //! - [`link`]：收线程（带序号）、监督与故障广播、事件流——两份后端共用
 //! - [`pump`]：消费方把事件成批喂 reducer、重拉、重发应答
 //! - [`error`]：`CoreError` 与 `map_td_error` · [`status`]：三条状态线与合成
-//! - [`config`]：`.env.local`、档案、锁 · [`ipc`]：本机接口（套接字、对端核对、分帧；第 9 块）· [`keystore`]：本地库钥匙（钥匙串）· [`secret`] · [`logline`]：只记形状的日志
+//! - [`config`]：`.env.local`、档案（一个登录账号在本机的数据目录）、档案锁（同一档案同时只许一个进程开）·
+//!   [`ipc`]：本机接口（套接字、对端核对、分帧；第 9 块）· [`keystore`]：本地库钥匙（钥匙串）· [`secret`] · [`logline`]：只记形状的日志
+//!
+//! 发送（M2.1 / M2.2）：
+//! - [`gate`]：发送闸（确认凭据、三种确认方式、直发防重复与留痕）· [`send`]：发文字、回复、重发的流程 ·
+//!   [`localauth`]：macOS 上的 Touch ID / 系统密码（发送闸的人工确认）
 //!
 //! 骨架占位（后续块填）：[`notify`]
 //!
@@ -32,8 +37,18 @@
 //!   要过**发送闸**（只有拿到人的确认凭据才发）且**绝不自动重试**
 //! - **特征**（Rust trait，如 `Backend`）≠ **特性**（Cargo feature，如 `tdlib`）
 //! - **夹具**（fixture）：手写的假 TDLib 数据，测试用；**快照测试**：输出存成文件，以后每次都与它比
-//! - **窗口**：当前打开的会话里已加载的那一段消息（`store::Window`）；**凭据**（`HistoryTicket`）与**代次**：
+//! - **窗口**：当前打开的会话里已加载的那一段消息（`store::Window`）；**请求凭据**（`HistoryTicket`）与**代次**：
 //!   发历史请求时记下的版本，旧请求的应答不会盖掉新的
+//! - **TDLib**：Telegram 官方的客户端库（C++，经 tdlib-rs 接进来，只在 [`td`] 里用）。它替我们管网络、加密的本地
+//!   数据库和**待发队列**：交出去的消息存在库里，断网等恢复、进程重启后都会自动接着发——所以「结果未知」的消息
+//!   过很久仍可能发出去。**库钥匙**：这个本地数据库的加密钥匙，32 字节随机数，存在 macOS 钥匙串里（[`keystore`]）
+//! - **直发模式**：以 `--unsafe-direct-send` 启动的这一次运行，发送一律不确认（人定，给 AI 驱动 CLI 用；人已知 AI
+//!   也能自己加这个参数）。代价是没有人把关，所以另加了防重复拦截与留痕（[`gate`]；`actions.md` 第一节第 5 小节）
+//! - **确认凭据**（`gate::ConfirmToken`）：发送闸在人确认（或测试豁免、直发模式）后开出的一次性凭证，绑目标与请求摘要，
+//!   60 秒有效、只能用一次。与上面的请求凭据是两回事
+//! - **凭条**（`send::Submitted`）：消息交给 TDLib 之后拿到的回执（确认方式 + 临时 id），等到结果后交回
+//!   `send::finish` 记账。不是确认凭据（那张在交出前已被闸吃掉）
+//! - **发N / 收N、B17-2**：调研 `docs/research/003_send-receive-prior-art/README.md` 第一节的条目编号与 `decision.md` 的拍板卡
 //! - **T01 等**：核心任务编号（人要用这个应用完成的事，如 T01 登录、T02 看会话列表），正本 `specs/tasks.md`
 //! - **收线程**：后台一直调 TDLib `receive()` 取更新的那条线程（[`link`]）；`receive()` 全进程共用，所以一个进程只许一个真实后端
 //! - **测试服务器**（test DC，DC = Telegram 的数据中心）：Telegram 给开发者的独立服务器，账号与正式服务器完全分开
@@ -61,10 +76,13 @@ pub mod backend;
 pub mod config;
 pub mod error;
 pub mod fake;
+pub mod gate;
 pub mod ipc;
 pub mod json;
 pub mod keystore;
 pub mod link;
+#[cfg(target_os = "macos")]
+pub mod localauth;
 pub mod logline;
 pub mod model;
 pub mod notify;
@@ -74,6 +92,7 @@ pub mod pump;
 #[cfg(not(test))]
 mod redact;
 pub mod secret;
+pub mod send;
 pub mod speech;
 pub mod status;
 pub mod store;

@@ -106,14 +106,16 @@ pub enum Command {
     Mute(Rest),
     /// 删除消息（给所有人）
     Delete(Rest),
-    /// 重发失败的消息
-    Resend(Rest),
+    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），确认后逐条等结果。确认方式同 send
+    Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
     Show(Rest),
     /// 搜索：`search chats` / `search messages`
     Search(Rest),
-    /// 发消息（须确认）
-    Send(Rest),
+    /// 发文字或回复某条。先输出一行要发什么（kind:"plan"：发给谁、全文、回复哪条），再确认：测试服务器发自己的收藏夹
+    /// 不用确认；正式服务器要按 Touch ID 或输入系统密码；以全局选项 --unsafe-direct-send 启动时一律不确认。
+    /// 等到成功或失败才结束；30 秒没等到报 send_outcome_unknown（退出码 10）——消息可能已发出，不要重发
+    Send(SendArgs),
     /// 订阅更新
     Watch(Rest),
     /// 草稿：`draft set` / `draft clear`
@@ -213,6 +215,45 @@ pub struct LinksArgs {
     /// 隐藏的链接（落在剧透里、或链接文字里套着剧透）也给出文字和地址，等于人按了展开键；不加时只说「隐藏内容」、地址为 null（规则见 specs/content-tree.md 第八节）
     #[arg(long)]
     pub reveal: bool,
+}
+
+/// `send` 的参数。正文只从 `--text` / `--text-file` 来，不从标准输入读（标准输入可能是 AI 拼进来的管道）
+#[derive(Args)]
+#[command(group(clap::ArgGroup::new("body").required(true).args(["text", "text_file"])))]
+pub struct SendArgs {
+    /// 会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要发的文字
+    #[arg(long, value_name = "T")]
+    pub text: Option<String>,
+    /// 从文件读要发的文字（UTF-8，64 KB 以内）
+    #[arg(long, value_name = "PATH")]
+    pub text_file: Option<std::path::PathBuf>,
+    /// 回复本会话里的哪条（话题群里话题取被回复那条的）
+    #[arg(long, value_name = "MSG_ID")]
+    pub reply_to: Option<i64>,
+    /// 只输出要发什么，不发
+    #[arg(long)]
+    pub dry_run: bool,
+    /// 用 --unsafe-direct-send（不确认直接发）时，最近向同一会话发过同样的内容会被拦下（已发出的 10 分钟内；结果不明的 24 小时内）；确要再发一次就加它
+    #[arg(long)]
+    pub again: bool,
+}
+
+/// `resend` 的参数
+#[derive(Args)]
+pub struct ResendArgs {
+    /// 会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要重发的失败消息 id（一条或几条）。用 send 失败时那行 error 里的 message_id——失败后 TDLib 会给它换一个新
+    /// id，不是最初的那个，也不是 temp_message_id
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
+    pub ids: Vec<i64>,
+    /// 只输出要重发什么，不重发
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// `speech` 的参数（`specs/contracts/cli.md`）。`--fixture` 是单个读法夹具文件。`--scenario` 现在**没有**，名字预留给以后的场景目录
