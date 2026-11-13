@@ -1,0 +1,47 @@
+name: arch-guard
+# 门槛自己的守卫（#60，specs/architecture-rules.md 第 1 条）：PR 不许不经人同意就放宽门槛。
+#
+# 为什么用 pull_request_target：pull_request 事件跑的是 PR 分支里的工作流文件，PR 改一行 arch.yml 就能跳过检查；
+# pull_request_target 永远跑**合并目标（main）上**的这份工作流和门槛脚本，PR 改不到。
+# 安全：只读权限；工作区是合并目标；PR 的提交只用 git 当数据读（git show / git diff），**绝不执行 PR 里的任何代码**。
+#
+# 管什么：基线放宽（数变大、多了条目、改名）、门槛文件有任何改动（两个门槛脚本、scripts/tests、两个工作流）。
+# 放行：PR **现在**带着 baseline:loosen 标签（只由人或大总管加）。每次运行（含重跑）都向 GitHub 现查标签和头提交，
+# 不信事件快照（scripts/arch-guard-auth.sh）。标签加着就对这个 PR 此后的改动一直有效，所以放宽之后再 push 新改动，
+# 加标签的人要摘掉标签重新看过再加。
+# 注意：这份工作流在合并进 main 之前不会运行（pull_request_target 读的是 main 上的文件）。
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+permissions:
+  contents: read
+  pull-requests: read  # 现查 PR 的头提交
+  issues: read         # 现查 PR 的标签（标签接口在 issues 下）
+concurrency:
+  group: arch-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  arch-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 仓库是公开的，下面 fetch PR 提交不需要凭据；若改成私有，把这里改成 true（本工作流不执行 PR 代码，持有只读令牌可以接受）
+          persist-credentials: false
+      - name: 门槛不许被悄悄放宽
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/pull/${PR}/head"
+          fetched=$(git rev-parse FETCH_HEAD)
+          if [ "$fetched" != "$EVENT_HEAD" ]; then
+            echo "取到的 PR 提交 ${fetched} 不是这次要检查的 ${EVENT_HEAD}（PR 已有新提交，以新运行为准）"
+            exit 1
+          fi
+          ALLOW=$(bash scripts/arch-guard-auth.sh)
+          python3 scripts/check-file-size.py --root . --against HEAD --head "$EVENT_HEAD" $ALLOW

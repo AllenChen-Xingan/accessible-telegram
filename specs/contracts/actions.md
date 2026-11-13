@@ -90,7 +90,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `message_properties(id: MsgId)` | `MessageProps`（能回复 / 能转发 / 能编辑……） | `not_found` | L0 | `getMessageProperties`（`:12457`）；决定菜单里列什么 |
 | `user_get(user: UserId)` · `group_get(id)` | `UserRef` / `ChatItem` | `not_found` | L0 | `getUser`（`:12391`）· `getBasicGroup` / `getSupergroup`（`:12397,12404`）；读法查不到名字时补取 |
 | `search_messages(scope: Option<ChatId>, query: String, limit: u32, cursor: Option<Cursor>)` | `Page<Message>` | — | L0 | 有会话用 `searchChatMessages`（`:12793`），否则 `searchMessages`（`:12806`） |
-| `file_download(file: FileId)` | `Ack`；进度经 `updateFile` | `not_found` | L0 | `downloadFile`（`:15001`）；对外不可见，前提是不调 `mark_listened`。T07 语音时长、文件名在消息节点里就有，不必下载 |
+| `file_download(file: FileRef)` | `Downloaded{path, size}`（同步等下完：`downloadFile` `synchronous=true`） | `not_found{what:"file"}` · `internal{what:"download_incomplete"}` | L0 | `downloadFile`（`:15001`）；对外不可见，前提是不调 `mark_listened`。**只有 TDLib 报 `is_downloading_completed` 才交路径**（exp007：没下完的文件解码器会静默解出半截）。文件句柄是内容树附件里的 `FileRef`（`specs/content-tree.md` 第三节第 3 小节），v0 只有语音带。T07 语音时长、文件名在消息节点里就有，不必下载 |
 | `mark_listened(id: MsgId)` | `Ack` | `not_found` | **L1**（与已读同一道把关，A1）；阅后即焚类 **L2** | `openMessageContent`（`:14205`）；对方会看到「已听 / 已看」，阅后即焚一打开就开始倒计时、不可逆。GUI 播放即标（同官方客户端，与 F1 同一取向）；CLI 只在 `play --mark-listened` 时标；阅后即焚按 L2 要确认 |
 | `mark_read(chat: ChatId, up_to: MessageId)` | `Ack` | — | **L1** | `viewMessages`（`:14199`，`force_read`）。⚠️ **不是按条标**：TDLib 取传入的最大消息 id，把普通会话的已读位置推进到那里（`MessagesManager.cpp:16961` `read_dialog_inbox`），此前的消息全部连带变成已读。所以参数是「标到哪条为止」。F1 人定：GUI 进会话就标到最新一条（同官方客户端，不确认）；CLI 的 `history` / `show` 不标 |
 | `message_links(id: MsgId)`（**不是 `Backend` 动作**：`Backend` 动作是真后端、假后端各实现一份的那种；这个是在它们之上拼出来的） | `Vec<Link>`（链接文字 + 地址 + 是否隐藏 `hidden`） | `not_found` | L0 | `message_get`（`getMessage`）取这条，再用 `tree::text::links_marked` 从内容树取；现在 CLI 的 `links` 这样拼，GUI 照同样两步。隐藏的链接调用方默认遮住（`cli.md` `links`） |
@@ -318,6 +318,7 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-10-26 issue #52 自审第 5 轮后（send，大总管授权；默认取法列进待人定）：Touch ID 确认框放不下全文就拒（`too_long_to_confirm`）
 - 2026-10-26 issue #52 自审第 4 轮后（send，属技术细节，大总管授权）：第 4 条加 Touch ID 弹框的显示规则（自审第 4 轮 P1）
 - 2026-10-26 issue #53 watch（按 003 大总管采纳 2026-10-26，建议第 5、6 条）：第一节第 7 小节——`chat_action` 写明键为 `(chat_id, 话题, 发送人)`、过期靠 TDLib 推取消；`chat_notification_changed` / `scope_notification_changed` 加提及通知、置顶通知两项；新增 `forum_topic_changed`（话题通知设置与已读位置），有效值按「话题 → 会话 → 三档」取、话题静音按绝对到期时间判；`sync_done` 写明由收线程在连接线到 `ready` 时合成；`coalesced` 注明 v0 没做；动作表加 `forum_topic_get`（`getForumTopic`，L0 只读：话题没加载过时 TDLib 不推它的设置）
+- 2026-11-13 #4 M2.5（手下 media，大总管定、arch 定 2026-11-13）：`file_download` 参数改 `FileRef`、同步等下完、只在下完时交路径，错误加 `download_incomplete`
 - 2026-11-13 issue #52 自审第 9 轮后（属技术细节）：确认框「放得下」改按视觉行判（120 字 / 6 个视觉行 / 每行 40 列，仍待在真弹框上实测，`localauth` 的刻度尺测试）
 - 2026-11-13 issue #52 自审第 10 轮后（属技术细节）：视觉行改为除空格外一律 2 列、按词折行（比例字体与长词会让「半角 1 列、任意处断」少算）
 - 2026-11-13 issue #52 自审第 11 轮后（属技术细节）：确认框里的制表符换成 ⇥，残留制表符一律算放不下（制表符宽度估不准，能把正文挤出框）；「按词折行」刻度尺量不到，暂按保守假设

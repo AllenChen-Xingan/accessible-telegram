@@ -25,7 +25,23 @@ const LENSES = [
   { key: '挑刺', prompt: '你的任务是找出这份东西最站不住的一处。只报一条，但要能一击致命。' },
 ]
 
-const TARGET = args?.target || 'src/'
+// 审什么：必须明说。从前写成 `args?.target || 'src/'`，传字符串时没有 `.target`，
+// 就悄悄退回去审整个 src/——#41，踩了三次。现在：字符串就是范围；对象取 `.target`；都没有就报错，绝不兜底。
+// 自测：scripts/tests/test_review_target.py（截取下面两个标记之间的函数，用 node 跑）
+// BEGIN resolveTarget
+function resolveTarget(a) {
+  const t = typeof a === 'string' ? a : a && typeof a === 'object' ? a.target : undefined
+  if (typeof t !== 'string' || t.trim() === '') {
+    throw new Error(
+      'atg-review 要明说审什么：args 传字符串（文件、目录或 diff 的说明），或传 {"target": "…"}。' +
+        '不给就不审，不会默认去审整个 src/（#41）',
+    )
+  }
+  return t.trim()
+}
+// END resolveTarget
+
+const TARGET = resolveTarget(args)
 
 const FINDINGS = {
   type: 'object',
@@ -73,5 +89,6 @@ log(`${all.length} 条：P0 ${all.filter((f) => f.level === 'P0').length} · ` +
 // 多视角一开，它能一轮轮挑下去——什么时候算完？这条判据说了算。
 return {
   findings: all,
-  收工判据: 'P0 / P1 / P2 修复为零，P3 酌情处理。到这条线就停，不再开下一轮。',
+  // 停止线以 CLAUDE.md 第二节为准（人定 2026-10-25）：这里只转述，改了以那里为准
+  收工判据: 'P0、P1 必须清零；连续两轮没有 P0/P1 就停，剩下的 P2 开成 issue 留后处理，P3 酌情。（正本：CLAUDE.md 第二节「停止线」）',
 }

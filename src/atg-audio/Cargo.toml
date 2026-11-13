@@ -1,0 +1,11 @@
+[package]
+name = "atg-audio"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "无障碍 Telegram 的本机音频能力：解码（AudioToolbox）、播放、端侧转写。不依赖 atg-core，也不依赖界面框架（F8）"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
