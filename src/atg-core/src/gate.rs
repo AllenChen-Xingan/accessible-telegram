@@ -217,10 +217,21 @@ fn wrapped(line: &str) -> usize {
         if cur > 0 {
             lines += 1;
         }
-        // 从新的一行起放这个词；比一行还长就按字断成几行
-        let extra = w.saturating_sub(1) / CONFIRM_LINE_COLS;
-        lines += extra;
-        cur = w - extra * CONFIRM_LINE_COLS;
+        if w <= CONFIRM_LINE_COLS {
+            cur = w;
+            continue;
+        }
+        // 比一行还长：从新的一行起逐字排，放不下整个字就换行（字不能拆；codex 016 第 3 轮 #1：
+        // 按总宽度除以列宽会把占满一行的宽字形和前后的字算进同一行）
+        cur = 0;
+        for c in word.chars() {
+            let cw = cols(c);
+            if cur > 0 && cur + cw > CONFIRM_LINE_COLS {
+                lines += 1;
+                cur = 0;
+            }
+            cur += cw;
+        }
     }
     lines
 }
@@ -338,6 +349,8 @@ pub struct Gate {
     used: Mutex<HashSet<u64>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
+    /// 收线程看到 `account_limited` 的发送失败就点亮（`link::Shared::watch_account_limited`）；判开法时看到就落盘停发
+    limited_signal: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// 一次交出的结果（记账与留痕用）
@@ -361,6 +374,29 @@ impl Gate {
             used: Mutex::new(HashSet::new()),
             facts: Mutex::new(Facts::default()),
             direct_sent: std::sync::atomic::AtomicU64::new(0),
+            limited_signal: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    /// 交给收线程的「账号受限」信号（后端建好时 `Shared::watch_account_limited`）
+    pub fn limited_signal(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.limited_signal.clone()
+    }
+
+    /// 记下账号受限：本进程停掉全部 L2，并写进档案目录让之后的进程也停，直到人删掉那个文件
+    fn mark_limited(f: &mut Facts) {
+        if f.account_limited {
+            return;
+        }
+        f.account_limited = true;
+        if let Some(dir) = f.dir.as_ref()
+            && write_atomic(
+                &dir.join(ACCOUNT_LIMITED_FILE),
+                unix_now().to_string().as_bytes(),
+            )
+            .is_err()
+        {
+            logline::warn("account_limited_mark_failed", &[]);
         }
     }
 
@@ -401,7 +437,14 @@ impl Gate {
 
     /// 这份计划会用哪种方式确认（不弹框、不记账）。测试服务器上目标不是收藏夹 → `test_dc_saved_only`
     pub fn mode_for(&self, target: ChatId) -> Result<ConfirmMode, CoreError> {
-        let f = lock(&self.facts);
+        let mut f = lock(&self.facts);
+        // 晚到的受限失败（等结果超时之后才来）由收线程点亮信号，这里补记（codex 016 第 3 轮 #2）
+        if self
+            .limited_signal
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            Self::mark_limited(&mut f);
+        }
         if f.account_limited {
             return Err(refused(SendRefusedReason::AccountLimited));
         }
@@ -546,18 +589,7 @@ impl Gate {
         error: Option<&CoreError>,
     ) {
         if matches!(error, Some(CoreError::AccountLimited { .. })) {
-            let mut f = lock(&self.facts);
-            f.account_limited = true;
-            // 写进档案目录：之后的进程也停，直到人删掉它
-            if let Some(dir) = f.dir.as_ref()
-                && write_atomic(
-                    &dir.join(ACCOUNT_LIMITED_FILE),
-                    unix_now().to_string().as_bytes(),
-                )
-                .is_err()
-            {
-                logline::warn("account_limited_mark_failed", &[]);
-            }
+            Self::mark_limited(&mut lock(&self.facts));
         }
         if mode != ConfirmMode::DirectMode {
             return;
@@ -1341,5 +1373,30 @@ mod tests {
             confirm_visual_lines(&text)
         );
         assert!(!fits_confirm_box(&text));
+    }
+
+    #[test]
+    fn wide_glyph_inside_a_long_word_gets_its_own_line() {
+        // codex 016 第 3 轮 #1：A + 占满一行的字形 + B，中间没空格，逐字排是 3 行
+        assert_eq!(confirm_visual_lines("A\u{FDFD}B"), 3);
+        assert_eq!(confirm_visual_lines(&"x".repeat(CONFIRM_LINE_COLS * 2)), 4);
+    }
+
+    #[test]
+    fn late_account_limited_signal_stops_sending() {
+        // codex 016 第 3 轮 #2：等结果超时后才到的受限失败，由收线程点亮信号；下一次开凭据就拒，并落盘
+        let (g, _, dir) = gate(true, false, Ok(()));
+        assert!(g.issue(&plan(777, 1), false).is_ok());
+        g.limited_signal()
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let e = g.issue(&plan(777, 2), false).unwrap_err();
+        assert!(matches!(
+            e,
+            CoreError::SendRefused {
+                reason: SendRefusedReason::AccountLimited,
+                ..
+            }
+        ));
+        assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
     }
 }

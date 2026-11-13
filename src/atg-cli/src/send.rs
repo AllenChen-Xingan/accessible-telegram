@@ -348,8 +348,18 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &TextPlan, reply_brief: 
             let reply = reply_brief
                 .map(|r| format!("；回复：{r}"))
                 .unwrap_or_default();
+            // 最终落到哪个话题也要让人看到（codex 016 第 3 轮 #3，与 JSON 计划行的 `topic` 同一份）
+            let topic = match plan.topic() {
+                Some(atg_core::tree::Topic::Forum { topic_id, .. }) => {
+                    format!("；话题 id {topic_id}")
+                }
+                Some(atg_core::tree::Topic::Thread { thread_id }) => {
+                    format!("；讨论串 id {thread_id}")
+                }
+                _ => String::new(),
+            };
             sink.out(&format!(
-                "将发给 {}：{}{reply}。{}；{}",
+                "将发给 {}：{}{reply}{topic}。{}；{}",
                 send::target_zh(plan.target()),
                 atg_core::gate::visible(plan.text()),
                 confirm_zh(plan.mode()),
@@ -420,8 +430,17 @@ fn run_resend<B: Backend>(
                 .items()
                 .iter()
                 .map(|i| match &i.text {
-                    Some(t) => format!("第 {} 条：{}", i.id, atg_core::gate::visible(t)),
-                    None => format!("第 {} 条：不是纯文字", i.id),
+                    Some(t) => format!(
+                        "id {} 那条{}：{}",
+                        i.id,
+                        i.reply.zh(plan.target().id),
+                        atg_core::gate::visible(t)
+                    ),
+                    None => format!(
+                        "id {} 那条{}：不是纯文字",
+                        i.id,
+                        i.reply.zh(plan.target().id)
+                    ),
                 })
                 .collect();
             sink.out(&format!(

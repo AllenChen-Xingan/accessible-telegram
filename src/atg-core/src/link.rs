@@ -77,6 +77,9 @@ pub struct Shared {
     closed: AtomicBool,
     wakers: Mutex<HashMap<u64, Waker>>,
     next_waiter: AtomicU64,
+    /// 发送闸的「账号受限」信号（[`Shared::watch_account_limited`] 交进来）：收到 `account_limited` 的发送失败事件就点亮。
+    /// 放在这里，是因为这是所有事件的唯一入口——超时后才到的失败只进 store、不再经过发送流程（codex 016 第 3 轮 #2）
+    account_limited: std::sync::OnceLock<Arc<AtomicBool>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -103,6 +106,7 @@ impl Shared {
             closed: AtomicBool::new(false),
             wakers: Mutex::new(HashMap::new()),
             next_waiter: AtomicU64::new(0),
+            account_limited: std::sync::OnceLock::new(),
         });
         (shared, EventStream { rx })
     }
@@ -115,9 +119,22 @@ impl Shared {
         }
     }
 
-    /// 推一个事件（序号在锁里编）
+    /// 推一个事件（序号在锁里编）。发送因账号受限失败的，先点亮发送闸的信号
     pub fn event(&self, event: CoreEvent) {
+        if let CoreEvent::SendFailed {
+            error: CoreError::AccountLimited { .. },
+            ..
+        } = &event
+            && let Some(flag) = self.account_limited.get()
+        {
+            flag.store(true, Ordering::SeqCst);
+        }
         Self::emit(&mut lock(&self.state), event);
+    }
+
+    /// 后端建好时把发送闸的「账号受限」信号交进来（只交一次）
+    pub fn watch_account_limited(&self, flag: Arc<AtomicBool>) {
+        let _ = self.account_limited.set(flag);
     }
 
     /// 改三条线；变了的线各推一个事件，合成状态变了再推 `UserStatusChanged`。

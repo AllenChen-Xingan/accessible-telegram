@@ -186,6 +186,7 @@ impl FakeBackend {
     /// 带指定的发送闸（直发模式、假认证器）
     pub fn with_gate(gate: Gate) -> Result<Self, CoreError> {
         let (shared, stream) = Shared::new();
+        shared.watch_account_limited(gate.limited_signal());
         let (tx, rx) = mpsc::channel::<Feed>();
         let handle = link::spawn_receiver(shared.clone(), move || {
             match rx.recv_timeout(Duration::from_millis(20)) {

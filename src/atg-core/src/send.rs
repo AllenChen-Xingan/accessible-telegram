@@ -685,8 +685,8 @@ impl ResendReply {
         }
     }
 
-    /// 确认说明里的那段（不是回复 → 空）
-    fn zh(self, chat: ChatId) -> String {
+    /// 确认说明里的那段（不是回复 → 空）；终端的文字计划也用它
+    pub fn zh(self, chat: ChatId) -> String {
         match self {
             Self::None => String::new(),
             Self::Message(t) if t.chat_id == chat => format!("（回复 id {} 那条）", t.message_id),
