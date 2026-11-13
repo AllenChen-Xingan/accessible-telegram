@@ -44,12 +44,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => {
             let (body, hidden) = content(&m.content, cx.reveal);
-            // V13 人定：多处隐藏内容，各处只读「隐藏内容」，按键提示在整条末尾、钟点前说一次
-            let body = match (hidden, cx.expand_key) {
-                (true, Some(k)) => then(&body, &format!("按 {} 展开", k.to_ascii_uppercase())),
-                (false, _) | (true, None) => body,
-            };
-            let line = then(&body, &hm(m.head.date, cx));
+            let line = then(&expand_hint(&body, hidden, cx), &hm(m.head.date, cx));
             match speaker(
                 &m.head.sender,
                 m.head.outgoing,
@@ -60,7 +55,11 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
                 None => line,
             }
         }
-        Doc::Service(sv) => then(&service(sv, cx.reveal), &hm(sv.date, cx)),
+        // #68：置顶系统消息带的内容里有隐藏内容，同样在末尾给按键提示
+        Doc::Service(sv) => {
+            let (said, hidden) = service(sv, cx.reveal);
+            then(&expand_hint(&said, hidden, cx), &hm(sv.date, cx))
+        }
         // R7：「林小雨撤回了一条消息，19:36」；V15 人定：没记到时间就不读时间
         Doc::Tombstone(t) => {
             let who = tomb_who(t);
@@ -126,7 +125,7 @@ pub fn chat_brief_with(c: &ChatItem, reveal: bool) -> String {
                     None => body,
                 }
             }
-            ChatLast::Service(sv) => service(sv, reveal),
+            ChatLast::Service(sv) => service(sv, reveal).0,
             // R7 同形，会话项里不带时间（N8 人定，`docs/plan/005_decisions-b3.md`）
             // 私聊里不是自己撤回的就一定是对方，记没记到发送人都省名
             ChatLast::Tombstone(t) => match &t.sender {
@@ -185,7 +184,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
 pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => full_content(&m.content, cx.reveal),
-        Doc::Service(sv) => service(sv, cx.reveal),
+        Doc::Service(sv) => service(sv, cx.reveal).0,
         Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
         Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
             brief(doc, cx)
@@ -239,6 +238,16 @@ fn full_spans(list: &[Span], reveal: bool) -> String {
 }
 
 fn full_span(out: &mut String, s: &Span, reveal: bool) {
+    // 相邻的几段剧透只说一次；套着剧透的链接整条遮（#70，同 [`span`]）
+    // 全文只放占位符、不打标记，逗号最后看两边再补（与 brief 的 [`say_hidden`] 不同）
+    let mark = |out: &mut String| {
+        if !out.ends_with(MASK) {
+            out.push(MASK);
+        }
+    };
+    if !reveal && text::link_hidden(s) {
+        return mark(out);
+    }
     match s {
         Span::Text { text }
         | Span::Code { text }
@@ -249,12 +258,7 @@ fn full_span(out: &mut String, s: &Span, reveal: bool) {
                 full_span(out, c, reveal);
             }
         }
-        // 相邻的几段剧透只说一次
-        Span::Spoiler { .. } => {
-            if !out.ends_with(MASK) {
-                out.push(MASK);
-            }
-        }
+        Span::Spoiler { .. } => mark(out),
         Span::Bold { children }
         | Span::Italic { children }
         | Span::Underline { children }
@@ -448,6 +452,14 @@ fn name_or(n: &Option<String>, fallback: &str) -> String {
     }
 }
 
+/// V13 人定：多处隐藏内容，各处只读「隐藏内容」，按键提示在整条末尾、钟点前说一次（消息、置顶系统消息都这样）
+fn expand_hint(said: &str, hidden: bool, cx: &SpeechCtx) -> String {
+    match (hidden, cx.expand_key) {
+        (true, Some(k)) => then(said, &format!("按 {} 展开", k.to_ascii_uppercase())),
+        (false, _) | (true, None) => said.to_owned(),
+    }
+}
+
 /// 两段接起来：前一段以问号、叹号结尾就直接接，否则用逗号隔开（V22 人定：问号叹号后不再加逗号）
 fn then(a: &str, b: &str) -> String {
     if a.ends_with(['？', '！', '?', '!']) {
@@ -486,7 +498,9 @@ const SAVED: &str = "收藏夹";
 /// - 操作人：自己读「我」；群里以群的名义做的读「匿名管理员」（V11）；查不到读「有人」（V18）；已注销读「已注销的账号」（V14）
 /// - 被操作的人：自己读「我」（V17 人定「周大山添加了我」）；查不到读「未知用户」（V18）；已注销读「已注销的账号」
 /// - 频道里「群组 / 群名 / 群头像」换成「频道 / 频道名 / 频道头像」（style 例 S7）
-fn service(sv: &Service, reveal: bool) -> String {
+///
+/// 返回 (句子, 里面有没有隐藏内容)：只有置顶带的内容可能有；按键提示由调用方决定加不加
+fn service(sv: &Service, reveal: bool) -> (String, bool) {
     let actor = if sv.outgoing {
         ME.to_owned()
     } else {
@@ -513,7 +527,7 @@ fn service(sv: &Service, reveal: bool) -> String {
     } else {
         ("群组", "群名", "群头像")
     };
-    match &sv.action {
+    let said = match &sv.action {
         Action::MembersAdded { users } => {
             let names: Vec<String> = users.iter().map(user_name).collect();
             let joined_self = matches!(
@@ -551,13 +565,15 @@ fn service(sv: &Service, reveal: bool) -> String {
         Action::Pinned {
             content: Some(c), ..
         } => {
-            format!("{actor}置顶了一条消息：{}", content(c, reveal).0)
+            let (said, hidden) = content(c, reveal);
+            return (format!("{actor}置顶了一条消息：{said}"), hidden);
         }
         Action::Pinned { content: None, .. } => format!("{actor}置顶了一条消息"),
         Action::GroupCreated { title } => format!("{actor}创建了{place}「{title}」"),
         Action::ContactRegistered => format!("{actor}加入了 Telegram"),
         Action::Other { .. } => UNSUPPORTED_SERVICE.to_owned(),
-    }
+    };
+    (said, false)
 }
 
 /// 正文 + 附件的简短说法，以及里面有没有隐藏内容（剧透、18+ 遮挡）。按键提示由调用方决定加不加
@@ -565,7 +581,12 @@ fn content(c: &Content, reveal: bool) -> (String, bool) {
     let (body, body_hidden) = spans(&c.body, reveal);
     // 句号、逗号后面还要接「，时间」，去掉免得读成「。，」；问号叹号带语气、英文句点可能是省略号，留着
     let body = body.trim().trim_end_matches(['。', '，', ',']).trim_end();
-    let mut hidden = body_hidden;
+    // V13（011 B18-5，#68）：投票题目里的隐藏内容也算进整条的按键提示；与正文走同一条 `spans`
+    let poll_hidden = match &c.attachment {
+        Some(Attachment::Poll { question }) => spans(question, reveal).1,
+        Some(_) | None => false,
+    };
+    let mut hidden = body_hidden || poll_hidden;
     let label = c.attachment.as_ref().map(|a| {
         let (l, spoiler) = attachment(a, reveal);
         // 剧透、18+ 遮挡同一种说法，两样都有也只读一次；已展开就不说
@@ -621,7 +642,6 @@ fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
         Attachment::Location => "位置".to_owned(),
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
-        // 投票题目里的剧透只读「隐藏内容」，不算进整条的按键提示（展开的是整条消息）
         Attachment::Poll { question } => labeled("投票", &spans(question, reveal).0),
         Attachment::Call {
             video,
@@ -677,28 +697,31 @@ fn spans(list: &[Span], reveal: bool) -> (String, bool) {
     while out.contains("，，") {
         out = out.replace("，，", "，");
     }
+    // 遮住处后面紧跟问号、叹号就不加逗号（V22；message.md 第三节「隐藏内容？按 D 展开」）。只认占位符，原文不动
+    for p in ['？', '！', '?', '!'] {
+        out = out.replace(&format!("{MASK}，{p}"), &format!("{MASK}{p}"));
+    }
+    let out = out.replace(MASK, HIDDEN);
     (merge_emoji(out.trim_start_matches('，')), hidden)
 }
 
 fn span(out: &mut String, s: &Span, hidden: &mut bool, reveal: bool) {
+    // #70：链接文字里套着剧透，地址也算隐藏，整条只读「隐藏内容」（与 data、links 同一条判定）
+    if !reveal && text::link_hidden(s) {
+        return say_hidden(out, hidden);
+    }
     match s {
         Span::Text { text }
         | Span::Code { text }
         | Span::Pre { text, .. }
-        | Span::DateTime { text, .. } => out.push_str(text),
+        | Span::DateTime { text, .. } => out.push_str(&text.replace(MASK, "")),
         // 已展开：照读里面的字
         Span::Spoiler { children } if reveal => {
             for c in children {
                 span(out, c, hidden, reveal);
             }
         }
-        // VoiceOver 不念括号，用逗号隔开才听得出这是标注
-        Span::Spoiler { .. } => {
-            *hidden = true;
-            out.push('，');
-            out.push_str(HIDDEN);
-            out.push('，');
-        }
+        Span::Spoiler { .. } => say_hidden(out, hidden),
         Span::Bold { children }
         | Span::Italic { children }
         | Span::Underline { children }
@@ -723,6 +746,14 @@ fn span(out: &mut String, s: &Span, hidden: &mut bool, reveal: bool) {
             }
         }
     }
+}
+
+/// VoiceOver 不念括号，用逗号隔开才听得出这是标注。先放占位符，[`spans`] 收尾时换成「隐藏内容」
+fn say_hidden(out: &mut String, hidden: &mut bool) {
+    *hidden = true;
+    out.push('，');
+    out.push(MASK);
+    out.push('，');
 }
 
 /// 连续 3 个及以上相同的表情 → 「N 个😂」（V12 人定）。只改名称，复制全文、阅读视图照原样。
@@ -828,80 +859,4 @@ fn dur(secs: u32) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn durations() {
-        assert_eq!(dur(0), "0 秒");
-        assert_eq!(dur(12), "12 秒");
-        assert_eq!(dur(60), "1 分");
-        assert_eq!(dur(65), "1 分 5 秒");
-        assert_eq!(dur(3600), "1 小时");
-        assert_eq!(dur(3725), "1 小时 2 分");
-    }
-
-    /// V12 人定：连续 3 个及以上相同的才合并；不连续、不一样、只有两个的照原样
-    #[test]
-    fn emoji_runs() {
-        assert_eq!(merge_emoji("😂😂😂😂😂"), "5 个😂");
-        // 紧挨文字时加逗号；已有停顿不再加
-        assert_eq!(merge_emoji("好的👍👍👍"), "好的，3 个👍");
-        assert_eq!(merge_emoji("😂😂😂好的"), "3 个😂，好的");
-        assert_eq!(merge_emoji("好的 👍👍👍！"), "好的 3 个👍！");
-        assert_eq!(merge_emoji("👍👍👍😂😂😂"), "3 个👍，3 个😂");
-        assert_eq!(merge_emoji("😀😀好消息"), "😀😀好消息");
-        assert_eq!(merge_emoji("好😂😂哈哈🤣😂"), "好😂😂哈哈🤣😂");
-        // 肤色、变体选择符、零宽连接、国旗算一个表情
-        assert_eq!(merge_emoji("👍🏽👍🏽👍🏽"), "3 个👍🏽");
-        assert_eq!(merge_emoji("👍👍🏽👍"), "👍👍🏽👍");
-        assert_eq!(merge_emoji("❤️❤️❤️"), "3 个❤️");
-        assert_eq!(merge_emoji("👨‍👩‍👧👨‍👩‍👧👨‍👩‍👧"), "3 个👨‍👩‍👧");
-        assert_eq!(merge_emoji("🇨🇳🇨🇳🇨🇳"), "3 个🇨🇳");
-        // 普通文字三连不动
-        assert_eq!(merge_emoji("哈哈哈"), "哈哈哈");
-        assert_eq!(merge_emoji(""), "");
-    }
-
-    /// 跟系统时区读时，每个钟点按它自己的时间点取偏移（`offset_at`）：夏令时前后两条当地都是 19:36，
-    /// 都读「19:36」；固定偏移（`offset_at` 为空）时一律按 `utc_offset` 算
-    #[test]
-    fn offset_at_is_per_timestamp() {
-        // 假的「纽约」：2026-11-01T06:00Z 之前 -4 小时（夏令时），之后 -5 小时
-        fn fake_ny(t: i64) -> i32 {
-            if t < 1_793_512_800 {
-                -4 * 3600
-            } else {
-                -5 * 3600
-            }
-        }
-        let summer = Time(1_793_403_360); // 2026-10-30T23:36Z = 当地 19:36（-4）
-        let winter = Time(1_793_579_760); // 2026-11-02T00:36Z = 当地 19:36（-5）
-        let system = SpeechCtx {
-            utc_offset: 0,
-            offset_at: Some(fake_ny),
-            listen_key: None,
-            expand_key: None,
-            reveal: false,
-        };
-        assert_eq!(hm(summer, &system), "19:36");
-        assert_eq!(hm(winter, &system), "19:36");
-        // 固定 -4 小时：冬天那条读成 20:36，`utc_offset` 不被 `offset_at` 以外的东西改
-        let fixed = SpeechCtx {
-            utc_offset: -4 * 3600,
-            offset_at: None,
-            ..system
-        };
-        assert_eq!(hm(summer, &fixed), "19:36");
-        assert_eq!(hm(winter, &fixed), "20:36");
-    }
-
-    /// V22 人定：问号、叹号后面直接接，不再加逗号
-    #[test]
-    fn then_after_question_mark() {
-        assert_eq!(then("几点出发？", "19:32"), "几点出发？19:32");
-        assert_eq!(then("好！", "19:32"), "好！19:32");
-        assert_eq!(then("why?", "19:32"), "why?19:32");
-        assert_eq!(then("好的", "19:32"), "好的，19:32");
-    }
-}
+mod tests;
