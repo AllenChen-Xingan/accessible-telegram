@@ -1,6 +1,7 @@
 //! 播放状态的读法（`Doc::Playback`，`atg-cli play` 的每一行；M2.6）。**句子是 AI 草稿，待人实听**。
 //!
 //! 「播放中，3 秒，共 12 秒」「已暂停，3 秒，共 12 秒」；倍速不是 1 时末尾加「，1.5 倍速」。
+//! 句子的正本是快照 `tests/snapshots/snapshots__playback_brief.snap`（`content-tree.md` 第九节：说法只认快照）。
 //! 秒数向下取整（读「3 秒」不读「3.4 秒」）；时长用消息读法同一个说法（`super::dur`）。
 
 use super::dur;
@@ -27,34 +28,4 @@ pub(super) fn brief(p: &Playback) -> String {
         out.push_str(&format!("，{} 倍速", p.speed));
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn p(state: PlayState, pos: f64, speed: f64) -> Playback {
-        Playback {
-            state,
-            position_s: pos,
-            duration_s: 72.0,
-            speed,
-        }
-    }
-
-    #[test]
-    fn sentences() {
-        assert_eq!(
-            brief(&p(PlayState::Playing, 3.4, 1.0)),
-            "播放中，3 秒，共 1 分 12 秒"
-        );
-        assert_eq!(
-            brief(&p(PlayState::Paused, 0.0, 1.5)),
-            "已暂停，0 秒，共 1 分 12 秒，1.5 倍速"
-        );
-        assert_eq!(
-            brief(&p(PlayState::Playing, f64::NAN, 2.0)),
-            "播放中，0 秒，共 1 分 12 秒，2 倍速"
-        );
-    }
 }

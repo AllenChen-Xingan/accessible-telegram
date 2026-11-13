@@ -230,9 +230,9 @@ pub struct LinksArgs {
     pub reveal: bool,
 }
 
-/// `download` 的参数。v0 只下语音（#4）；以后附件打开（M3.7）扩到别的附件
+/// 一条消息：会话 + 消息 id（`download`、`play` 共用；以后 `transcribe` 也用）
 #[derive(Args)]
-pub struct DownloadArgs {
+pub struct MsgRef {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
@@ -241,15 +241,18 @@ pub struct DownloadArgs {
     pub message: i64,
 }
 
+/// `download` 的参数。v0 只下语音（#4）；以后附件打开（M3.7）扩到别的附件
+#[derive(Args)]
+pub struct DownloadArgs {
+    #[command(flatten)]
+    pub at: MsgRef,
+}
+
 /// `play` 的参数
 #[derive(Args)]
 pub struct PlayArgs {
-    /// 会话 id，或 saved（自己的收藏夹）
-    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
-    pub chat: String,
-    /// 消息 id
-    #[arg(value_name = "MSG_ID")]
-    pub message: i64,
+    #[command(flatten)]
+    pub at: MsgRef,
     /// 标为已听（对方看得到）：出口准备好之后、出声之前标；阅后即焚的语音会拒绝（确认还没做）
     #[arg(long)]
     pub mark_listened: bool,

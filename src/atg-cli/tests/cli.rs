@@ -397,6 +397,8 @@ fn redact_refused_until_done() {
         &["links", "saved", "5", "--redact"][..],
         &["chats", "--redact"][..],
         &["watch", "--redact"][..],
+        &["download", "saved", "1", "--redact"][..],
+        &["play", "saved", "1", "--redact"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");

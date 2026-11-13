@@ -24,6 +24,8 @@ use crate::tree::text::{self, Entity, EntityKind};
 use crate::tree::*;
 use serde_json::Value;
 
+mod file;
+
 /// 认识、但 v0 没做专门节点的系统消息。读法读出类型。清单随 `docs/research/002_features/content-types.md` 增补
 const OTHER_SERVICE: &[&str] = &[
     "messageScreenshotTaken",
@@ -609,16 +611,7 @@ fn content(c: &Value) -> Content {
                 spoiler,
             }),
         ),
-        "messageVoiceNote" => (
-            caption(),
-            Some(Attachment::Voice {
-                duration: dur("voice_note"),
-                listened: b(c, "is_listened"),
-                file: FileRef {
-                    id: file_id(&c["voice_note"]["voice"]),
-                },
-            }),
-        ),
+        "messageVoiceNote" => (caption(), Some(file::voice(c))),
         "messageVideoNote" => (
             vec![],
             Some(Attachment::VideoNote {
@@ -812,10 +805,6 @@ fn i(v: &Value, k: &str) -> i64 {
 }
 fn u(v: &Value, k: &str) -> u32 {
     u32::try_from(i(v, k).max(0)).unwrap_or(u32::MAX)
-}
-/// TDLib `file.id`（int32）；缺了或越界为 0（TDLib 不发 0 号文件，下载时按找不到处理）
-fn file_id(file: &Value) -> i32 {
-    i32::try_from(i(file, "id")).unwrap_or(0)
 }
 fn str_or_num(v: &Value) -> String {
     match v {

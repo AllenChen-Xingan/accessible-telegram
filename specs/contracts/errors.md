@@ -22,7 +22,7 @@
 | `auth_wrong_state` | 当前授权步骤不收这个输入（如等密码时送了验证码） | `expected`：当前的 `AuthStep` 值 | 否 |
 | `rate_limited` | 限流：TDLib 429 `Too Many Requests: retry after N`，服务器 `FLOOD_WAIT_N`，群慢速模式 `SLOWMODE_WAIT_N` | `retry_after_s` | 是，**等够秒数**才许再发（L2 除外，见第 5 小节） |
 | `account_limited` | 账号被限制的信号：`PEER_FLOOD`（发给陌生人太多）、`PHONE_NUMBER_FLOOD`（登录太多）、码 420 的其余情况 | — | 否；收到后**停掉全部 L2 动作和登录**，直到人处理 |
-| `not_found` | 会话 / 消息 / 用户 / 论坛话题不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what`（`chat` · `message` · `forum_topic`……） | 否 |
+| `not_found` | 会话 / 消息 / 用户 / 论坛话题不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what`（`chat` · `message` · `forum_topic` · `file`（附件文件找不到，`download` / `play`）……） | 否 |
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等） | — | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
@@ -32,7 +32,7 @@
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
 | `send_outcome_unknown` | L2 请求已交给 TDLib，但在时限内既没等到成功也没等到失败（如 CLI `send` 30 秒超时） | `chat_id` · 临时 `message_id` | **否**。不许重发；用 `status` 查这条待发消息的下落，或 `pending_cancel` 撤销 |
 | `cancelled` | 人在确认步骤按了取消（只指这个；Ctrl+C 见下方「CLI 自有码」） | — | 否 |
-| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_forum_topic_reserialize_failed`（同下一条，发生在 `watch` 取论坛话题设置时；`watch` 只在标准错误记码、照常继续）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
+| `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_forum_topic_reserialize_failed`（同下一条，发生在 `watch` 取论坛话题设置时；`watch` 只在标准错误记码、照常继续）· 语音的（#4）：`download_incomplete`（TDLib 回来了却没下完，不交半截文件）· `audio_decode_failed`（文件解不开）· `audio_output_failed`（声音出口打不开或播放中失效；`play` 的这条另带 `marked_listened`）· `audio_unsupported`（非 macOS，没有实现）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（如经 SSH 运行）。
@@ -165,3 +165,4 @@
 - 2026-10-26 issue #21 history（大总管授权 2026-10-26，属技术细节）：`internal.what` 登记 `me_unknown`、`td_message_reserialize_failed`
 - 2026-10-26 issue #21 第四轮自审后（大总管授权 2026-10-26，属技术细节）：`td_message_reserialize_failed` 在 `history` 里也整条报错、不再丢一条；说明改成给看错误码的人读得懂
 - 2026-10-26 issue #53 watch（大总管授权 2026-10-26，属技术细节）：`usage` 另指执行方 `watch` 订阅者已满；`disconnected` 补「流式 `watch` 不用 90 秒超时」「60 秒写不出被摘掉」两种；`internal.what` 登记 `td_forum_topic_reserialize_failed`，`not_found.what` 可为 `forum_topic`
+- 2026-11-13 #4 语音（手下 media，按 exp008 设计，大总管 / arch 定 2026-11-13；自审后补登）：`not_found.what` 可为 `file`；`internal.what` 登记 `download_incomplete`、`audio_decode_failed`、`audio_output_failed`（`play` 另带 `marked_listened`）、`audio_unsupported`

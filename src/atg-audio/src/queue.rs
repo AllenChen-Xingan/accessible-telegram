@@ -4,12 +4,15 @@
 //! - 倍速：开 AudioQueue 自带的变速不变调（`EnableTimePitch` + 频谱算法），`PlayRate` 0.5–2
 //! - 位置：每个缓冲区放完回到回调时才计入「已放完」——粒度一个缓冲区（约 85 毫秒），与倍速无关
 //! - 跳转：由播放器先 `stop` 再从新位置 `start`（整个队列重建），旧的排队音频随之丢掉
+//! - 「停着打开」（`start` 带 `paused`）：建好队列、排好缓冲区，但**不调 `AudioQueueStart`**——一个采样都不出声；
+//!   `resume` 才第一次 Start（`play --mark-listened`：标成功之后才出声，设计第 5b 条）
+//! - 出错：`resume` / 改倍速返回系统的失败；回调里重新排队失败记进 `failed`，播放器据此结束为 `OutputFailed`
 //!
 //! 回调在 AudioQueue 自己的线程上跑；它读写的状态在 [`Feed`] 里，用锁保护。队列先 `Dispose`（同步）再释放
 //! `Feed`，回调不会摸到已释放的内存。
 
 use crate::AudioError;
-use crate::decode::{Pcm, SAMPLE_RATE};
+use crate::decode::Pcm;
 use crate::player::Output;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -26,6 +29,8 @@ struct Feed {
     played: usize,
     /// 正在停：回调什么都不做
     stopping: bool,
+    /// 回调里重新排队失败（出口在播放中坏了）
+    failed: bool,
 }
 
 /// AudioQueue 声音出口。`muted` 为真时音量设 0（自动化测试用，不出声）
@@ -82,16 +87,16 @@ impl Output for Queue {
         }
     }
 
-    fn resume(&mut self) {
-        if let Some(l) = &self.live {
-            l.resume();
-        }
+    fn resume(&mut self) -> Result<(), AudioError> {
+        self.live
+            .as_ref()
+            .map_or(Err(AudioError::Output), imp::Live::resume)
     }
 
-    fn set_speed(&mut self, speed: f64) {
-        if let Some(l) = &self.live {
-            l.set_speed(speed);
-        }
+    fn set_speed(&mut self, speed: f64) -> Result<(), AudioError> {
+        self.live
+            .as_ref()
+            .map_or(Err(AudioError::Output), |l| l.set_speed(speed))
     }
 
     fn stop(&mut self) {
@@ -102,6 +107,10 @@ impl Output for Queue {
     fn played(&self) -> usize {
         self.live.as_ref().map_or(0, imp::Live::played)
     }
+
+    fn failed(&self) -> bool {
+        self.live.as_ref().is_some_and(imp::Live::failed)
+    }
 }
 
 fn lock(f: &Mutex<Feed>) -> std::sync::MutexGuard<'_, Feed> {
@@ -110,25 +119,12 @@ fn lock(f: &Mutex<Feed>) -> std::sync::MutexGuard<'_, Feed> {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{AudioError, BUFFERS, FRAMES_PER_BUFFER, Feed, Pcm, SAMPLE_RATE, lock};
+    use super::{AudioError, BUFFERS, FRAMES_PER_BUFFER, Feed, Pcm, lock};
+    use crate::ffi::{Asbd, OSStatus, fourcc, pcm_f32_mono};
     use std::ffi::c_void;
     use std::sync::{Arc, Mutex};
 
-    type OSStatus = i32;
     type AudioQueueRef = *mut c_void;
-
-    #[repr(C)]
-    struct Asbd {
-        sample_rate: f64,
-        format_id: u32,
-        format_flags: u32,
-        bytes_per_packet: u32,
-        frames_per_packet: u32,
-        bytes_per_frame: u32,
-        channels_per_frame: u32,
-        bits_per_channel: u32,
-        reserved: u32,
-    }
 
     /// `AudioQueueBuffer`（AudioQueue.h）
     #[repr(C)]
@@ -145,15 +141,15 @@ mod imp {
 
     type Callback = extern "C" fn(*mut c_void, AudioQueueRef, AudioQueueBufferRef);
 
-    const fn fourcc(s: &[u8; 4]) -> u32 {
-        u32::from_be_bytes(*s)
-    }
-    const LINEAR_PCM: u32 = fourcc(b"lpcm");
-    const FLOAT_PACKED: u32 = 1 | 8;
+    /// 开变速不变调（`kAudioQueueProperty_EnableTimePitch`）
     const PROP_ENABLE_TIME_PITCH: u32 = fourcc(b"q_tp");
+    /// 变速算法（`kAudioQueueProperty_TimePitchAlgorithm`）
     const PROP_TIME_PITCH_ALGORITHM: u32 = fourcc(b"qtpa");
+    /// 频谱算法，适合人声（`kAudioQueueTimePitchAlgorithm_Spectral`）
     const ALGORITHM_SPECTRAL: u32 = fourcc(b"spec");
+    /// 音量（`kAudioQueueParam_Volume`）
     const PARAM_VOLUME: u32 = 1;
+    /// 播放速率（`kAudioQueueParam_PlayRate`）
     const PARAM_PLAY_RATE: u32 = 2;
 
     #[link(name = "AudioToolbox", kind = "framework")]
@@ -190,14 +186,21 @@ mod imp {
         fn AudioQueueDispose(q: AudioQueueRef, immediate: u8) -> OSStatus;
     }
 
-    /// 把下一段 PCM 填进缓冲区并排队；没有数据了就不排（返回 false）
+    /// 填一块的结果
+    enum Fill {
+        Queued,
+        NoMoreData,
+        EnqueueFailed,
+    }
+
+    /// 把下一段 PCM 填进缓冲区并排队；没有数据了就不排
     ///
     /// # Safety
     /// `q`、`b` 是同一个活着的队列与它分配的缓冲区
-    unsafe fn refill(feed: &mut Feed, q: AudioQueueRef, b: AudioQueueBufferRef) -> bool {
+    unsafe fn refill(feed: &mut Feed, q: AudioQueueRef, b: AudioQueueBufferRef) -> Fill {
         let total = feed.pcm.samples.len();
         if feed.next >= total {
-            return false;
+            return Fill::NoMoreData;
         }
         let n = FRAMES_PER_BUFFER.min(total - feed.next);
         let src = &feed.pcm.samples[feed.next..feed.next + n];
@@ -210,7 +213,11 @@ mod imp {
         }
         feed.next += n;
         // SAFETY: 同上
-        unsafe { AudioQueueEnqueueBuffer(q, b, 0, std::ptr::null()) == 0 }
+        if unsafe { AudioQueueEnqueueBuffer(q, b, 0, std::ptr::null()) } == 0 {
+            Fill::Queued
+        } else {
+            Fill::EnqueueFailed
+        }
     }
 
     extern "C" fn on_buffer_done(user: *mut c_void, q: AudioQueueRef, b: AudioQueueBufferRef) {
@@ -224,8 +231,8 @@ mod imp {
         let frames = unsafe { (*b).user_data } as usize;
         f.played += frames;
         // SAFETY: 同上
-        unsafe {
-            refill(&mut f, q, b);
+        if let Fill::EnqueueFailed = unsafe { refill(&mut f, q, b) } {
+            f.failed = true;
         }
     }
 
@@ -247,18 +254,9 @@ mod imp {
                 next: from,
                 played: 0,
                 stopping: false,
+                failed: false,
             }));
-            let format = Asbd {
-                sample_rate: f64::from(SAMPLE_RATE),
-                format_id: LINEAR_PCM,
-                format_flags: FLOAT_PACKED,
-                bytes_per_packet: 4,
-                frames_per_packet: 1,
-                bytes_per_frame: 4,
-                channels_per_frame: 1,
-                bits_per_channel: 32,
-                reserved: 0,
-            };
+            let format: Asbd = pcm_f32_mono();
             let mut q: AudioQueueRef = std::ptr::null_mut();
             let user = (&raw const *feed).cast_mut().cast::<c_void>();
             // SAFETY: 格式结构完整；run loop 传空 = 回调在队列自己的线程上；user 在 Live 活着时一直有效
@@ -307,17 +305,16 @@ mod imp {
                         return Err(AudioError::Output);
                     }
                     // SAFETY: b 是刚从 q 分配的
-                    if !unsafe { refill(&mut f, q, b) } {
-                        break;
+                    match unsafe { refill(&mut f, q, b) } {
+                        Fill::Queued => {}
+                        Fill::NoMoreData => break,
+                        Fill::EnqueueFailed => return Err(AudioError::Output),
                     }
                 }
             }
-            // SAFETY: q 有效
-            if unsafe { AudioQueueStart(q, std::ptr::null()) } != 0 {
-                return Err(AudioError::Output);
-            }
-            if paused {
-                live.pause();
+            // 停着打开：不 Start，一个采样都不出声，等 resume
+            if !paused {
+                live.resume()?;
             }
             Ok(live)
         }
@@ -327,18 +324,29 @@ mod imp {
             unsafe { AudioQueuePause(self.q) };
         }
 
-        pub fn resume(&self) {
-            // SAFETY: q 有效；Start 也用于暂停后继续
-            unsafe { AudioQueueStart(self.q, std::ptr::null()) };
+        /// 第一次开始、或暂停后继续（都是 `AudioQueueStart`）
+        pub fn resume(&self) -> Result<(), AudioError> {
+            // SAFETY: q 有效
+            match unsafe { AudioQueueStart(self.q, std::ptr::null()) } {
+                0 => Ok(()),
+                _ => Err(AudioError::Output),
+            }
         }
 
-        pub fn set_speed(&self, speed: f64) {
+        pub fn set_speed(&self, speed: f64) -> Result<(), AudioError> {
             // SAFETY: q 有效
-            unsafe { AudioQueueSetParameter(self.q, PARAM_PLAY_RATE, speed as f32) };
+            match unsafe { AudioQueueSetParameter(self.q, PARAM_PLAY_RATE, speed as f32) } {
+                0 => Ok(()),
+                _ => Err(AudioError::Output),
+            }
         }
 
         pub fn played(&self) -> usize {
             lock(&self.feed).played
+        }
+
+        pub fn failed(&self) -> bool {
+            lock(&self.feed).failed
         }
     }
 
@@ -362,10 +370,17 @@ mod imp {
             Err(AudioError::Unsupported)
         }
         pub fn pause(&self) {}
-        pub fn resume(&self) {}
-        pub fn set_speed(&self, _: f64) {}
+        pub fn resume(&self) -> Result<(), AudioError> {
+            Err(AudioError::Unsupported)
+        }
+        pub fn set_speed(&self, _: f64) -> Result<(), AudioError> {
+            Err(AudioError::Unsupported)
+        }
         pub fn played(&self) -> usize {
             0
+        }
+        pub fn failed(&self) -> bool {
+            true
         }
     }
 }
@@ -381,7 +396,7 @@ mod tests {
     #[ignore = "要声音设备；手动跑：cargo test -p atg-audio -- --ignored"]
     fn muted_queue_plays_to_the_end_at_double_speed() {
         let pcm = Arc::new(Pcm {
-            samples: vec![0.0; (SAMPLE_RATE as usize) * 3 / 10],
+            samples: vec![0.0; (crate::decode::SAMPLE_RATE as usize) * 3 / 10],
         });
         let mut p = Player::start(Queue::muted(), pcm).unwrap();
         p.apply(Cmd::Speed(2.0)).unwrap();

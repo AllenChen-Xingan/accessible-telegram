@@ -41,6 +41,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+mod call;
+mod files;
+
+pub use call::Call;
+
 /// `start` 怎么回
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FakeStart {
@@ -48,40 +53,6 @@ pub enum FakeStart {
     Fail(CoreError),
     /// 一直不应答（测故障时等待中的请求会不会返回）
     Hang,
-}
-
-/// 一次调用的记账
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Call {
-    Start {
-        profile: String,
-        use_test_dc: bool,
-    },
-    Subscribe,
-    /// `chat_get`
-    ChatGet(ChatId),
-    /// `history`：原样记下请求
-    History(HistoryReq),
-    /// `message_get`
-    MessageGet(MsgId),
-    /// `file_download`：文件 id
-    FileDownload(i32),
-    /// `mark_listened`
-    MarkListened(MsgId),
-    /// `chat_open` / `chat_close`
-    ChatOpen(ChatId),
-    ChatClose(ChatId),
-    /// `forum_topic_get`
-    ForumTopicGet(ChatId, i64),
-    Shutdown,
-    /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
-    /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
-    Auth(&'static str),
-    /// `chats_load`：哪个列表、要几个
-    ChatsLoad {
-        list: ChatList,
-        limit: u32,
-    },
 }
 
 /// 假账号：登录各步该输什么。测试数据，值都是编的
@@ -205,11 +176,6 @@ impl FakeBackend {
     /// `forum_topic_get(chat, topic)` 回这个话题（TDLib `forumTopic` 对象）；没设的 → `not_found`
     pub fn set_forum_topic(&self, chat: ChatId, topic_id: i64, topic: Value) {
         lock(&self.forum_topics).insert((chat, topic_id), topic);
-    }
-
-    /// 登记一个文件：`file_download` 回它（`None` = 回来了但没下完）
-    pub fn set_file(&self, id: i32, file: Option<Downloaded>) {
-        lock(&self.files).insert(id, file);
     }
 
     /// 某会话的全部消息（TDLib `message` 对象，顺序无所谓）
@@ -780,25 +746,11 @@ impl Backend for FakeBackend {
     }
 
     async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::FileDownload(file.id));
-        self.ready_or_401("file_download").await?;
-        match lock(&self.files).get(&file.id) {
-            Some(Some(d)) => Ok(d.clone()),
-            Some(None) => Err(CoreError::Internal {
-                what: "download_incomplete",
-            }),
-            None => Err(CoreError::NotFound {
-                what: "file",
-                td: None,
-            }),
-        }
+        self.do_file_download(file).await
     }
 
     async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::MarkListened(id));
-        self.ready_or_401("mark_listened").await
+        self.do_mark_listened(id).await
     }
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {

@@ -19,6 +19,8 @@
 
 pub mod decode;
 mod error;
+#[cfg(target_os = "macos")]
+mod ffi;
 pub mod player;
 pub mod queue;
 

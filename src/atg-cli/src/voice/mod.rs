@@ -36,6 +36,14 @@ pub struct VoiceFile {
     pub self_destruct: bool,
 }
 
+/// 命令行的「会话 + 消息 id」→ 查询（`download`、`play` 共用这一份）
+pub fn query(m: &crate::args::MsgRef) -> Result<VoiceQuery, Fail> {
+    Ok(VoiceQuery {
+        chat: ChatRef::parse(&m.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
+        message_id: m.message,
+    })
+}
+
 /// 直跑：起后端、找到并下载这条语音、关后端
 pub fn run_download<B: Backend>(
     b: &B,
@@ -344,8 +352,15 @@ mod tests {
             Ok(())
         }
         fn pause(&mut self) {}
-        fn resume(&mut self) {}
-        fn set_speed(&mut self, _: f64) {}
+        fn resume(&mut self) -> Result<(), AudioError> {
+            Ok(())
+        }
+        fn set_speed(&mut self, _: f64) -> Result<(), AudioError> {
+            Ok(())
+        }
+        fn failed(&self) -> bool {
+            false
+        }
         fn stop(&mut self) {}
         fn played(&self) -> usize {
             0
@@ -428,10 +443,10 @@ mod tests {
 
     #[test]
     fn bad_chat_is_usage() {
-        let a = crate::args::DownloadArgs {
+        let m = crate::args::MsgRef {
             chat: "群".into(),
             message: 1,
         };
-        assert!(matches!(crate::download::query(&a), Err(Fail::Usage(_))));
+        assert!(matches!(query(&m), Err(Fail::Usage(_))));
     }
 }

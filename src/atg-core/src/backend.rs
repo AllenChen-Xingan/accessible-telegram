@@ -1,7 +1,7 @@
 //! `backend`：`Backend` 特征——只暴露本项目要的意图级操作，真实（TDLib，`td` 模块，`tdlib` 特性）与
 //! 假数据（[`crate::fake::FakeBackend`]）各一份实现。
 //!
-//! 规约正本：`specs/contracts/actions.md` 第一节第 3 小节。现有两组，都是 L0：
+//! 规约正本：`specs/contracts/actions.md` 第一节第 3 小节（动作清单与 L0 / L1 / L2 分级以它为准）。分组：
 //! - **生命周期**（第一刀第 3 块）：`start` · `subscribe` · `status` · `shutdown`
 //! - **登录**（第 4 块，T01）：`auth_prompt` · `auth_submit_*` · `auth_resend_code` · `auth_register`（只测试档案）·
 //!   `logout`。输入一律是 [`Secret`]（规约里号码、邮箱写的是 `String`；这里更严：`Debug` 打不出、用完清零）。

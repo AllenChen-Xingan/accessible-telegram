@@ -8,10 +8,9 @@
 //! 不进日志。
 
 use crate::args::{DownloadArgs, Format, Global};
-use crate::history::ChatRef;
-use crate::out::{self, Fail, Sink, Stdio, emit_to, envelope};
+use crate::out::{self, Sink, Stdio, emit_to, envelope};
 use crate::session;
-use crate::voice::{VoiceFile, VoiceQuery};
+use crate::voice::VoiceFile;
 use serde_json::json;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -21,18 +20,11 @@ pub fn run(g: &Global, format: Format, a: &DownloadArgs, started: Instant) -> Ex
     if let Some(f) = crate::no_redact(g, "download") {
         return out::fail_with(format, &f);
     }
-    let code = match query(a).and_then(|q| session::download(g, &q, started)) {
+    let code = match crate::voice::query(&a.at).and_then(|q| session::download(g, &q, started)) {
         Ok(v) => render(&mut Stdio, format, &v, started),
         Err(f) => out::fail_with_to(&mut Stdio, format, &f),
     };
     ExitCode::from(code)
-}
-
-pub fn query(a: &DownloadArgs) -> Result<VoiceQuery, Fail> {
-    Ok(VoiceQuery {
-        chat: ChatRef::parse(&a.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
-        message_id: a.message,
-    })
 }
 
 /// 结尾行：JSON 是 `result`（路径、字节数、时长）；文字模式只打印路径一行（数据，不是句子）

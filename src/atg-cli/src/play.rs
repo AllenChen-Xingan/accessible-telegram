@@ -11,9 +11,9 @@
 //! v0 不经本机接口转发，档案被占报 `profile_busy`（arch 定 2026-11-13）；`--redact` 报 `not_implemented`。
 
 use crate::args::{Format, Global, PlayArgs};
-use crate::history::{self, ChatRef};
+use crate::history;
 use crate::out::{self, Fail, Sink, Stdio, emit_to, envelope};
-use crate::voice::{VoiceFile, VoiceQuery};
+use crate::voice::VoiceFile;
 use atg_audio::player::{Cmd, End, Output, Player, Reject, State, Status};
 use atg_core::speech::SpeechCtx;
 use atg_core::tree::{Doc, PlayState, Playback};
@@ -30,10 +30,12 @@ pub fn run(g: &Global, format: Format, a: &PlayArgs, started: Instant) -> ExitCo
     if let Some(f) = crate::no_redact(g, "play") {
         return out::fail_with(format, &f);
     }
-    let r = query(a).and_then(|q| {
+    // 一开始就装：准备阶段（下载、解码、标已听）按 Ctrl+C 只立标志，准备照常收尾、后端正常关闭，
+    // 出声前的第一次检查就以 interrupted 结束（同 watch 先装再起后端）
+    crate::signals::install();
+    let r = crate::voice::query(&a.at).and_then(|q| {
         let cx = history::speech_ctx(g.tz.as_deref(), false)?;
         let (player, v) = crate::session::play_prepare(g, &q, a.mark_listened, started)?;
-        crate::signals::install();
         Ok(drive(
             &mut Stdio,
             format,
@@ -49,13 +51,6 @@ pub fn run(g: &Global, format: Format, a: &PlayArgs, started: Instant) -> ExitCo
         Ok(Err(f)) | Err(f) => out::fail_with_to(&mut Stdio, format, &f),
     };
     ExitCode::from(code)
-}
-
-pub fn query(a: &PlayArgs) -> Result<VoiceQuery, Fail> {
-    Ok(VoiceQuery {
-        chat: ChatRef::parse(&a.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
-        message_id: a.message,
-    })
 }
 
 /// 一行控制命令 → [`Cmd`]。说明是参数用法的说明（守则第 3 条允许直接写），不带输入原文
@@ -156,6 +151,11 @@ pub fn drive<O: Output>(
     lines: &Receiver<Option<String>>,
     stop: &AtomicBool,
 ) -> Result<End, Fail> {
+    // 准备期间按过 Ctrl+C：不出声，直接以 interrupted 结束
+    if stop.load(Ordering::SeqCst) {
+        let _ = player.apply(Cmd::Stop);
+        return Err(Fail::Interrupted);
+    }
     // 准备时出口是停着打开的（design.md 第三节第 5b 条）；后端已关，现在出声
     if let Ok(Some(end)) = player.apply(Cmd::Resume) {
         return Ok(end);
@@ -205,7 +205,11 @@ pub fn drive<O: Output>(
     }
 }
 
-/// 结尾行：`result`（`reason:"finished"|"stopped"`），退出码 0
+/// 出声失败时给人的话：标了已听的要说清楚（已听无法撤回，设计第 5b 条：不假装没标）
+const OUTPUT_FAILED_MARKED_ZH: &str = "声音放不出来；这条语音已经标为已听（无法撤回）";
+
+/// 结尾行：放完或停 → `result`（`reason:"finished"|"stopped"`），退出码 0；
+/// 出口坏了 → `error`（`internal{what:"audio_output_failed"}`，带 `marked_listened`）
 pub fn finish(
     sink: &mut dyn Sink,
     format: Format,
@@ -217,6 +221,7 @@ pub fn finish(
     let reason = match end {
         End::Finished => "finished",
         End::Stopped => "stopped",
+        End::OutputFailed => return output_failed(sink, format, marked),
     };
     match format {
         Format::Json => emit_to(
@@ -238,6 +243,27 @@ pub fn finish(
     0
 }
 
+fn output_failed(sink: &mut dyn Sink, format: Format, marked: bool) -> u8 {
+    let e = crate::voice::audio_fail(atg_audio::AudioError::Output);
+    let Fail::Core(core) = &e else {
+        return out::fail_with_to(sink, format, &e);
+    };
+    let mut data = out::core_error_data(core);
+    data["marked_listened"] = json!(marked);
+    if marked {
+        data["message_zh"] = json!(OUTPUT_FAILED_MARKED_ZH);
+    }
+    match format {
+        Format::Json => emit_to(sink, &envelope("error", data)),
+        Format::Text => sink.out(if marked {
+            OUTPUT_FAILED_MARKED_ZH
+        } else {
+            core.message_zh()
+        }),
+    }
+    out::core_exit(core)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,8 +283,15 @@ mod tests {
             Ok(())
         }
         fn pause(&mut self) {}
-        fn resume(&mut self) {}
-        fn set_speed(&mut self, _: f64) {}
+        fn resume(&mut self) -> Result<(), AudioError> {
+            Ok(())
+        }
+        fn set_speed(&mut self, _: f64) -> Result<(), AudioError> {
+            Ok(())
+        }
+        fn failed(&self) -> bool {
+            false
+        }
         fn stop(&mut self) {}
         fn played(&self) -> usize {
             let p = self.played.get();
@@ -430,6 +463,54 @@ mod tests {
             ),
             Err(Fail::Interrupted)
         ));
+    }
+
+    #[test]
+    fn output_failed_after_mark_is_an_error_that_says_marked() {
+        let v = VoiceFile {
+            id: atg_core::model::MsgId {
+                chat_id: 1,
+                message_id: 2,
+            },
+            duration: 3,
+            file: atg_core::backend::Downloaded {
+                path: "/编的".into(),
+                size: 1,
+            },
+            self_destruct: false,
+        };
+        let mut b = Buf::default();
+        let code = finish(
+            &mut b,
+            Format::Json,
+            End::OutputFailed,
+            &v,
+            true,
+            Instant::now(),
+        );
+        assert_ne!(code, 0);
+        let l: serde_json::Value = serde_json::from_str(&b.out[0]).unwrap();
+        assert_eq!(l["kind"], "error");
+        assert_eq!(l["data"]["code"], "internal");
+        assert_eq!(l["data"]["what"], "audio_output_failed");
+        assert_eq!(l["data"]["marked_listened"], true);
+        assert!(
+            l["data"]["message_zh"]
+                .as_str()
+                .unwrap()
+                .contains("已经标为已听")
+        );
+        let mut b = Buf::default();
+        finish(
+            &mut b,
+            Format::Json,
+            End::OutputFailed,
+            &v,
+            false,
+            Instant::now(),
+        );
+        let l: serde_json::Value = serde_json::from_str(&b.out[0]).unwrap();
+        assert_eq!(l["data"]["marked_listened"], false);
     }
 
     #[test]

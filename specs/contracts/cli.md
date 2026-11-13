@@ -62,7 +62,7 @@
 
 `send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么确认（Touch ID、测试豁免、直发模式）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
 
-**界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`。**v0 也不转发 `download`、`play`、`transcribe`**（arch 定 2026-11-13）：档案被占就报 `profile_busy`；以后只转发其中「下载」与 `mark_listened` 这两个后端动作，解码、播放、转写永远在 CLI 本进程（设计 `docs/experiments/exp008-local-stt/design.md` 第一节）（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。
+**界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。**v0 也不转发 `download`、`play`、`transcribe`**（arch 定 2026-11-13）：档案被占就报 `profile_busy`；以后只转发其中「下载」与 `mark_listened` 这两个后端动作，解码、播放、转写永远在 CLI 本进程（设计 `docs/experiments/exp008-local-stt/design.md` 第一节）。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的定义**（#18 暂定，#53 起由收线程合成成事件，`actions.md` 第一节第 7 小节）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
@@ -90,7 +90,8 @@
 | `plan` | `SendPlan`（`actions.md` 第一节第 6 小节） |
 | `version` | 各版本号 |
 | `link` | `links` 的一行：`index`（从 1 起）· `text` · `url`（隐藏时 `null`）· `hidden`（链接落在剧透里，或链接文字里套着剧透） |
-| `playback` | `play` 的状态：`state`（`playing` / `paused` / `stopped` / `finished`）· `position_s` · `duration_s` · `speed` |
+| `playback` | `play` 的状态：树节点 `playback`（`content-tree.md` 第三节第 1 小节）——`state`（`playing` / `paused`；结束不出这一行，看 `result.reason`）· `position_s` · `duration_s` · `speed`；带 `speech.brief` |
+| `control_rejected` | `play` 播放中拒绝一条控制命令（**不是结尾**，播放照常）：`code`（`invalid_input`）· `message_zh` |
 | `result` | 见下 |
 | `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有三个自有码 `usage`、`interrupted`、`not_implemented` |
 
@@ -226,3 +227,4 @@
 - 2026-10-26 issue #53 人定（经大总管）：提示音的 7 秒窗与连发计数改为按会话各算一份；重连补发结束时汇总一声（`reason:"reconnect_summary"`、`data.missed`、汇总读法待实听），文字模式也出；短自审后：汇总改为补发结束时按那时的状态再判、写明「断网重连」的触发、不计的几类、几段合并、不占 7 秒窗、中途接入时的口径
 - 2026-11-13 #4 M2.5（手下 media，按 exp007/exp008 大总管定、arch 定 2026-11-13）：`download` 一行写实（只认语音、不标已听、下完才交路径、v0 无进度行）；转发例外加 `download` / `play` / `transcribe`
 - 2026-11-13 #4 M2.6（手下 media，按 exp008 设计，大总管 / arch 定 2026-11-13；codex 017 第 1–10 轮）：`play` 一行写实（`playback` 节点、非终结的 `control_rejected`、EOF 与跳到末尾的规则、`--mark-listened` 的顺序与阅后即焚拒绝、`--redact`）；`download` 加 `--redact` 报 `not_implemented`
+- 2026-11-13 #4 自审后（手下 media）：kind 表 `playback` 的 `state` 只剩 `playing` / `paused`（结束看 `result.reason`）、补 `control_rejected` 一行；「界面开着时」那段的括注挪回原位；`play` 出口失效 → `error(internal{what:"audio_output_failed"})` 带 `marked_listened`

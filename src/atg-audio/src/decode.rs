@@ -39,28 +39,14 @@ pub fn decode(path: &Path) -> Result<Pcm, AudioError> {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{AudioError, Path, Pcm, SAMPLE_RATE};
+    use super::{AudioError, Path, Pcm};
+    use crate::ffi::{Asbd, OSStatus, fourcc, pcm_f32_mono};
     use std::ffi::c_void;
     use std::os::unix::ffi::OsStrExt;
 
-    type OSStatus = i32;
     type ExtAudioFileRef = *mut c_void;
     type CFURLRef = *const c_void;
     type CFAllocatorRef = *const c_void;
-
-    /// `AudioStreamBasicDescription`（CoreAudioTypes）
-    #[repr(C)]
-    struct Asbd {
-        sample_rate: f64,
-        format_id: u32,
-        format_flags: u32,
-        bytes_per_packet: u32,
-        frames_per_packet: u32,
-        bytes_per_frame: u32,
-        channels_per_frame: u32,
-        bits_per_channel: u32,
-        reserved: u32,
-    }
 
     /// `AudioBuffer`
     #[repr(C)]
@@ -77,13 +63,7 @@ mod imp {
         buffers: [AudioBuffer; 1],
     }
 
-    const fn fourcc(s: &[u8; 4]) -> u32 {
-        u32::from_be_bytes(*s)
-    }
-    const K_AUDIO_FORMAT_LINEAR_PCM: u32 = fourcc(b"lpcm");
-    /// `kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked`
-    const FLOAT_PACKED: u32 = 1 | 8;
-    /// `kExtAudioFileProperty_ClientDataFormat`
+    /// 客户端格式（`kExtAudioFileProperty_ClientDataFormat`）：要系统解成什么样
     const PROP_CLIENT_FORMAT: u32 = fourcc(b"cfmt");
 
     #[link(name = "AudioToolbox", kind = "framework")]
@@ -148,17 +128,7 @@ mod imp {
 
     pub fn decode(path: &Path) -> Result<Pcm, AudioError> {
         let file = open(path)?;
-        let client = Asbd {
-            sample_rate: f64::from(SAMPLE_RATE),
-            format_id: K_AUDIO_FORMAT_LINEAR_PCM,
-            format_flags: FLOAT_PACKED,
-            bytes_per_packet: 4,
-            frames_per_packet: 1,
-            bytes_per_frame: 4,
-            channels_per_frame: 1,
-            bits_per_channel: 32,
-            reserved: 0,
-        };
+        let client = pcm_f32_mono();
         // SAFETY: 文件句柄有效；client 是按 C 布局的完整结构体
         let st = unsafe {
             ExtAudioFileSetProperty(
@@ -223,7 +193,8 @@ mod tests {
     #[test]
     fn decodes_ogg_opus_with_priming_removed() {
         let p = decode(&fixture("zh.ogg")).unwrap();
-        // afinfo：107129 个有效帧（312 个预跳过与尾部填充已去掉）
+        // `afinfo fixtures/zh.ogg` 报「107129 valid frames + 312 priming + 79 remainder」：Opus 文件开头有 312 个
+        // 要丢掉的预跳过（priming / pre-skip）样本、末尾有补齐的填充；系统解码应已去掉两者，只剩有效帧
         assert_eq!(p.samples.len(), 107_129);
         assert!((p.duration_s() - 2.2318).abs() < 0.001);
         let peak = p.samples.iter().fold(0f32, |m, x| m.max(x.abs()));
