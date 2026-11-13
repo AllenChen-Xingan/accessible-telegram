@@ -20,12 +20,16 @@ mod args;
 // 列会话的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod chats;
+mod download;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod history;
 mod login;
 mod out;
+// 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod play;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
@@ -35,6 +39,9 @@ mod speech;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
+// 语音的组合动作只有真实后端调；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod voice;
 // 直跑只有真实后端起；不编 TDLib 时只有单测与执行方用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod watch;
@@ -97,6 +104,8 @@ fn main() -> ExitCode {
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
+        Command::Download(a) => download::run(&cli.global, format, &a, started),
+        Command::Play(a) => play::run(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
         Command::Watch(a) => run_watch(&cli.global, format, &a, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略

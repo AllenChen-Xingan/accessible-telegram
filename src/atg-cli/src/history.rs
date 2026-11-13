@@ -111,7 +111,9 @@ fn doc_id(d: &Doc) -> Option<i64> {
         Doc::Message(m) => Some(m.id.message_id),
         Doc::Service(s) => Some(s.id.message_id),
         Doc::Tombstone(t) => Some(t.id.message_id),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => None,
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+            None
+        }
     }
 }
 
@@ -161,7 +163,7 @@ pub fn run_links<B: Backend>(
     })
 }
 
-fn with_backend<B: Backend, T>(
+pub(crate) fn with_backend<B: Backend, T>(
     b: &B,
     profile: &Profile,
     started: Instant,
@@ -181,7 +183,7 @@ fn with_backend<B: Backend, T>(
 }
 
 /// 会话 id：`saved` 换成自己的用户 id（与自己的私聊，会话 id 即用户 id）
-fn resolve<B: Backend>(
+pub(crate) fn resolve<B: Backend>(
     b: &B,
     stream: &mut EventStream,
     feed: &mut Feed,
@@ -206,7 +208,7 @@ fn resolve<B: Backend>(
 }
 
 /// 让会话进 Store（`getChat`），找不到 → `not_found`
-fn load_chat<B: Backend>(
+pub(crate) fn load_chat<B: Backend>(
     b: &B,
     stream: &mut EventStream,
     feed: &mut Feed,

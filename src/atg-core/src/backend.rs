@@ -12,6 +12,8 @@
 //!   （[`crate::store::Store::chat_list`]）；`wait_net` 供 CLI 等「补发完了」——离线期间漏掉的更新由服务器补送，
 //!   送完 TDLib 把连接状态从 `updating` 报成 `ready`
 //!
+//! - **文件与语音**（M2.5 M2.6，T07）：`file_download`（`downloadFile`，同步等下完）· `mark_listened`（`openMessageContent`，L1）
+//!
 //! - **消息**（第 8 块，T03 T06）：`chat_get`（`getChat`）· `history`（`getChatHistory`）· `message_get`（`getMessage`）。
 //!   都是 L0 只读：**不调 `openChat` / `viewMessages`，不标已读**（`actions.md` A1：CLI 的 history 不标）。会话、用户
 //!   经更新先进事件流（TDLib 先推 `updateNewChat` / `updateUser` 再给应答），消息本身随应答返回
@@ -28,7 +30,8 @@ use crate::link::EventStream;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::secret::Secret;
 use crate::status::{AuthStep, Lines, NetState};
-use crate::tree::UserStatus;
+use crate::tree::{FileRef, UserStatus};
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// 关闭时等 `authorizationStateClosed` 的默认上限（`001_arch-stack.md` 第一节第 4 小节：超时就记日志后退出）
@@ -117,6 +120,15 @@ pub trait Backend {
     /// 一条消息（`getMessage`）。不在 → `not_found`。**不标已读**
     async fn message_get(&self, id: MsgId) -> Result<Message, CoreError>;
 
+    /// 下载一个附件文件（`downloadFile`，同步等它下完；L0，对外不可见）。已在本地的直接回。只有 TDLib 报
+    /// 「下载已完成」才交出路径——没下完的文件解码器会静默解出半截（exp007），所以宁可报错。
+    /// 文件 id 为 0 / TDLib 找不到 → `not_found{what:"file"}`；回来了却没下完 → `internal{what:"download_incomplete"}`
+    async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError>;
+
+    /// 标已听 / 已看（`openMessageContent`，**L1**：对方会看到；`actions.md` `mark_listened`）。只从 `play --mark-listened`
+    /// 与以后 GUI 的播放调。**阅后即焚按 L2，本函数不管**：调用方先查 `Message::self_destruct`，L2 确认没做之前不许调
+    async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError>;
+
     /// 打开会话（`openChat`，L0）：只为让 TDLib 推这个会话的实时更新（超级群、频道只有打开的会话才推）。
     /// **绝不隐式调 `viewMessages`，不标已读**（`actions.md` `chat_open`；CLI 的 `watch --chat` 用）。必须与
     /// [`Backend::chat_close`] 配对。找不到 → `not_found`
@@ -164,6 +176,13 @@ impl HistoryReq {
             Err(CoreError::InvalidInput { td: None })
         }
     }
+}
+
+/// [`Backend::file_download`] 的结果：本地路径（TDLib 档案目录下，明文，`config-privacy.md` 第一节）与字节数
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Downloaded {
+    pub path: PathBuf,
+    pub size: u64,
 }
 
 /// [`Backend::chats_load`] 的结果

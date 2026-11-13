@@ -215,6 +215,63 @@ pub fn history(
     }
 }
 
+/// `download`：选档案、起真实后端、下这条语音、关。v0 不经本机接口转发（arch 定 2026-11-13）
+pub fn download(
+    g: &Global,
+    q: &crate::voice::VoiceQuery,
+    started: std::time::Instant,
+) -> Result<crate::voice::VoiceFile, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "download",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, started);
+        Err(Fail::NotImplemented {
+            command: "download",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::voice::run_download(&b, &profile, q, started)
+    }
+}
+
+/// `play` 的准备：选档案、起真实后端、找到 → 下载 → 解码 → 出口停着打开 →（要标就）标已听、关后端。v0 不转发
+pub fn play_prepare(
+    g: &Global,
+    q: &crate::voice::VoiceQuery,
+    mark: bool,
+    started: std::time::Instant,
+) -> Result<(atg_audio::Player<atg_audio::Queue>, crate::voice::VoiceFile), Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "play",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, mark, started);
+        Err(Fail::NotImplemented {
+            command: "play",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::voice::run_prepare_play(&b, &profile, q, mark, atg_audio::Queue::new(), started)
+    }
+}
+
 /// `watch`：选档案、起真实后端、订阅到 Ctrl+C（输出由 `watch` 自己写标准输出，回退出码）
 pub fn watch(
     g: &Global,

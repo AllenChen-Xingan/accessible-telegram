@@ -11,8 +11,11 @@
 //! - [`Doc`] 是渲染时从 model + store 现投影出来的（名字、已读状态都可能晚到），不存
 
 pub mod mask;
+mod media;
 pub mod text;
 mod time;
+
+pub use media::{Expirable, FileRef, PlayState, Playback};
 
 use serde::Serialize;
 
@@ -51,6 +54,8 @@ pub enum Doc {
     Alert(Alert),
     /// 用户状态：断网、连接中、同步中、已连接、未登录……（T10）
     Status(Status),
+    /// 语音播放状态（`play`，M2.6）
+    Playback(Playback),
     /// 不认识的顶层对象
     Unknown(Unknown),
 }
@@ -218,6 +223,8 @@ pub enum Attachment {
     Voice {
         duration: u32,
         listened: bool,
+        #[serde(skip_serializing_if = "FileRef::nothing_to_show")]
+        file: FileRef,
     },
     /// 圆视频
     VideoNote {
@@ -277,15 +284,6 @@ pub enum Attachment {
     Unknown {
         td_type: String,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Expirable {
-    Photo,
-    Video,
-    VideoNote,
-    Voice,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

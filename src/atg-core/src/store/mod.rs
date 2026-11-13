@@ -1013,6 +1013,7 @@ mod tests {
             reactions: vec![],
             sending: SendingState::Sent,
             mentions_me: false,
+            self_destruct: false,
         }
     }
 

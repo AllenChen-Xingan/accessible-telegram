@@ -24,13 +24,16 @@
 //! 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
 
 use crate::auth::{self, AuthPrompt};
-use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
+use crate::backend::{
+    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+};
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::link::{self, EventStream, Shared, Step};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::secret::Secret;
 use crate::status::{AuthStep, CoreState, NetState};
+use crate::tree::FileRef;
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -61,6 +64,10 @@ pub enum Call {
     History(HistoryReq),
     /// `message_get`
     MessageGet(MsgId),
+    /// `file_download`：文件 id
+    FileDownload(i32),
+    /// `mark_listened`
+    MarkListened(MsgId),
     /// `chat_open` / `chat_close`
     ChatOpen(ChatId),
     ChatClose(ChatId),
@@ -123,6 +130,8 @@ pub struct FakeBackend {
     forum_topics: Mutex<HashMap<(ChatId, i64), Value>>,
     /// 每个会话的消息（TDLib `message` 对象）
     histories: Mutex<HashMap<ChatId, Vec<Value>>>,
+    /// `file_download` 回什么：`None` = TDLib 回来了但没下完；没登记 = 找不到
+    files: Mutex<HashMap<i32, Option<Downloaded>>>,
     /// 每个会话第一次 `history` 只回 1 条
     short_first: Mutex<Option<std::collections::HashSet<ChatId>>>,
     /// 停住：（先照常应答几次，再连着几次只回起点那一条）——TDLib 正从服务器拉、一直没拉到的样子
@@ -170,6 +179,7 @@ impl FakeBackend {
             chat_info: Mutex::new(HashMap::new()),
             forum_topics: Mutex::new(HashMap::new()),
             histories: Mutex::new(HashMap::new()),
+            files: Mutex::new(HashMap::new()),
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
             cap: Mutex::new(None),
@@ -195,6 +205,11 @@ impl FakeBackend {
     /// `forum_topic_get(chat, topic)` 回这个话题（TDLib `forumTopic` 对象）；没设的 → `not_found`
     pub fn set_forum_topic(&self, chat: ChatId, topic_id: i64, topic: Value) {
         lock(&self.forum_topics).insert((chat, topic_id), topic);
+    }
+
+    /// 登记一个文件：`file_download` 回它（`None` = 回来了但没下完）
+    pub fn set_file(&self, id: i32, file: Option<Downloaded>) {
+        lock(&self.files).insert(id, file);
     }
 
     /// 某会话的全部消息（TDLib `message` 对象，顺序无所谓）
@@ -762,6 +777,28 @@ impl Backend for FakeBackend {
                 what: "message",
                 td: None,
             })
+    }
+
+    async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::FileDownload(file.id));
+        self.ready_or_401("file_download").await?;
+        match lock(&self.files).get(&file.id) {
+            Some(Some(d)) => Ok(d.clone()),
+            Some(None) => Err(CoreError::Internal {
+                what: "download_incomplete",
+            }),
+            None => Err(CoreError::NotFound {
+                what: "file",
+                td: None,
+            }),
+        }
+    }
+
+    async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError> {
+        self.started()?;
+        lock(&self.calls).push(Call::MarkListened(id));
+        self.ready_or_401("mark_listened").await
     }
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {

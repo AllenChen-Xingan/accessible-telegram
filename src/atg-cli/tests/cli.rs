@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
-    "login", "auth", "logout", "speech", "history", "links", "watch",
+    "login", "auth", "logout", "speech", "history", "links", "watch", "download", "play",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -14,7 +14,6 @@ const PLACEHOLDERS: &[&str] = &[
     "pending",
     "status",
     "next-unread",
-    "download",
     "open",
     "mute",
     "delete",
@@ -23,7 +22,6 @@ const PLACEHOLDERS: &[&str] = &[
     "search",
     "send",
     "draft",
-    "play",
     "schema",
 ];
 
@@ -142,6 +140,26 @@ fn login_commands_with_fake_are_not_implemented_yet() {
         assert_eq!(ls.len(), 1, "{args:?}");
         assert_eq!(ls[0]["data"]["code"], "not_implemented");
         assert!(DONE.contains(&ls[0]["data"]["command"].as_str().unwrap()));
+    }
+}
+
+/// `download`：会话写错是 `usage`（退出码 2）；`--fake` 还没有场景目录 → `not_implemented`。都只有一行结尾
+#[test]
+fn download_and_play_shell_paths_without_tdlib() {
+    for (args, code, exit) in [
+        (&["download", "群", "1"][..], "usage", 2),
+        (
+            &["--fake", "basic", "download", "saved", "1"][..],
+            "not_implemented",
+            1,
+        ),
+    ] {
+        let out = run(args);
+        assert_eq!(out.status.code(), Some(exit), "{args:?}");
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["kind"], "error");
+        assert_eq!(ls[0]["data"]["code"], code, "{args:?}");
     }
 }
 

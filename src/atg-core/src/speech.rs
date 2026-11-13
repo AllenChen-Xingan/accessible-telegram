@@ -21,6 +21,8 @@
 
 use crate::tree::*;
 
+mod playback;
+
 /// 读法需要、但不在树里的东西
 #[derive(Debug, Clone)]
 pub struct SpeechCtx {
@@ -70,6 +72,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::ChatItem(c) => chat_brief_with(c, cx.reveal),
         Doc::Alert(a) => alert(a, cx),
         Doc::Status(s) => status(s.status).to_owned(),
+        Doc::Playback(p) => playback::brief(p),
         Doc::Unknown(_) => UNSUPPORTED.to_owned(),
     }
 }
@@ -170,7 +173,9 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
         }
         Doc::Service(sv) => date(sv.date, cx),
         Doc::Tombstone(t) => t.date.map(|d| date(d, cx)).unwrap_or_default(),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => String::new(),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+            String::new()
+        }
     }
 }
 
@@ -182,7 +187,9 @@ pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::Message(m) => full_content(&m.content, cx.reveal),
         Doc::Service(sv) => service(sv, cx.reveal),
         Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => brief(doc, cx),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+            brief(doc, cx)
+        }
     }
 }
 

@@ -98,8 +98,8 @@ pub enum Command {
     History(HistoryArgs),
     /// 列出一条消息里的链接（文字 + 地址）
     Links(LinksArgs),
-    /// 下载一条消息的附件
-    Download(Rest),
+    /// 下载一条语音（不标已听；档案被占时不转发）
+    Download(DownloadArgs),
     /// 用系统打开链接或附件
     Open(Rest),
     /// 静音 / 取消静音
@@ -118,8 +118,8 @@ pub enum Command {
     Watch(WatchArgs),
     /// 草稿：`draft set` / `draft clear`
     Draft(Rest),
-    /// 播放语音
-    Play(Rest),
+    /// 前台放一条语音：标准输入收控制命令，标准输出逐行出状态（默认不标已听；档案被占时不转发）
+    Play(PlayArgs),
     /// 只打印读法：夹具（TDLib 更新的 JSON 数组）→ 树 → 读法，不联网
     Speech(SpeechArgs),
     /// 机读自描述
@@ -228,6 +228,31 @@ pub struct LinksArgs {
     /// 隐藏的链接（落在剧透里、或链接文字里套着剧透）也给出文字和地址，等于人按了展开键；不加时只说「隐藏内容」、地址为 null（规则见 specs/content-tree.md 第八节）
     #[arg(long)]
     pub reveal: bool,
+}
+
+/// `download` 的参数。v0 只下语音（#4）；以后附件打开（M3.7）扩到别的附件
+#[derive(Args)]
+pub struct DownloadArgs {
+    /// 会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 消息 id
+    #[arg(value_name = "MSG_ID")]
+    pub message: i64,
+}
+
+/// `play` 的参数
+#[derive(Args)]
+pub struct PlayArgs {
+    /// 会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 消息 id
+    #[arg(value_name = "MSG_ID")]
+    pub message: i64,
+    /// 标为已听（对方看得到）：出口准备好之后、出声之前标；阅后即焚的语音会拒绝（确认还没做）
+    #[arg(long)]
+    pub mark_listened: bool,
 }
 
 /// `speech` 的参数（`specs/contracts/cli.md`）。`--fixture` 是单个读法夹具文件。`--scenario` 现在**没有**，名字预留给以后的场景目录

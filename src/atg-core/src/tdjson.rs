@@ -506,6 +506,7 @@ pub fn message(m: &Value) -> Message {
             _ => SendingState::Sent,
         },
         mentions_me: b(m, "contains_unread_mention"),
+        self_destruct: !m["self_destruct_type"].is_null(),
     };
     msg.enforce();
     msg
@@ -613,6 +614,9 @@ fn content(c: &Value) -> Content {
             Some(Attachment::Voice {
                 duration: dur("voice_note"),
                 listened: b(c, "is_listened"),
+                file: FileRef {
+                    id: file_id(&c["voice_note"]["voice"]),
+                },
             }),
         ),
         "messageVideoNote" => (
@@ -808,6 +812,10 @@ fn i(v: &Value, k: &str) -> i64 {
 }
 fn u(v: &Value, k: &str) -> u32 {
     u32::try_from(i(v, k).max(0)).unwrap_or(u32::MAX)
+}
+/// TDLib `file.id`（int32）；缺了或越界为 0（TDLib 不发 0 号文件，下载时按找不到处理）
+fn file_id(file: &Value) -> i32 {
+    i32::try_from(i(file, "id")).unwrap_or(0)
 }
 fn str_or_num(v: &Value) -> String {
     match v {

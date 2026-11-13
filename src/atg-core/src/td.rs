@@ -21,7 +21,9 @@ pub use real::{TdBackend, TdConfig, tdlib_version};
 #[cfg(feature = "tdlib-api")]
 mod real {
     use crate::auth::{self, AuthPrompt};
-    use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
+    use crate::backend::{
+        Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+    };
     use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
     use crate::keystore::KeyStore;
@@ -31,6 +33,7 @@ mod real {
     use crate::secret::{self, Secret};
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
+    use crate::tree::FileRef;
     use serde_json::{Value, json};
     use std::future::Future;
     use std::path::{Path, PathBuf};
@@ -585,6 +588,42 @@ mod real {
                 }),
                 Err(e) => Err(self.read_error("message", &e)),
             }
+        }
+
+        async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            if file.id == 0 {
+                return Err(CoreError::NotFound {
+                    what: "file",
+                    td: None,
+                });
+            }
+            // 优先级 1–32，取最高；offset 0 + limit 0 = 整个文件；synchronous = 等下完再回
+            let r = link::guard(
+                self.shared.clone(),
+                functions::download_file(file.id, 32, 0, 0, true, id),
+            )
+            .await?;
+            match r {
+                Ok(enums::File::File(f)) if f.local.is_downloading_completed => Ok(Downloaded {
+                    path: PathBuf::from(f.local.path),
+                    size: u64::try_from(f.size.max(f.local.downloaded_size)).unwrap_or(0),
+                }),
+                Ok(_) => Err(CoreError::Internal {
+                    what: "download_incomplete",
+                }),
+                Err(e) => Err(self.read_error("file", &e)),
+            }
+        }
+
+        async fn mark_listened(&self, mid: MsgId) -> Result<(), CoreError> {
+            let id = self.client_id().ok_or_else(Self::not_started)?;
+            let r = link::guard(
+                self.shared.clone(),
+                functions::open_message_content(mid.chat_id, mid.message_id, id),
+            )
+            .await?;
+            r.map_err(|e| self.read_error("message", &e))
         }
 
         fn wait_net(

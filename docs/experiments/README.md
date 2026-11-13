@@ -9,3 +9,5 @@
 |------|------|------|
 | [exp005-keychain-acl](exp005-keychain-acl/README.md) | 同证书 + 固定标识签名，重编后读钥匙串就不弹框 | 推翻：自签名无团队号，分区名单按 cdhash 记，重编必弹；改用 Apple Development 证书（分区按团队号）实测根治，安全边界变宽（同用户进程可静默签名取钥匙），人已接受并采用（#38） |
 | [exp006-keychain-migrate](exp006-keychain-migrate/README.md) | 旧条目被新身份读时点一次「始终允许」，之后重编不弹 | 成立：访问名单加新身份需求、分区名单加 `teamid:…`（旧的都保留），重编静默读不弹；真条目 test、main 已迁；新身份能读不能删（属主仍是建条目的旧版）（#38） |
+| [exp007-opus-decode](exp007-opus-decode/README.md) | macOS 27 能直接解 Telegram 的 OGG/Opus | 成立：AudioToolbox 原生解（预跳过正确、5.7 s 音频 0.02 s），MP3/M4A 同一入口；截断文件静默解出半截，须先确认下完；不引第三方解码库（#4） |
+| [exp008-local-stt](exp008-local-stt/README.md) | 本机端侧 SpeechTranscriber 能离线转普通话 / 英语且远快于实时 | 成立（合成音）：零错字、双跑 zh+en 约 35 倍实时、取置信度高者四夹具全对、终端与 .app 启动都无授权弹窗；断网、冷启动、真人语音未测；Rust 经独立 Swift 辅助程序调（#59） |

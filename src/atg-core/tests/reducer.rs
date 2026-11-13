@@ -34,6 +34,7 @@ fn voice() -> Body {
         attachment: Some(Attachment::Voice {
             duration: 3,
             listened: false,
+            file: atg_core::tree::FileRef { id: 7 },
         }),
         sensitive: false,
     })
@@ -57,6 +58,7 @@ fn msg(chat_id: i64, message_id: i64, body: Body) -> Message {
         reactions: vec![],
         sending: SendingState::Sent,
         mentions_me: false,
+        self_destruct: false,
     }
 }
 
