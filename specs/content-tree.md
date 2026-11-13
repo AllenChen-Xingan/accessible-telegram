@@ -65,6 +65,7 @@
 | `chat_item` | 会话列表一项 | `chat` `tl:4080` |
 | `alert` | 新消息提醒：总数 + 各会话条数 | 本项目 `notify` 策略 |
 | `status` | 用户状态（T10）：内核、授权、连接三条线合成的一个值 | 合成规则归 `specs/contracts/errors.md` 第一节第 3 小节；连接一线来自 `updateConnectionState` `tl:11818` |
+| `playback` | 语音播放状态（`play` 每次状态变化一行，M2.6）：`state`（`playing` / `paused`）· `position_s` · `duration_s` · `speed`；句子由 `speech` 出（AI 草稿，待人实听） | 本项目播放器（`atg-audio`） |
 | `unknown` | 不认识的顶层对象 | 任何别的 |
 
 **以后加**（api 清单「五」）：**未读分隔**（api 升为 M：进会话的落点要用，下一个加）、日期分隔、登录步骤、发送结果、服务通知。分隔不是 TDLib 对象，由投影按 `chat.last_read_inbox_message_id` 和日期插进消息序列，形状预定为 `divider{kind: unread | date, …}`，自己没有消息身份，不进焦点顺序还是进，交 GUI 阶段定。登录步骤与发送结果和 infra 的 CLI 契约（`prompt` / `result`）交界，等那份定了再加。
@@ -106,7 +107,7 @@ Message
 |---|---|---|
 | `photo` | spoiler | `messagePhoto` `tl:5722` |
 | `video` | duration, spoiler | `messageVideo` `tl:5737` |
-| `voice` | duration, listened | `messageVoiceNote` `tl:5749` |
+| `voice` | duration, listened, file（`FileRef`：TDLib 文件 id，**JSON 不输出**——只在本次运行有效的传输句柄；以后「下没下完」这类给人看的字段加在它里面、照常输出。所有带文件的附件以后共用它，arch 定 2026-11-13） | `messageVoiceNote` `tl:5749` |
 | `video_note` | duration, viewed | `messageVideoNote` `tl:5743` |
 | `audio` | duration, title, performer | `messageAudio` `tl:5703` |
 | `animation` | duration | `messageAnimation` `tl:5700` |
@@ -286,3 +287,5 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-10-25 按 b7 拍板（`docs/plan/006_decisions-b7.md`）同步（model，大总管授权）：第二节投影函数改写成实际的四个（乙9）；第八节补「给取值固定的字段加新取值不加一」（乙10）；第三节第 2 小节受限规则系统消息也适用，原文本就没写例外，无需改（乙12）；第三节第 2 小节补「被回复那条受限则引用不出」（乙11）与回复对象跟随换 id
 - 2026-10-26 issue #21 history（大总管授权 2026-10-26）：第八节加「隐藏内容默认遮住」——不展开时 `data` 里剧透换成空节点，落在剧透里或文字里套着剧透的链接整个换成空剧透（文字和地址都不留）；`v` 不加一；第七节登记新渲染器与遍历、`mask.rs` 的 lint
 - 2026-10-26 issue #21 第三、四轮自审后（大总管授权 2026-10-26，属技术细节）：文首代码清单加 `mask.rs`；第八节写明 `data` 的遮挡只在输出 JSON 时做、读法另遮、原文只在内存
+- 2026-11-13 #4 M2.5（手下 media，arch 定 2026-11-13）：附件 `voice` 加 `file: FileRef`（JSON 不输出，`v` 不加一）；`FileRef`、`Expirable` 放 `tree/media.rs`
+- 2026-11-13 #4 M2.6（手下 media，arch 定 2026-11-13：播放状态也先成树）：顶层加 `playback`；`v` 不加一（新增节点种类）

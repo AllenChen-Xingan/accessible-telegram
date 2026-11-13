@@ -62,9 +62,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "atg-audio"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "atg-cli"
 version = "0.0.0"
 dependencies = [
+ "atg-audio",
  "atg-core",
  "clap",
  "insta",

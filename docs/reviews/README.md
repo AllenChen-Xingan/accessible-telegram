@@ -16,4 +16,6 @@
 | 006 | 2026-10-25 | skill `codex-review` 自审：codex 11 轮（P1 7→…→0→0），第 10、11 轮无 P0/P1 收敛；剩余 P2 开 issue → `006_codex-review-skill-codex.md` |
 | 019 | 2026-11-13 | #60 架构门槛（行数棘轮、正本比对、`arch-guard`）与 #41；方案 `plan/010_complexity-budget.md` + `specs/architecture-rules.md`（codex · 一级评审；先多视角自审六轮）→ `019_arch-budget-codex.md`（门槛 9 轮、文档 5 轮，两部分都连续两轮无 P0/P1 收敛；采纳 23 / 提出 23，衍生 #81 #82） |
 | 016 | 2026-11-13 | #52 发送闸 + `atg-cli send` / `resend`（codex） | 第一轮 P1×5 P2×2，全部属实，P1 与 1 条 P2 已修、1 条 P2 → #77；第二轮进行中 → `016_send-gate-codex.md` |
+| 017 | 2026-11-13 | exp007 解码 + exp008 端侧转写 + 设计 `exp008-local-stt/design.md`（codex · 十三轮） | 提出 39（P1×17、P2×22）：全部属实、全部采纳；第 12、13 轮无 P0/P1，收敛；无剩余 P2 → `017_exp007-008-codex.md` |
 | 020 | 2026-11-13 | #68 #70 读法隐藏内容（置顶 / 投票按 D 展开、链接部分剧透整条遮）+ check-no-debug 认测试文件（codex · 两轮） | 第一轮 P2×2、第二轮 P2×1，全部属实已修；两轮无 P0/P1，收敛 → `020_speech-hidden-68-70-codex.md` |
+| 018 | 2026-11-13 | #4 下载与播放的代码（atg-audio、download / play；codex · 三轮，逐文件审） | 提出 8（P1×2、P2×6）：全部属实；代码全改，剩 1 条 P2 的测试缺口开 issue；第 2、3 轮无 P0/P1，收敛 → `018_pr4-voice-code-codex.md` |

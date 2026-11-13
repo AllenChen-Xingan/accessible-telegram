@@ -9,7 +9,7 @@
 use atg_core::json;
 use atg_core::speech::{self, SpeechCtx, brief};
 use atg_core::tdjson::World;
-use atg_core::tree::{Alert, AlertChat, Doc};
+use atg_core::tree::{Alert, AlertChat, Doc, PlayState, Playback};
 
 fn cx() -> SpeechCtx {
     SpeechCtx {
@@ -126,6 +126,26 @@ fn alert_brief() {
         brief(&many, &cx()),
         brief(&one, &no_key),
         json::line(&one, &cx())
+    ));
+}
+
+/// 播放状态的读法（`play` 的每一行；AI 草稿，待人实听）
+#[test]
+fn playback_brief() {
+    let p = |state, position_s, speed| {
+        Doc::Playback(Playback {
+            state,
+            position_s,
+            duration_s: 72.0,
+            speed,
+        })
+    };
+    insta::assert_snapshot!(format!(
+        "{}\n{}\n{}\n{}",
+        brief(&p(PlayState::Playing, 3.4, 1.0), &cx()),
+        brief(&p(PlayState::Paused, 0.0, 1.5), &cx()),
+        brief(&p(PlayState::Playing, f64::NAN, 2.0), &cx()),
+        json::line(&p(PlayState::Paused, 12.0, 1.0), &cx())
     ));
 }
 

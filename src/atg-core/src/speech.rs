@@ -21,6 +21,9 @@
 
 use crate::tree::*;
 
+mod playback;
+mod status;
+
 /// 读法需要、但不在树里的东西
 #[derive(Debug, Clone)]
 pub struct SpeechCtx {
@@ -68,7 +71,8 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
         }
         Doc::ChatItem(c) => chat_brief_with(c, cx.reveal),
         Doc::Alert(a) => alert(a, cx),
-        Doc::Status(s) => status(s.status).to_owned(),
+        Doc::Status(s) => status::brief(s.status).to_owned(),
+        Doc::Playback(p) => playback::brief(p),
         Doc::Unknown(_) => UNSUPPORTED.to_owned(),
     }
 }
@@ -169,7 +173,9 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
         }
         Doc::Service(sv) => date(sv.date, cx),
         Doc::Tombstone(t) => t.date.map(|d| date(d, cx)).unwrap_or_default(),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => String::new(),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+            String::new()
+        }
     }
 }
 
@@ -181,7 +187,9 @@ pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::Message(m) => full_content(&m.content, cx.reveal),
         Doc::Service(sv) => service(sv, cx.reveal).0,
         Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => brief(doc, cx),
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+            brief(doc, cx)
+        }
     }
 }
 
@@ -382,21 +390,6 @@ fn alert(a: &Alert, cx: &SpeechCtx) -> String {
         s.push_str(&format!("，按 {} 收听", k.to_ascii_uppercase()));
     }
     s
-}
-
-fn status(s: UserStatus) -> &'static str {
-    match s {
-        UserStatus::Fault => "连接已中断，需要重启",
-        // `specs/contracts/errors.md` 第一节第 3 小节：这一态不主动播报；但焦点落在状态项上时仍要有一句名称。说法待人实听定标
-        UserStatus::Stopping => "正在退出",
-        UserStatus::SignedOut => "未登录",
-        UserStatus::SigningIn => "正在登录",
-        UserStatus::UnsupportedStep => "这一步本应用暂不支持，请先在官方客户端完成",
-        UserStatus::Offline => "网络已断开，正在等待网络",
-        UserStatus::Connecting => "正在连接",
-        UserStatus::Syncing => "正在同步",
-        UserStatus::Online => "已连接",
-    }
 }
 
 /// 消息的说话人；`None` = 不读名字。

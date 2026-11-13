@@ -1,5 +1,5 @@
 ---
-source: src/atg-cli/src/history.rs
+source: src/atg-cli/src/history/tests.rs
 expression: "[\"# brief\", &plain_text.out.join(\"\\n\"), \"# detail\", &detail.out.join(\"\\n\"),\n\"# full\", &full.out.join(\"\\n\"), \"# full --reveal\", &revealed.out.join(\"\\n\"),\n\"# stderr\", &plain_text.err.join(\"\\n\"),].join(\"\\n\")"
 ---
 # brief

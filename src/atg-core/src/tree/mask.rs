@@ -30,7 +30,8 @@ fn mask_doc(d: &mut Doc) {
                 }
             }
         }
-        Doc::Tombstone(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => {}
+        Doc::Tombstone(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+        }
     }
 }
 

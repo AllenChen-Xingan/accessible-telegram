@@ -24,6 +24,8 @@ use crate::tree::text::{self, Entity, EntityKind};
 use crate::tree::*;
 use serde_json::Value;
 
+mod file;
+
 /// 认识、但 v0 没做专门节点的系统消息。读法读出类型。清单随 `docs/research/002_features/content-types.md` 增补
 const OTHER_SERVICE: &[&str] = &[
     "messageScreenshotTaken",
@@ -506,6 +508,7 @@ pub fn message(m: &Value) -> Message {
             _ => SendingState::Sent,
         },
         mentions_me: b(m, "contains_unread_mention"),
+        self_destruct: !m["self_destruct_type"].is_null(),
     };
     msg.enforce();
     msg
@@ -608,13 +611,7 @@ fn content(c: &Value) -> Content {
                 spoiler,
             }),
         ),
-        "messageVoiceNote" => (
-            caption(),
-            Some(Attachment::Voice {
-                duration: dur("voice_note"),
-                listened: b(c, "is_listened"),
-            }),
-        ),
+        "messageVoiceNote" => (caption(), Some(file::voice(c))),
         "messageVideoNote" => (
             vec![],
             Some(Attachment::VideoNote {
