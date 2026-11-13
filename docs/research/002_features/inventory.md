@@ -160,9 +160,9 @@
 | 功能 | TDLib 函数 / 更新 | 读屏价值 | 难度 | 依赖 | 对应 T | 批次建议 |
 |---|---|---|---|---|---|---|
 | 读出语音消息描述（时长、是否已听、说明） | `messageVoiceNote`(is_listened) tl:5749 · `voiceNote`(duration) tl:643 | 高：语音在私聊里很常见 | S | 消息读取 | T07 | MVP |
-| 播放语音消息 | `downloadFile` tl:15001 → 本地 OGG/Opus 文件 → 播放器 | 高：读屏用户最依赖听 | M：macOS AVFoundation 不原生解 Opus/OGG，需解码库或先转码；播放/暂停/快进键位要和 VoiceOver 不冲突 | 下载 | T07 | MVP（至少能播） |
+| 播放语音消息 | `downloadFile` tl:15001 → 本地 OGG/Opus 文件 → 播放器 | 高：读屏用户最依赖听 | M：macOS 27 的 AudioToolbox 原生解 OGG/Opus，不需解码库（exp007，2026-11-13 实测；原写「不原生解」已过时）；播放/暂停/快进键位要和 VoiceOver 不冲突 | 下载 | T07 | MVP（至少能播） |
 | 标记已听 | `openMessageContent` tl:14205 → `updateMessageContentOpened` tl:11244 | 中：对方能看到"已听"，自己能分辨哪条没听 | S | 播放 | T06/T07 | MVP（随播放一起） |
-| 语音转文字 | `recognizeSpeech` tl:13121 · 结果写进 `voiceNote.speech_recognition_result` 经 `updateMessageContent` tl:11217 推送 · `speechRecognitionResultPending/Text/Error` tl:8008/8011/8014 · 能否用看 `messageProperties.can_recognize_speech` tl:6863（`getMessageProperties` tl:12457）· `rateSpeechRecognition` tl:13127 | 高：让语音变成可逐字浏览/搜索的文字，对读屏极友好 | M：异步多次更新（pending→text），要在消息上挂状态 | 消息读取 | T07 | 二（取决于是否 Premium，见注意 1） |
+| 语音转文字 | **按 #59 人定 2026-11-13 改为本机端侧转写**：macOS Speech 框架 `SpeechAnalyzer` / `SpeechTranscriber`（普通话、英语，按一下才转、语音不出本机，exp008）；原方案 Telegram 服务端 `recognizeSpeech` tl:13121（结果经 `updateMessageContent` 推 `speechRecognitionResult*`，看 `can_recognize_speech`）不再采用 | 高：让语音变成可逐字浏览/搜索的文字，对读屏极友好 | M：解码共用播放那一份；Rust 经 Swift 辅助程序调 | 下载、解码 | T07 | 二（#59） |
 | 转文字的非 Premium 试用额度 | `updateSpeechRecognitionTrial` tl:11921（每周次数 weekly_count、剩余 left_count、单条最长 max_media_duration 秒、重置时间）· Premium 特性 `premiumFeatureVoiceRecognition` tl:8748 · 超长报 `MSG_VOICE_TOO_LONG` | 中：要告诉用户"本周还剩几次" | S | 转文字 | T07 | 二 |
 | 录制并发送语音 | `inputMessageVoiceNote` tl:6738 · `inputVoiceNote`(OGG/Opus 单声道或 MP3/M4A, duration, waveform 5-bit) tl:6467 · `sendMessage` tl:13143 · 录制中状态 `chatActionRecordingVoiceNote` tl:6969 | 中高：打字慢的读屏用户常用语音回复 | L：录音 + 编码 + 波形 + 按住/切换录制的键盘交互 + 试听 + 发前确认 | 发消息、麦克风权限 | T04 | 二 |
 | 视频圆消息（video note）描述与转文字 | `videoNote`(含 speech_recognition_result) tl:635 | 中 | S（描述）/ M（播放） | 下载 | T07 | 描述：MVP；播放：以后 |
@@ -227,3 +227,8 @@
 
 MVP 意图级动作的初版（2026-10-25）已交给 infra，**正本是 `specs/contracts/actions.md`**（动作名、参数、返回、错误、对外分级 L0 / L1 / L2）。这里不再留副本，免得两份不一致。
 api 交过去的要点：分级「否 / 轻 / 闸」= L0 / L1 / L2；`next_unread_chat` 是 Store 查询不上 `Backend`；`chat_open` / `chat_close` 必须成对；合并盘点后补的 `set_online` `message_properties` `resend` `mute` `proxy_*`，以及自审后补的 `mark_listened`（`openMessageContent` `tl:14205`，L1）、`message_links`（纯本地，从内容树取，L0）。
+
+## 修订记录
+
+- 2026-11-13 按 exp007/exp008 大总管定 2026-11-13（手下 media）：「播放语音消息」一行改为 macOS 27 原生解 OGG/Opus
+- 2026-11-13 按 #59 人定 2026-11-13（手下 media）：「语音转文字」一行改为本机端侧转写

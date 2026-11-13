@@ -14,6 +14,7 @@
 - { name: "status:blocked",         color: "000000", description: "被卡住" }
 - { name: "status:needs-decision",  color: "e99695", description: "等人拍板" }
 - { name: "by:ai",         color: "bfdadc", description: "AI 提的 issue（只写事实）" }
+- { name: "baseline:loosen", color: "b60205", description: "放宽行数基线或改门槛文件，经人或大总管同意" }
 - { name: "task:T01", color: "c5def5", description: "specs/tasks.md 的 T01" }
 - { name: "task:T02", color: "c5def5", description: "specs/tasks.md 的 T02" }
 - { name: "task:T03", color: "c5def5", description: "specs/tasks.md 的 T03" }

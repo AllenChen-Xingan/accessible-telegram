@@ -24,7 +24,9 @@
 //! 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
 
 use crate::auth::{self, AuthPrompt};
-use crate::backend::{Backend, ChatsLoad, HistoryReq, StatusReport, already_subscribed};
+use crate::backend::{
+    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+};
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::{Gate, NoAuth};
@@ -35,6 +37,7 @@ use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed, SealedKind};
 use crate::status::{AuthStep, CoreState, NetState};
+use crate::tree::FileRef;
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -42,50 +45,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-/// `start` 怎么回
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FakeStart {
-    Ok,
-    Fail(CoreError),
-    /// 一直不应答（测故障时等待中的请求会不会返回）
-    Hang,
-}
+mod call;
+mod files;
 
-/// 一次调用的记账
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Call {
-    Start {
-        profile: String,
-        use_test_dc: bool,
-    },
-    Subscribe,
-    /// `chat_get`
-    ChatGet(ChatId),
-    /// `history`：原样记下请求
-    History(HistoryReq),
-    /// `message_get`
-    MessageGet(MsgId),
-    /// `chat_open` / `chat_close`
-    ChatOpen(ChatId),
-    ChatClose(ChatId),
-    /// `forum_topic_get`
-    ForumTopicGet(ChatId, i64),
-    Shutdown,
-    /// 登录动作：只记名字（`phone` `code` `resend` `email` `email_code` `password` `register` `logout`），
-    /// 不记值。只记真交到「TDLib」那一侧的——本地检查拦下的不记
-    Auth(&'static str),
-    /// `chats_load`：哪个列表、要几个
-    ChatsLoad {
-        list: ChatList,
-        limit: u32,
-    },
-    /// 交出口：`sendMessage`（`preview` 为真是只预览）或 `resendMessages`。只记会话与种类，不记内容
-    Submit {
-        chat: ChatId,
-        preview: bool,
-        resend: bool,
-    },
-}
+pub use call::Call;
 
 /// 一次真发送之后「TDLib」怎么推结果
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +67,15 @@ pub enum FakeSend {
     Silent,
     /// `sendMessage` 当场回错（还没造出待发消息）
     Reject(CoreError),
+}
+
+/// `start` 怎么回
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FakeStart {
+    Ok,
+    Fail(CoreError),
+    /// 一直不应答（测故障时等待中的请求会不会返回）
+    Hang,
 }
 
 /// 假账号：登录各步该输什么。测试数据，值都是编的
@@ -152,6 +124,8 @@ pub struct FakeBackend {
     forum_topics: Mutex<HashMap<(ChatId, i64), Value>>,
     /// 每个会话的消息（TDLib `message` 对象）
     histories: Mutex<HashMap<ChatId, Vec<Value>>>,
+    /// `file_download` 回什么：`None` = TDLib 回来了但没下完；没登记 = 找不到
+    files: Mutex<HashMap<i32, Option<Downloaded>>>,
     /// 每个会话第一次 `history` 只回 1 条
     short_first: Mutex<Option<std::collections::HashSet<ChatId>>>,
     /// 停住：（先照常应答几次，再连着几次只回起点那一条）——TDLib 正从服务器拉、一直没拉到的样子
@@ -220,6 +194,7 @@ impl FakeBackend {
             chat_info: Mutex::new(HashMap::new()),
             forum_topics: Mutex::new(HashMap::new()),
             histories: Mutex::new(HashMap::new()),
+            files: Mutex::new(HashMap::new()),
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
             cap: Mutex::new(None),
@@ -939,6 +914,14 @@ impl Backend for FakeBackend {
                 what: "message",
                 td: None,
             })
+    }
+
+    async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {
+        self.do_file_download(file).await
+    }
+
+    async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError> {
+        self.do_mark_listened(id).await
     }
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {

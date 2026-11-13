@@ -1,0 +1,8 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "format!(\"{}\\n{}\\n{}\\n{}\", brief(&p(PlayState::Playing, 3.4, 1.0), &cx()),\nbrief(&p(PlayState::Paused, 0.0, 1.5), &cx()),\nbrief(&p(PlayState::Playing, f64::NAN, 2.0), &cx()),\njson::line(&p(PlayState::Paused, 12.0, 1.0), &cx()))"
+---
+播放中，3 秒，共 1 分 12 秒
+已暂停，0 秒，共 1 分 12 秒，1.5 倍速
+播放中，0 秒，共 1 分 12 秒，2 倍速
+{"v":1,"kind":"playback","data":{"type":"playback","state":"paused","position_s":12.0,"duration_s":72.0,"speed":1.0},"speech":{"brief":"已暂停，12 秒，共 1 分 12 秒"}}

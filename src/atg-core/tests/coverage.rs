@@ -15,7 +15,7 @@ const ALL_DOCS: &[&str] = &[
     "chat_item",
     "status",
     "unknown",
-    // alert 不来自 TDLib，由 snapshots.rs 的 alert_brief 覆盖
+    // alert 不来自 TDLib，由 snapshots.rs 的 alert_brief 覆盖；playback 也不来自 TDLib，由 speech/playback.rs 的单测覆盖
 ];
 
 fn doc_name(d: &Doc) -> &'static str {
@@ -26,6 +26,7 @@ fn doc_name(d: &Doc) -> &'static str {
         Doc::ChatItem(_) => "chat_item",
         Doc::Alert(_) => "alert",
         Doc::Status(_) => "status",
+        Doc::Playback(_) => "playback",
         Doc::Unknown(_) => "unknown",
     }
 }
@@ -213,7 +214,11 @@ impl Seen {
                 Some(ChatLast::Tombstone(t)) => self.doc(&Doc::Tombstone(t.clone())),
                 None => {}
             },
-            Doc::Tombstone(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => {}
+            Doc::Tombstone(_)
+            | Doc::Alert(_)
+            | Doc::Status(_)
+            | Doc::Playback(_)
+            | Doc::Unknown(_) => {}
         }
     }
     fn spans_of(&mut self, list: &[Span]) {

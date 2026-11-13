@@ -1,7 +1,7 @@
 //! `backend`：`Backend` 特征——只暴露本项目要的意图级操作，真实（TDLib，`td` 模块，`tdlib` 特性）与
 //! 假数据（[`crate::fake::FakeBackend`]）各一份实现。
 //!
-//! 规约正本：`specs/contracts/actions.md` 第一节第 3 小节。现有两组，都是 L0：
+//! 规约正本：`specs/contracts/actions.md` 第一节第 3 小节（动作清单与 L0 / L1 / L2 分级以它为准）。分组：
 //! - **生命周期**（第一刀第 3 块）：`start` · `subscribe` · `status` · `shutdown`
 //! - **登录**（第 4 块，T01）：`auth_prompt` · `auth_submit_*` · `auth_resend_code` · `auth_register`（只测试档案）·
 //!   `logout`。输入一律是 [`Secret`]（规约里号码、邮箱写的是 `String`；这里更严：`Debug` 打不出、用完清零）。
@@ -11,6 +11,8 @@
 //! - **会话**（第 5 块，T02）：`chats_load`（`loadChats`）。会话本身经更新进 Store，列表顺序是 Store 查询
 //!   （[`crate::store::Store::chat_list`]）；`wait_net` 供 CLI 等「补发完了」——离线期间漏掉的更新由服务器补送，
 //!   送完 TDLib 把连接状态从 `updating` 报成 `ready`
+//!
+//! - **文件与语音**（M2.5 M2.6，T07）：`file_download`（`downloadFile`，同步等下完）· `mark_listened`（`openMessageContent`，L1）
 //!
 //! - **消息**（第 8 块，T03 T06）：`chat_get`（`getChat`）· `history`（`getChatHistory`）· `message_get`（`getMessage`）。
 //!   都是 L0 只读：**不调 `openChat` / `viewMessages`，不标已读**（`actions.md` A1：CLI 的 history 不标）。会话、用户
@@ -35,7 +37,8 @@ use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, Lines, NetState};
-use crate::tree::UserStatus;
+use crate::tree::{FileRef, UserStatus};
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// 关闭时等 `authorizationStateClosed` 的默认上限（`001_arch-stack.md` 第一节第 4 小节：超时就记日志后退出）
@@ -124,6 +127,15 @@ pub trait Backend {
     /// 一条消息（`getMessage`）。不在 → `not_found`。**不标已读**
     async fn message_get(&self, id: MsgId) -> Result<Message, CoreError>;
 
+    /// 下载一个附件文件（`downloadFile`，同步等它下完；L0，对外不可见）。已在本地的直接回。只有 TDLib 报
+    /// 「下载已完成」才交出路径——没下完的文件解码器会静默解出半截（exp007），所以宁可报错。
+    /// 文件 id 为 0 / TDLib 找不到 → `not_found{what:"file"}`；回来了却没下完 → `internal{what:"download_incomplete"}`
+    async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError>;
+
+    /// 标已听 / 已看（`openMessageContent`，**L1**：对方会看到；`actions.md` `mark_listened`）。只从 `play --mark-listened`
+    /// 与以后 GUI 的播放调。**阅后即焚按 L2，本函数不管**：调用方先查 `Message::self_destruct`，L2 确认没做之前不许调
+    async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError>;
+
     /// 这个后端的发送闸（开凭据、查确认方式）
     fn gate(&self) -> &Gate;
 
@@ -190,6 +202,13 @@ impl HistoryReq {
             Err(CoreError::InvalidInput { td: None })
         }
     }
+}
+
+/// [`Backend::file_download`] 的结果：本地路径（TDLib 档案目录下，明文，`config-privacy.md` 第一节）与字节数
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Downloaded {
+    pub path: PathBuf,
+    pub size: u64,
 }
 
 /// [`Backend::chats_load`] 的结果

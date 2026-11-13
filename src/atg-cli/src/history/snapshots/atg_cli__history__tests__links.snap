@@ -1,5 +1,5 @@
 ---
-source: src/atg-cli/src/history.rs
+source: src/atg-cli/src/history/tests.rs
 expression: "[norm(&masked.out), shown.out.join(\"\\n\"),\nhidden_text.out.join(\"\\n\"),].join(\"\\n\")"
 ---
 {"v":1,"kind":"link","at":"…","data":{"index":1,"text":"路线图","url":"https://example.invalid/route","hidden":false}}

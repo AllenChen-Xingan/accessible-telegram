@@ -14,6 +14,7 @@ pub fn kind(doc: &Doc) -> &'static str {
         Doc::Message(_) | Doc::Service(_) | Doc::Tombstone(_) => "message",
         Doc::ChatItem(_) => "chat",
         Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => "event",
+        Doc::Playback(_) => "playback",
     }
 }
 

@@ -76,7 +76,11 @@ pub fn chat_item(store: &Store, chat_id: i64, list: &ChatList) -> Option<ChatIte
             Doc::Service(s) => ChatLast::Service(s),
             Doc::Tombstone(t) => ChatLast::Tombstone(t),
             // message() 只产出上面三种
-            Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Unknown(_) => return None,
+            Doc::ChatItem(_)
+            | Doc::Alert(_)
+            | Doc::Status(_)
+            | Doc::Playback(_)
+            | Doc::Unknown(_) => return None,
         }))
     });
     Some(ChatItem {

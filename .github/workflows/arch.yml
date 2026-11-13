@@ -1,0 +1,25 @@
+name: arch
+# 架构门槛（#60，specs/architecture-rules.md）：自测、行数、正本比对。单独一个工作流，不拉起 ci.yml 里 45 分钟的 macOS 编译。
+# 防 PR 放宽门槛的那道检查在 arch-guard.yml。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+concurrency:
+  group: arch-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # 只用 Python 标准库（自测另要 node，ubuntu 自带），不编译，秒级
+  arch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 门槛脚本自测（每条检查在改坏的副本上必须红）
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: 单文件行数上限 600 + 棘轮
+        run: python3 scripts/check-file-size.py
+      # 「门槛不许被悄悄放宽」在 arch-guard.yml（pull_request_target，跑 main 上那份，PR 改不到）
+      - name: 正本比对（契约表 ↔ 代码）
+        run: python3 scripts/check-sources.py

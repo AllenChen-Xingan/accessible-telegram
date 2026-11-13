@@ -88,6 +88,7 @@ fn message(message_id: i64, body: Body) -> Message {
         reactions: reactions(),
         sending: SendingState::Sent,
         mentions_me: false,
+        self_destruct: false,
     }
 }
 

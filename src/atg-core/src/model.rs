@@ -139,6 +139,8 @@ pub struct Message {
     pub sending: SendingState,
     /// 含未读的提及（`contains_unread_mention`：@ 我、回复我都算）：提及通知没关时按发送人的静音判（`notify`）
     pub mentions_me: bool,
+    /// 阅后即焚（`self_destruct_type` 非空）：标已听 / 已看即开始不可逆的倒计时，`mark_listened` 按 L2（`actions.md:94`）
+    pub self_destruct: bool,
 }
 
 impl Message {
