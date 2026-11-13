@@ -106,7 +106,7 @@ pub(crate) fn mask_spans(list: &mut [Span]) {
 
 fn mask_span(s: &mut Span) {
     // 链接文字里套着剧透：地址也是隐藏的一部分，整个换掉
-    if matches!(s, Span::Link { .. } | Span::Url { .. }) && text::contains_spoiler(s) {
+    if text::link_hidden(s) {
         *s = hidden();
         return;
     }
