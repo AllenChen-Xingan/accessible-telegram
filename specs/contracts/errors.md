@@ -118,8 +118,8 @@
 - **限流怎么处理**（`.42cog/real.md`：必须遵守 FLOOD_WAIT）：
   - L0 动作：要等的秒数 ≤ 5 秒，内核自己等完再发，不打扰人；> 5 秒，立刻返回 `rate_limited` 带 `retry_after_s`，由调用方决定（CLI 不阻塞，加 `--wait` 才等）
   - L2 动作：**从不排队、从不自动重试**（`actions.md` 第一节第 2 小节），直接返回 `rate_limited`
-  - 「到什么时候之前不许再发」**写进档案目录**（`flood_until`，按动作类别记），新进程启动也先读它——否则 CLI 每跑一次都是新进程，AI 循环调用就无视了等待
-  - `account_limited` 同样写进档案目录，清除要人确认
+  - 「到什么时候之前不许再发」**写进档案目录**（`flood_until`，按动作类别记；第一阶段只有发送一类，文件 `flood-until`），新进程启动也先读它——否则 CLI 每跑一次都是新进程，AI 循环调用就无视了等待。不论从哪条路得知（交出口当场回错、失败事件、超时后才到的失败事件、重发准备时 TDLib 给的 `retry_after`），都当场记下（`atg-core::send_limits`）
+  - `account_limited` 同样写进档案目录（收到即写，同一处），清除要人确认
 
 ## 二、为什么
 
@@ -175,3 +175,4 @@
 - 2026-10-26 issue #52 自审第 8 轮后（send，属技术细节，大总管授权）：`account_limited` 落盘为档案目录的 `account-limited` 文件（第 4 小节原已要求），之后的进程照停，人删文件才恢复
 - 2026-10-26 issue #53 watch（大总管授权 2026-10-26，属技术细节）：`usage` 另指执行方 `watch` 订阅者已满；`disconnected` 补「流式 `watch` 不用 90 秒超时」「60 秒写不出被摘掉」两种；`internal.what` 登记 `td_forum_topic_reserialize_failed`，`not_found.what` 可为 `forum_topic`
 - 2026-11-13 issue #52 自审第 11–12 轮后（大总管同意）：`too_long_to_confirm` 的说明不再提直发模式
+- 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：限流截止与账号受限的落盘落实（文件名、何时写）

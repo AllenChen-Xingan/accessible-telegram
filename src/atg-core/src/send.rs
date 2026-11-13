@@ -134,6 +134,7 @@ impl TextPlan {
     }
 }
 
+impl gate::Sealed for TextPlan {}
 impl Gated for TextPlan {
     fn target(&self) -> ChatId {
         self.target.id
@@ -748,6 +749,7 @@ impl ResendPlan {
     }
 }
 
+impl gate::Sealed for ResendPlan {}
 impl Gated for ResendPlan {
     fn target(&self) -> ChatId {
         self.target.id
@@ -853,11 +855,14 @@ async fn load_items<B: Backend>(
             });
         }
         if f.retry_after > 0.0 {
-            return Err(CoreError::RateLimited {
+            let e = CoreError::RateLimited {
                 // 向上取整到秒
                 retry_after_s: f.retry_after.ceil().clamp(1.0, f64::from(u32::MAX)) as u32,
                 td: None,
-            });
+            };
+            // TDLib 告诉的等待期也记进发送限制（落盘，之后的进程照样遵守）
+            b.gate().limits().note(&e);
+            return Err(e);
         }
         let m = b
             .message_get(MsgId {

@@ -57,7 +57,7 @@ pub const GUARD_FILE: &str = "send-guard.json";
 pub const DIRECT_LOG_FILE: &str = "direct-send.log";
 /// 账号被限制的标记文件（档案目录下，0600，内容只有写入时的 Unix 秒）。有它就停掉全部 L2，跨进程也停；
 /// 只能由人在处理完之后**手动删掉**来解除（`errors.md` 第一节第 4 小节「同样写进档案目录，清除要人确认」）
-pub const ACCOUNT_LIMITED_FILE: &str = "account-limited";
+pub use crate::send_limits::{ACCOUNT_LIMITED_FILE, FLOOD_FILE};
 /// 指纹密钥的派生标签：不直接拿库钥匙当 HMAC 钥匙
 const GUARD_KEY_LABEL: &[u8] = b"atg.send-guard.v1";
 
@@ -129,7 +129,14 @@ impl std::fmt::Debug for ConfirmToken {
 }
 
 /// 闸要核对的一份「已定稿的请求」：发送计划、重发计划都实现它
-pub trait Gated {
+/// 封住 [`Gated`]：只有本 crate 里的计划能实现它（codex 016 第 4 轮 #3：crate 外的实现能沿用真计划的目标与摘要、
+/// 却给人看另一段确认文字）
+mod sealed {
+    pub trait Sealed {}
+}
+pub(crate) use sealed::Sealed;
+
+pub trait Gated: Sealed {
     /// 发给哪个会话
     fn target(&self) -> ChatId;
     /// 凭据绑的摘要（[`digest`]）
@@ -336,9 +343,6 @@ struct Facts {
     /// 档案目录（防重复记录、直发留痕都放这里）
     dir: Option<PathBuf>,
     guard_key: Option<Secret>,
-    /// 收到过 `account_limited`（本进程收到，或启动时发现档案目录里的 [`ACCOUNT_LIMITED_FILE`]）：停掉全部 L2，
-    /// 直到人删掉那个文件（`errors.md`）
-    account_limited: bool,
 }
 
 /// 发送闸。每个后端持有一个；CLI / GUI 经 `Backend::gate` 拿到它开凭据
@@ -349,8 +353,8 @@ pub struct Gate {
     used: Mutex<HashSet<u64>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
-    /// 收线程看到 `account_limited` 的发送失败就点亮（`link::Shared::watch_account_limited`）；判开法时看到就落盘停发
-    limited_signal: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// 账号受限、限流冷却（与收线程共用一份，见 [`crate::send_limits`]）
+    limits: std::sync::Arc<crate::send_limits::SendLimits>,
 }
 
 /// 一次交出的结果（记账与留痕用）
@@ -374,30 +378,13 @@ impl Gate {
             used: Mutex::new(HashSet::new()),
             facts: Mutex::new(Facts::default()),
             direct_sent: std::sync::atomic::AtomicU64::new(0),
-            limited_signal: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            limits: crate::send_limits::SendLimits::new(),
         }
     }
 
-    /// 交给收线程的「账号受限」信号（后端建好时 `Shared::watch_account_limited`）
-    pub fn limited_signal(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
-        self.limited_signal.clone()
-    }
-
-    /// 记下账号受限：本进程停掉全部 L2，并写进档案目录让之后的进程也停，直到人删掉那个文件
-    fn mark_limited(f: &mut Facts) {
-        if f.account_limited {
-            return;
-        }
-        f.account_limited = true;
-        if let Some(dir) = f.dir.as_ref()
-            && write_atomic(
-                &dir.join(ACCOUNT_LIMITED_FILE),
-                unix_now().to_string().as_bytes(),
-            )
-            .is_err()
-        {
-            logline::warn("account_limited_mark_failed", &[]);
-        }
+    /// 交给收线程的那份发送限制（后端建好时 `Shared::watch_send_limits`）
+    pub fn limits(&self) -> std::sync::Arc<crate::send_limits::SendLimits> {
+        self.limits.clone()
     }
 
     pub fn direct(&self) -> bool {
@@ -410,10 +397,8 @@ impl Gate {
         f.use_test_dc = Some(use_test_dc);
         f.dir = Some(dir.to_path_buf());
         f.guard_key = Some(guard_key);
-        // 上一个进程收到过账号被限：这一个照样停（CLI 每条命令都是新进程）
-        if dir.join(ACCOUNT_LIMITED_FILE).exists() {
-            f.account_limited = true;
-        }
+        // 上一个进程记下的受限、限流：这一个照样遵守（CLI 每条命令都是新进程）
+        self.limits.load(dir);
     }
 
     /// 本进程已直发（交给 TDLib）了几条（`status` 行的 `direct_sent`）
@@ -437,17 +422,8 @@ impl Gate {
 
     /// 这份计划会用哪种方式确认（不弹框、不记账）。测试服务器上目标不是收藏夹 → `test_dc_saved_only`
     pub fn mode_for(&self, target: ChatId) -> Result<ConfirmMode, CoreError> {
-        let mut f = lock(&self.facts);
-        // 晚到的受限失败（等结果超时之后才来）由收线程点亮信号，这里补记（codex 016 第 3 轮 #2）
-        if self
-            .limited_signal
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            Self::mark_limited(&mut f);
-        }
-        if f.account_limited {
-            return Err(refused(SendRefusedReason::AccountLimited));
-        }
+        self.limits.check(unix_now())?;
+        let f = lock(&self.facts);
         let use_test_dc = f.use_test_dc.ok_or(CoreError::Internal {
             what: "gate_not_started",
         })?;
@@ -578,7 +554,7 @@ impl Gate {
         Ok(())
     }
 
-    /// 等到结果后：直发改防重复记录、写一行留痕；`account_limited` 记下（之后 L2 全停）
+    /// 等到结果后：直发改防重复记录、写一行留痕；受限 / 限流记进 [`crate::send_limits`]
     pub fn after_outcome(
         &self,
         mode: ConfirmMode,
@@ -588,8 +564,8 @@ impl Gate {
         outcome: Outcome,
         error: Option<&CoreError>,
     ) {
-        if matches!(error, Some(CoreError::AccountLimited { .. })) {
-            Self::mark_limited(&mut lock(&self.facts));
+        if let Some(e) = error {
+            self.limits.note(e);
         }
         if mode != ConfirmMode::DirectMode {
             return;
@@ -888,6 +864,7 @@ mod tests {
         intent: [u8; 32],
     }
 
+    impl Sealed for Plan {}
     impl Gated for Plan {
         fn target(&self) -> ChatId {
             self.target
@@ -911,6 +888,7 @@ mod tests {
 
     /// 不进防重复的计划（重发）：直发时不查、不写防重复记录，留痕照写
     struct Resend(Plan);
+    impl Sealed for Resend {}
     impl Gated for Resend {
         fn target(&self) -> ChatId {
             self.0.target
@@ -1383,20 +1361,35 @@ mod tests {
     }
 
     #[test]
-    fn late_account_limited_signal_stops_sending() {
-        // codex 016 第 3 轮 #2：等结果超时后才到的受限失败，由收线程点亮信号；下一次开凭据就拒，并落盘
+    fn late_limit_from_the_receiver_stops_sending() {
+        // codex 016 第 3 轮 #2 / 第 4 轮：收线程经同一份限制记下（等结果超时后才到的失败），下一次开凭据就拒
         let (g, _, dir) = gate(true, false, Ok(()));
         assert!(g.issue(&plan(777, 1), false).is_ok());
-        g.limited_signal()
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        let e = g.issue(&plan(777, 2), false).unwrap_err();
-        assert!(matches!(
-            e,
-            CoreError::SendRefused {
-                reason: SendRefusedReason::AccountLimited,
-                ..
-            }
-        ));
+        g.limits().note(&CoreError::AccountLimited { td: None });
         assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
+        assert_eq!(
+            reason(g.issue(&plan(777, 2), false).unwrap_err()),
+            SendRefusedReason::AccountLimited
+        );
+    }
+
+    #[test]
+    fn flood_wait_blocks_the_next_send() {
+        let (g, _, _) = gate(true, false, Ok(()));
+        g.after_outcome(
+            ConfirmMode::DirectMode,
+            &plan(777, 1),
+            -1,
+            None,
+            Outcome::Failed,
+            Some(&CoreError::RateLimited {
+                retry_after_s: 60,
+                td: None,
+            }),
+        );
+        assert!(matches!(
+            g.issue(&plan(778, 2), false),
+            Err(CoreError::RateLimited { .. })
+        ));
     }
 }

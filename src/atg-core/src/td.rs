@@ -94,7 +94,7 @@ mod real {
                 });
             }
             let (shared, stream) = Shared::new();
-            shared.watch_account_limited(cfg.gate.limited_signal());
+            shared.watch_send_limits(cfg.gate.limits());
             Ok(Self {
                 cfg,
                 shared,
