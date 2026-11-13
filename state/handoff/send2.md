@@ -49,7 +49,9 @@
   - 第 3 轮：P1×2 · P2×1，全属实。修：长词逐字排；晚到的账号受限经 `Shared::event` 点亮闸的信号；文字计划行带回复 / 话题。test 382 过
   - 第 4 轮：P1×2 · P2×2，全属实（按收紧口径两条 P1 都认：漏拦）。#1 与第 3 轮同类第二次 → 改结构：新模块 `send_limits.rs`（受限 + 限流冷却一个正本，收到即落盘，`flood-until` 新文件）；P2 #3 封住 `Gated`；P2 #4 留 issue。test 386 过
   - 第 5 轮：P1×2 · P2×1，全属实。按结构修：登记只经交出口（`send_limits::submit`）与收线程（`Shared::event`）两个入口；交出前最后复查在 `before_submit` 开头；限制标记读不准即拒发（`send_limits_unreadable`）。P2 #3（凭据没绑签发的闸，构造绕过）留 issue。新集成测试 `tests/send_limits.rs`。test 389 过
-  - 第 6 轮：脚本 `_tmp/reviews-016/run-round6.sh` 已交大总管（P1 走势 5 → 3 → 2 → 2 → 2）
+  - 第 6 轮：P1×2 · P2×1，全属实。修：td 后端发送类交出放独立线程（晚到应答照样登记）；交出未完成标记 `send-pending`（守卫收尾，常见情况自清，只在交出那一下被杀或限制没写进盘时留）；假后端 `on_next_preview` 钩子 + 变异检验。test 393 过，tdlib 特性 clippy 过
+  - **人定（2026-11-13）**：第 7 轮后停；第 7 轮若仍有同类受限 / 限流边角 P1 → 转 issue，进入冒烟 B 与开 PR
+  - 第 7 轮：脚本 `_tmp/reviews-016/run-round7.sh` 已交大总管
   - 待：`--features tdlib` 的 clippy（td.rs 改了一行），并入冒烟 B 那次编译；三个超长文件比定基线时又长了（gate 1176→1395、core send 1490→1688），已报大总管与 arch 定基线时点
 - [ ] 6. 回报
 

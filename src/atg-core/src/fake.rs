@@ -166,6 +166,8 @@ pub struct FakeBackend {
     no_reply: Mutex<Vec<MsgId>>,
     /// 接下来的几次预览是否「把回复去掉」（按次取，取完照常保留）
     preview_drops: Mutex<VecDeque<bool>>,
+    /// 下一次预览时先跑它（测「凭据已验过、复核预览还没回」那一刻发生的事）
+    preview_hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     /// 接下来的几次真发送怎么推结果（取完默认成功）
     send_script: Mutex<VecDeque<FakeSend>>,
     next_id: Mutex<i64>,
@@ -226,6 +228,7 @@ impl FakeBackend {
             forums: Mutex::new(Vec::new()),
             no_reply: Mutex::new(Vec::new()),
             preview_drops: Mutex::new(VecDeque::new()),
+            preview_hook: Mutex::new(None),
             send_script: Mutex::new(VecDeque::new()),
             next_id: Mutex::new(1_000_000),
             submitted: Mutex::new(Vec::new()),
@@ -251,6 +254,11 @@ impl FakeBackend {
     }
 
     /// 接下来几次预览是否把回复去掉（TDLib 遇到被回复那条不在 / 不能回复时就这样，发6）
+    /// 下一次预览（交给 TDLib 的 `only_preview`）回来之前先跑 `hook`
+    pub fn on_next_preview(&self, hook: impl FnOnce() + Send + 'static) {
+        *lock(&self.preview_hook) = Some(Box::new(hook));
+    }
+
     pub fn script_previews(&self, drops: &[bool]) {
         lock(&self.preview_drops).extend(drops.iter().copied());
     }
@@ -1017,6 +1025,10 @@ impl Backend for FakeBackend {
                     });
                 }
                 if preview {
+                    let hook = lock(&self.preview_hook).take();
+                    if let Some(hook) = hook {
+                        hook();
+                    }
                     let mut r = request.clone();
                     if lock(&self.preview_drops).pop_front().unwrap_or(false) {
                         r["reply_to"] = Value::Null;

@@ -85,6 +85,14 @@ mod real {
         previous_unclean: AtomicBool,
     }
 
+    /// TDLib 的错误 → 本项目的码；正在关闭时的 500 算断开
+    fn map_error_on(shared: &Shared, e: &types::Error) -> CoreError {
+        if e.code == 500 && matches!(shared.lines().core, CoreState::Closing | CoreState::Closed) {
+            return CoreError::Disconnected;
+        }
+        map_td_error(e.code, &e.message)
+    }
+
     impl TdBackend {
         /// 一个进程只能建一个；第二个 → `internal`
         pub fn new(cfg: TdConfig) -> Result<Self, CoreError> {
@@ -148,15 +156,40 @@ mod real {
 
         /// TDLib 错误 → `CoreError`；关闭途中的 500（如 `Request aborted`）归 `disconnected`（`errors.md` 规则 9 的例外）
         fn map_error(&self, e: &types::Error) -> CoreError {
-            if e.code == 500
-                && matches!(
-                    self.shared.lines().core,
-                    CoreState::Closing | CoreState::Closed
-                )
-            {
-                return CoreError::Disconnected;
+            map_error_on(&self.shared, e)
+        }
+
+        /// 发送类的交出：交给 TDLib、等应答、出错就登记进发送限制，整段放在自己的线程里。调用方等不及（发送的
+        /// 30 秒上限）丢掉等待时，这条线程照样等到应答、照样登记晚到的受限 / 限流（codex 016 第 6 轮 #1）
+        fn detached<T: Send + 'static>(
+            &self,
+            fut: impl Future<Output = Result<T, types::Error>> + Send + 'static,
+        ) -> impl Future<Output = Result<T, CoreError>> {
+            let (tx, rx) = futures_channel::oneshot::channel();
+            let shared = self.shared.clone();
+            let limits = self.cfg.gate.limits();
+            let spawned = std::thread::Builder::new()
+                .name("atg-send-submit".into())
+                .spawn(move || {
+                    let r = match link::block_on(link::guard(shared.clone(), fut)) {
+                        Ok(Ok(v)) => Ok(v),
+                        Ok(Err(e)) => Err(map_error_on(&shared, &e)),
+                        Err(e) => Err(e),
+                    };
+                    if let Err(e) = &r {
+                        limits.note(e);
+                        logline::info("send_failed", &[Field::Name("code", e.code())]);
+                    }
+                    let _ = tx.send(r);
+                });
+            async move {
+                if spawned.is_err() {
+                    return Err(CoreError::Internal {
+                        what: "send_thread_spawn",
+                    });
+                }
+                rx.await.unwrap_or(Err(CoreError::Disconnected))
             }
-            map_td_error(e.code, &e.message)
         }
 
         /// 读消息这组的错误：TDLib 对查不到的会话 / 消息回 400 / 404 带「not found」，归 `not_found`；
@@ -706,23 +739,21 @@ mod real {
                             if preview { "preview" } else { "send" },
                         )],
                     );
-                    let r = link::guard(
-                        self.shared.clone(),
-                        functions::send_message(chat, topic, reply, Some(options), content, id),
-                    )
-                    .await?;
-                    match r {
-                        Ok(enums::Message::Message(m)) => Self::map_message(m)
-                            .map(Answer::Message)
-                            .ok_or(CoreError::Internal {
-                                what: "td_message_reserialize_failed",
-                            }),
-                        Err(e) => {
-                            let e = self.map_error(&e);
-                            logline::info("send_failed", &[Field::Name("code", e.code())]);
-                            Err(e)
-                        }
-                    }
+                    let enums::Message::Message(m) = self
+                        .detached(functions::send_message(
+                            chat,
+                            topic,
+                            reply,
+                            Some(options),
+                            content,
+                            id,
+                        ))
+                        .await?;
+                    Self::map_message(m)
+                        .map(Answer::Message)
+                        .ok_or(CoreError::Internal {
+                            what: "td_message_reserialize_failed",
+                        })
                 }
                 SealedKind::Resend { request } => {
                     // 同发文字：交出去的就是摘要算过的那份，逐字段取，不另组
@@ -738,24 +769,15 @@ mod real {
                         .as_i64()
                         .ok_or_else(bad)?;
                     logline::info("send_submit", &[Field::Name("kind", "resend")]);
-                    let r = link::guard(
-                        self.shared.clone(),
-                        functions::resend_messages(chat, ids, quote, paid, id),
-                    )
-                    .await?;
-                    match r {
-                        Ok(enums::Messages::Messages(ms)) => Ok(Answer::Resent(
-                            ms.messages
-                                .into_iter()
-                                .map(|m| m.and_then(Self::map_message))
-                                .collect(),
-                        )),
-                        Err(e) => {
-                            let e = self.map_error(&e);
-                            logline::info("send_failed", &[Field::Name("code", e.code())]);
-                            Err(e)
-                        }
-                    }
+                    let enums::Messages::Messages(ms) = self
+                        .detached(functions::resend_messages(chat, ids, quote, paid, id))
+                        .await?;
+                    Ok(Answer::Resent(
+                        ms.messages
+                            .into_iter()
+                            .map(|m| m.and_then(Self::map_message))
+                            .collect(),
+                    ))
                 }
             }
         }

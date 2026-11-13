@@ -14,6 +14,11 @@
 //! 落盘两个文件，都在档案目录，都不记内容：
 //! - [`ACCOUNT_LIMITED_FILE`]：账号被 Telegram 限制。人处理好、删掉它才恢复
 //! - [`FLOOD_FILE`]：限流到什么时候（Unix 秒）之前不许再发；到点自然失效
+//! - [`PENDING_FILE`]：交出未完成。每次交出前先写，交出这一步结束（正常返回、出错、调用方等不及丢掉、Ctrl+C
+//!   走正常收尾）就删——常见情况都自己清，不留人工活；只有两种情况留着：进程在交出那一下（毫秒级：断网时 TDLib
+//!   也是先放进本地待发队列、当场回应答）真的死掉，或某个受限 / 限流没写进盘（写失败时会补写这个标记）。
+//!   新进程看到它就拒发，要人确认账号状态后删掉（codex 016 第 6 轮 #2：限制写盘失败只记日志时，下一个进程读到的
+//!   是旧状态、照常放行）
 
 use crate::backend::Backend;
 use crate::error::{CoreError, SendRefusedReason};
@@ -29,6 +34,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 pub const ACCOUNT_LIMITED_FILE: &str = "account-limited";
 /// 限流截止时刻（`errors.md` 里的 `flood_until`；第一阶段只有发送这一类 L2 动作，一个数就够）
 pub const FLOOD_FILE: &str = "flood-until";
+/// 交出未完成标记（见模块文档）
+pub const PENDING_FILE: &str = "send-pending";
 
 #[derive(Default)]
 struct State {
@@ -37,8 +44,12 @@ struct State {
     limited: bool,
     /// Unix 秒；0 = 没有
     flood_until: i64,
-    /// 标记文件读不准（除「不存在」以外的读错、内容坏了）：不知道该不该停，一律拒发
+    /// 标记文件读不准（除「不存在」以外的读错、内容坏了），或上一个进程的交出没收尾：不知道该不该停，一律拒发
     unreadable: bool,
+    /// 本进程有限制没写进盘：交出未完成标记留着不删，下一个进程照样停
+    unsaved: bool,
+    /// 正在交出的有几个（几次交出交错时，最后一个收尾才删标记）
+    inflight: u32,
 }
 
 #[derive(Default)]
@@ -56,11 +67,16 @@ impl SendLimits {
     pub(crate) fn load(&self, dir: &Path) {
         let mut s = self.lock();
         s.dir = Some(dir.to_path_buf());
+        // 上一个进程交出后没收尾（限制可能没写进去）：只有「不存在」才算干净
+        match fs::metadata(dir.join(PENDING_FILE)) {
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            _ => s.unreadable = true,
+        }
         match fs::metadata(dir.join(ACCOUNT_LIMITED_FILE)) {
             Ok(_) => s.limited = true,
             Err(e) if e.kind() == ErrorKind::NotFound => {
-                if s.limited {
-                    persist_limited(dir);
+                if s.limited && !persist_limited(dir) {
+                    s.unsaved = true;
                 }
             }
             Err(_) => s.unreadable = true,
@@ -76,8 +92,8 @@ impl SendLimits {
                 0
             }
         };
-        if saved < s.flood_until {
-            persist_flood(dir, s.flood_until);
+        if saved < s.flood_until && !persist_flood(dir, s.flood_until) {
+            s.unsaved = true;
         }
         s.flood_until = s.flood_until.max(saved);
     }
@@ -88,16 +104,22 @@ impl SendLimits {
         match e {
             CoreError::AccountLimited { .. } if !s.limited => {
                 s.limited = true;
-                if let Some(dir) = &s.dir {
-                    persist_limited(dir);
+                if let Some(dir) = s.dir.clone()
+                    && !persist_limited(&dir)
+                {
+                    s.unsaved = true;
+                    mark_pending(&dir);
                 }
             }
             CoreError::RateLimited { retry_after_s, .. } => {
                 let until = unix_now() + i64::from(*retry_after_s);
                 if until > s.flood_until {
                     s.flood_until = until;
-                    if let Some(dir) = &s.dir {
-                        persist_flood(dir, until);
+                    if let Some(dir) = s.dir.clone()
+                        && !persist_flood(&dir, until)
+                    {
+                        s.unsaved = true;
+                        mark_pending(&dir);
                     }
                 }
             }
@@ -130,35 +152,90 @@ impl SendLimits {
         Ok(())
     }
 
+    /// 交出前：写交出未完成标记；写不进去就拒（连这个都写不进，限制更写不进）。后端还没起来（不知道档案目录）不写。
+    /// 回一个守卫：交出这一步不论怎么结束（含调用方等不及把整个等待丢掉）都经它的 `drop` 收尾
+    fn begin(self: &Arc<Self>) -> Result<Pending, CoreError> {
+        let mut s = self.lock();
+        if let Some(dir) = &s.dir {
+            write_atomic(&dir.join(PENDING_FILE), unix_now().to_string().as_bytes()).map_err(
+                |_| CoreError::Internal {
+                    what: "send_limits_unwritable",
+                },
+            )?;
+        }
+        s.inflight += 1;
+        Ok(Pending(self.clone()))
+    }
+
+    /// 交出这一步结束：没有别的正在交出、限制也都写进去了，就删标记
+    fn end(&self) {
+        let mut s = self.lock();
+        s.inflight = s.inflight.saturating_sub(1);
+        if s.inflight == 0
+            && !s.unsaved
+            && let Some(dir) = &s.dir
+        {
+            match fs::remove_file(dir.join(PENDING_FILE)) {
+                Err(e) if e.kind() != ErrorKind::NotFound => {
+                    logline::warn("send_pending_remove_failed", &[]);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 /// 交出口（`Backend::submit`）的唯一调用处：预览、发送、重发都经这里，回的错先登记进这一份限制
+/// 先写交出未完成标记，交出这一步结束时由守卫收尾（见 [`SendLimits::begin`]）
 pub(crate) async fn submit<B: Backend>(b: &B, sealed: Sealed<'_>) -> Result<Answer, CoreError> {
+    let limits = b.gate().limits();
+    let _pending = limits.begin()?;
     let r = b.submit(sealed).await;
     if let Err(e) = &r {
-        b.gate().limits().note(e);
+        limits.note(e);
     }
     r
 }
 
-fn persist_limited(dir: &Path) {
-    if write_atomic(
-        &dir.join(ACCOUNT_LIMITED_FILE),
-        unix_now().to_string().as_bytes(),
-    )
-    .is_err()
-    {
-        logline::warn("account_limited_mark_failed", &[]);
+/// 一次交出的收尾守卫：`drop` 时 [`SendLimits::end`]
+struct Pending(Arc<SendLimits>);
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        self.0.end();
     }
 }
 
-fn persist_flood(dir: &Path, until: i64) {
-    if write_atomic(&dir.join(FLOOD_FILE), until.to_string().as_bytes()).is_err() {
+/// 某个限制没写进盘时补写交出未完成标记（尽力而为：盘坏了这个也可能写不进）
+fn mark_pending(dir: &Path) {
+    if write_atomic(&dir.join(PENDING_FILE), unix_now().to_string().as_bytes()).is_err() {
+        logline::warn("send_pending_write_failed", &[]);
+    }
+}
+
+/// 写进去了回真；写不进去记日志、回假（调用方据此留着交出未完成标记）
+fn persist_limited(dir: &Path) -> bool {
+    let ok = write_atomic(
+        &dir.join(ACCOUNT_LIMITED_FILE),
+        unix_now().to_string().as_bytes(),
+    )
+    .is_ok();
+    if !ok {
+        logline::warn("account_limited_mark_failed", &[]);
+    }
+    ok
+}
+
+fn persist_flood(dir: &Path, until: i64) -> bool {
+    let ok = write_atomic(&dir.join(FLOOD_FILE), until.to_string().as_bytes()).is_ok();
+    if !ok {
         logline::warn("flood_until_write_failed", &[]);
     }
+    ok
 }
 
 #[cfg(test)]
@@ -244,5 +321,48 @@ mod tests {
         let l2 = SendLimits::new();
         l2.load(&dir2);
         assert!(l2.check(unix_now()).is_err());
+    }
+
+    #[test]
+    fn unsaved_limit_keeps_the_pending_mark_for_the_next_process() {
+        // codex 016 第 6 轮 #2：限制写不进盘（这里用同名目录挡住）时，交出未完成标记留着，下一个进程照样停
+        let dir = temp_dir("unsaved");
+        let l = SendLimits::new();
+        l.load(&dir);
+        // 加载之后才把截止文件的位置占成非空目录：之后写截止时间（临时文件改名过去）必失败
+        fs::create_dir_all(dir.join(FLOOD_FILE).join("x")).unwrap();
+        let guard = l.begin().unwrap();
+        l.note(&CoreError::RateLimited {
+            retry_after_s: 60,
+            td: None,
+        });
+        drop(guard);
+        assert!(dir.join(PENDING_FILE).exists());
+        let next = SendLimits::new();
+        next.load(&dir);
+        assert!(next.check(unix_now()).is_err());
+        // 干净的一次交出：标记删掉
+        let ok = temp_dir("clean");
+        let c = SendLimits::new();
+        c.load(&ok);
+        drop(c.begin().unwrap());
+        assert!(!ok.join(PENDING_FILE).exists());
+        let after = SendLimits::new();
+        after.load(&ok);
+        assert!(after.check(unix_now()).is_ok());
+    }
+
+    #[test]
+    fn abandoned_or_overlapping_submits_clean_up_themselves() {
+        // 调用方等不及把交出丢掉（守卫随之 drop）也自己清；两次交错时最后一个收尾才删
+        let dir = temp_dir("overlap");
+        let l = SendLimits::new();
+        l.load(&dir);
+        let a = l.begin().unwrap();
+        let b = l.begin().unwrap();
+        drop(a);
+        assert!(dir.join(PENDING_FILE).exists());
+        drop(b);
+        assert!(!dir.join(PENDING_FILE).exists());
     }
 }

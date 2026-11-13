@@ -73,14 +73,14 @@ fn rate_limit_from_the_submit_exit_is_registered() {
 }
 
 #[test]
-fn limit_arriving_after_confirmation_is_caught_before_submit() {
-    // 开完凭据、交出前（复核预览期间）才到的受限：交出前最后一次复查拦下，什么都不交出
+fn limit_arriving_during_the_recheck_preview_is_caught_before_submit() {
+    // 凭据已验过（verify 在复核预览之前）、复核预览还没回时才到的受限：只有交出前最后一次复查拦得住，
+    // 什么都不交出（codex 016 第 6 轮 #3：原先在 send_text 之前就登记，入口的 verify 已会拒，测不到最后复查）
     let (b, _stream) = rig("late");
     let plan = block_on(prepare_text(&b, ME, &draft("测试三"), SendOrigin::Cli)).unwrap();
     let token = b.gate().issue(&plan, false).unwrap();
-    b.gate()
-        .limits()
-        .note(&CoreError::AccountLimited { td: None });
+    let limits = b.gate().limits();
+    b.on_next_preview(move || limits.note(&CoreError::AccountLimited { td: None }));
     let before = b.submitted().len();
     let e = block_on(send_text(&b, &plan, token)).err().unwrap();
     assert!(matches!(
