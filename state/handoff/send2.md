@@ -107,3 +107,37 @@ cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility " && LO
 
 - 超长文件基线取 #52 合并那一刻的现状（arch 重记时吃进去）；**之后别再往 `gate.rs` / core `send.rs` 里加**，新逻辑照 `send_limits.rs` 的做法进新文件
 - `--features tdlib` 的 clippy 合并到冒烟 B 那次编译
+
+## 冒烟 B（Touch ID）方案（2026-11-13 草拟，待大总管告诉人）
+
+正式服务器 main 档案，默认模式（**不加** `--unsafe-direct-send`），只发收藏夹 `saved`，内容是编的。跑前确认没有 GUI / `serve` 占着 main 档案。共 **3 次 Touch ID 弹框**、**真发 1 条到收藏夹**。每次弹框不超过 1 分钟。
+
+| 步 | 做什么 | 弹框 | 发不发 | 预期 | 人要做 / 报什么 |
+|---|---|---|---|---|---|
+| B1 刻度尺 | 弹一个只用来量尺寸的确认框（8 行，A–F 汉字、G–H 大写 M，每行 6 段带段标） | 1 | 不发（只是认证，什么都不交出） | 打印「刻度尺弹框结果」 | 读出：① 每行第一个视觉行末尾看到的段标（框把一行折成几行）；② 最后完整看到的段标、有没有省略号；③ 说明前面系统加的那句占几行。然后按取消 |
+| B2 确认后发出 | `send saved --text "atg 冒烟 B"` | 1 | **发 1 条到收藏夹** | 标准错误先出一句「请在弹出的系统框里按 Touch ID…」；按下后退出码 0 | 按 Touch ID；顺带听一下 VoiceOver 怎么读框里的说明（措辞待人实听，前任待定第 2 条） |
+| B3 取消 | `send saved --text "atg 冒烟 B 取消"` | 1 | 不发 | 退出码 8，`send_refused` / `auth_failed` | 按取消 |
+| B4 太长不弹框 | `send saved --text-file`（60 个「测」字） | 0 | 不发 | 退出码 8，`send_refused` / `too_long_to_confirm`，**不弹框** | 什么都不用做 |
+
+命令（B1 在 worktree 跑；B2–B4 同冒烟 1–3 的写法、在 MAIN 目录跑、去掉 `--unsafe-direct-send`）：
+
+```
+cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/atg-wt/52-send" && ATG_RULER=1 cargo test -q -p atg-core --lib localauth -- --ignored --nocapture; echo "退出码 $?"
+```
+
+```
+cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility " && LOCAL_TDLIB_PATH="/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility /_build/20261025-171733/tdlib" cargo run -q --manifest-path "/Users/allenchen/xingan-chen/B-MyCreate/5-App/atg-wt/52-send/Cargo.toml" -p atg-cli --features tdlib -- send saved --text "atg 冒烟 B"; echo "退出码 $?"
+```
+
+```
+cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility " && LOCAL_TDLIB_PATH="/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility /_build/20261025-171733/tdlib" cargo run -q --manifest-path "/Users/allenchen/xingan-chen/B-MyCreate/5-App/atg-wt/52-send/Cargo.toml" -p atg-cli --features tdlib -- send saved --text "atg 冒烟 B 取消"; echo "退出码 $?"
+```
+
+```
+python3 -c 'print("测"*60, end="")' > "/private/tmp/claude-501/-Users-allenchen-xingan-chen-B-MyCreate-5-App-atg-wt-52-send/bb3521d2-41b1-447c-9be4-6aa141cf3a03/scratchpad/b4.txt" && cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility " && LOCAL_TDLIB_PATH="/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility /_build/20261025-171733/tdlib" cargo run -q --manifest-path "/Users/allenchen/xingan-chen/B-MyCreate/5-App/atg-wt/52-send/Cargo.toml" -p atg-cli --features tdlib -- send saved --text-file "/private/tmp/claude-501/-Users-allenchen-xingan-chen-B-MyCreate-5-App-atg-wt-52-send/bb3521d2-41b1-447c-9be4-6aa141cf3a03/scratchpad/b4.txt"; echo "退出码 $?"
+```
+
+注意：
+- 第一次跑 B2 要编 tdlib 特性的 atg-cli（重活，占名额）
+- B2 可能被拒为 `too_long_to_confirm`、不弹框：收藏夹在确认说明里写作「收藏夹 · <会话名> · id <数字>」，现在的估算很保守，会话名长一点就可能超 6 行。真遇到也算一个有用的数据点：B1 量完、回填上限后再跑 B2
+- 量完回填：`confirm_box.rs` 的 `CONFIRM_LINE_COLS` / `CONFIRM_MAX_LINES` / `CONFIRM_MAX_CHARS`，契约 `actions.md` 第 4 条记实测；断行规则的精确化记 #89

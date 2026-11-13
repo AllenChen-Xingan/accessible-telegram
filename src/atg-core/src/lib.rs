@@ -20,7 +20,7 @@
 //!
 //! 发送（M2.1 / M2.2）：
 //! - [`gate`]：发送闸（确认凭据、三种确认方式、直发防重复与留痕）· [`send`]：发文字、回复、重发的流程 ·
-//!   [`localauth`]：macOS 上的 Touch ID / 系统密码（发送闸的人工确认） · [`send_limits`]：账号受限、限流冷却（落盘，跨进程遵守）
+//!   [`localauth`]：macOS 上的 Touch ID / 系统密码（发送闸的人工确认） · [`send_limits`]：账号受限、限流冷却（落盘，跨进程遵守） · [`confirm_box`]：Touch ID 确认框放不放得下
 //!
 //! 提示（#53）：[`notify`]：提不提示的判定 v0（新消息、正在输入、重连汇总；`watch` 用）
 //!
@@ -74,6 +74,7 @@
 pub mod auth;
 pub mod backend;
 pub mod config;
+pub mod confirm_box;
 pub mod error;
 pub mod fake;
 pub mod gate;
