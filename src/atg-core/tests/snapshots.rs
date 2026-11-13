@@ -387,3 +387,49 @@ fn hidden_everywhere() {
             .join("\n"),
     ));
 }
+
+/// #70 跨输出一致：链接（`url` / `link`）里只要有一段是剧透，`data`、`links`、读法三层都整条遮——
+/// 链接的字和地址一个都不出现（`fixtures/speech/hidden.json` 3006、3007、置顶 3008）；展开后照出
+#[test]
+fn partly_hidden_links_agree_across_outputs() {
+    use atg_core::tree::{Action, text::links_marked};
+    let mut checked = 0;
+    for d in world("hidden").docs() {
+        let body = match &d {
+            Doc::Message(m) => &m.content.body,
+            Doc::Service(s) => match &s.action {
+                Action::Pinned {
+                    content: Some(c), ..
+                } => &c.body,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        for (link, hidden) in links_marked(body) {
+            assert!(hidden, "links：{} 没标隐藏", link.url);
+            let said = [
+                brief(&d, &cx()),
+                speech::detail(&d, &cx()),
+                speech::full(&d, &cx()),
+                json::line(&d, &cx()),
+            ];
+            for part in [link.url.as_str(), link.text.as_str(), "example.invalid"] {
+                assert!(said.iter().all(|x| !x.contains(part)), "漏出：{part}");
+            }
+            // 可见的那半段也不许出来（只遮剧透那段、读出「地图，隐藏内容」也算错）：读法三层里不含链接文字的任何两个字
+            let chars: Vec<char> = link.text.chars().collect();
+            for w in chars.windows(2) {
+                let w: String = w.iter().collect();
+                assert!(
+                    said[..3].iter().all(|x| !x.contains(&w)),
+                    "读法漏出链接片段：{w}"
+                );
+            }
+            assert!(brief(&d, &cx()).contains("隐藏内容"));
+            assert!(json::line(&d, &revealed()).contains(&link.url));
+            assert!(speech::full(&d, &revealed()).contains(&link.text));
+            checked += 1;
+        }
+    }
+    assert!(checked >= 4, "夹具里套着剧透的链接太少：{checked}");
+}
