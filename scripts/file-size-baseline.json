@@ -1,0 +1,23 @@
+{
+  "max": 600,
+  "note": "只许变小（scripts/check-file-size.py --tighten）",
+  "files": {
+    "src/atg-cli/src/chats.rs": 853,
+    "src/atg-cli/src/history.rs": 710,
+    "src/atg-cli/src/login.rs": 1077,
+    "src/atg-cli/src/send.rs": 971,
+    "src/atg-cli/src/serve.rs": 1431,
+    "src/atg-cli/src/watch.rs": 1343,
+    "src/atg-core/src/fake.rs": 1155,
+    "src/atg-core/src/gate.rs": 1202,
+    "src/atg-core/src/notify.rs": 1247,
+    "src/atg-core/src/send.rs": 1688,
+    "src/atg-core/src/speech.rs": 848,
+    "src/atg-core/src/store/mod.rs": 969,
+    "src/atg-core/src/td.rs": 874,
+    "src/atg-core/src/tdjson.rs": 859,
+    "src/atg-core/src/tree/mod.rs": 602,
+    "src/atg-core/src/tree/text.rs": 671,
+    "src/atg-core/tests/reducer.rs": 2102
+  }
+}
