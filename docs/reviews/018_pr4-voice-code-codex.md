@@ -1,8 +1,8 @@
 # 评审 018 · #4 下载与播放的代码（atg-audio、download / play）（codex · gpt-6-astra · read-only）
 
-> 对象：本 PR 新加或主要改动的源文件——`src/atg-audio/`（除二进制夹具）、`src/atg-cli/src/{play,download,args,session}.rs`、`src/atg-cli/src/voice/mod.rs`、`src/atg-core/src/{fake/files,tdjson/file,tree/media,speech/playback,backend,td}.rs`；依据 `docs/experiments/exp008-local-stt/design.md`、`specs/contracts/{cli,actions,errors}.md`。**最新一轮：第 2 轮（2026-11-13）· 总评「修改」· 待第 3 轮（连续第 1 轮无 P0/P1）**。
+> 对象：本 PR 新加或主要改动的源文件——`src/atg-audio/`（除二进制夹具）、`src/atg-cli/src/{play,download,args,session}.rs`、`src/atg-cli/src/voice/mod.rs`、`src/atg-core/src/{fake/files,tdjson/file,tree/media,speech/playback,backend,td}.rs`；依据 `docs/experiments/exp008-local-stt/design.md`、`specs/contracts/{cli,actions,errors}.md`。**最新一轮：第 3 轮（2026-11-13）· 总评「修改」· 已达停止线（第 2、3 轮连续无 P0/P1）**。
 > 为什么不用 diff 类型：评审脚本对 diff 里的二进制文件（两份 `.ogg` 夹具，合成的编造句子）一律拒发，且不收路径过滤；改用 doc 类型逐文件审，纯挪动的测试文件（`td/tests.rs` 等）不在对象里。
-> 累计处理：P1×2、P2×5 逐条核实，属实 7、驳回 0。
+> 累计处理：P1×2、P2×6 逐条核实，属实 8、驳回 0；剩 1 条 P2（测试缺口）开 issue。
 
 ## 第 1 轮（2026-11-13）· 总评「修改」
 
@@ -50,3 +50,18 @@
 ### 是否再审
 
 连续第 1 轮无 P0/P1 → 改完再审一轮确认。
+
+## 第 3 轮（2026-11-13）· 总评「修改」
+
+原文：`_tmp/20261113-media/reviews/pr4-code-codex-3.md`（不入库）。挪出去的测试文件 `play/tests.rs`、`voice/tests.rs` 作为依据一并给读（评审对象不变，保持同一评审身份）。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 2、3 轮连续无 P0/P1）
+
+上一轮处理的验证：第 2 轮 #1–#3 codex 认可（取消优先、空行、贯通测试）。
+
+- **P2｜voice/mod.rs:163 等标已听应答时取消、应答又失败，报普通错误不是 interrupted**（第 3 轮 #1）
+  - 核实：属实（标记那一步没走 `after_step`）
+  - 处理：代码已改（标记结果也经 `after_step`，先看取消）。**测试未补**：要在「标记请求进行中」那一刻立取消标志，假后端没有这个钩子；开 issue 留后处理（待大总管开号）
+
+### 是否再审
+
+停止线已满足，停。剩余 P2：1 条（上面那条的测试），开 issue。

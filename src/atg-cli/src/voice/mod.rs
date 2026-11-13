@@ -160,7 +160,8 @@ pub fn prepare_play<B: Backend, O: Output>(
     let player = after_step(cancel, Player::start_paused(out, pcm).map_err(audio_fail))?;
     if mark {
         // 失败时 player 随之释放出口，不出声（不说「已标」）
-        block_on(b.mark_listened(v.id)).map_err(Fail::Core)?;
+        // 等标记应答时按了 Ctrl+C、应答又失败：仍按 interrupted 报（同前几步）
+        after_step(cancel, block_on(b.mark_listened(v.id)).map_err(Fail::Core))?;
         feed.drain(stream);
     }
     Ok((player, v))
