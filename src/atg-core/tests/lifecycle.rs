@@ -263,6 +263,7 @@ fn stale_window_triggers_refetch_with_fresh_ticket() {
         reactions: vec![],
         sending: SendingState::Sent,
         mentions_me: false,
+        self_destruct: false,
     };
     let up = |seq, event| Envelope { seq, event };
     let t = pump.store_mut().ticket(9);
