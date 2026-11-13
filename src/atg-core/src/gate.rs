@@ -510,6 +510,8 @@ impl Gate {
         mode: ConfirmMode,
         plan: &dyn Gated,
     ) -> Result<(), CoreError> {
+        // 交出前最后一次复查限制：所有 await 之后的唯一位置（codex 016 第 5 轮 #1，见 `send_limits` 模块文档）
+        self.limits.check(unix_now())?;
         if mode != ConfirmMode::DirectMode {
             return Ok(());
         }
@@ -564,9 +566,6 @@ impl Gate {
         outcome: Outcome,
         error: Option<&CoreError>,
     ) {
-        if let Some(e) = error {
-            self.limits.note(e);
-        }
         if mode != ConfirmMode::DirectMode {
             return;
         }
@@ -1212,15 +1211,7 @@ mod tests {
     #[test]
     fn account_limited_stops_everything() {
         let (g, _, _) = gate(true, false, Ok(()));
-        let p = plan(777, 1);
-        g.after_outcome(
-            ConfirmMode::DirectMode,
-            &p,
-            -1,
-            None,
-            Outcome::Failed,
-            Some(&CoreError::AccountLimited { td: None }),
-        );
+        g.limits().note(&CoreError::AccountLimited { td: None });
         assert_eq!(
             reason(g.issue(&plan(778, 2), false).unwrap_err()),
             SendRefusedReason::AccountLimited
@@ -1230,14 +1221,7 @@ mod tests {
     #[test]
     fn account_limited_survives_into_the_next_process_until_removed() {
         let (g, _, dir) = gate(true, false, Ok(()));
-        g.after_outcome(
-            ConfirmMode::DirectMode,
-            &plan(777, 1),
-            -1,
-            None,
-            Outcome::Failed,
-            Some(&CoreError::AccountLimited { td: None }),
-        );
+        g.limits().note(&CoreError::AccountLimited { td: None });
         assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
         // 下一个进程（新的闸）开在同一个档案目录上：照样停
         let next = Gate::new(true, Holder::Cli, Box::new(NoAuth));
@@ -1376,17 +1360,10 @@ mod tests {
     #[test]
     fn flood_wait_blocks_the_next_send() {
         let (g, _, _) = gate(true, false, Ok(()));
-        g.after_outcome(
-            ConfirmMode::DirectMode,
-            &plan(777, 1),
-            -1,
-            None,
-            Outcome::Failed,
-            Some(&CoreError::RateLimited {
-                retry_after_s: 60,
-                td: None,
-            }),
-        );
+        g.limits().note(&CoreError::RateLimited {
+            retry_after_s: 60,
+            td: None,
+        });
         assert!(matches!(
             g.issue(&plan(778, 2), false),
             Err(CoreError::RateLimited { .. })

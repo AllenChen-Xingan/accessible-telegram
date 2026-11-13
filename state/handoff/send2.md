@@ -48,7 +48,8 @@
   - 第 2 轮：P1×3 · P2×1，全属实。修：空格逐个计宽；重发交出前复核；批量重发结果未知优先报。P2 #4 留 issue。test 380 过
   - 第 3 轮：P1×2 · P2×1，全属实。修：长词逐字排；晚到的账号受限经 `Shared::event` 点亮闸的信号；文字计划行带回复 / 话题。test 382 过
   - 第 4 轮：P1×2 · P2×2，全属实（按收紧口径两条 P1 都认：漏拦）。#1 与第 3 轮同类第二次 → 改结构：新模块 `send_limits.rs`（受限 + 限流冷却一个正本，收到即落盘，`flood-until` 新文件）；P2 #3 封住 `Gated`；P2 #4 留 issue。test 386 过
-  - 第 5 轮：脚本 `_tmp/reviews-016/run-round5.sh` 已交大总管（P1 走势 5 → 3 → 2 → 2）
+  - 第 5 轮：P1×2 · P2×1，全属实。按结构修：登记只经交出口（`send_limits::submit`）与收线程（`Shared::event`）两个入口；交出前最后复查在 `before_submit` 开头；限制标记读不准即拒发（`send_limits_unreadable`）。P2 #3（凭据没绑签发的闸，构造绕过）留 issue。新集成测试 `tests/send_limits.rs`。test 389 过
+  - 第 6 轮：脚本 `_tmp/reviews-016/run-round6.sh` 已交大总管（P1 走势 5 → 3 → 2 → 2 → 2）
   - 待：`--features tdlib` 的 clippy（td.rs 改了一行），并入冒烟 B 那次编译；三个超长文件比定基线时又长了（gate 1176→1395、core send 1490→1688），已报大总管与 arch 定基线时点
 - [ ] 6. 回报
 
@@ -99,3 +100,8 @@ cd "/Users/allenchen/xingan-chen/B-MyCreate/5-App/telegram accessibility " && LO
 - 超 600 行：#52 先合，`gate.rs` / core `send.rs` / cli `send.rs` 进基线，arch 第二段最先拆；我现在不拆，**PR 描述里写一句**
 - #53 那 4 条 P3 由大总管转 arch
 - 第 10 轮自审照跑（只读）；名额留给人跑冒烟
+
+## 大总管已定（2026-11-13，续）
+
+- 超长文件基线取 #52 合并那一刻的现状（arch 重记时吃进去）；**之后别再往 `gate.rs` / core `send.rs` 里加**，新逻辑照 `send_limits.rs` 的做法进新文件
+- `--features tdlib` 的 clippy 合并到冒烟 B 那次编译

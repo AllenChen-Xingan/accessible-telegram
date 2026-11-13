@@ -385,7 +385,7 @@ async fn preview_check<B: Backend>(b: &B, plan: &TextPlan) -> Result<(), CoreErr
             preview: true,
         },
     };
-    match b.submit(sealed).await? {
+    match crate::send_limits::submit(b, sealed).await? {
         Answer::Message(m) => {
             check_kept(plan, &m).map_err(|reason| CoreError::SendRefused { reason, last: None })
         }
@@ -454,7 +454,7 @@ pub async fn send_text<B: Backend>(
             preview: false,
         },
     };
-    match b.submit(sealed).await {
+    match crate::send_limits::submit(b, sealed).await {
         Ok(Answer::Message(m)) => Ok(Submitted { mode, temp: m.id }),
         Ok(Answer::Resent(_)) => Err(CoreError::Internal {
             what: "send_answer_shape",
@@ -941,7 +941,7 @@ pub async fn resend<B: Backend>(
             request: &plan.request,
         },
     };
-    match b.submit(sealed).await {
+    match crate::send_limits::submit(b, sealed).await {
         Ok(Answer::Resent(ms)) => Ok(ms
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
