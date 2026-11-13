@@ -11,14 +11,14 @@
 
 1. **最大的乘法在 CLI 的命令接线**：每条命令要在 `main.rs`（`run_X`）、`session.rs`（起真实后端的 `X`）、`serve.rs`（`execute` 的一支）各写一遍，「起后端 → 干活 → 关后端」写了 4 遍，「`saved` → 自己的 id」main 上写了 2 遍（`history`、`watch`），#52 又加第 3 遍。命令 × 跑法是乘法——三种跑法：**直跑**（这个 `atg-cli` 进程自己起 TDLib、自己干活）；**转发**（档案已被另一个常驻进程占着，这个进程只把命令经本机套接字转过去，`forward.rs`）；**执行方**（那个常驻进程——`atg-cli serve`，以后是 GUI——收到转来的命令替它执行，`serve.rs`）。要收成「每条命令一行登记 + 一条执行路径」（第四节第一行、第五节 R5）。
 2. **树有了，但不是一切都走树**：消息、会话项走树（好）；但 `watch` 的「新消息，」「对方正在输入」「断网期间收到……」、`history` 的「以下为未读」、`links` 的整条输出（含它自己做的遮挡）、每条命令文字模式的统计句，都是 CLI 里现拼的中文，绕开了 `tree` 和 `speech`。树里早有 `Doc::Alert`，正式路径上**从没建过**（第三节）。
-3. **超 600 行的文件 14 个**，其中 3 个（`serve.rs`、`login.rs`、`chats.rs`）超线的主因是行内测试（测试占一半以上）：把测试挪出去，原文件就降到线下，零行为变化。但**测试文件本身也守 600 行**：`serve` 的测试 763 行、`login` 685 行要按主题再分成两份（`foo/tests/<主题>.rs`），只有 `chats`（468 行）挪成一个 `tests.rs` 就行。其余 11 个：有行内测试、挪出后仍超线的 7 个（`notify` 629、`history` 706、`watch` 873、`text` 662、`store/mod` 967、`speech` 822、`td` 645）；没有行内测试的 4 个（`tdjson` 842、`fake` 825、`tree/mod` 604，以及本身就是测试文件的 `tests/reducer.rs` 2222）——都得按职责拆（第一节）。
-4. **契约表与代码现在是一致的**——四条正本比对第一次跑就全绿；问题是以前靠人记着同步，现在由 CI 盯（第二节）。`arch` 和防门槛被放宽的 `arch-guard` 定为合并必过项（人定 2026-11-13 B18-6，出处：大总管账本 `state/coord.md`（MAIN 工作区，2026-11-13 待定清单第 369 行 B18-6，本分支开出时还没有；批次收尾时进 `docs/plan/` 的拍板记录）；`scripts/github-ruleset.json` 在本 PR 里改，合并后由大总管在 GitHub 上应用；**应用之前它们红了只是提示，拦不住合并**），应用后红了不能合。
+3. **超 600 行的文件 17 个**（main 上原有 14 个，#52 新增 3 个：core `send.rs`、`gate.rs`，cli `send.rs`；数字按 #52、#76 合并后的 main，2026-11-13）。其中 2 个（`login.rs`、`chats.rs`）超线的主因是行内测试：把测试挪出去，原文件就降到线下，零行为变化；`serve.rs` 测试挪出后还剩 610 行，差 10 行，要再挪一小段（或等 R5 删掉 `execute` 各支）。但**测试文件本身也守 600 行**：`serve` 的测试 821 行、`login` 685 行要按主题再分成两份（`foo/tests/<主题>.rs`），`chats`（468 行）挪成一个 `tests.rs` 就行。其余：有行内测试、挪出后仍超线的 7 个（core `send` 1055、`gate` 753、`notify` 629、`history` 706、`watch` 873、`store/mod` 967、`td` 832），cli `send` 挪出后 555 行守线；没有行内测试的 6 个（`tdjson` 862、`fake` 1172、`speech` 855、`tree/text` 671、`tree/mod` 604——后两个与 `speech` 的测试已由 #76 挪走——以及本身就是测试文件的 `tests/reducer.rs` 2222）——都得按职责拆（第一节）。
+4. **契约表与代码现在是一致的**——五条正本比对第一次跑就全绿；问题是以前靠人记着同步，现在由 CI 盯（第二节）。`arch` 和防门槛被放宽的 `arch-guard` 定为合并必过项（人定 2026-11-13 B18-6，出处：大总管账本 `state/coord.md`（MAIN 工作区，2026-11-13 待定清单第 369 行 B18-6，本分支开出时还没有；批次收尾时进 `docs/plan/` 的拍板记录）；`scripts/github-ruleset.json` 在本 PR 里改，合并后由大总管在 GitHub 上应用；**应用之前它们红了只是提示，拦不住合并**），应用后红了不能合。
 
 ## 一、行数：超 600 行的文件与拆法
 
-基线 `scripts/file-size-baseline.json` 按 main 记 14 个，只许变小。#52（发送闸 + `send`，由 send2 线在做）新增的三个文件会超线，门槛一进 CI 就红。两条路：A）#52 先合，门槛后进，三个文件按合并后的现状进基线、第二段最先拆；B）#52 合并前先拆。大总管定 A（2026-11-13，不拖 send2）。
+基线 `scripts/file-size-baseline.json` 按 main 记 17 个，只许变小。#52（发送闸 + `send`）新增的三个文件超线。两条路：A）#52 先合，门槛后进，三个文件按合并后的现状进基线、第二段最先拆；B）#52 合并前先拆。大总管定 A（2026-11-13，不拖 send2）；**已照 A 做完**：#52（PR #90）先合，本 PR merge 了它之后的 main，按那个 `origin/main` 重记了基线（17 个）。
 
-**和别的线谁先合**：fix 线（`fix/68-70-speech`）会让 `speech.rs`、`tree/text.rs` 变小。它若在门槛**之后**合，它的 PR 要跑 `--tighten`（否则「变小没收紧」会红）；它若在门槛**之前**合，本 PR 按下面 merge 最新 main 后重记基线时自然记成新数，不用另做。
+**和别的线谁先合**：fix 线（`fix/68-70-speech`，PR #76）让 `speech.rs`、`tree/text.rs` 变小。它已在门槛**之前**合，本 PR 重记基线时已记成新数（855、671），不用另做。以后哪条线让基线里的文件变小，就在它自己的 PR 里跑 `--tighten`（否则「变小没收紧」会红）。
 
 **按 A 的操作顺序**：#52 合并 → `git fetch` → 本 PR 分支 `git merge origin/main`（分支已推过远端，不能 rebase，rebase 后要强推，项目禁止；合并时是 squash，分支里的合并提交不进 main）→ `python3 scripts/check-file-size.py --write-baseline --rev origin/main` 在**本 PR 里**重记基线（合并和重记用同一个 `origin/main`）→ 再合本 PR。main 上那时还没有门槛脚本和 `arch-guard` 工作流，`arch-guard` 不会运行（它读的是 main 上的文件）（脚本那时打印的「要带标签」提示不适用），**本 PR 不需要** `baseline:loosen` 标签。门槛进库**以后**任何 PR 再重记或放宽基线、改门槛文件（门槛脚本、自测、`arch` / `arch-guard` 工作流，任何改动），才要人或大总管加这个标签（见守则第 1 条）。
 
@@ -30,20 +30,23 @@
 |---|---|---|---|
 | `atg-core/tests/reducer.rs` | 2222 | 全是 | 已按主题分节（排序 · 墓碑 · 按字段合并 · 版本 · 重复 · 换 id · 有效内容 · 投影 · 拍板 006（`docs/plan/006_decisions-b7.md`）· 第八至十轮）：每节一个文件，`tests/reducer/` 下共用「造假数据」一节（并入 R3 testkit） |
 | `atg-cli/src/watch.rs` | 1343 | 470 | `watch.rs` 留作模块根（Watcher 与直跑循环）· `watch/hub.rs`（订阅者 Sub/Hub，执行方用）· `watch/tests.rs`；第 412–873 行要按函数分开处理，**不是整段挪个文件**：约 412–627 行「事件 → 数据」随 R6 改成事件节点 + `json` 渲染后删掉；约 630 行状态行（`status_line`）随 R6 改用状态节点（S9）；约 651–693 行目标解析（`resolve`）随 R4 收进 `target.rs`；约 694–865 行起停与订阅循环（`run`、`watch_loop`、取论坛话题设置）随 R5 成为登记表里的订阅类命令；约 866 行起关会话（`close_chat`）随 R5 归进订阅的清理；读法句子去 `speech` |
-| `atg-cli/src/serve.rs` | 1328 | 763 | 测试挪出即 565；R5 之后 `execute` 那一大段消失 |
+| `atg-core/src/send.rs` | 1688 | 633 | #52 新增，R1：`send.rs` 留作模块根（常量、来源、`pub use`）· `send/text.rs`（发文字）· `send/wait.rs`（等结果）· `send/resend.rs`（重发）· `send/plan.rs`（计划行）· 测试按主题分 `send/tests/{text,wait,resend}.rs`；细目见 `state/handoff/arch.md`「R1 设计」 |
+| `atg-cli/src/serve.rs` | 1431 | 821 | 测试挪出剩 610（#52 加了 send/resend 两支），还差 10 行：挪测试时把一小段助手一起挪出，或等 R5 删掉 `execute` 各支；测试 821 行按主题分两份 |
 | `atg-cli/src/history.rs` | 1264 | 558 | `links` 那段（603–706）独立成 `links.rs`；起后端那段（138–225）并入 R5；测试挪出 |
 | `atg-core/src/store/mod.rs` | 1263 | 296 | `store/patch.rs`（Patch、FieldSeqs、按字段合并）· 按输入分 `store/chats.rs`、`store/messages.rs`；`mod.rs` 只留 Store、Input、查询 |
+| `atg-core/src/gate.rs` | 1202 | 449 | #52 新增，R1：`gate.rs` 留作模块根（常量、`pub use`）· `gate/token.rs`（凭据）· `gate/display.rs`（确认框排版）· `gate/digest.rs` · `gate/auth.rs` · `gate/check.rs`（闸本体）· `gate/guard_store.rs`（防重复记录、直发日志）· `gate/tests.rs` |
 | `atg-core/src/notify.rs` | 1247 | 618 | 测试挪出即 629；再把 `effective`（三层静音的取值，194–246）拆成 `notify/mute.rs` |
 | `atg-cli/src/login.rs` | 1077 | 685 | 测试挪出即 392 |
-| `atg-core/src/tree/text.rs` | 1058 | 396 | fix 线分支上已把测试挪到 `tree/text/tests.rs`（未合）（剩约 671；比按 main 算的 662 多，是 fix 线同时改了别的地方）。还要做的：建树（`build`，240–500）留下；查询（`links`、`plain_text`、`contains_spoiler`，503–663）成 `tree/query.rs` |
-| `atg-core/src/speech.rs` | 900 | 78 | fix 线分支上已把测试挪出（未合）（剩 847；按 main 算是 822，差的是 fix 线同时改的读法代码）。还要做的：`speech.rs` 留作模块根（brief / detail / full 入口）· `speech/service.rs`（系统消息，482–556）· `speech/content.rs`（正文与附件，557–）· 常量表一处 |
-| `atg-cli/src/chats.rs` | 847 | 468 | 测试挪出即 379 |
-| `atg-core/src/tdjson.rs` | 842 | 0 | 它是 TDLib JSON → model 的**唯一映射**（正式路径和夹具共用，好）。按对象拆：`tdjson/event.rs` · `chat.rs` · `message.rs` · `text.rs`（实体）；夹具专用的 `World` 单放 `tdjson/world.rs` |
-| `atg-core/src/fake.rs` | 825 | 0 | 按后端能力拆：`fake/auth.rs` · `fake/read.rs`（会话、历史）· `fake.rs` 留作模块根（共用状态、开关） |
-| `atg-core/src/td.rs` | 773 | 128 | 同上：`td/auth.rs` · `td/read.rs` · `td.rs` 留作模块根（起停、收线程） |
+| `atg-core/src/tree/text.rs` | 671 | 0 | 测试已由 #76 挪到 `tree/text/tests.rs`。还要做的：建树（`build`，240–510）留下；查询（`links`、`links_marked`、`link_hidden`、`contains_spoiler`、`plain_text`，511–）成 `tree/query.rs` |
+| `atg-core/src/speech.rs` | 855 | 0 | 测试已由 #76 挪到 `speech/tests.rs`。还要做的：`speech.rs` 留作模块根（brief / detail / full 入口）· `speech/service.rs`（系统消息，约 490–571）· `speech/content.rs`（正文与附件，约 572–）· 常量表一处 |
+| `atg-cli/src/send.rs` | 971 | 416 | #52 新增，R1：只把测试挪成 `send/tests.rs`（剩 555）；`saved` 解析、输出一行、计划句子各归 R4、R5、R6，不在 R1 里挪两遍 |
+| `atg-cli/src/chats.rs` | 853 | 468 | 测试挪出即 385 |
+| `atg-core/src/tdjson.rs` | 862 | 0 | 它是 TDLib JSON → model 的**唯一映射**（正式路径和夹具共用，好）。按对象拆：`tdjson/event.rs` · `chat.rs` · `message.rs` · `text.rs`（实体）；夹具专用的 `World` 单放 `tdjson/world.rs` |
+| `atg-core/src/fake.rs` | 1172 | 0 | 按后端能力拆：`fake/auth.rs` · `fake/read.rs`（会话、历史）· `fake/send.rs`（#52 加的发送与假确认，约 350 行）· `fake.rs` 留作模块根（共用状态、开关） |
+| `atg-core/src/td.rs` | 991 | 159 | 同上：`td/auth.rs` · `td/read.rs` · `td/send.rs`（#52 加的发送）· `td.rs` 留作模块根（起停、收线程） |
 | `atg-core/src/tree/mod.rs` | 604 | 0 | 消息节点（Message/Head/Content/Attachment/Span）与其余顶层节点（ChatItem/Alert/Status）分两个文件 |
 
-#52 合并后另有：`atg-core/src/send.rs` 1490 · `gate.rs` 1145（send2 第 9 轮后已 1176；基线按合并那一刻的现状记）· `atg-cli/src/send.rs` 870（新超标）；`serve.rs`、`fake.rs`、`td.rs`、`tdjson.rs`、`chats.rs` 还会变大（实测 #52 分支：1431 · 1159 · 968 · 862 · 853）。
+表里的数按 #52（PR #90）与 #76 合并后的 main（`68ac7a0`）；基线就是按这个现状记的。
 
 ## 二、正本盘点
 
@@ -53,7 +56,7 @@
 |---|---|---|---|---|
 | S1 | 错误机读码 | `atg-core/src/error.rs` `CoreError::code` + `atg-cli/src/out.rs` `Code::as_str` | `specs/contracts/errors.md` 码表 + 「CLI 自有码」 | 比对 ✅ `error-codes` |
 | S2 | 退出码 | `out.rs` `core_exit` + `Code::exit` | `specs/contracts/cli.md` 第一节第 4 小节 | 现在比对 ✅ `exit-codes`；以后**生成**（R11，#81）（`out.rs` 里 `exit_codes_match_contract` 手抄了一份数，留着当单测，正本仍是 match） |
-| S3 | 子命令清单 | `atg-cli/src/args.rs` `enum Command` | `cli.md` 子命令表；**还有**：`serve.rs` `execute` 认哪些命令、`args.rs` 里 `Serve` 的注释「（chats、history、links、auth state）」、`config-privacy.md`「能转的」清单 | 前两处比对 ✅ `subcommands`；「能不能转发」R5 后由命令登记表的一列生成，注释删掉 |
+| S3 | 子命令清单 | `atg-cli/src/args.rs` `enum Command` | `cli.md` 子命令表；**还有**：`serve.rs` `execute` 认哪些命令、`config-privacy.md`「能转的」清单（`args.rs` 里 `Serve` 注释抄的那份清单 #52 已删，S15） | 前两处比对 ✅ `subcommands`；「能不能转发」R5 后由命令登记表的一列生成，注释删掉 |
 | S4 | 外壳版本 `v`（CLI 每行 JSON 外面那层 `{"v","kind","at","data"}` 的版本）/ 本机接口协议版本 | `tree::SCHEMA_V` · `ipc::PROTOCOL_V` | `cli.md`、`content-tree.md` 的外壳例子；`config-privacy.md` 的请求例子 | 比对 ✅ `versions` |
 | S5 | 树的形状（节点、字段） | `atg-core/src/tree/` 的类型 | `content-tree.md` 节点清单；JSON 消费方 | **生成**：`schemars` 从 Rust 类型导出 JSON Schema 文件进库；**金样测试**（每次测试重新导出，和库里那份逐字比，不同就红，提示跑哪条命令更新）；版本号按 `content-tree.md` 第八节的兼容规则判：和合并目标上那份比，**结构上的破坏性改动**（改字段名、删字段、改类型、改判别值）没升 `SCHEMA_V` 就红；**改含义**（名字、类型都不变，只是算法或单位变了）Schema 看不出来，靠 `speech` / JSON 快照测试和 PR 审查时人看版本号兜底；新增可选字段、新节点、新取值**不用**升版本，重新生成即可。这份树的 Schema 是 `schema` 子命令输出的一部分（第五节 R9）。要加依赖，**Q1 人定 A**（第六节） |
 | S6 | 参数范围 `-n` | `args.rs` clap `range(1..=100_000)` / `range(1..=1000)` | `serve.rs` 里再写一遍 chats 的范围；`history::query` 再写一遍 history 的 | 收成 `args.rs` 里两个常量，clap 和 `query` 都引用（R4） |
@@ -63,9 +66,9 @@
 | S10 | 「现在」与时区 | — | `watch::now_ms`、`link::now_ms`、`atg-cli/speech.rs::now`（秒）、`out::now_rfc3339_ms`；系统时区 `local_offset_at` 在 CLI 里，GUI 也要 | 收进 `atg-core/src/tree/time.rs`（R8） |
 | S11 | 测试用的 TDLib JSON 造法 | — | 手拼 `json!({"@type": …})` 散在 9 个文件约 90 处；`temp_root`/`profile` 5 份 | 数据与后端夹具（TDLib JSON 造法、临时档案）收进一个 `atg-core::testkit`（R3）。CLI 的输出替身（`Cap`）**不进 core**：`history`、`serve` 的两份收标准输出 / 标准错误（`Sink`），可在 `atg-cli` 的测试里合成一份；`watch` 那份实现 `LineOut` 且带「到条件就停」，不等价，单留 |
 | S12 | 超时与轮询间隔 | 各自 | `ME_TIMEOUT` 两份（history、watch）同为 5 秒；`chats::SYNC_TIMEOUT` 被 `history` 转引（好） | **由 fix 线做**（#78）：命令层期限全收进 `atg-cli/src/deadlines.rs`，每个一行注释（等什么、为什么是这个数、出处），两份 `ME_TIMEOUT` 合一；内核机制类（`SHUTDOWN_TIMEOUT`、ipc 两个）留原处 |
-| S13 | 互斥锁取值助手 `lock<T>` | — | `fake.rs`、`link.rs`、`td.rs` 各一份 | 一份 `pub(crate)`（R8） |
-| S14 | 一行要不要提示 | `notify::Verdict.alert`（结构化） | `forward.rs:217–240` `count_line` 文字模式下拿中文前缀「新消息，」「对方正在输入」「断网期间收到」**重判**这一行要不要提示——读法句子成了协议，改一个字计数就错（media 线自审发现，已核实） | 执行方转发的每一帧事件带结构化的 `alert` 标记（文字模式也带，不只是那行字），发起方按标记计数，不再解析句子；这样与 `cli.md` 第一节第 5 小节例外④「Ctrl+C 时发起方按收到的行在本地写结尾」一致；随 R5、R6 |
-| S15 | 「哪些命令能转发」的文字说明 | 同 S3 | `serve.rs:10`、`forward.rs:10` 的模块注释和 `args.rs:127` `Serve` 的文档注释（即 `--help` 那条，D4）三处都写「chats、history、links、auth state」，**漏了已经能转的 `watch`**（media 线自审发现） | 注释不再列清单，只指向登记表（守则第 6 条）；随 R5 |
+| S13 | 互斥锁取值助手 `lock<T>` | — | `fake.rs`、`link.rs`、`td.rs`、#52 的 `gate.rs` 各一份 | 一份 `pub(crate)`（R8） |
+| S14 | 一行要不要提示 | `notify::Verdict.alert`（结构化） | `forward.rs:241–248` `count_line` 文字模式下拿中文前缀**重判**这一行要不要提示——读法句子成了协议（media 线自审发现，已核实）。#52 后 JSON 模式已改按结构化的 `notify.alert` 计数，文字模式的前缀也改引 `watch::NEW_PREFIX_ZH` 等常量（改措辞不再悄悄算错），但仍是解析句子 | 执行方转发的每一帧事件带结构化的 `alert` 标记（文字模式也带，不只是那行字），发起方按标记计数，不再解析句子；这样与 `cli.md` 第一节第 5 小节例外④「Ctrl+C 时发起方按收到的行在本地写结尾」一致；随 R5、R6 |
+| S15 | 「哪些命令能转发」的文字说明 | 同 S3 | `serve.rs:10`、`forward.rs:10` 的模块注释和 `args.rs:127` `Serve` 的文档注释（即 `--help` 那条，D4）三处都写「chats、history、links、auth state」，**漏了已经能转的 `watch`**（media 线自审发现） | ✅ #52 已改：三处都只指向 `config-privacy.md`「现在能转的」（守则第 6 条）。R5 后改指登记表 |
 | S16 | `src/` 下哪些目录是 crate | 根 `Cargo.toml` `members = ["src/atg-*"]` | `src/` 下的目录名（以 `atg-` 开头却没有 `Cargo.toml` 会让所有 cargo 命令失败） | 比对 ✅ `workspace`（守则第 10 条） |
 | S17 | 写私有文件 | — | `config::write_private`（非原子）与 #52 的 `gate::write_atomic`（原子）各一份 | 收成一份（取原子的），R8 |
 
@@ -77,17 +80,17 @@
 
 | # | 在哪 | 是什么 | 来源 |
 |---|---|---|---|
-| D1 | `src/atg-cli/README.md:5–21` | 「已做」只列到 login/auth/logout、chats、speech；history、links、serve、watch 都已做了 | media 自审 |
-| D2 | `src/atg-cli/src/main.rs:3–6`、`src/atg-cli/src/args.rs:3` 文件头 | 「已做」清单同样过期（`main.rs` 漏 `watch`；`args.rs` 漏 `watch`、`serve`） | media 自审 |
-| D3 | `src/atg-core/src/lib.rs` | 把 `notify` 标成占位，实际已做（#53） | media 自审 |
-| D4 | `args.rs:127` `--help`（`Serve` 那条）| 能转发的范围漏了 `watch`——与 S15 是同一处，随 S15 一起改，这里只为文档清单完整再列一次 | media 自审 |
+| D1 | `src/atg-cli/README.md` | 「已做」只列到 login/auth/logout、chats、speech；history、links、serve、watch 都已做了。✅ #52 已改成指向 `tests/cli.rs` 的 `DONE` 与契约（登录、chats、speech 三段细述还在，是说明不是清单） | media 自审 |
+| D2 | `src/atg-cli/src/args.rs:3` 文件头 | 「已做」清单过期（漏 `watch`、`serve`、`send`、`resend`）；`main.rs` 那份 #52 已改成指向 `DONE` ✅ | media 自审 |
+| D3 | `src/atg-core/src/lib.rs` | 把 `notify` 标成占位，实际已做（#53）。✅ main 上已改 | media 自审 |
+| D4 | `args.rs:128` `--help`（`Serve` 那条）| 能转发的范围漏了 `watch`——与 S15 是同一处。✅ #52 已改 | media 自审 |
 | D5 | `notify.rs` 等处的 F6、N5 这类拍板代号 | 没写出处（哪份 `docs/plan/00N_decisions-*.md`）；Unigram 出现处没说明是什么 | media、send2 自审 |
 | D6 | `link.rs` | 状态线一处写「两条」、一处写「三条」（契约是三条：内核 / 授权 / 连接，`errors.md`） | send2 自审 |
 | D7 | `speech` 子命令的 `--help` | 用了没解释的术语 | send2 自审 |
-| D8 | `src/atg-cli/src/args.rs:27–29`（`Global` 的注释）、`src/atg-cli/README.md:21` | 写 `--profile` 只管登录组与 chats/history/links、`--tz` 只有 speech/history 用、`--redact` 只在 chats/history/links 拦；实际 `watch` 也读 `--tz`、也拦 `--redact`，`serve` 也用 `--profile` | arch 自审 |
+| D8 | `src/atg-cli/src/args.rs`（`Global` 各字段的注释）、`src/atg-cli/README.md` | 写 `--profile` 只管登录组与 chats/history/links、`--tz` 只有 speech/history 用、`--redact` 只在 chats/history/links 拦；实际 `watch` 也读 `--tz`、也拦 `--redact`，`serve` 也用 `--profile`。✅ #52 已改成按性质说（「读消息时间的命令用」「会输出名字、正文的命令」），不再列命令 | arch 自审 |
 | D9 | `src/README.md:16–43` | 「常用命令」里的路径都要在仓库根执行，文件却放在 `src/` 里，没写这个前提 | arch 自审 |
 
-D1–D9 随第二段相关 PR 一起改；不单开大扫除。守则第 6 条防再犯。
+D1、D3、D4、D8 已修（#52 与此前的 main）；其余随第二段相关 PR 一起改；不单开大扫除。守则第 6 条防再犯。
 
 另：media 线自审还报了一条 **P1 正确性问题**（不是复杂度问题，不归本清单，大总管已知）：`serve` 单线程、给每个挂着的 `watch` 阻塞写（写超时 60 秒），一个读端停住就卡住整个执行方。R5 改接线时顺带要看，但修法要单开 issue。
 
@@ -103,7 +106,7 @@ D1–D9 随第二段相关 PR 一起改；不单开大扫除。守则第 6 条�
 | 状态行 | `serve.rs`、`watch.rs` | 扩 `Doc::Status`（S9） |
 | 「以下为未读」分隔 | `history.rs` `UNREAD_BELOW` | `content-tree.md` 第一节已预定的 `divider{kind: unread}` 节点，由投影插进消息序列；句子归 `speech` |
 | `watch` 的其余事件：消息删除、发送成功 / 失败、已读位置、会话位置、草稿、通知设置……（`watch.rs` `event_data`，约第 495–587 行，每种手拼一份 `json!`） | `atg-cli/src/watch.rs` | 事件节点（每种 `CoreEvent` 一个变体，只放数据），由投影从事件 + Store 建，JSON 统一走 `json` 模块；`watch.rs` 只剩订阅与转发。现有每种事件行的字段与含义逐项对照、一个不少（快照兜底） |
-| `auth` 的每一步、`version` 的那一行 | `main.rs` `emit_step`（约第 141 行）、`version`（约第 388 行）手拼 `json!` | 登录步骤节点（`content-tree.md` 第一节「以后加」已列）与版本信息节点；句子归 `speech` |
+| `auth` 的每一步、`version` 的那一行 | `main.rs` `emit_step`（约第 146 行）、`version`（约第 431 行）手拼 `json!` | 登录步骤节点（`content-tree.md` 第一节「以后加」已列）与版本信息节点；句子归 `speech` |
 | 发送前的 `plan` 行（#52） | `atg-cli/src/send.rs` | `Doc::Plan`（R6 时一起收） |
 
 规矩不变：**树只放数据**；句子只在 `speech`；JSON 只在 `json`；渲染器不写 `_ =>`，加节点编译器逼每个渲染器补上。
@@ -147,7 +150,7 @@ D1–D9 随第二段相关 PR 一起改；不单开大扫除。守则第 6 条�
 | 序 | 项 | 收益 | 风险 | 冲突 | 什么时候 |
 |---|---|---|---|---|---|
 | R1 | 拆 #52 新增的三个超线文件（core `send.rs`、`gate.rs`，cli `send.rs`） | 中：三个新超标清掉 | 低（按职责挪，不改逻辑） | 与 send2 撞 | #52 合并后**最先**（大总管定） |
-| R2 | 行内测试挪出（chats、login、serve、notify、history、watch、store、td；`speech`、`tree/text` 的已由 fix 线 `fix/68-70-speech` 挪走，不重复做）；超 600 行的测试按主题再分 | 中：chats、login、serve 3 个文件守线（login、serve 的测试各分两份），其余明显变小 | 极低（零行为变化） | 挪哪个文件就和改它的线撞：等那条线合并 | R1 后；按文件逐个，避开 media 在改的 |
+| R2 | 行内测试挪出（chats、login、serve、notify、history、watch、store、td；`speech`、`tree/text` 的已由 fix 线 `fix/68-70-speech` 挪走，不重复做）；超 600 行的测试按主题再分 | 中：chats、login 2 个文件守线、serve 降到 610（login、serve 的测试各分两份），其余明显变小 | 极低（零行为变化） | 挪哪个文件就和改它的线撞：等那条线合并 | R1 后；按文件逐个，避开 media 在改的 |
 | R3 | `atg-core::testkit`（S11：只收数据与后端夹具；CLI 输出替身留在 `atg-cli` 测试） | 中：删掉 9 个文件里重复的造数据 | 低（只动测试） | 低 | R2 同批或之后 |
 | R4 | 目标解析与参数范围收一（S6、S7、S12；`target.rs`） | 中：3→1，#52 的第 4 份一并收 | 低 | 动 history/watch/send：#52 后 | R3 后 |
 | R5 | 命令登记表 + 一条执行路径（`cmd.rs`；删 `session.rs` 四个三岔函数、`serve.rs` 各支、`main.rs` run_X）。登记表里命令分两种：**一次性**（函数 → 结果与退出码）与**订阅**（`watch` 这类：返回订阅句柄，定义取消、清理、结尾帧；保留 `cli.md` 第一节第 5 小节六条例外与 `config-privacy.md`「流式订阅」的全部行为）。先写清这两种的接口与验收（并发订阅、读方断开、发起方 Ctrl+C、上限 8 个），再删原分支 | **高**：命令 × 跑法从乘法变加法，以后加命令只加一行 + 一个函数 | 中（改接线；`serve` 转发快照测试 `forwarded_*_matches_direct` 兜底） | 和所有加命令的线撞：#52 后、media 加 `play`/`download` 前最好 | R4 后，尽早 |

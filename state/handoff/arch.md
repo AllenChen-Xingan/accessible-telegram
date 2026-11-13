@@ -1,6 +1,6 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
-- **手上**：第一段已完成（PR #86 草稿，等 #52 合并）；第二段 R1 设计已采纳，等通知开工
+- **手上**：#52 已合（PR #90），大总管已 merge 新 main；基线按 `origin/main`（68ac7a0）重记为 17 个，门槛自测 59 条 + 行数 + 五条正本比对全绿；010 的行数 / 行号按合并后的 main 更新完（S14 S15 D1–D4 D8 标了 #52 已修的部分）。等大总管推送、#86 转可合并；接着 R1a（行号按合并后的 main 重核：gate 现 1202 = 753 + 测试 449）
 - **做到哪**（2026-11-13）：
   - ✅ `scripts/check-file-size.py`（600 行 + 棘轮；`--write-baseline --rev REV` 按某提交记基线，`--tighten` 只降不升）· 基线 `scripts/file-size-baseline.json`（按 main 记 14 个）
   - ✅ `scripts/check-sources.py`（五条检查：error-codes · exit-codes · subcommands · versions · workspace；前四条在 main 与 #52 分支都绿）

@@ -1,20 +1,23 @@
 {
   "max": 600,
-  "note": "按 main 的现状记；只许变小（scripts/check-file-size.py --tighten）",
+  "note": "按 origin/main 的现状记；只许变小（scripts/check-file-size.py --tighten）",
   "files": {
-    "src/atg-cli/src/chats.rs": 847,
+    "src/atg-cli/src/chats.rs": 853,
     "src/atg-cli/src/history.rs": 1264,
     "src/atg-cli/src/login.rs": 1077,
-    "src/atg-cli/src/serve.rs": 1328,
+    "src/atg-cli/src/send.rs": 971,
+    "src/atg-cli/src/serve.rs": 1431,
     "src/atg-cli/src/watch.rs": 1343,
-    "src/atg-core/src/fake.rs": 825,
+    "src/atg-core/src/fake.rs": 1172,
+    "src/atg-core/src/gate.rs": 1202,
     "src/atg-core/src/notify.rs": 1247,
-    "src/atg-core/src/speech.rs": 900,
+    "src/atg-core/src/send.rs": 1688,
+    "src/atg-core/src/speech.rs": 855,
     "src/atg-core/src/store/mod.rs": 1263,
-    "src/atg-core/src/td.rs": 773,
-    "src/atg-core/src/tdjson.rs": 842,
+    "src/atg-core/src/td.rs": 991,
+    "src/atg-core/src/tdjson.rs": 862,
     "src/atg-core/src/tree/mod.rs": 604,
-    "src/atg-core/src/tree/text.rs": 1058,
+    "src/atg-core/src/tree/text.rs": 671,
     "src/atg-core/tests/reducer.rs": 2222
   }
 }
