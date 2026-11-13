@@ -20,6 +20,17 @@ use serde::Serialize;
 use serde_json::Value;
 use std::fmt;
 
+/// Telegram 给测试服务器留的号码段前缀：`99966X…`（X = 测试数据中心号）。这条规则只在这里写一份——
+/// 登录时的号码与档案核对（`config::ServerKind::phone_allowed`）、测试号验证码、发送闸的测试豁免都用它
+/// （`config-privacy.md` 第一节第 2 小节；core.telegram.org/api/auth）
+pub const TEST_PHONE_PREFIX: &str = "99966";
+
+/// 号码（可带 `+`、空格、横线）是不是测试号段：发送闸的测试豁免要它（`actions.md` 第一节第 4 小节第 3 条）
+pub fn is_test_number(phone: &str) -> bool {
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    digits.starts_with(TEST_PHONE_PREFIX)
+}
+
 /// 测试服务器上自动注册用的名字（只在测试档案上注册，`testing.md` 第一节第 5 小节第 1 条；
 /// 写死一个明显是测试的名字；它是测试服务器上的账号名，不进夹具，所以不在 `fixtures/names.txt` 里）
 pub const TEST_REGISTER_FIRST_NAME: &str = "Atg";
@@ -348,7 +359,8 @@ pub fn test_code_for(phone: &[u8]) -> Option<Secret> {
     let digits: Vec<u8> = phone.iter().copied().filter(u8::is_ascii_digit).collect();
     let digits = Secret::new(digits);
     let d = digits.expose();
-    if d.len() == 10 && d.starts_with(b"99966") && (b'1'..=b'3').contains(&d[5]) {
+    if d.len() == 10 && d.starts_with(TEST_PHONE_PREFIX.as_bytes()) && (b'1'..=b'3').contains(&d[5])
+    {
         Some(Secret::new(vec![d[5]; 5]))
     } else {
         None

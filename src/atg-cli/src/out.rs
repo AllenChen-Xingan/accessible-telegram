@@ -80,7 +80,7 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::Network { .. } | E::Disconnected => 4,
         E::RateLimited { .. } | E::AccountLimited { .. } => 5,
         E::NotFound { .. } => 6,
-        E::Forbidden { .. } | E::InvalidInput { .. } => 7,
+        E::Forbidden { .. } | E::InvalidInput { .. } | E::InvalidSend { .. } => 7,
         E::SendRefused { .. } | E::Cancelled => 8,
         E::ProfileBusy { .. } | E::DbKeyInvalid { .. } => 9,
         E::SendOutcomeUnknown { .. } => 10,
@@ -109,21 +109,60 @@ pub fn core_error_data(e: &CoreError) -> Value {
         CoreError::NotFound { what, .. } | CoreError::Internal { what } => json!({ "what": what }),
         CoreError::ProfileBusy { holder: Some(h) } => json!({ "holder": to_value(h) }),
         CoreError::DbKeyInvalid { source } => json!({ "source": to_value(source) }),
-        CoreError::SendRefused { reason } => json!({ "reason": to_value(reason) }),
+        CoreError::SendRefused { reason, last } => {
+            let mut x = json!({ "reason": to_value(reason) });
+            if let (Some(l), Some(o)) = (last, x.as_object_mut()) {
+                o.insert("last_at".into(), json!(Time(l.at).rfc3339()));
+                o.insert("last_ago_s".into(), json!(l.ago_s));
+                o.insert("last_outcome".into(), to_value(&l.outcome));
+            }
+            x
+        }
         CoreError::SendOutcomeUnknown {
             chat_id,
-            message_id,
-        } => json!({ "chat_id": chat_id, "message_id": message_id }),
+            temp_message_id,
+            why,
+        } => {
+            json!({ "chat_id": chat_id, "temp_message_id": temp_message_id, "why": to_value(why) })
+        }
+        CoreError::InvalidSend { why } => json!({ "why": to_value(why) }),
         CoreError::Unknown { td } => json!({ "td_code": td.code }),
         _ => json!({}),
     };
     if let (Some(d), Value::Object(x)) = (d.as_object_mut(), extra) {
         d.extend(x);
     }
+    // 直发防重复拦下：说清上次什么时候、是什么结果（大总管 2026-10-26 要求）
+    if let CoreError::SendRefused { last: Some(l), .. } = e {
+        d["message_zh"] = json!(format!("{}；确要再发一次加 --again", l.message_zh()));
+    }
     if let (Some(d), Some(td)) = (d.as_object_mut(), e.td()) {
         d.insert("td".into(), to_value(td));
     }
     d
+}
+
+/// 经本机接口转发的发送断在半路：`send_outcome_unknown`（`why:"disconnected"`）。发起方不知道临时 id（执行方
+/// 可能还没交出，也可能交出了），`temp_message_id` 记 0；会话 id 能从参数认出来就带上（`saved` 认不出，是 `null`）
+pub fn emit_send_unknown(
+    sink: &mut dyn Sink,
+    format: Format,
+    chat_id: Option<i64>,
+    message_zh: &str,
+) -> u8 {
+    let e = CoreError::SendOutcomeUnknown {
+        chat_id,
+        temp_message_id: 0,
+        why: atg_core::error::UnknownWhy::Disconnected,
+    };
+    let mut data = core_error_data(&e);
+    data["message_zh"] = json!(message_zh);
+    data["retryable"] = json!(false);
+    match format {
+        Format::Json => emit_to(sink, &envelope("error", data)),
+        Format::Text => sink.out(message_zh),
+    }
+    core_exit(&e)
 }
 
 /// `profile_busy` 换一句贴合场景的说明（码、`holder`、退出码不变）。本机接口那几种场景各有各的话，
@@ -187,7 +226,7 @@ pub fn fail_with_to(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
             let data = core_error_data(e);
             match format {
                 Format::Json => emit_to(sink, &envelope("error", data)),
-                Format::Text => sink.out(e.message_zh()),
+                Format::Text => sink.out(data["message_zh"].as_str().unwrap_or(e.message_zh())),
             }
             core_exit(e)
         }

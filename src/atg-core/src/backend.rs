@@ -16,7 +16,10 @@
 //!   都是 L0 只读：**不调 `openChat` / `viewMessages`，不标已读**（`actions.md` A1：CLI 的 history 不标）。会话、用户
 //!   经更新先进事件流（TDLib 先推 `updateNewChat` / `updateUser` 再给应答），消息本身随应答返回
 //!
-//! 发送等动作后续块加在这里，两份实现一起加。
+//! - **发送**（M2.1 / M2.2，T04）：`gate`（发送闸）· `me` · `chat_target` · `can_reply` · `failed_info` 是准备时的 L0 查询；
+//!   唯一的交出口 `submit` 只收 [`Sealed`]（只能由 `atg-core::send` 在闸验过凭据后造出），流程在 [`crate::send`]
+//!
+//! 其余动作后续块加在这里，两份实现一起加。
 //!
 //! 线程：`start` 是异步的（等 `setTdlibParameters` 的应答），可放在任何执行器上；`shutdown` 阻塞到
 //! `authorizationStateClosed` 或超时（退出路径上用，GUI 也在退出时调）。
@@ -24,9 +27,13 @@
 use crate::auth::AuthPrompt;
 use crate::config::Profile;
 use crate::error::CoreError;
+use crate::gate::Gate;
 use crate::link::EventStream;
+use crate::model::FailedInfo;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
+use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
+use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, Lines, NetState};
 use crate::tree::UserStatus;
 use std::time::Duration;
@@ -116,6 +123,25 @@ pub trait Backend {
 
     /// 一条消息（`getMessage`）。不在 → `not_found`。**不标已读**
     async fn message_get(&self, id: MsgId) -> Result<Message, CoreError>;
+
+    /// 这个后端的发送闸（开凭据、查确认方式）
+    fn gate(&self) -> &Gate;
+
+    /// 自己是谁（`getMe`）+ 收藏夹会话 id；顺带交给闸（每次进入已登录都要重算：测试服务器清空后重注册，id 会变）
+    async fn me(&self) -> Result<Me, CoreError>;
+
+    /// 目标会话的种类、名字、是不是话题群（`getChat`；超级群另查 `getSupergroup.is_forum`）。找不到 → `not_found`
+    async fn chat_target(&self, chat: ChatId) -> Result<ChatTarget, CoreError>;
+
+    /// 这条消息能不能在本会话里回复（`getMessageProperties.can_be_replied`）。不在 → `not_found`
+    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError>;
+
+    /// 这条消息的失败态（`messageSendingStateFailed`）；不是失败的 → `None`。不在 → `not_found`
+    async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError>;
+
+    /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览）或 `resendMessages`。[`Sealed`] 只能由
+    /// [`crate::send`] 在闸验过凭据后造（预览除外：预览不发），crate 外调不到
+    async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError>;
 
     /// 打开会话（`openChat`，L0）：只为让 TDLib 推这个会话的实时更新（超级群、频道只有打开的会话才推）。
     /// **绝不隐式调 `viewMessages`，不标已读**（`actions.md` `chat_open`；CLI 的 `watch --chat` 用）。必须与

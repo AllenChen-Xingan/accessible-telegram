@@ -110,8 +110,7 @@ impl ServerKind {
     /// `99966X…` 是 Telegram 给测试服务器留的号码段（X = 测试数据中心号，验证码是 X 连写五遍，`testing.md`
     /// 第一节第 5 小节）——用它卡住「拿测试号连正式服务器」或反过来
     pub fn phone_allowed(self, phone: &str) -> bool {
-        let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
-        digits.starts_with("99966") == (self == Self::Test)
+        crate::auth::is_test_number(phone) == (self == Self::Test)
     }
 }
 
