@@ -74,7 +74,7 @@ pub trait Output {
         speed: f64,
         paused: bool,
     ) -> Result<(), AudioError>;
-    fn pause(&mut self);
+    fn pause(&mut self) -> Result<(), AudioError>;
     fn resume(&mut self) -> Result<(), AudioError>;
     fn set_speed(&mut self, speed: f64) -> Result<(), AudioError>;
     /// 立刻停、释放资源（之后可再 `start`）
@@ -194,7 +194,10 @@ impl<O: Output> Player<O> {
         match cmd {
             Cmd::Pause => {
                 if self.state == State::Playing {
-                    self.out.pause();
+                    // 暂停失败：可能还在出声、也可能出口已坏（暂停态不做停滞检测），都按出口失效结束
+                    if self.out.pause().is_err() {
+                        return Ok(self.end(End::OutputFailed));
+                    }
                     self.state = State::Paused;
                 }
             }
@@ -258,6 +261,7 @@ mod tests {
         played: usize,
         fail_start: bool,
         fail_resume: bool,
+        fail_pause: bool,
         broken: bool,
     }
 
@@ -277,8 +281,13 @@ mod tests {
                 Ok(())
             }
         }
-        fn pause(&mut self) {
+        fn pause(&mut self) -> Result<(), AudioError> {
             self.calls.push("pause".into());
+            if self.fail_pause {
+                Err(AudioError::Output)
+            } else {
+                Ok(())
+            }
         }
         fn resume(&mut self) -> Result<(), AudioError> {
             self.calls.push("resume".into());
@@ -427,6 +436,13 @@ mod tests {
         assert_eq!(q.apply(Cmd::Resume), Ok(Some(End::OutputFailed)));
         drop(q);
         assert_eq!(g.calls.last().map(String::as_str), Some("stop"), "释放出口");
+        // 暂停失败
+        let mut k = Fake {
+            fail_pause: true,
+            ..Fake::default()
+        };
+        let mut s = Player::start(&mut k, pcm()).unwrap();
+        assert_eq!(s.apply(Cmd::Pause), Ok(Some(End::OutputFailed)));
         // 出口自报失效
         let mut h = Fake::default();
         let mut r = Player::start(&mut h, pcm()).unwrap();

@@ -48,7 +48,7 @@ pub fn run(g: &Global, format: Format, a: &PlayArgs, started: Instant) -> ExitCo
     });
     let code = match r {
         Ok(Ok((end, v))) => finish(&mut Stdio, format, end, &v, a.mark_listened, started),
-        Ok(Err(f)) | Err(f) => out::fail_with_to(&mut Stdio, format, &f),
+        Ok(Err(f)) | Err(f) => fail(&mut Stdio, format, &f),
     };
     ExitCode::from(code)
 }
@@ -243,6 +243,19 @@ pub fn finish(
     0
 }
 
+/// 准备阶段的失败：出口打不开时也按出口失效的形状出（带 `marked_listened:false`——标在出口好了之后，没标），
+/// 别的照常
+pub fn fail(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
+    match f {
+        Fail::Core(atg_core::error::CoreError::Internal { what })
+            if *what == "audio_output_failed" =>
+        {
+            output_failed(sink, format, false)
+        }
+        _ => out::fail_with_to(sink, format, f),
+    }
+}
+
 fn output_failed(sink: &mut dyn Sink, format: Format, marked: bool) -> u8 {
     let e = crate::voice::audio_fail(atg_audio::AudioError::Output);
     let Fail::Core(core) = &e else {
@@ -276,15 +289,22 @@ mod tests {
     struct Ticking {
         played: std::cell::Cell<usize>,
         step: usize,
+        fail_resume: bool,
     }
     impl Output for Ticking {
         fn start(&mut self, _: &Arc<Pcm>, _: usize, _: f64, _: bool) -> Result<(), AudioError> {
             self.played.set(0);
             Ok(())
         }
-        fn pause(&mut self) {}
-        fn resume(&mut self) -> Result<(), AudioError> {
+        fn pause(&mut self) -> Result<(), AudioError> {
             Ok(())
+        }
+        fn resume(&mut self) -> Result<(), AudioError> {
+            if self.fail_resume {
+                Err(AudioError::Output)
+            } else {
+                Ok(())
+            }
         }
         fn set_speed(&mut self, _: f64) -> Result<(), AudioError> {
             Ok(())
@@ -319,6 +339,10 @@ mod tests {
     }
 
     fn player(step: usize) -> Player<Ticking> {
+        player_with(step, false)
+    }
+
+    fn player_with(step: usize, fail_resume: bool) -> Player<Ticking> {
         let pcm = Arc::new(Pcm {
             samples: vec![0.0; 2 * SAMPLE_RATE as usize],
         });
@@ -326,6 +350,7 @@ mod tests {
             Ticking {
                 played: std::cell::Cell::new(0),
                 step,
+                fail_resume,
             },
             pcm,
         )
@@ -510,6 +535,55 @@ mod tests {
             Instant::now(),
         );
         let l: serde_json::Value = serde_json::from_str(&b.out[0]).unwrap();
+        assert_eq!(l["data"]["marked_listened"], false);
+    }
+
+    /// 标了已听之后出声失败，从放到结尾整条走一遍：只有一行结尾、是 error、注明已标；准备阶段出口打不开也同形（没标）
+    #[test]
+    fn resume_failure_end_to_end_one_error_line() {
+        let (_tx, rx) = mpsc::channel::<Option<String>>();
+        let mut b = Buf::default();
+        let end = drive(
+            &mut b,
+            Format::Json,
+            &cx(),
+            player_with(1, true),
+            &rx,
+            &AtomicBool::new(false),
+        );
+        assert!(matches!(end, Ok(End::OutputFailed)));
+        assert!(b.out.is_empty(), "出声失败前不出状态行");
+        let v = VoiceFile {
+            id: atg_core::model::MsgId {
+                chat_id: 1,
+                message_id: 2,
+            },
+            duration: 3,
+            file: atg_core::backend::Downloaded {
+                path: "/编的".into(),
+                size: 1,
+            },
+            self_destruct: false,
+        };
+        let code = finish(
+            &mut b,
+            Format::Json,
+            End::OutputFailed,
+            &v,
+            true,
+            Instant::now(),
+        );
+        assert_ne!(code, 0);
+        assert_eq!(kinds(&b), vec!["error"]);
+        let l: serde_json::Value = serde_json::from_str(&b.out[0]).unwrap();
+        assert_eq!(l["data"]["marked_listened"], true);
+
+        let mut b = Buf::default();
+        let f = crate::voice::audio_fail(AudioError::Output);
+        assert_ne!(fail(&mut b, Format::Json, &f), 0);
+        assert_eq!(kinds(&b), vec!["error"]);
+        let l: serde_json::Value = serde_json::from_str(&b.out[0]).unwrap();
+        assert_eq!(l["data"]["what"], "audio_output_failed");
         assert_eq!(l["data"]["marked_listened"], false);
     }
 

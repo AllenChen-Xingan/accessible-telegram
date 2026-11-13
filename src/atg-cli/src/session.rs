@@ -268,7 +268,15 @@ pub fn play_prepare(
     {
         let profile = open_profile(g)?;
         let b = td_backend()?;
-        crate::voice::run_prepare_play(&b, &profile, q, mark, atg_audio::Queue::new(), started)
+        crate::voice::run_prepare_play(
+            &b,
+            &profile,
+            q,
+            mark,
+            atg_audio::Queue::new(),
+            &crate::signals::STOP,
+            started,
+        )
     }
 }
 

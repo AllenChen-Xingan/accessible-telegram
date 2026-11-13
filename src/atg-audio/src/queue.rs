@@ -81,10 +81,10 @@ impl Output for Queue {
         Ok(())
     }
 
-    fn pause(&mut self) {
-        if let Some(l) = &self.live {
-            l.pause();
-        }
+    fn pause(&mut self) -> Result<(), AudioError> {
+        self.live
+            .as_ref()
+            .map_or(Err(AudioError::Output), imp::Live::pause)
     }
 
     fn resume(&mut self) -> Result<(), AudioError> {
@@ -319,9 +319,12 @@ mod imp {
             Ok(live)
         }
 
-        pub fn pause(&self) {
+        pub fn pause(&self) -> Result<(), AudioError> {
             // SAFETY: q 有效
-            unsafe { AudioQueuePause(self.q) };
+            match unsafe { AudioQueuePause(self.q) } {
+                0 => Ok(()),
+                _ => Err(AudioError::Output),
+            }
         }
 
         /// 第一次开始、或暂停后继续（都是 `AudioQueueStart`）
@@ -369,7 +372,9 @@ mod imp {
         pub fn start(_: Arc<Pcm>, _: usize, _: f64, _: bool, _: bool) -> Result<Self, AudioError> {
             Err(AudioError::Unsupported)
         }
-        pub fn pause(&self) {}
+        pub fn pause(&self) -> Result<(), AudioError> {
+            Err(AudioError::Unsupported)
+        }
         pub fn resume(&self) -> Result<(), AudioError> {
             Err(AudioError::Unsupported)
         }

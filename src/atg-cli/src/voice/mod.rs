@@ -18,6 +18,7 @@ use atg_core::link::{EventStream, block_on};
 use atg_core::model::{Body, MsgId};
 use atg_core::tree::{Attachment, Content, FileRef};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// 要哪条语音（命令行参数解析之后的样子）
@@ -133,7 +134,8 @@ pub fn audio_fail(e: AudioError) -> Fail {
 
 /// 播放前的准备（`design.md` 第三节第 5b 条），前一步失败后一步都不做：
 /// 找到 →（要标而它是阅后即焚 → 拒绝，确认还没做）→ 下载 → 解码 → 出口**停着**打开 →（要标就）标已听。
-/// 返回停着的播放器；调用方关掉后端后 `Cmd::Resume` 开始出声
+/// 返回停着的播放器；调用方关掉后端后 `Cmd::Resume` 开始出声。
+/// `cancel`（CLI 是 Ctrl+C 的标志）在每一步之间看，**尤其是标已听之前**：取消了就不标、不出声，报 `interrupted`
 pub fn prepare_play<B: Backend, O: Output>(
     b: &B,
     stream: &mut EventStream,
@@ -141,7 +143,15 @@ pub fn prepare_play<B: Backend, O: Output>(
     q: &VoiceQuery,
     mark: bool,
     out: O,
+    cancel: &AtomicBool,
 ) -> Result<(Player<O>, VoiceFile), Fail> {
+    let check = || {
+        if cancel.load(Ordering::SeqCst) {
+            Err(Fail::Interrupted)
+        } else {
+            Ok(())
+        }
+    };
     let f = find(b, stream, feed, q)?;
     if mark && f.self_destruct {
         return Err(Fail::NotImplemented {
@@ -149,9 +159,13 @@ pub fn prepare_play<B: Backend, O: Output>(
             message_zh: "阅后即焚的语音标已听会开始倒计时，要先确认（L2），确认还没做；不加 --mark-listened 可以照常听",
         });
     }
+    check()?;
     let v = download(b, stream, feed, f)?;
+    check()?;
     let pcm = Arc::new(atg_audio::decode(&v.file.path).map_err(audio_fail)?);
+    check()?;
     let player = Player::start_paused(out, pcm).map_err(audio_fail)?;
+    check()?;
     if mark {
         // 失败时 player 随之释放出口，不出声（不说「已标」）
         block_on(b.mark_listened(v.id)).map_err(Fail::Core)?;
@@ -167,10 +181,11 @@ pub fn run_prepare_play<B: Backend, O: Output>(
     q: &VoiceQuery,
     mark: bool,
     out: O,
+    cancel: &AtomicBool,
     started: Instant,
 ) -> Result<(Player<O>, VoiceFile), Fail> {
     history::with_backend(b, profile, started, |b, stream, feed| {
-        prepare_play(b, stream, feed, q, mark, out)
+        prepare_play(b, stream, feed, q, mark, out, cancel)
     })
 }
 
@@ -339,20 +354,56 @@ mod tests {
         }
     }
 
-    /// 假出口：什么都不做
-    struct Mute;
-    impl atg_audio::player::Output for Mute {
+    /// 假出口：把打开 / 释放记进共用的日志；可以让打开失败，或在打开时立起取消标志（模拟准备途中按了 Ctrl+C）
+    #[derive(Clone, Default)]
+    struct Rec {
+        log: Arc<std::sync::Mutex<Vec<String>>>,
+        fail_start: bool,
+        cancel_on_start: Option<Arc<AtomicBool>>,
+    }
+    impl Rec {
+        fn new(fail_start: bool, cancel_on_start: Option<Arc<AtomicBool>>) -> Self {
+            Rec {
+                log: Arc::default(),
+                fail_start,
+                cancel_on_start,
+            }
+        }
+        fn log(&self) -> Vec<String> {
+            self.log.lock().unwrap().clone()
+        }
+    }
+    impl Drop for Rec {
+        fn drop(&mut self) {
+            self.log.lock().unwrap().push("drop".into());
+        }
+    }
+    impl atg_audio::player::Output for Rec {
         fn start(
             &mut self,
             _: &Arc<atg_audio::Pcm>,
             _: usize,
             _: f64,
-            _: bool,
+            paused: bool,
         ) -> Result<(), AudioError> {
+            self.log
+                .lock()
+                .unwrap()
+                .push(format!("start paused={paused}"));
+            if let Some(c) = &self.cancel_on_start {
+                c.store(true, Ordering::SeqCst);
+            }
+            if self.fail_start {
+                Err(AudioError::Output)
+            } else {
+                Ok(())
+            }
+        }
+        fn pause(&mut self) -> Result<(), AudioError> {
             Ok(())
         }
-        fn pause(&mut self) {}
         fn resume(&mut self) -> Result<(), AudioError> {
+            self.log.lock().unwrap().push("resume".into());
             Ok(())
         }
         fn set_speed(&mut self, _: f64) -> Result<(), AudioError> {
@@ -367,13 +418,24 @@ mod tests {
         }
     }
 
-    fn prep(b: &FakeBackend, tag: &str, id: i64, mark: bool) -> Result<VoiceFile, Fail> {
+    fn prep_with(
+        b: &FakeBackend,
+        tag: &str,
+        id: i64,
+        mark: bool,
+        out: Rec,
+        cancel: &AtomicBool,
+    ) -> Result<VoiceFile, Fail> {
         history::with_backend(b, &profile(tag), Instant::now(), |b, s, f| {
-            prepare_play(b, s, f, &q(id), mark, Mute).map(|(p, v)| {
+            prepare_play(b, s, f, &q(id), mark, out, cancel).map(|(p, v)| {
                 assert_eq!(p.status().state, atg_audio::State::Paused, "准备完是停着的");
                 v
             })
         })
+    }
+
+    fn prep(b: &FakeBackend, tag: &str, id: i64, mark: bool) -> Result<VoiceFile, Fail> {
+        prep_with(b, tag, id, mark, Rec::default(), &AtomicBool::new(false))
     }
 
     fn marked(b: &FakeBackend) -> bool {
@@ -412,11 +474,63 @@ mod tests {
         );
         assert_eq!(code(prep(&b, "baddecode", 1, true)), "internal");
         assert!(!marked(&b));
-        // 标记本身失败 → 报标记的错
+        // 出口打开失败 → 不标（证明「出口好了才标」），报 audio_output_failed
+        let b = backend();
+        b.set_file(FILE, Some(real_ogg()));
+        let out = Rec::new(true, None);
+        let r = prep_with(&b, "outfail", 1, true, out.clone(), &AtomicBool::new(false));
+        assert!(
+            matches!(&r, Err(Fail::Core(CoreError::Internal { what })) if *what == "audio_output_failed")
+        );
+        assert!(!marked(&b));
+        // 标记本身失败 → 报标记的错、出口已释放、没出声
         let b = backend();
         b.set_file(FILE, Some(real_ogg()));
         b.fail_next("mark_listened", CoreError::Forbidden { td: None });
-        assert_eq!(code(prep(&b, "markfail", 1, true)), "forbidden");
+        let out = Rec::default();
+        assert_eq!(
+            code(prep_with(
+                &b,
+                "markfail",
+                1,
+                true,
+                out.clone(),
+                &AtomicBool::new(false)
+            )),
+            "forbidden"
+        );
+        let log = out.log();
+        assert_eq!(log.first().map(String::as_str), Some("start paused=true"));
+        assert!(log.iter().any(|l| l == "drop"), "出口已释放");
+        assert!(!log.iter().any(|l| l == "resume"), "没出声");
+    }
+
+    #[test]
+    fn cancel_during_prepare_never_marks() {
+        // 一开始就取消：不下载、不标
+        let b = backend();
+        b.set_file(FILE, Some(real_ogg()));
+        let r = prep_with(
+            &b,
+            "cancel0",
+            1,
+            true,
+            Rec::default(),
+            &AtomicBool::new(true),
+        );
+        assert!(matches!(r, Err(Fail::Interrupted)));
+        assert!(!b.calls().iter().any(|c| matches!(c, Call::FileDownload(_))));
+        assert!(!marked(&b));
+        // 打开出口时（下载、解码之后、标之前）按了 Ctrl+C：不标、不出声、出口释放
+        let b = backend();
+        b.set_file(FILE, Some(real_ogg()));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let out = Rec::new(false, Some(cancel.clone()));
+        let r = prep_with(&b, "cancel1", 1, true, out.clone(), &cancel);
+        assert!(matches!(r, Err(Fail::Interrupted)));
+        assert!(!marked(&b), "取消后不标已听");
+        assert!(!out.log().iter().any(|l| l == "resume"));
+        assert!(out.log().iter().any(|l| l == "drop"));
     }
 
     #[test]
