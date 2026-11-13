@@ -5,7 +5,8 @@ use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
-    "login", "auth", "logout", "speech", "history", "links", "watch",
+    "login", "auth", "logout", "chats", "speech", "history", "links", "watch", "send", "resend",
+    "serve",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -18,10 +19,8 @@ const PLACEHOLDERS: &[&str] = &[
     "open",
     "mute",
     "delete",
-    "resend",
     "show",
     "search",
-    "send",
     "draft",
     "play",
     "schema",
@@ -126,6 +125,25 @@ fn help_is_for_humans_exit_0() {
     for name in PLACEHOLDERS.iter().chain(DONE) {
         assert!(s.contains(name), "--help 里缺 {name}");
     }
+}
+
+/// 两张表合起来恰好是全部子命令（另加 `version`、`help`）：新加子命令少登记一处就红（自审第 9 轮 P2）
+#[test]
+fn command_tables_cover_every_subcommand() {
+    let out = run(&["--help"]);
+    let s = String::from_utf8(out.stdout).unwrap();
+    let mut listed: Vec<&str> = s
+        .lines()
+        .skip_while(|l| !l.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  "))
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+    let mut known: Vec<&str> = DONE.iter().chain(PLACEHOLDERS).copied().collect();
+    known.extend(["version", "help"]);
+    listed.sort_unstable();
+    known.sort_unstable();
+    assert_eq!(listed, known);
 }
 
 /// 登录这组命令的外壳（真实后端要 TDLib 与终端，这里只测不联网就能判定的路径）
@@ -386,4 +404,43 @@ fn redact_refused_until_done() {
         assert_eq!(ls.len(), 1);
         assert_eq!(ls[0]["data"]["code"], "not_implemented", "{args:?}");
     }
+}
+
+/// `send` / `resend` 不联网就能判定的路径：正文必须由 `--text` / `--text-file` 二选一给出；文件过大、不是 UTF-8 是用法错误；
+/// `--fake`（场景目录未做）报 not_implemented。正文不进标准错误以外的地方
+#[test]
+fn send_usage_paths() {
+    let dir = std::env::temp_dir().join(format!("atg-cli-send-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let big = dir.join("big.txt");
+    std::fs::write(&big, vec![b'a'; 70 * 1024]).unwrap();
+    let bin = dir.join("bin.txt");
+    std::fs::write(&bin, [0xff, 0xfe, 0x00]).unwrap();
+    let big = big.to_str().unwrap();
+    let bin = bin.to_str().unwrap();
+    for args in [
+        &["send", "777"][..],
+        &["send", "777", "--text", "好的", "--text-file", big][..],
+        &["send", "777", "--text-file", big][..],
+        &["send", "777", "--text-file", bin][..],
+        &["send", "abc", "--text", "好的"][..],
+        &["resend", "777"][..],
+    ] {
+        let out = run(args);
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "usage", "{args:?}");
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+    }
+    for args in [
+        &["--fake", "x", "send", "777", "--text", "好的"][..],
+        &["--fake", "x", "resend", "777", "5"][..],
+    ] {
+        let out = run(args);
+        let ls = lines(&out);
+        assert_eq!(ls.len(), 1, "{args:?}");
+        assert_eq!(ls[0]["data"]["code"], "not_implemented", "{args:?}");
+        assert_eq!(out.status.code(), Some(1), "{args:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

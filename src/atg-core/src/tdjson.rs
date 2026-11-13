@@ -786,6 +786,26 @@ fn reaction_kind(v: &Value) -> ReactionKind {
     }
 }
 
+// ───── 发送（M2.1 / M2.2）─────
+
+/// TDLib `chat` 对象 → 会话（`getChat` 应答用；与 `updateNewChat` 同一份映射）
+pub fn chat_object(c: &Value) -> Chat {
+    chat(c)
+}
+
+/// 从 TDLib `message` 对象取失败态
+pub fn failed_info(m: &Value) -> Option<crate::model::FailedInfo> {
+    let st = &m["sending_state"];
+    (ty(st) == "messageSendingStateFailed").then(|| crate::model::FailedInfo {
+        can_retry: b(st, "can_retry"),
+        retry_after: st["retry_after"].as_f64().unwrap_or(0.0),
+        need_another_sender: b(st, "need_another_sender"),
+        need_another_reply_quote: b(st, "need_another_reply_quote"),
+        need_drop_reply: b(st, "need_drop_reply"),
+        required_paid_message_star_count: i(st, "required_paid_message_star_count"),
+    })
+}
+
 // ───── 取字段的小工具：缺了就给默认值 ─────
 
 fn ty(v: &Value) -> &str {

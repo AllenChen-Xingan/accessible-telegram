@@ -18,7 +18,7 @@
 
 - `speech --fixture PATH [--level brief|chat_brief] [--tz OFFSET]`：夹具（TDLib 更新对象的 JSON 数组，读法夹具在 `src/atg-core/fixtures/speech/`）→ 内容树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息一行（`kind:"message"`，状态行是 `event`）；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法在 `speech.brief`，CLI 没有按键，不读「按 D 展开」。`--tz` 写 `+08:00`、`-05:30`、`+0800`、`+8`、`Z` 或 `UTC`，默认系统时区。`--format text` 每行一句读法；加 `--tz +08:00` 时与 `src/atg-core/tests/snapshots/*brief*.snap` 逐行一致，只差快照里 GUI 才有的「按 D 展开」（`tests/cli.rs` 管着）。「定标」= 先把读法产出来给人实际听，人改定的那一版才是标准说法；这个子命令就是给人试听、校准用的
 
-其余子命令还只占名，输出一行 `not_implemented` 错误、退出码 1。全局选项里 `--fake`（场景目录）、`--redact`、`--wait`、`--unsafe-direct-send` 还没接上；`--tz` 现在只有 `speech` 用。
+其余已做的命令（读历史、发消息、订阅更新等）、还占名的命令：见 `tests/cli.rs` 的 `DONE` / `PLACEHOLDERS`（测试管着与 `--help` 一致）；各命令的参数、输出字段、退出码：见 `specs/contracts/cli.md` 第一节第 2 小节；`serve` 常驻时能转发哪些：见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」。都以契约为准，这里不列（架构守则第 6 条，#60）。全局选项哪些还没做见 `atg-cli --help`。发消息的前提：正式服务器上默认每条都要人当场按 Touch ID（或输系统密码）确认，AI 自己按不了；正文连同会话名要放进确认框，只能很短。**测试绝不向真实联系人发消息**：只发 `saved`（收藏夹）或测试服务器。
 
 跑法：真实后端要编进 TDLib（`--features tdlib`），运行前提（`.env.local`、库路径、签名）见 `src/README.md`（`state/handoff/login.md` 是登录那块的过程记录，里面的 `codesign -s atg-dev …` 已作废，签名以 `src/README.md` 为准）：
 
@@ -29,4 +29,4 @@ cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名
 #           DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" target/debug/atg-cli --test-dc login
 ```
 
-测试：`cargo test -p atg-cli`（登录、列会话用假后端单测走全部分支；另跑真二进制对照契约检查外壳与退出码）。本机冒烟脚本 `live/login.exp`（测试服务器、测试号，用 expect 把输入喂进终端）。
+测试：`cargo test -p atg-cli`（各命令用假后端单测走分支；另跑真二进制对照契约检查外壳与退出码）。本机冒烟脚本 `live/login.exp`（测试服务器、测试号，用 expect 把输入喂进终端）。

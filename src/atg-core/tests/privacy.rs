@@ -272,3 +272,31 @@ fn debug_never_leaks_content() {
     assert_clean("Attachment", format!("{:?}", attachments()));
     assert_clean("links", format!("{:?}", tree::text::links(&spans())));
 }
+
+/// 发送这一块新加的带文字字段的类型（会话名、正文）：`{:?}` 也漏不出内容（`redact.rs`）。
+/// `TextPlan` / `ResendPlan` 的字段不公开、只能在库里造，同样登记在 `redact.rs`
+#[test]
+fn send_types_debug_never_leaks_content() {
+    use atg_core::model::{ChatKind, ChatTarget};
+    use atg_core::send::{Draft, ResendItem};
+    let target = ChatTarget {
+        id: 777,
+        kind: ChatKind::Private,
+        title: s("会话名"),
+        is_forum: false,
+        saved: false,
+    };
+    assert_clean("ChatTarget", format!("{target:?} {target:#?}"));
+    let draft = Draft {
+        text: s("正文"),
+        reply_to: Some(5),
+    };
+    assert_clean("Draft", format!("{draft:?}"));
+    let item = ResendItem {
+        id: 5,
+        drops_reply: false,
+        text: Some(s("重发正文")),
+        reply: atg_core::send::ResendReply::None,
+    };
+    assert_clean("ResendItem", format!("{item:?}"));
+}

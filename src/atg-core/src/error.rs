@@ -29,12 +29,87 @@ pub enum SendRefusedReason {
     NotInteractive,
     /// Touch ID / 系统密码没过
     AuthFailed,
-    /// 测试服务器上只许发收藏夹（和第二个测试号的私聊）
+    /// 测试服务器上只许发收藏夹。规约另有「第二个自己的测试号私聊」例外（`actions.md` 第一节第 4 小节第 2 条，N7），
+    /// **还没做**（落在 M2.7 删除那块）；现在只放行收藏夹
     TestDcSavedOnly,
     /// 账号被 Telegram 限制，L2 全停
     AccountLimited,
     /// 这一类 L1 副作用被整类关掉（第一阶段不会出现）
     L1Disabled,
+    /// 直发模式下，最近已向同一会话提交过同样的内容（B17-2）：上次已发出的看 10 分钟、结果未知的看 24 小时；
+    /// 前端各自给放行的办法（CLI 是 `--again`）
+    DuplicateRecent,
+    /// TDLib 的预览把回复关系去掉了（被回复那条找不到、不能回复或不在同一话题，`MessagesManager.cpp:21144-21170`）
+    ReplyDropped,
+    /// TDLib 的预览把消息放进了别的话题
+    TopicChanged,
+    /// 正文太长，Touch ID 确认框放不下全文（人看不到全文就不让按；拆成几条短的再发。提示里不提直发模式：
+    /// 那等于教发起方（多半是 AI）自己绕过人的确认，自审第 11 轮）
+    TooLongToConfirm,
+}
+
+/// 直发防重复拦下时，上一次是什么时候、什么结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LastSend {
+    /// Unix 秒
+    pub at: i64,
+    /// 距现在几秒
+    pub ago_s: i64,
+    pub outcome: crate::gate::Outcome,
+}
+
+impl LastSend {
+    /// 被防重复拦下时给人的话：几秒前、什么结果（GUI 与 CLI 同一句；大总管 2026-10-26 要求说清）。怎么放行由前端
+    /// 补（CLI 是 `--again`，界面是另一个按键），这里不写死某一边的说法
+    pub fn message_zh(&self) -> String {
+        use crate::gate::Outcome;
+        let when = match self.ago_s {
+            s if s < 60 => format!("{s} 秒前"),
+            s if s < 3600 => format!("{} 分 {} 秒前", s / 60, s % 60),
+            s => format!("{} 小时 {} 分前", s / 3600, s % 3600 / 60),
+        };
+        let what = match self.outcome {
+            Outcome::Succeeded => "已发出",
+            Outcome::Unknown => "结果未知，可能已发出",
+            Outcome::Submitted => "已交出、没等到结果，可能已发出",
+            Outcome::Failed => "失败",
+        };
+        format!("{when}已向同一会话提交过同样的内容（结果：{what}），这次没有发")
+    }
+}
+
+/// `send_outcome_unknown` 是怎么来的
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnknownWhy {
+    /// 30 秒内既没等到成功也没等到失败
+    Timeout,
+    /// 待发那条被删掉了（TDLib 不来失败；可能已经送达，`MessagesManager.cpp:27848-27851`）
+    PendingDeleted,
+    /// 等结果途中与 TDLib 的连接断了
+    Disconnected,
+}
+
+/// 发送前本地就能判定的「这样发不行」（机读码仍是 `invalid_input`，`why` 平铺进 `error.data`）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvalidSendWhy {
+    /// 话题群里不回复任何一条的新消息，第一阶段拒发（`actions.md` `send_text_prepare`）
+    ForumNeedsReply,
+    /// 被回复的那条不能回复（`messageProperties.can_be_replied` 为假）
+    ReplyNotAllowed,
+    /// 正文是空的
+    EmptyText,
+    /// 正文超过上限（`send::TEXT_MAX_BYTES`，64 KB）
+    TooLong,
+    /// 要重发的那条不是发送失败的消息
+    NotFailed,
+    /// TDLib 说这条不能重发（`can_retry` 为假）
+    CannotRetry,
+    /// 重发要换发送身份或换引用（第一阶段不做）
+    NeedsOther,
+    /// 重发要付星（付费发送不做）
+    Paid,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -116,10 +191,19 @@ pub enum CoreError {
     },
     SendRefused {
         reason: SendRefusedReason,
+        /// 只有 `duplicate_recent` 带：上一次什么时候、什么结果
+        last: Option<LastSend>,
     },
     SendOutcomeUnknown {
-        chat_id: i64,
-        message_id: i64,
+        /// 经本机接口转发、会话写的是 `saved` 而发起方认不出 id 时为 `None`（契约里的 `null`）
+        chat_id: Option<i64>,
+        /// 临时 id（TDLib 交出时编的号，不是正式 id，不能拿去重发）；交出途中就断了、没拿到时为 0
+        temp_message_id: i64,
+        why: UnknownWhy,
+    },
+    /// 机读码 `invalid_input`：发送前本地判定不能这样发，带 `why`
+    InvalidSend {
+        why: InvalidSendWhy,
     },
     Cancelled,
     /// 406（附件都不建）或本项目自己的 bug。`what` 只放写死的说明，不放运行时的值
@@ -146,7 +230,7 @@ impl CoreError {
             Self::AccountLimited { .. } => "account_limited",
             Self::NotFound { .. } => "not_found",
             Self::Forbidden { .. } => "forbidden",
-            Self::InvalidInput { .. } => "invalid_input",
+            Self::InvalidInput { .. } | Self::InvalidSend { .. } => "invalid_input",
             Self::Network { .. } => "network",
             Self::Disconnected => "disconnected",
             Self::ProfileBusy { .. } => "profile_busy",
@@ -186,6 +270,7 @@ impl CoreError {
             | Self::DbKeyInvalid { .. }
             | Self::SendRefused { .. }
             | Self::SendOutcomeUnknown { .. }
+            | Self::InvalidSend { .. }
             | Self::Cancelled
             | Self::Internal { .. } => None,
         }
@@ -215,8 +300,56 @@ impl CoreError {
             Self::DbKeyInvalid { .. } => {
                 "本地缓存打不开，可以清掉缓存重新登录（聊天记录在服务器上，不会丢）"
             }
-            Self::SendRefused { .. } => "发送被拒绝",
-            Self::SendOutcomeUnknown { .. } => "消息已交出，但还不知道发没发出去，请查看待发消息",
+            Self::SendRefused { reason, .. } => match reason {
+                SendRefusedReason::DuplicateRecent => {
+                    "刚才已向同一会话提交过同样的内容，这次没有发；确要再发一次请明确要求再发"
+                }
+                SendRefusedReason::ReplyDropped => {
+                    "被回复的那条找不到或不能回复，Telegram 会把它当普通消息发出，已拦下没发"
+                }
+                SendRefusedReason::TopicChanged => "这条会落到别的话题里，已拦下没发",
+                SendRefusedReason::TooLongToConfirm => {
+                    "内容太长，确认框放不下全文（连同会话名要放进确认框，通常只有几十个字），没有发；请拆成几条短的再发"
+                }
+                SendRefusedReason::TestDcSavedOnly => "测试服务器上只许发自己的收藏夹",
+                SendRefusedReason::AuthFailed => "没有通过 Touch ID 或系统密码，没有发",
+                SendRefusedReason::NotInteractive => {
+                    "这里弹不出 Touch ID 或系统密码框（比如经 SSH），没有发"
+                }
+                SendRefusedReason::AccountLimited => {
+                    "账号被 Telegram 限制，发送已全部停止；人处理好之后删掉本地档案目录里的 account-limited 文件才恢复"
+                }
+                SendRefusedReason::NoToken => "没有确认就不能发，没有发",
+                SendRefusedReason::TargetMismatch => "确认的是别的会话，没有发；请重新发起",
+                SendRefusedReason::ContentMismatch => {
+                    "要发的内容和确认时不一样，没有发；请重新发起"
+                }
+                SendRefusedReason::TokenExpired => "确认已超过 60 秒失效，没有发；请重新发起",
+                SendRefusedReason::TokenReused => "这次确认已经用过，没有再发；请重新发起",
+                SendRefusedReason::L1Disabled => "这类操作已被关掉",
+            },
+            Self::SendOutcomeUnknown { why, .. } => match why {
+                UnknownWhy::PendingDeleted => {
+                    "待发消息已被删除，是否已送达未知；不要重发，先去会话里看一眼最近的消息"
+                }
+                UnknownWhy::Timeout | UnknownWhy::Disconnected => {
+                    "消息已交出，但还不知道发没发出去，没发出的下次启动会自动补发；不要重发，先去会话里看一眼最近的消息"
+                }
+            },
+            Self::InvalidSend { why } => match why {
+                InvalidSendWhy::ForumNeedsReply => "话题群里请先选一条消息回复",
+                InvalidSendWhy::ReplyNotAllowed => "这条消息不能回复",
+                InvalidSendWhy::EmptyText => "要发的内容是空的",
+                InvalidSendWhy::TooLong => "要发的内容太长（超过 64 KB）",
+                InvalidSendWhy::NotFailed => "这条消息不是发送失败的，不用重发",
+                InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
+                InvalidSendWhy::NeedsOther => {
+                    "这条要换个身份发（比如以频道名义）或换引用才能重发，本应用暂不支持"
+                }
+                InvalidSendWhy::Paid => {
+                    "这条重发要付 Telegram Stars（Telegram 的付费星星），本应用不做付费发送"
+                }
+            },
             Self::Cancelled => "已取消",
             Self::Internal { .. } => "程序内部出错",
             Self::Unknown { .. } => "出现了无法识别的错误",

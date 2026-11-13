@@ -1,0 +1,7 @@
+---
+source: src/atg-cli/src/serve.rs
+expression: "cap.out.join(\"\\n\")"
+---
+将发给 收藏夹 · 会话9 · id 9：测试。测试服务器发收藏夹，不用确认；若网络中断，恢复后仍会发出
+我：测试，19:37
+已发出

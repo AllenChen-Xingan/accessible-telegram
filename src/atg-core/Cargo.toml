@@ -13,6 +13,9 @@ serde_json = { version = "1", features = ["preserve_order"] }
 futures-channel = "0.3"
 # 本地库钥匙：系统安全随机源
 getrandom = "0.4"
+# 发送闸：凭据摘要（SHA-256）与防重复指纹（HMAC-SHA256，`gate`）
+sha2 = "0.10"
+hmac = "0.12"
 # 本机接口：getpeereid（核对对端用户）、poll、geteuid
 libc = "0.2"
 # 本项目日志的出口（只经 `logline` 写，白名单字段）
@@ -24,6 +27,10 @@ tdlib-rs = { path = "../tdlib-rs/tdlib-rs", optional = true }
 # 本地库钥匙放钥匙串（拍板 001-8）
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+# 发送闸的 Touch ID / 系统密码（LocalAuthentication 的 LAContext，`localauth`）
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = "0.3"
 
 [features]
 # 代码开关：td 模块里用 tdlib-rs 的代码一律挂 #[cfg(feature = "tdlib-api")]。

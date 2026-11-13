@@ -24,6 +24,7 @@
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::{self, Profile, ServerKind};
 use atg_core::error::Holder;
+use atg_core::gate::{self, Gate};
 use atg_core::keystore::Keychain;
 use atg_core::link::block_on;
 use atg_core::status::AuthStep;
@@ -58,6 +59,8 @@ fn main() -> ExitCode {
         keystore: Box::new(Keychain),
         log_dir,
         holder: Holder::Cli,
+        // 不发东西：闸照常在，但不是直发
+        gate: Gate::new(false, Holder::Cli, gate::system_authenticator()),
     }) {
         Ok(b) => b,
         Err(e) => {
