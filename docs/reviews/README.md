@@ -16,3 +16,4 @@
 | 006 | 2026-10-25 | skill `codex-review` 自审：codex 11 轮（P1 7→…→0→0），第 10、11 轮无 P0/P1 收敛；剩余 P2 开 issue → `006_codex-review-skill-codex.md` |
 | 016 | 2026-11-13 | #52 发送闸 + `atg-cli send` / `resend`（codex） | 第一轮 P1×5 P2×2，全部属实，P1 与 1 条 P2 已修、1 条 P2 → #77；第二轮进行中 → `016_send-gate-codex.md` |
 | 020 | 2026-11-13 | #68 #70 读法隐藏内容（置顶 / 投票按 D 展开、链接部分剧透整条遮）+ check-no-debug 认测试文件（codex · 两轮） | 第一轮 P2×2、第二轮 P2×1，全部属实已修；两轮无 P0/P1，收敛 → `020_speech-hidden-68-70-codex.md` |
+| 021 | 2026-11-13 | #61 档案缺服务器标记时被补写（codex · 两轮） | 第一轮 P2×3 全部属实已修；第二轮无发现，收敛 → `021_profile-marker-61-codex.md` |
