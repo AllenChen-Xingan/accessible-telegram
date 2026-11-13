@@ -1,5 +1,7 @@
 # 现状页 · 手下 send2（issue #52 接手：发送闸 + `atg-cli send` 收尾）
 
+> **状态（2026-11-13）：#52 除冒烟 B 外已完成，待人。** 最后提交 `c5fe269`（大总管）。冒烟 B 人选「稍后再做」，到时大总管代跑、人按 Touch ID（见下「冒烟 B」节）。PR 描述草稿：MAIN `_tmp/20261113-b18/pr-52.md`。
+
 > 批次 b18 · 交代 MAIN `_tmp/20261113-b18/send2.md` · 工作目录 `atg-wt/52-send`（分支 `feat/52-send`，我不碰 git）
 > 前任现状页：`state/handoff/send.md`（B17-2 机制、冒烟命令、8 轮自审、待人定 4 条）
 
@@ -42,8 +44,8 @@
   - [x] 修完验证（名额 2026-11-13）：fmt · clippy · test 372 过 / 0 败 / 1 忽略 · check-no-debug 全过
   - **大总管定：自审到此停止**（确认框宽度这类估计问题靠冒烟 B 量真值），停止线改按 codex 轮次算；剩余 P2 由大总管开 issue
 - [x] 3. 冒烟 1–3 命令核好交人跑（下方「冒烟 1–3」节，已报大总管，等人跑）
-- [ ] 4. 冒烟 B（Touch ID）量确认框
-- [ ] 5. codex 评审 016（记录 `docs/reviews/016_send-gate-codex.md`；脚本由人 / 大总管跑，本会话分类器拦 `--force-secrets`）
+- [ ] 4. 冒烟 B（Touch ID）量确认框——人选稍后再做，方案与判据见下
+- [x] 5. codex 评审 016（7 轮，按人定停止；记录 `docs/reviews/016_send-gate-codex.md`）
   - 第 1 轮（2026-11-13，gpt-6-astra，high）：P1×5 · P2×2，全部属实。修：防重复记录时钟回拨仍拦、读不了不覆盖；交出计入 30 秒；重发确认框与摘要带回复对象；留痕交出前先写 `submitted`；`Sealed` 字段私有。#6（查重与登记分离）留 issue。验证 test 375 过
   - 第 2 轮：P1×3 · P2×1，全属实。修：空格逐个计宽；重发交出前复核；批量重发结果未知优先报。P2 #4 留 issue。test 380 过
   - 第 3 轮：P1×2 · P2×1，全属实。修：长词逐字排；晚到的账号受限经 `Shared::event` 点亮闸的信号；文字计划行带回复 / 话题。test 382 过
@@ -53,7 +55,7 @@
   - **人定（2026-11-13）**：第 7 轮后停；第 7 轮若仍有同类受限 / 限流边角 P1 → 转 issue，进入冒烟 B 与开 PR
   - 第 7 轮：脚本 `_tmp/reviews-016/run-round7.sh` 已交大总管
   - 待：`--features tdlib` 的 clippy（td.rs 改了一行），并入冒烟 B 那次编译；三个超长文件比定基线时又长了（gate 1176→1395、core send 1490→1688），已报大总管与 arch 定基线时点
-- [ ] 6. 回报
+- [x] 6. 回报（PR 草稿、衍生 issue、待人定都已交大总管）
 
 ## 要人定的事
 
@@ -141,3 +143,15 @@ python3 -c 'print("测"*60, end="")' > "/private/tmp/claude-501/-Users-allenchen
 - 第一次跑 B2 要编 tdlib 特性的 atg-cli（重活，占名额）
 - B2 可能被拒为 `too_long_to_confirm`、不弹框：收藏夹在确认说明里写作「收藏夹 · <会话名> · id <数字>」，现在的估算很保守，会话名长一点就可能超 6 行。真遇到也算一个有用的数据点：B1 量完、回填上限后再跑 B2
 - 量完回填：`confirm_box.rs` 的 `CONFIRM_LINE_COLS` / `CONFIRM_MAX_LINES` / `CONFIRM_MAX_CHARS`，契约 `actions.md` 第 4 条记实测；断行规则的精确化记 #89
+
+### 冒烟 B 判据（量完怎么用）
+
+- B1 刻度尺：每段 10 个字符 = 20 列（`gate` 把每个字算 2 列）。第一个视觉行里完整看到 k 段又 j 个字 → `CONFIRM_LINE_COLS` = (10k + j) × 2；最后完整看到的段标之前一共折了几行 → `CONFIRM_MAX_LINES`；G/H 行一行放下的段数不少于汉字行 → 大写 M 按 2 列算是保守的。有省略号说明截断方式是「…」结尾
+- 回填：`src/atg-core/src/confirm_box.rs` 的三个常量（只许按实测放宽到不超过量到的值），`specs/contracts/actions.md` 第一节第 4 小节第 4 条记实测值与日期；断行规则的精确化记 #89
+- B2：先出「请在弹出的系统框里按 Touch ID…」一句、弹框、按下后退出码 0、收藏夹多 1 条；B3：退出码 8、`auth_failed`、收藏夹不变；B4：不弹框、退出码 8、`too_long_to_confirm`、收藏夹不变。只报退出码与统计，不记消息 id
+- 若 B2 被拒为 `too_long_to_confirm`（会话名长、估算保守）：先按 B1 回填上限再跑 B2
+- 跑完：报大总管，现状页写「已收尾」
+
+## 衍生 issue（大总管已开）
+
+#72 #77 #80 #83 #87 #88 #89（各自内容见 PR 草稿「衍生 issue」节）
