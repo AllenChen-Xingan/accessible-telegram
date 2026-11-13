@@ -914,12 +914,16 @@ pub async fn resend<B: Backend>(
     let mode = b.gate().verify(token, plan)?;
     // 交出前复核（codex 016 第 2 轮 #2）：从准备到交出最长 60 秒、还等了人确认，这期间失败态、正文、回复关系
     // 可能变了（别的设备重发了、被删了、被编辑了）。重取一遍与人确认过的那份比，不一样就拒，什么都不交出
-    let now = load_items(b, plan.target.id, &plan.items.iter().map(|i| i.id).collect::<Vec<_>>())
-        .await
-        .map_err(|_| CoreError::SendRefused {
-            reason: SendRefusedReason::ContentMismatch,
-            last: None,
-        })?;
+    let now = load_items(
+        b,
+        plan.target.id,
+        &plan.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(|_| CoreError::SendRefused {
+        reason: SendRefusedReason::ContentMismatch,
+        last: None,
+    })?;
     if now != plan.items {
         return Err(CoreError::SendRefused {
             reason: SendRefusedReason::ContentMismatch,

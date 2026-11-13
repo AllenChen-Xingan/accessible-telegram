@@ -1335,7 +1335,11 @@ mod tests {
             "发给 私聊 · 林小雨周末爬山 · id 777\n来自命令行，可能是 AI，网络断了也会在恢复后发出\n共 52 字 1 行：\n{}转账",
             " ".repeat(50)
         );
-        assert!(confirm_visual_lines(&text) >= 7, "{}", confirm_visual_lines(&text));
+        assert!(
+            confirm_visual_lines(&text) >= 7,
+            "{}",
+            confirm_visual_lines(&text)
+        );
         assert!(!fits_confirm_box(&text));
     }
 }
