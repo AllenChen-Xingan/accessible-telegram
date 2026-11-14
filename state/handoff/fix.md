@@ -151,3 +151,61 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 **2026-11-13 第二段写完，等名额编译。** chats/history/serve/send 用 bounded（START / QUERY）；voice 的 find/download/fetch/run_download 加 stop 参数，下载 within DOWNLOAD_TIMEOUT 120 秒；main.rs 的 5 行 expect 删了；send 测试挪到 send/tests.rs；serve/tests.rs 拆出 tests/lifecycle.rs（第一段漏的：未跟踪文件 check-file-size 不数）。教训：第二段改完没领名额跑过一次 clippy，已向大总管认错。
 
 **2026-11-13 PR B 收尾。** codex 022 两轮收敛（第 1 轮 P2×5、第 2 轮 P2×4；第 2 轮 #1 #3 #4 停止线后修、有测试，#2 由大总管开 issue）。全量编译测试全绿（atg-cli 138+21）。PR 草稿：MAIN `_tmp/20261113-b18/pr-fix-63.md`。待大总管提交最后一批（login 片内再看停止、ensure_ready 到点报 network、退格连组合符号删、022 记录第 2 轮、README 索引、基线）并开 PR。
+
+# 第三批修法设计（#62 + #64 + #95）· 2026-11-13 · 只设计，未动代码
+
+大总管派：等 PR #96 合并后从新 main 开分支，一个 PR，codex 027。下面行号按 fix/63-bounded-waits 当前版本，开工前按新 main 重核。
+
+## #62 td.rs 收尾三处（`src/atg-core/src/td.rs`，在基线里 874 行，只许变小）
+
+1. **`start` 先查后写的竞态**（:313 查 `run.is_some()`，:346 才写）。中间全是同步代码（拿档案锁、读凭据、钥匙串、`mark_running`、建客户端、起收线程），没有 await。
+   - 修法：`run` 从 `Option<Running>` 改成三态 `enum Run { Idle, Starting, Running(Running) }`。进来时在锁里 `Idle → Starting`，不是 `Idle` 就报 `already_started`；放锁再做慢活（钥匙串可能弹窗，不能一直攥着锁、挡住 `client_id()` / `status`）；成功写 `Running`。失败时用守卫退回 `Idle`（`Drop` 里判一个 `committed` 标记）。
+   - 测：真后端起不来测不了并发；把「占位 → 提交 / 退回」做成小类型，单测「占着时第二个 start 报 already_started、失败后能再起」。
+2. **重复 `shutdown` 再次 `mark_clean`**（:855）。第二次 `shutdown`：`client_id()` 仍是 Some、`is_closed` 为真、跳过 close、`wait_closed` 立刻真 → 又 `mark_clean`。第一次已经放了档案锁，别的进程可能已经起来、写了自己的运行标记，被我们抹掉。
+   - 修法：只在还攥着档案锁时动标记：`if r.lock.is_some() { r.profile.mark_clean(); r.lock = None; }`。用「锁还在」当作「标记还是我的」，不另加字段。
+   - 测：td 测不了真关；`config` 那边已有标记读写测试。这条改成可读的不变式（注释 + 小函数 `release(&mut Running)`），在 td/tests.rs 用假 `Running` 测「放两次只抹一次」，能构造就测，构造不了就在评审记录写明。
+3. **`spawn_receiver` 失败时已建的客户端没人关**（:345 `?` 直接返回）。档案锁随局部变量放掉，但运行标记已写（`mark_running`），下次启动会误报上次没收尾；TDLib 客户端留着。
+   - 修法：`spawn_receiver` 出错时 ① 交一次 `close`：tdlib-rs 1.4.0 的 `send_request` 是 async fn，第一次 poll 就同步 `tdjson::send`（`lib.rs:61-68`），所以 `link::block_on_timeout(functions::close(client_id), Duration::ZERO)` 正好交出去、不等应答（没有收线程，也等不到）；② `profile.mark_clean()`；③ 再返回错误。依赖 tdlib-rs 的实现细节，注释里写明版本与行号，升级时要核。
+   - 测：线程起不来没法造；只能评审核。
+4. **行数**：三处净增约 25 行，td.rs 已在基线（874）。先把 `start` 里组 `set_tdlib_parameters` 的那段或 update 重序列化（`source` / `Step`）挪到 `td/` 下的子文件，腾出空间。挪什么开工时看 arch 守则再定。
+
+## #64 login 三处
+
+1. **用法错误时 clap 原文在标准错误回显秘密参数**（`main.rs` `parse_failed`，`eprint!("{}", e.render())`）。人误把验证码写成参数（`atg-cli auth code 40419`），clap 报「unexpected argument '40419'」，原样进标准错误（终端、AI 抓的日志）。
+   - 修法：登录这组（argv 里第一个子命令是 `login` / `auth` / `logout`）不回显 clap 原文，只写「参数不对」加上 `e.kind()` 的类别和 `atg-cli <子命令> --help`；别的命令照旧（原文里有 `--foo` 这类提示，有用）。
+   - 抽一个 `usage_text(e, argv) -> String`，单测：`auth code 40419` 和 `login --phone +99966…` 的 stderr 文本里不含那串值；`chats --bogus` 照旧含 `--bogus`。
+   - 要定（建议）：所有命令都不回显，还是只登录组不回显？建议只登录组，秘密只会出现在这组。
+2. **`set_auth` 分两次加锁**（`link.rs:182`）。先在锁里换提示、代次加一，放锁，再 `set_lines` 改授权线。窄窗口里 `wait_auth_after` 看到代次变了，拿到的却是旧步骤。
+   - 修法：把 `set_lines` 的锁内部分抽成 `fn apply_lines(st: &mut State, f)`（不加锁）；`set_lines` = 加锁 + apply + 唤醒；`set_auth` 在同一把锁里换提示、代次加一、apply 改授权线，放锁再唤醒。事件（`AuthStepChanged`、`UserStatusChanged`）照旧在 apply 里发，顺序不变。
+   - 测：一千次循环：记下代次 → 另一线程 `set_auth(步骤 i)` → `wait_auth_after` 返回的必须是步骤 i（修前偶发错，修后不会误报）。
+3. **分步 `auth` 落到正式档案的 `wait_registration` 仍报成功**（`login.rs` `auth_step` 结尾，:405）。`errors.md:84` 要求 `login` / `auth *` 遇到 `unsupported`、`wait_other_device`、正式档案的 `wait_registration` 都以 `auth_wrong_state` 结尾、退出码 3。`login` 已经这样做，`auth_step` 只处理了测试档案的注册。
+   - 修法：`advance` 之后：`WaitRegistration` 且测试档案 → `register`；`WaitRegistration`（正式）/ `WaitOtherDevice` / `Unsupported` → `Err(Fail::Unsupported(next))`（`out.rs` 已映射成 `auth_wrong_state`，退出码 3）。`login` 和 `auth_step` 共用一个 `fn unsupported(step, kind) -> Option<Fail>`。
+   - 要定：`auth state` 本身是查询，现状落在这几步时要不要也报错？契约写的是「`auth *`」，字面包括 `state`。建议 `state` 也按契约报（退出码 3、`expected` 写现在那一步），让脚本一眼看出卡住了；不同意的话契约要改成「除 `auth state` 外」。
+   - 测：`stepwise.rs` 加三条：正式档案提交号码后走到 `wait_registration` → 退出码 3；`wait_other_device`、`unsupported` 同。假后端要能推这几个状态（先看 `FakeAuth` 支不支持，不支持就加一个字段）。
+
+## #95 watch 订阅前 Ctrl+C 的结尾行
+
+- 现状：`watch_loop` 开头 `chats::ensure_ready` 失败走 `fail_line`，这时还没挂订阅者，`fail_unless_stopped` 用不上。
+- 修法（最小）：`ensure_ready` 失败时先看停止标志：立起了就用临时的 `Watcher::new(cx, format, None, clock).since(started)` 写一行 `result_line()`、`out.finish(0)`、返回 0；没立起照旧报错。不挪订阅顺序（挪了会把 `status` 行和挂订阅者的次序一起变，影响转发那边的「中途接入」逻辑）。
+- 测：`watch/tests/ctrl_c.rs` 加一条：停止标志一开始就立起、假后端没登录（`ensure_ready` 立刻报 `auth_required`）→ 退出码 0、最后一行 `result`；对照：不立 → `error`。
+- `serve` 的 `join_watch` 不受影响（执行方早已就绪）。
+
+## 顺序与名额
+#64.2（core link）→ #62（core td，要腾行数）→ #64.1 / #64.3（cli）→ #95；编译一次领一次名额。自审 atg-review → codex 027 → 记录 `docs/reviews/027_*`。
+
+## 要大总管 / 人定
+1. #64.1 只登录组不回显 clap 原文（建议），还是所有命令都不回显。
+2. #64.3 `auth state` 落在不支持的步骤时也报 `auth_wrong_state`（建议，照契约字面），还是契约改成除外。
+3. #62.4 td.rs 腾行数挪哪一段，开工时问 arch。
+
+## 大总管定（第三批，2026-11-13）
+1. #64.1：**所有命令**都不回显用户输入的原文值，只报哪个参数 / 哪类错（`send --text` 的正文也是隐私，`real.md`）。一处正本 `usage_text` 统一处理，单测覆盖 login 与 send 两类。
+2. #64.3：照契约字面，`auth state` 落在不支持的步骤也报 `auth_wrong_state`，与 `login` 共用判断函数。
+3. #62.4：td.rs 腾行数开工时问 arch。
+状态：等 #96 合并通知再开分支。
+
+## 第三批进度（2026-11-14，分支 fix/62-64-95）
+- 已写（未编译）：#64.2 `link.rs` `apply_lines` + `set_auth` 一把锁，`link/tests.rs` 千次测；#62 按 arch（td/boot.rs 挂 tdlib-api、td/lifecycle.rs 纯类型可单测）拆，td.rs 874→832；#64.1 `src/atg-cli/src/usage.rs`（所有命令不回显原文），`cli.md` 退出码 2 一行写明；#64.3 `login.rs` `dead_end` 共用（login / auth * / auth state），stepwise 两条新测；#95 `watch/end.rs` `before_status`，watch.rs 864→849，`ctrl_c.rs` 新测。
+- 下一步：领名额 → fmt / clippy 两套 / test → `--tighten` → atg-review → codex 027。
+- 2026-11-14 大总管已提交 3663e8a。atg-review：P1×1（dead_end 误拦正式档案等注册时的 `auth phone` 换号）已修 + 测；P2×4、P3×8 已改（cli.md #95 三处 + 变更记录、errors.md:84 补句）。待名额复跑（排在 arch、msg1 之后）→ 请大总管提交 → codex 027（重点文件 scratchpad codex027-focus.md）。
+- 2026-11-14 codex 027：第 1 轮 P2×2 属实已修（d59ee6f），第 2 轮无发现，达停止线。记录 `docs/reviews/027_batch3-62-64-95-codex.md` + README 一行（待提交）。PR 草稿 `_tmp/20261113-b18/pr-fix-62-64-95.md`。状态：交大总管开 PR。

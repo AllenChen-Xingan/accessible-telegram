@@ -8,7 +8,10 @@
   python3 scripts/check-file-size.py --write-baseline --rev origin/main   # 按某个提交的现状重写基线（先 git fetch；会放宽，要 baseline:loosen 标签）
   python3 scripts/check-file-size.py --against origin/main   # CI（PR）：另查基线有没有比合并目标放宽
 
-只看被 git 跟踪的文件；--rev 时从那个提交读，不看工作区。只用标准库。
+检查与 --tighten：看工作区里被 git 跟踪的文件，加上还没 `git add`、也没被忽略的新文件（#92：否则新文件本地查不出、
+到 CI 才红）；基线里的文件只按已跟踪的算（取消跟踪的当删了，同 CI）。所以本机比 CI 严：没打算提交的长草稿也会红——删掉、挪出 src/ 与 scripts/，或写进 .gitignore
+（「忽略」按 git 的 --exclude-standard：.gitignore、.git/info/exclude、个人的全局忽略文件）。
+--write-baseline 只记已跟踪的文件（草稿不进基线）；--rev 时只从那个提交读，不看工作区。只用标准库。
 """
 from __future__ import annotations
 
@@ -47,12 +50,15 @@ def count(data: bytes) -> int:
     return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
 
 
-def measure(root: str, rev: str | None) -> dict[str, int]:
-    """所有在范围内的文件 → 行数"""
+def measure(root: str, rev: str | None, untracked: bool = True) -> dict[str, int]:
+    """所有在范围内的文件 → 行数。untracked：工作区模式下是否也数未跟踪、未忽略的文件"""
     if rev:
         names = git(root, "ls-tree", "-r", "-z", "--name-only", rev).decode("utf-8", "replace")
     else:
-        names = git(root, "ls-files", "-z").decode("utf-8", "replace")
+        # 已跟踪的，加上（untracked 时）未跟踪且没被忽略的（#92）。合并冲突没解完的文件会列几次，
+        # 下面写进字典时同一路径只留一份
+        extra = ("--others", "--exclude-standard") if untracked else ()
+        names = git(root, "ls-files", "-z", "--cached", *extra).decode("utf-8", "replace")
     out = {}
     for rel in filter(None, names.split("\0")):
         if not in_scope(rel):
@@ -186,7 +192,7 @@ def main() -> int:
     ap.add_argument("--allow-loosen", action="store_true",
                     help="放宽基线经人同意（CI 里只在 PR 带 baseline:loosen 标签时传）")
     g = ap.add_mutually_exclusive_group()
-    g.add_argument("--write-baseline", action="store_true", help="把现在超线的文件整个重写成基线（会放宽，PR 要带 baseline:loosen 标签）")
+    g.add_argument("--write-baseline", action="store_true", help="把现在超线的文件整个重写成基线（会放宽，PR 要带 baseline:loosen 标签）；不带 --rev 时只记已跟踪的文件")
     g.add_argument("--tighten", action="store_true", help="基线只降不升：变小的改成现状，守线了的删掉")
     a = ap.parse_args()
     if a.rev and not a.write_baseline:
@@ -200,7 +206,11 @@ def main() -> int:
         return guard(a.root, a.against, a.head, a.baseline, a.allow_loosen)
 
     base_path = os.path.join(a.root, a.baseline)
-    lines = measure(a.root, a.rev)
+    # 写基线只记已跟踪的：没提交的草稿不许被预先写进基线（#92 自审）
+    lines = measure(a.root, a.rev, untracked=not a.write_baseline)
+    # 基线里的文件只按已跟踪的算（#92 codex 028 第 1 轮 #1）：`git rm --cached` 后留在盘上的存量文件，
+    # 干净检出里已经没了，本机也得当它删了——否则本机绿、CI 报「已删除、基线没收紧」。未跟踪的只用来提前抓新超标
+    tracked = lines if a.rev or a.write_baseline else measure(a.root, None, untracked=False)
     over = {k: v for k, v in lines.items() if v > MAX}
 
     if a.write_baseline:
@@ -215,7 +225,7 @@ def main() -> int:
     if a.tighten:
         new = {}
         for rel, b in base.items():
-            n = lines.get(rel)
+            n = tracked.get(rel)
             if n is not None and n > MAX:
                 new[rel] = min(n, b)
         save(base_path, new, "只许变小（scripts/check-file-size.py --tighten）")
@@ -228,11 +238,11 @@ def main() -> int:
         b = base.get(rel)
         if b is None:
             fails.append(f"✗ {rel}：{n} 行，新超标（上限 {MAX}）")
-        elif n > b:
+        elif rel in tracked and n > b:
             fails.append(f"✗ {rel}：{n} 行，比基线 {b} 行更大（存量只许变小）")
     # ② 变小了必须当场收紧，否则以后能悄悄长回去
     for rel, b in sorted(base.items()):
-        n = lines.get(rel, 0)
+        n = tracked.get(rel, 0)
         if n <= MAX:
             stale.append(f"✗ {rel}：已守线或已删除（{n} 行），基线里还记着 {b}")
         elif n < b:

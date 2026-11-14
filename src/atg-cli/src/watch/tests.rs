@@ -99,7 +99,17 @@ fn run_watch(
     reveal: bool,
     until: fn(&Value) -> bool,
 ) -> (u8, Vec<Value>) {
-    let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+    run_watch_from(b, q, reveal, until, false)
+}
+
+fn run_watch_from(
+    b: &FakeBackend,
+    q: Query,
+    reveal: bool,
+    until: fn(&Value) -> bool,
+    pressed_already: bool,
+) -> (u8, Vec<Value>) {
+    let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(pressed_already)));
     let lines = Arc::new(Mutex::new(Vec::new()));
     let out = Cap {
         lines: lines.clone(),

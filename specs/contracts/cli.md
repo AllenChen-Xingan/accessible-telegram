@@ -64,7 +64,7 @@
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。**v0 也不转发 `download`、`play`、`transcribe`**（arch 定 2026-11-13）：档案被占就报 `profile_busy`；以后只转发其中「下载」与 `mark_listened` 这两个后端动作，解码、播放、转写永远在 CLI 本进程（设计 `docs/experiments/exp008-local-stt/design.md` 第一节）。
 
-**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的。
+**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的；起好之后、出 `status` 之前（等授权线，如没登录报 `auth_required`）已按过 Ctrl+C 的，照「按了就正常结束」只出一行 `result`、退 0（#95），想知道为什么停不下来就不按 Ctrl+C 再跑一次看错误。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的定义**（#18 暂定，#53 起由收线程合成成事件，`actions.md` 第一节第 7 小节）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
@@ -119,7 +119,7 @@
 |---|---|---|
 | 0 | 成功 | — |
 | 1 | 内部错误 / 未知 / 子命令还没实现 | `internal` `unknown` `not_implemented` |
-| 2 | 用法错误（参数不对） | `usage` |
+| 2 | 用法错误（参数不对）。标准错误上那段说明只写哪类错、哪个参数、可选值和 `--help` 路径，**不回显用户写的任何值**（验证码、`send --text` 正文都可能写错地方，#64）；所有命令一样 | `usage` |
 | 3 | 要登录 / 登录失败 | `auth_*` |
 | 4 | 网络 / 连接 | `network` `disconnected` |
 | 5 | 限流 / 账号受限 | `rate_limited` `account_limited` |
@@ -133,7 +133,7 @@
 ### 5. 流式（`watch`）
 
 **输出什么**
-- 先输出一行 `status`，然后每个事件一行 `kind:"event"`，带 `seq`
+- 先输出一行 `status`，然后每个事件一行 `kind:"event"`，带 `seq`（唯一例外：出 `status` 之前已按了 Ctrl+C，整段只有一行 `result`，见「最多等多久」）
 - 启动后补发的积压更新照常输出；补完时输出 `sync_done` 事件，读的一方据此区分「历史补发」和「真正的新消息」（「补发」「积压」说的是同一批：离线期间漏掉、刚连上时一下子补送来的更新）
 - `seq` 断了（读的一方发现跳号）：说明有东西没看到，重跑 `chats` / `history` 拿全量
 - 带消息的事件（`new_message`、`message_content_changed` 等内容变化、`chat_last_message_changed`、`send_succeeded` / `send_failed`）：`data` 里有 `chat_id`、`message_id`，`data.message` 是消息节点（内容树，隐藏内容按 `--reveal` 遮），`speech.brief` 是这条的读法
@@ -153,7 +153,7 @@
 - 规则正本在 `src/atg-core/src/notify.rs` 头部。其中的默认值已由人定（2026-10-26：出声窗按会话分开、重连汇总两条改，其余按默认；界面做出来后实听再调），题面与结果在 `state/handoff/watch.md`「要人定的事」（大总管写进 `docs/plan/` 拍板记录后改指那里）
 
 **怎么结束**（结尾行 `result.data`：`command:"watch"` · `reason:"interrupted"` · `events`（写出过的事件行数）· `alerts`（其中要提示的）· `elapsed_ms`）
-- Ctrl+C / SIGTERM：输出 `result` 后以 0 退出——对 `watch` 来说被打断就是正常结束；再按一次立刻以 130 退出、不出结尾行（第一节第 1 小节）
+- Ctrl+C / SIGTERM：输出 `result` 后以 0 退出（出 `status` 之前按的也一样，这时没有 `status` 行）——对 `watch` 来说被打断就是正常结束；再按一次立刻以 130 退出、不出结尾行（第一节第 1 小节）
 - 标准输出的读方走了（管道断了，如 `watch | head`）：不再写，照常收尾（关会话、关后端），以 0 退出，结尾行写不出去
 - 后端故障（内核收更新的那条线程崩了或意外退出）：一行 `error(disconnected)`，退出码 4，不出 `result`
 - 标准输出被读的一方堵住时（直跑）不丢事件、不崩：事件在内核的无界通道里等着
@@ -237,3 +237,4 @@
 - 2026-11-13 issue #52 自审第 11 轮后（属技术细节）：`send` 写明默认模式下正文只能很短（确认框放不下就拒）；`send` / `resend` 写明加 `--redact` 报 `not_implemented`
 - 2026-11-13 issue #52 codex 016 第 2 轮后（属技术细节）：`resend` 结尾行有结果未知的优先报它，说明逐项计数
 - 2026-11-13 #63 #73 #78（手下 fix，大总管定期限取值 2026-11-13）：加「最多等多久」一段：起后端、登录每步、查询类、`download` 的期限与到点报的码，各命令按 Ctrl+C 的结局；`download` 行指过去
+- 2026-11-14 #64 #95（手下 fix，大总管定 2026-11-13）：退出码 2 写明用法错误的标准错误说明不回显用户写的值、所有命令一样；`watch` 出 `status` 之前已按 Ctrl+C 只出一行 `result`、退 0（「最多等多久」「输出什么」「怎么结束」三处）
