@@ -2,7 +2,7 @@
   "max": 600,
   "note": "只许变小（scripts/check-file-size.py --tighten）",
   "files": {
-    "src/atg-cli/src/chats.rs": 848,
+    "src/atg-cli/src/chats.rs": 847,
     "src/atg-cli/src/history.rs": 707,
     "src/atg-cli/src/serve.rs": 617,
     "src/atg-cli/src/watch.rs": 884,
