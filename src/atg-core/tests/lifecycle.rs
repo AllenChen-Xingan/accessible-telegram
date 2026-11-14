@@ -2,6 +2,10 @@
 //! 收线程序号、三线合成、故障广播（等待中的请求以 `disconnected` 返回、之后的新请求被拒）、关闭流程、
 //! 事件 → reducer 的批处理、重拉接线、重发应答喂法、日志里没有内容。
 //! 假后端与真实后端共用同一个收线程运行器（`link`），所以这里测到的就是正式的那份。
+#![allow(
+    clippy::disallowed_methods,
+    reason = "测试里等假后端，卡住就是测试失败"
+)]
 
 use atg_core::backend::Backend;
 use atg_core::config::{Profile, ServerKind};

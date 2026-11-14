@@ -27,7 +27,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -352,6 +352,20 @@ pub fn guard<F: Future>(shared: Arc<Shared>, fut: F) -> Guarded<F> {
     }
 }
 
+/// 等守着的请求到有应答或后端关掉，不设期限。只给发送交出线程（`td.rs` `detached`）：应答带回的受限 / 限流
+/// 要登记，不受调用方等多久影响（errors.md、#88）；调用方的期限另管
+#[cfg(feature = "tdlib-api")]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "后端关掉时 guard 让它返回，不会永远挂着"
+)]
+pub(crate) fn block_on_guarded<F: Future>(
+    shared: Arc<Shared>,
+    fut: F,
+) -> Result<F::Output, CoreError> {
+    block_on(guard(shared, fut))
+}
+
 pub struct Guarded<F> {
     shared: Arc<Shared>,
     id: u64,
@@ -482,7 +496,11 @@ impl EventStream {
         batch
     }
 
-    /// 阻塞版 [`EventStream::next_batch`]（CLI 循环用）
+    /// 阻塞版 [`EventStream::next_batch`]：一直等到有事件或流关掉（现在只有集成测试用）
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "有意一直等：事件流本身没有期限，关后端时流会关掉、这里随之返回"
+    )]
     pub fn blocking_batch(&mut self, max: usize) -> Option<Vec<Envelope>> {
         block_on(self.next_batch(max))
     }
@@ -490,44 +508,5 @@ impl EventStream {
 
 // ───────────────────────── 极小的执行器 ─────────────────────────
 
-struct ThreadWaker(thread::Thread);
-
-impl Wake for ThreadWaker {
-    fn wake(self: Arc<Self>) {
-        self.0.unpark();
-    }
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.0.unpark();
-    }
-}
-
-/// 在当前线程上跑完一个 future（CLI 与测试用；GUI 放在自己的前台执行器上）
-pub fn block_on<F: Future>(fut: F) -> F::Output {
-    let mut fut = std::pin::pin!(fut);
-    let waker = Waker::from(Arc::new(ThreadWaker(thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        if let Poll::Ready(v) = fut.as_mut().poll(&mut cx) {
-            return v;
-        }
-        thread::park();
-    }
-}
-
-/// 同 [`block_on`]，但最多等 `timeout`；超时返回 `None`（future 被丢掉）。退出路径用，免得卡死
-pub fn block_on_timeout<F: Future>(fut: F, timeout: Duration) -> Option<F::Output> {
-    let deadline = Instant::now() + timeout;
-    let mut fut = std::pin::pin!(fut);
-    let waker = Waker::from(Arc::new(ThreadWaker(thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        if let Poll::Ready(v) = fut.as_mut().poll(&mut cx) {
-            return Some(v);
-        }
-        let now = Instant::now();
-        if now >= deadline {
-            return None;
-        }
-        thread::park_timeout(deadline - now);
-    }
-}
+mod block;
+pub use block::{Until, block_on, block_on_timeout, block_on_until};

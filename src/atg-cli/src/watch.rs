@@ -17,12 +17,13 @@
 
 use crate::args::{Format, WatchArgs};
 use crate::chats::{self, Feed};
+use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
 use crate::history::ChatRef;
 use crate::out::{Fail, envelope};
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
-use atg_core::link::{EventStream, block_on};
+use atg_core::link::EventStream;
 use atg_core::model::{
     ChatActionKind, ChatId, ChatList, ChatNotify, CoreEvent, Message, MsgId, NotifyScope, SenderId,
 };
@@ -38,8 +39,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// 直跑时多久看一次退出标志、喂一次事件流
 pub const POLL: Duration = Duration::from_millis(50);
-/// `saved` 要自己的用户 id：登录后 TDLib 自己推 `my_id`，最多等这么久
-const ME_TIMEOUT: Duration = Duration::from_secs(5);
 /// 一个执行方最多同时挂几个 `watch`（大总管定 2026-10-26）
 pub const MAX_SUBSCRIBERS: usize = 8;
 /// 一次喂进来超过这么多条就在标准错误记一句「待处理 N 条」（003 收10；阈值待人定，冒烟实测最大 188）
@@ -670,7 +669,7 @@ pub fn resolve<B: Backend>(
             }
         }
     };
-    block_on(b.chat_get(id)).map_err(Fail::Core)?;
+    bounded(b, b.chat_get(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
     feed.drain(stream);
     if feed.store().chat(id).is_none() {
         return Err(Fail::Core(CoreError::NotFound {
@@ -706,7 +705,9 @@ pub fn run<B: Backend>(
         Ok(s) => s,
         Err(e) => return fail_line(out, format, &Fail::Core(e)),
     };
-    if let Err(e) = block_on(b.start(profile)) {
+    // 起后端不看 Ctrl+C：等它起完（最多 START_TIMEOUT），起好了进循环第一圈就停、照常出 `result`；
+    // 起不来（含到点）照实报错——还没开始订阅，没有可收尾的（`serve` 同）
+    if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return fail_line(out, format, &Fail::Core(e));
     }
@@ -776,11 +777,11 @@ fn watch_loop<B: Backend>(
     });
     let chat = match q.chat.map(|c| resolve(b, stream, feed, c)).transpose() {
         Ok(c) => c,
-        Err(f) => return feed.hub.fail_last(&f),
+        Err(f) => return fail_unless_stopped(feed, stop, &f),
     };
     if let Some(c) = chat {
-        if let Err(e) = block_on(b.chat_open(c)) {
-            return feed.hub.fail_last(&Fail::Core(e));
+        if let Err(e) = bounded(b, b.chat_open(c), QUERY_TIMEOUT) {
+            return fail_unless_stopped(feed, stop, &Fail::Core(e));
         }
         feed.hub.open_chat(c);
     }
@@ -793,7 +794,7 @@ fn watch_loop<B: Backend>(
             eprintln!("atg-cli watch: 待处理 {fed} 条事件（处理跟不上收线程）");
         }
         max_pending = max_pending.max(fed);
-        fetch_topics(b, feed);
+        fetch_topics(b, feed, stop);
         feed.hub.reap();
         if feed.hub.is_empty() {
             break Ended::Stopped;
@@ -837,507 +838,27 @@ impl crate::out::Sink for Collect {
     }
 }
 
-/// 取判到时还没设置的论坛话题（`getForumTopic`，只读），应答喂 store（只在还没有时收）；取不到只记错误码
-pub fn fetch_topics<B: Backend>(b: &B, feed: &mut Feed) {
-    for (chat, topic) in feed.hub.take_missing_topics() {
-        match block_on(b.forum_topic_get(chat, topic)) {
-            Ok(state) => {
-                let _ = feed.pump_mut().apply(atg_core::store::Input::TopicLoaded {
-                    chat_id: chat,
-                    topic_id: topic,
-                    state,
-                    received_ms: now_ms(),
-                });
-            }
-            // 取不到：这个话题本次订阅里不再取，一直按 topic_unknown 不提示（宁可不吵）
-            Err(e) => eprintln!("atg-cli watch: 取论坛话题设置出错（{}）", error_label(&e)),
-        }
+/// 开订阅前的请求没成：等的时候已按了 Ctrl+C 就照约定出 `result`、退 0（`cli.md` `watch`），否则报这个错
+fn fail_unless_stopped(feed: &mut Feed, stop: &AtomicBool, f: &Fail) -> u8 {
+    if stop.load(Ordering::SeqCst) {
+        feed.hub.finish_all();
+        0
+    } else {
+        feed.hub.fail_last(f)
     }
 }
 
-/// 标准错误里说错误用的：码，`internal` 另带写死的 `what`（与 `errors.md` 登记的对得上）
-fn error_label(e: &CoreError) -> String {
-    match e {
-        CoreError::Internal { what } => format!("internal:{what}"),
-        other => other.code().to_owned(),
-    }
-}
-
+/// 收尾时关会话：停止标志已立起，只看期限
 fn close_chat<B: Backend>(b: &B, chat: Option<ChatId>) {
     if let Some(c) = chat
-        && let Err(e) = block_on(b.chat_close(c))
+        && let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT)
     {
         eprintln!("atg-cli: 关闭会话时出错（{}）", e.code());
     }
 }
 
+mod topics;
+pub use topics::fetch_topics;
+
 #[cfg(test)]
-mod tests {
-    //! 假后端 + 假时钟：数据全是编的（名字、会话名只用 `fixtures/names.txt` 里的），不碰真实账号、不碰本机档案目录。
-    use super::*;
-    use atg_core::config::ServerKind;
-    use atg_core::fake::{Call, FakeAuth, FakeBackend};
-    use std::sync::{Arc, Mutex};
-
-    const PEER: i64 = 101;
-    const GROUP: i64 = -1001;
-    /// 假时钟的「现在」（秒）
-    const NOW_S: i64 = 1_793_000_000;
-
-    fn clock() -> i64 {
-        NOW_S * 1000
-    }
-
-    fn profile(tag: &str) -> Profile {
-        let root = std::env::temp_dir().join(format!(
-            "atg-cli-watch-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        Profile::create(&root, "main", ServerKind::Main).unwrap()
-    }
-
-    fn user(id: i64, name: &str) -> Value {
-        json!({"@type": "updateUser", "user": {"@type": "user", "id": id, "first_name": name, "last_name": "",
-            "usernames": null, "phone_number": "", "is_contact": true, "type": {"@type": "userTypeRegular"}}})
-    }
-
-    fn chat(id: i64, ty: Value, title: &str) -> Value {
-        json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title, "type": ty,
-            "positions": [], "unread_count": 0, "unread_mention_count": 0, "last_read_inbox_message_id": 0,
-            "last_read_outbox_message_id": 0,
-            "notification_settings": {"@type": "chatNotificationSettings", "use_default_mute_for": true, "mute_for": 0}}})
-    }
-
-    fn private() -> Value {
-        json!({"@type": "chatTypePrivate", "user_id": PEER})
-    }
-
-    fn new_msg(chat_id: i64, id: i64, text: Value) -> Value {
-        json!({"@type": "updateNewMessage", "message": {"@type": "message", "id": id, "chat_id": chat_id,
-            "sender_id": {"@type": "messageSenderUser", "user_id": PEER}, "is_outgoing": false,
-            "date": NOW_S - 10, "content": {"@type": "messageText", "text": text}}})
-    }
-
-    fn plain(t: &str) -> Value {
-        json!({"@type": "formattedText", "text": t, "entities": []})
-    }
-
-    fn typing(action: &str) -> Value {
-        json!({"@type": "updateChatAction", "chat_id": PEER, "topic_id": null,
-            "sender_id": {"@type": "messageSenderUser", "user_id": PEER}, "action": {"@type": action}})
-    }
-
-    /// 收集输出；看到满足 `until` 的那一行就立「停」（相当于人按了 Ctrl+C）
-    struct Cap {
-        lines: Arc<Mutex<Vec<String>>>,
-        stop: &'static AtomicBool,
-        until: fn(&Value) -> bool,
-    }
-
-    impl LineOut for Cap {
-        fn line(&mut self, line: &str) -> bool {
-            let v: Value = serde_json::from_str(line).unwrap_or(Value::Null);
-            if (self.until)(&v) {
-                self.stop.store(true, Ordering::SeqCst);
-            }
-            self.lines.lock().unwrap().push(line.to_owned());
-            true
-        }
-    }
-
-    fn cx(reveal: bool) -> SpeechCtx {
-        crate::history::speech_ctx(Some("+08:00"), reveal).unwrap_or_else(|_| panic!("时区"))
-    }
-
-    fn backend() -> FakeBackend {
-        let b = FakeBackend::new().unwrap();
-        b.set_auth(FakeAuth {
-            logged_in: true,
-            ..FakeAuth::default()
-        });
-        b
-    }
-
-    /// 跑一次直跑的 `watch`，到 `until` 那行为止；回（退出码，每行 JSON）
-    fn run_watch(
-        b: &FakeBackend,
-        q: Query,
-        reveal: bool,
-        until: fn(&Value) -> bool,
-    ) -> (u8, Vec<Value>) {
-        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
-        let lines = Arc::new(Mutex::new(Vec::new()));
-        let out = Cap {
-            lines: lines.clone(),
-            stop,
-            until,
-        };
-        let p = profile("run");
-        let code = run(
-            b,
-            &p,
-            &q,
-            cx(reveal),
-            Format::Json,
-            stop,
-            Box::new(out),
-            clock,
-            Instant::now(),
-        );
-        let ls = lines
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
-        (code, ls)
-    }
-
-    fn events<'a>(ls: &'a [Value], ty: &str) -> Vec<&'a Value> {
-        ls.iter()
-            .filter(|l| l["kind"] == "event" && l["data"]["type"] == ty)
-            .collect()
-    }
-
-    #[test]
-    fn backlog_then_sync_done_then_live_message() {
-        let b = backend();
-        b.push(user(PEER, "林小雨"));
-        b.push(chat(PEER, private(), "林小雨"));
-        b.push(new_msg(PEER, 1, plain("第一条")));
-        b.push_net("connectionStateReady");
-        b.push(new_msg(PEER, 2, plain("第二条")));
-        let (code, ls) = run_watch(&b, Query { chat: None }, false, |v| {
-            v["data"]["message_id"] == 2 && v["data"]["type"] == "new_message"
-        });
-        assert_eq!(code, 0);
-        assert_eq!(ls[0]["kind"], "status");
-        let msgs = events(&ls, "new_message");
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(msgs[0]["data"]["notify"]["alert"], false);
-        assert_eq!(msgs[0]["data"]["notify"]["reason"], "backlog");
-        assert_eq!(msgs[1]["data"]["notify"]["alert"], true);
-        assert_eq!(msgs[1]["data"]["notify"]["reason"], "new");
-        assert_eq!(msgs[1]["data"]["notify"]["sound"], true);
-        assert_eq!(msgs[1]["data"]["message"]["type"], "message");
-        assert!(
-            msgs[1]["speech"]["brief"]
-                .as_str()
-                .unwrap()
-                .contains("第二条")
-        );
-        // seq 递增；sync_done 在两条之间
-        let seq = |v: &Value| v["seq"].as_u64().unwrap();
-        let sync = events(&ls, "sync_done");
-        assert_eq!(sync.len(), 1);
-        assert!(seq(msgs[0]) < seq(sync[0]) && seq(sync[0]) < seq(msgs[1]));
-        let last = ls.last().unwrap();
-        assert_eq!(last["kind"], "result");
-        assert_eq!(last["data"]["reason"], "interrupted");
-        assert_eq!(last["data"]["alerts"], 1);
-        // 没给 --chat：不开任何会话
-        assert!(!b.calls().iter().any(|c| matches!(c, Call::ChatOpen(_))));
-    }
-
-    #[test]
-    fn spoiler_hidden_unless_reveal() {
-        let spoiler = json!({"@type": "formattedText", "text": "答案是42，别说出去", "entities": [
-            {"@type": "textEntity", "offset": 3, "length": 2, "type": {"@type": "textEntityTypeSpoiler"}}]});
-        for reveal in [false, true] {
-            let b = backend();
-            b.push(chat(PEER, private(), "林小雨"));
-            b.push_net("connectionStateReady");
-            b.push(new_msg(PEER, 5, spoiler.clone()));
-            let (_, ls) = run_watch(&b, Query { chat: None }, reveal, |v| {
-                v["data"]["type"] == "new_message"
-            });
-            let m = events(&ls, "new_message")[0];
-            let all = m.to_string();
-            assert_eq!(all.contains("42"), reveal, "{all}");
-            assert!(m["speech"]["brief"].as_str().unwrap().contains("隐藏内容") != reveal);
-        }
-    }
-
-    #[test]
-    fn chat_opened_for_typing_and_closed_at_end() {
-        let b = Arc::new(backend());
-        b.set_chat(
-            PEER,
-            vec![user(PEER, "林小雨"), chat(PEER, private(), "林小雨")],
-        );
-        b.push_net("connectionStateReady");
-        // 会话开好之后再推一轮正在输入（真实里 TDLib 也是开了会话才推它的实时更新）
-        let pusher = {
-            let b = b.clone();
-            std::thread::spawn(move || {
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while !b.calls().contains(&Call::ChatOpen(PEER)) && Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                std::thread::sleep(Duration::from_millis(100));
-                b.push(typing("chatActionTyping"));
-                b.push(typing("chatActionTyping"));
-                b.push(typing("chatActionCancel"));
-            })
-        };
-        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
-        let lines = Arc::new(Mutex::new(Vec::new()));
-        let out = Cap {
-            lines: lines.clone(),
-            stop,
-            until: |v| v["data"]["action"] == "cancel",
-        };
-        let q = Query {
-            chat: Some(ChatRef::Id(PEER)),
-        };
-        let p = profile("typing");
-        let code = run(
-            &*b,
-            &p,
-            &q,
-            cx(false),
-            Format::Json,
-            stop,
-            Box::new(out),
-            clock,
-            Instant::now(),
-        );
-        pusher.join().unwrap();
-        let ls: Vec<Value> = lines
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
-        assert_eq!(code, 0);
-        let acts = events(&ls, "chat_action");
-        assert_eq!(acts.len(), 3, "{ls:?}");
-        assert_eq!(acts[0]["data"]["notify"]["alert"], true);
-        assert_eq!(acts[0]["data"]["notify"]["reason"], "typing");
-        assert_eq!(acts[0]["speech"]["brief"], TYPING_ZH);
-        assert_eq!(acts[1]["data"]["notify"]["reason"], "already_announced");
-        assert!(acts[1].get("speech").is_none());
-        assert!(acts[2]["data"].get("notify").is_none());
-        let calls = b.calls();
-        let open = calls.iter().position(|c| *c == Call::ChatOpen(PEER));
-        let close = calls.iter().position(|c| *c == Call::ChatClose(PEER));
-        assert!(
-            open.is_some() && close.is_some() && open < close,
-            "{calls:?}"
-        );
-    }
-
-    #[test]
-    fn unknown_forum_topic_is_fetched_then_judged_by_topic() {
-        let b = Arc::new(backend());
-        b.push(chat(
-            GROUP,
-            json!({"@type": "chatTypeSupergroup", "supergroup_id": 1, "is_channel": false}),
-            "周末爬山群",
-        ));
-        b.set_forum_topic(GROUP, 7, json!({"@type": "forumTopic", "last_read_inbox_message_id": 0,
-            "notification_settings": {"@type": "chatNotificationSettings", "use_default_mute_for": false, "mute_for": 3600}}));
-        b.push_net("connectionStateReady");
-        let in_topic = |id: i64| {
-            let mut m = new_msg(GROUP, id, plain("第一条"));
-            m["message"]["topic_id"] = json!({"@type": "messageTopicForum", "forum_topic_id": 7});
-            m
-        };
-        b.push(in_topic(1));
-        // 取过话题之后再来一条
-        let pusher = {
-            let b = b.clone();
-            std::thread::spawn(move || {
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while !b.calls().contains(&Call::ForumTopicGet(GROUP, 7))
-                    && Instant::now() < deadline
-                {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                std::thread::sleep(Duration::from_millis(100));
-                let mut m = new_msg(GROUP, 2, plain("第二条"));
-                m["message"]["topic_id"] =
-                    json!({"@type": "messageTopicForum", "forum_topic_id": 7});
-                b.push(m);
-            })
-        };
-        let (code, ls) = run_watch(&b, Query { chat: None }, false, |v| {
-            v["data"]["message_id"] == 2
-        });
-        pusher.join().unwrap();
-        assert_eq!(code, 0);
-        let msgs = events(&ls, "new_message");
-        assert_eq!(msgs[0]["data"]["notify"]["reason"], "topic_unknown");
-        assert_eq!(msgs[1]["data"]["notify"]["reason"], "muted_topic");
-        assert_eq!(
-            b.calls()
-                .iter()
-                .filter(|c| **c == Call::ForumTopicGet(GROUP, 7))
-                .count(),
-            1
-        );
-    }
-
-    #[test]
-    fn feed_tracks_sync_from_what_it_fed_not_live_state() {
-        // 中途接入判「已补发完」按 Feed 喂到的：连接线到 ready 但事件还没喂时不算
-        let b = backend();
-        let p = profile("feedsync");
-        let mut stream = b.subscribe().unwrap();
-        block_on(b.start(&p)).unwrap();
-        let mut feed = Feed::new(Instant::now());
-        b.push_net("connectionStateReady");
-        chats::ensure_ready(&b).unwrap_or_else(|_| panic!("没登录"));
-        let _ = b.wait_net(Duration::from_secs(5), &|n| {
-            *n == atg_core::status::NetState::Ready
-        });
-        assert!(!feed.synced(), "还没喂就不算");
-        feed.drain(&mut stream);
-        assert!(feed.synced());
-        b.push_net("connectionStateUpdating");
-        let _ = b.wait_net(Duration::from_secs(5), &|n| {
-            *n == atg_core::status::NetState::Updating
-        });
-        feed.drain(&mut stream);
-        assert!(!feed.synced(), "重连补发中");
-        let _ = b.shutdown(SHUTDOWN_TIMEOUT);
-    }
-
-    #[test]
-    fn reconnect_summary_line() {
-        let b = backend();
-        b.push(chat(PEER, private(), "林小雨"));
-        b.push_net("connectionStateReady");
-        b.push_net("connectionStateConnecting");
-        b.push(new_msg(PEER, 1, plain("第一条")));
-        b.push(new_msg(PEER, 2, plain("第二条")));
-        b.push_net("connectionStateReady");
-        let (code, ls) = run_watch(&b, Query { chat: None }, false, |v| {
-            v["data"]["type"] == "sync_done" && v["data"]["missed"].is_object()
-        });
-        assert_eq!(code, 0);
-        let syncs = events(&ls, "sync_done");
-        assert_eq!(syncs.len(), 2);
-        assert!(syncs[0]["data"].get("notify").is_none(), "启动那次不汇总");
-        let s = syncs[1];
-        assert_eq!(s["data"]["missed"], json!({"messages": 2, "chats": 1}));
-        assert_eq!(s["data"]["notify"]["reason"], "reconnect_summary");
-        assert_eq!(s["data"]["notify"]["sound"], true);
-        assert_eq!(s["speech"]["brief"], missed_zh(2, 1));
-        // 补发来的两条逐条不提示
-        for m in events(&ls, "new_message") {
-            assert_eq!(m["data"]["notify"]["reason"], "backlog");
-        }
-        assert_eq!(ls.last().unwrap()["data"]["alerts"], 1);
-    }
-
-    #[test]
-    fn text_mode_summary_line_counts_as_alert() {
-        use atg_core::status::NetState;
-        use atg_core::store::Input;
-        let mut w = Watcher::new(cx(false), Format::Text, None, clock);
-        let mut store = Store::new();
-        let mut seq = 0;
-        let mut feed = |w: &mut Watcher, store: &mut Store, e: CoreEvent| {
-            seq += 1;
-            store.apply(Input::Update {
-                seq,
-                event: e.clone(),
-            });
-            w.render(store, seq, &e)
-        };
-        let ev = |v: Value| atg_core::tdjson::event(&v);
-        feed(&mut w, &mut store, ev(chat(PEER, private(), "林小雨")));
-        // 启动时的第一次补发结束：只出补发结束那句，不算要提示的
-        let first = feed(&mut w, &mut store, CoreEvent::SyncDone);
-        assert_eq!(first.as_deref(), Some(SYNC_DONE_ZH));
-        // 断网、补发来两条（逐条不提示）、补发结束：出汇总那一行，算一条要提示的
-        feed(
-            &mut w,
-            &mut store,
-            CoreEvent::NetStateChanged(NetState::Connecting),
-        );
-        feed(&mut w, &mut store, ev(new_msg(PEER, 1, plain("第一条"))));
-        feed(&mut w, &mut store, ev(new_msg(PEER, 2, plain("第二条"))));
-        let line = feed(&mut w, &mut store, CoreEvent::SyncDone).expect("要出汇总行");
-        assert_eq!(line, format!("{}。{SYNC_DONE_ZH}", missed_zh(2, 1)));
-        assert_eq!(w.alerts, 1);
-        // 转发那头按同一口径数
-        let (mut events, mut alerts) = (0, 0);
-        crate::forward::count_line(Format::Text, &line, &mut events, &mut alerts);
-        assert_eq!((events, alerts), (1, 1));
-    }
-
-    #[test]
-    fn missing_chat_is_not_found_and_nothing_opened() {
-        let b = backend();
-        b.push_net("connectionStateReady");
-        let (code, ls) = run_watch(
-            &b,
-            Query {
-                chat: Some(ChatRef::Id(GROUP)),
-            },
-            false,
-            |_| false,
-        );
-        assert_eq!(code, 6);
-        assert_eq!(ls.last().unwrap()["data"]["code"], "not_found");
-        assert!(!b.calls().iter().any(|c| matches!(c, Call::ChatOpen(_))));
-    }
-
-    #[test]
-    fn not_logged_in_is_auth_required() {
-        let b = FakeBackend::new().unwrap();
-        b.set_auth(FakeAuth::default());
-        let (code, ls) = run_watch(&b, Query { chat: None }, false, |_| false);
-        assert_eq!(code, 3);
-        assert_eq!(ls.len(), 1);
-        assert_eq!(ls[0]["data"]["code"], "auth_required");
-    }
-
-    #[test]
-    fn backend_fault_ends_with_disconnected() {
-        let b = backend();
-        b.push_net("connectionStateReady");
-        b.crash();
-        let (code, ls) = run_watch(&b, Query { chat: None }, false, |_| false);
-        assert_eq!(code, 4);
-        assert_eq!(ls.last().unwrap()["data"]["code"], "disconnected");
-    }
-
-    #[test]
-    fn event_names_match_contract_table() {
-        // 契约表里的事件名（actions.md 第一节第 7 小节，本 issue 新增的三个也在内）
-        let contract = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../specs/contracts/actions.md"
-        ))
-        .unwrap();
-        let samples = [
-            CoreEvent::SyncDone,
-            CoreEvent::ChatAction {
-                chat_id: 1,
-                topic: None,
-                sender: SenderId::User(1),
-                action: ChatActionKind::Typing,
-            },
-            CoreEvent::ForumTopicChanged {
-                chat_id: 1,
-                topic_id: 1,
-                last_read_inbox: 0,
-                notify: ChatNotify::default(),
-                received_ms: None,
-            },
-            CoreEvent::Unknown {
-                td_type: "x".into(),
-            },
-        ];
-        for e in &samples {
-            let n = event_name(e);
-            assert!(contract.contains(&format!("| `{n}`")), "{n} 不在契约表里");
-        }
-        let _ = GROUP;
-    }
-}
+mod tests;

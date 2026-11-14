@@ -1,5 +1,9 @@
 //! 发送限制（`atg_core::send_limits`）走完整发送流程的回归测试：codex 016 第 5 轮 #1。
 //! 假后端、测试服务器、发自己的收藏夹；数据全是编的，不碰真实账号与本机档案目录。
+#![allow(
+    clippy::disallowed_methods,
+    reason = "测试里等假后端，卡住就是测试失败"
+)]
 
 use atg_core::backend::Backend;
 use atg_core::config::{Profile, ServerKind};
