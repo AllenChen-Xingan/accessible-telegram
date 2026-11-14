@@ -240,7 +240,7 @@ fn status_line<B: Backend>(b: &B, format: Format, own: &mut dyn Sink) {
 /// 处理一个请求要用的东西
 struct Ctx<'a, B: Backend> {
     b: &'a B,
-    /// 停止标志：转来的请求等后端时也看它（Ctrl+C 后不再干等）
+    /// 停止标志：只有转来的 `auth state` 等授权线时看它；其余转来的请求按期限等（`bounded`），不看
     stop: &'a AtomicBool,
     kind: atg_core::config::ServerKind,
     limits: Limits,

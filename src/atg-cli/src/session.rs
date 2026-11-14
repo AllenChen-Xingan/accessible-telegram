@@ -252,7 +252,8 @@ pub fn download(
     {
         let profile = open_profile(g)?;
         let b = td_backend()?;
-        crate::voice::run_download(&b, &profile, q, &crate::signals::STOP, started)
+        // `download` 不装信号处理：Ctrl+C 照默认直接结束进程（同 `chats` / `history`），停止标志永远立不起来
+        crate::voice::run_download(&b, &profile, q, &AtomicBool::new(false), started)
     }
 }
 

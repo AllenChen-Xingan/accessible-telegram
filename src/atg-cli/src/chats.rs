@@ -18,6 +18,7 @@
 //! order 是 TDLib 给会话在某个列表里排序用的数（大的在前，0 = 不在这个列表里），会随新消息变，所以翻页途中
 //! 有会话挪位时可能漏或重——与 TDLib 自己的分页同一性质，要全量就一次 `-n` 给够。
 
+use crate::deadlines::{AUTH_TIMEOUT, LOAD_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 use crate::out::Fail;
 use atg_core::backend::{Backend, ChatsLoad, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
@@ -30,8 +31,6 @@ use atg_core::status::{AuthStep, CoreState, NetState};
 use atg_core::store::Store;
 use atg_core::tree::ChatItem;
 use std::time::{Duration, Instant};
-
-use crate::deadlines::{AUTH_TIMEOUT, LOAD_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 
 /// 两段等待的上限（单测用短的）
 #[derive(Debug, Clone, Copy)]

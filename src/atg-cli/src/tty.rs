@@ -3,7 +3,7 @@
 //! `cli.md`：秘密值（手机号、验证码、密码、邮箱）不进命令行参数、不从标准输入读（标准输入可能是 AI 拼的管道），
 //! 从 `/dev/tty` 读、**不回显**；给人看的话（提示语、密码提示、出错原因）也只写 `/dev/tty`，标准输出只放 JSON 行。
 //!
-//! 读秘密时把终端切成「不回显、逐字节、Ctrl+C 不发信号」（`~ECHO ~ICANON ~ISIG ~IEXTEN`），自己处理：
+//! 读秘密（和登出确认）时把终端切成「不回显、逐字节、Ctrl+C 不发信号」（`~ECHO ~ICANON ~ISIG ~IEXTEN`），自己处理：
 //! 回车结束、退格删一个字、Ctrl+U 清空、Ctrl+C → 中断、空行上 Ctrl+D → 取消。这样中途 Ctrl+C 也能先把
 //! 终端设置恢复（否则人的终端会一直不回显）。恢复靠守卫的 `Drop`，panic 展开时同样执行。
 //! 输入上限 [`MAX_INPUT`] 字节，预先分配好，读的过程中不会重新分配（重新分配会留下没清零的旧副本）。
@@ -59,6 +59,19 @@ impl Tty {
 
     /// 读一行，不回显。回车结束；结果装进 [`Secret`]
     pub fn read_secret(&mut self, prompt: &str) -> Result<Secret, ReadEnd> {
+        self.read_raw(prompt, false).map(Secret::new)
+    }
+
+    /// 读一行，照常回显（登出确认这类不是秘密的回答）。返回去掉首尾空白的小写形式。
+    /// 终端同样切成逐字节、Ctrl+C 不发信号、自己回显：登录这组命令装了信号处理，规范模式下 Ctrl+C 只立标志、
+    /// 读会被内核重启，提示停着不动；这里自己认 Ctrl+C，结果同读秘密（`interrupted`）
+    pub fn read_visible(&mut self, prompt: &str) -> Result<String, ReadEnd> {
+        let line = self.read_raw(prompt, true)?;
+        Ok(String::from_utf8_lossy(&line).trim().to_lowercase())
+    }
+
+    /// 切好终端（`~ECHO ~ICANON ~ISIG ~IEXTEN`）再出提示、读一行；`echo` = 自己把敲的字写回终端
+    fn read_raw(&mut self, prompt: &str, echo: bool) -> Result<Vec<u8>, ReadEnd> {
         let fd = self.file.as_raw_fd();
         // SAFETY: termios 是纯数据结构，全零是合法初值，随即由 tcgetattr 填满
         let mut orig: libc::termios = unsafe { std::mem::zeroed() };
@@ -79,37 +92,27 @@ impl Tty {
         let _ = write!(self.file, "{prompt}");
         let _ = self.file.flush();
         let mut buf = Vec::with_capacity(MAX_INPUT);
-        let end = read_raw_line(&mut self.file, &mut buf);
+        let (mut r, mut w) = (&self.file, &self.file);
+        let end = read_raw_line(&mut r, &mut buf, &mut |bytes| {
+            if echo {
+                let _ = w.write_all(bytes);
+                let _ = w.flush();
+            }
+        });
         drop(guard);
         // 回车不回显，补一个换行，下一句另起一行
         let _ = writeln!(self.file);
-        let secret = Secret::new(buf);
-        end.map(|()| secret)
-    }
-
-    /// 读一行，照常回显（登出确认这类不是秘密的回答）。返回去掉首尾空白的小写形式
-    pub fn read_visible(&mut self, prompt: &str) -> Result<String, ReadEnd> {
-        let _ = write!(self.file, "{prompt}");
-        let _ = self.file.flush();
-        let mut line = Vec::new();
-        let mut b = [0u8; 1];
-        loop {
-            match self.file.read(&mut b) {
-                Ok(0) | Err(_) => return Err(ReadEnd::Cancelled),
-                Ok(_) if b[0] == b'\n' => break,
-                Ok(_) => {
-                    if line.len() < MAX_INPUT {
-                        line.push(b[0]);
-                    }
-                }
-            }
-        }
-        Ok(String::from_utf8_lossy(&line).trim().to_lowercase())
+        end.map(|()| buf)
     }
 }
 
-/// 逐字节读到回车。`buf` 预先分配了 [`MAX_INPUT`]，超出的字节丢掉，不会重新分配
-fn read_raw_line(src: &mut impl Read, buf: &mut Vec<u8>) -> Result<(), ReadEnd> {
+/// 逐字节读到回车。`buf` 预先分配了 [`MAX_INPUT`]，超出的字节丢掉，不会重新分配。
+/// 收下的字、删掉的字经 `echo` 交回（回显时写回终端；读秘密时丢掉）
+fn read_raw_line(
+    src: &mut impl Read,
+    buf: &mut Vec<u8>,
+    echo: &mut dyn FnMut(&[u8]),
+) -> Result<(), ReadEnd> {
     let mut b = [0u8; 1];
     loop {
         match src.read(&mut b) {
@@ -122,6 +125,9 @@ fn read_raw_line(src: &mut impl Read, buf: &mut Vec<u8>) -> Result<(), ReadEnd> 
             0x04 if buf.is_empty() => return Err(ReadEnd::Cancelled),
             // 退格：删掉最后一个字（UTF-8 的续字节一起删）
             0x7f | 0x08 => {
+                if !buf.is_empty() {
+                    echo(b"\x08 \x08");
+                }
                 while let Some(last) = buf.pop() {
                     if last & 0xC0 != 0x80 {
                         break;
@@ -130,12 +136,18 @@ fn read_raw_line(src: &mut impl Read, buf: &mut Vec<u8>) -> Result<(), ReadEnd> 
             }
             // Ctrl+U：清空这一行
             0x15 => {
+                for _ in buf.iter().filter(|x| **x & 0xC0 != 0x80) {
+                    echo(b"\x08 \x08");
+                }
                 for x in buf.iter_mut() {
                     *x = 0;
                 }
                 buf.clear();
             }
-            c if c >= 0x20 && buf.len() < MAX_INPUT => buf.push(c),
+            c if c >= 0x20 && buf.len() < MAX_INPUT => {
+                buf.push(c);
+                echo(&[c]);
+            }
             _ => {}
         }
     }
@@ -147,7 +159,7 @@ mod tests {
 
     fn read(input: &[u8]) -> (Result<(), ReadEnd>, Vec<u8>) {
         let mut buf = Vec::with_capacity(MAX_INPUT);
-        let r = read_raw_line(&mut &input[..], &mut buf);
+        let r = read_raw_line(&mut &input[..], &mut buf, &mut |_| {});
         (r, buf)
     }
 
@@ -165,6 +177,24 @@ mod tests {
         assert_eq!(read(b"1\x012\r"), (Ok(()), b"12".to_vec()));
     }
 
+    /// 回显：收下的字原样交回，退格、Ctrl+U 按字交回「退一格」，Ctrl+C 不回显
+    #[test]
+    fn echo_follows_editing() {
+        let mut buf = Vec::with_capacity(MAX_INPUT);
+        let mut seen = Vec::new();
+        let r = read_raw_line(
+            &mut &"ab\x7f码\x15y\r".as_bytes()[..],
+            &mut buf,
+            &mut |b| seen.extend_from_slice(b),
+        );
+        assert_eq!(r, Ok(()));
+        assert_eq!(buf, b"y");
+        let mut want = b"ab\x08 \x08".to_vec();
+        want.extend_from_slice("码".as_bytes());
+        want.extend_from_slice(b"\x08 \x08\x08 \x08y");
+        assert_eq!(seen, want);
+    }
+
     #[test]
     fn ends() {
         assert_eq!(read(b"12\x03").0, Err(ReadEnd::Interrupted));
@@ -180,7 +210,7 @@ mod tests {
         input.push(b'\r');
         let mut buf = Vec::with_capacity(MAX_INPUT);
         let cap = buf.capacity();
-        read_raw_line(&mut &input[..], &mut buf).unwrap();
+        read_raw_line(&mut &input[..], &mut buf, &mut |_| {}).unwrap();
         assert_eq!(buf.len(), MAX_INPUT);
         assert_eq!(buf.capacity(), cap);
     }

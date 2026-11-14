@@ -705,7 +705,8 @@ pub fn run<B: Backend>(
         Ok(s) => s,
         Err(e) => return fail_line(out, format, &Fail::Core(e)),
     };
-    // 起后端不看 Ctrl+C：起到一半丢掉不好收；按了就等它起完（最多 START_TIMEOUT），进循环第一圈就停
+    // 起后端不看 Ctrl+C：watch 的约定是 Ctrl+C 照常出 `result`、退 0，起后端这一步也守它——按了就等它起完
+    // （最多 START_TIMEOUT），进循环第一圈就停。登录组不同，按了就 `interrupted`（`session::drive`）
     if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return fail_line(out, format, &Fail::Core(e));

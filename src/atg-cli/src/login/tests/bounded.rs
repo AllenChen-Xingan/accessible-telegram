@@ -45,6 +45,8 @@ fn ctrl_c_while_submit_hangs_is_interrupted_and_shut_down() {
     h.join().unwrap();
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
+    // 真卡在提交上（号码已交出），不是卡在前面等授权线
+    assert!(auth_calls(&b).contains(&"phone"), "{:?}", auth_calls(&b));
     assert!(matches!(b.calls().last(), Some(Call::Shutdown)));
     assert!(p.lock(Holder::Cli).is_ok());
 }
@@ -102,17 +104,32 @@ fn ctrl_c_while_logout_hangs_is_interrupted() {
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
 }
 
-/// 已经按过 Ctrl+C（比如在登出确认那一问上按的，又答了 yes）：不再把登出交出去
+/// 确认那一问时立起停止标志（真终端上 Ctrl+C 由 `tty` 自己认、报 `interrupted`；这里模拟标志在确认途中被立起，
+/// 又答了 yes）：确认之后再查一次，不把登出交出去
+struct YesButStopped<'a>(&'a AtomicBool);
+
+impl Prompter for YesButStopped<'_> {
+    fn say(&mut self, _: &str) {}
+    fn ask_secret(&mut self, prompt: &str) -> Result<Secret, Fail> {
+        panic!("登出不该问秘密：{prompt}")
+    }
+    fn confirm(&mut self, _: &str) -> Result<bool, Fail> {
+        self.0.store(true, Ordering::SeqCst);
+        Ok(true)
+    }
+}
+
 #[test]
-fn stopped_before_logout_never_sends_it() {
+fn stopped_during_logout_confirm_never_sends_it() {
     let a = FakeAuth {
         logged_in: true,
         ..account()
     };
     let (b, _p) = started("stopped-logout", ServerKind::Test, a);
-    let stop = AtomicBool::new(true);
-    let r = logout(&b, &mut Script::new(&["yes"]), &mut |_| {}, &stop);
+    let stop = AtomicBool::new(false);
+    let r = logout(&b, &mut YesButStopped(&stop), &mut |_| {}, &stop);
     assert!(matches!(r, Err(Fail::Interrupted)));
+    assert!(stop.load(Ordering::SeqCst), "确认那一问应当问到");
     assert!(!auth_calls(&b).contains(&"logout"), "{:?}", auth_calls(&b));
 }
 

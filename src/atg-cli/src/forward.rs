@@ -14,6 +14,7 @@
 //! 不转的命令（登录这组、`serve` 自己）撞上占着档案的常驻进程时，用 [`busy_reason`] 换一句对路的说明。
 
 use crate::args::{Format, Global};
+use crate::deadlines::FRAME_TIMEOUT;
 use crate::out::{Code, Sink, Stdio, busy_to, emit_to, envelope, fail_to};
 use atg_core::config::{self, Profile, ServerKind};
 use atg_core::error::CoreError;
@@ -32,11 +33,9 @@ pub struct FwdArgs {
     pub params: Value,
 }
 
-use crate::deadlines::FRAME_TIMEOUT;
-
 /// 执行方中途退出时给人的话
 pub const EXECUTOR_GONE_ZH: &str = "替你执行的进程中途退出了，结果不完整，请重试";
-/// 执行方太久没回话
+/// 执行方太久没回话（秒数随 [`FRAME_TIMEOUT`]，单测比对）
 pub const EXECUTOR_SILENT_ZH: &str = "替你执行的进程 150 秒没回话，已放弃；可以重试";
 /// 发送类命令转发途中断了：执行方可能已经交出，不能叫人重试
 pub const EXECUTOR_GONE_SEND_ZH: &str =

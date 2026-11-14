@@ -491,7 +491,8 @@ fn bad_chat_is_usage() {
     assert!(matches!(query(&m), Err(Fail::Usage(_))));
 }
 
-/// 下载一直不应答（#78）：Ctrl+C 之后很快以 `interrupted` 结束，后端照常关掉（不用等 `DOWNLOAD_TIMEOUT`）
+/// 下载一直不应答（#78）：调用方立起停止标志（`play` 的 Ctrl+C、以后 GUI 的取消）之后很快以 `interrupted` 结束，
+/// 后端照常关掉，不用等 `DOWNLOAD_TIMEOUT`。`download` 命令自己不装信号处理，传的是永远立不起来的标志
 #[test]
 fn ctrl_c_while_download_hangs_is_interrupted() {
     let b = backend();

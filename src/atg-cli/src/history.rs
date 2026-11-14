@@ -22,6 +22,7 @@
 
 use crate::args::{Format, HistoryArgs, LinksArgs};
 use crate::chats::{self, Feed};
+use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::{Backend, HistoryReq, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
@@ -41,7 +42,6 @@ use std::time::{Duration, Instant};
 
 /// 连着几次没拿到新消息就停（防 TDLib 一直回同一批时死循环）
 pub const MAX_IDLE: u32 = 3;
-use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 
 /// 会话：数字 id，或 `saved`（自己的收藏夹）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
