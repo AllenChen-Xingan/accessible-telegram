@@ -31,12 +31,7 @@ use atg_core::store::Store;
 use atg_core::tree::ChatItem;
 use std::time::{Duration, Instant};
 
-/// 等授权线离开「等参数」最多多久
-pub const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
-/// 等补发完最多多久（`cli.md`：超时 10 秒）
-pub const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
-/// 整段加载最多多久（断网时 `loadChats` 可能一直不应答）
-pub const LOAD_TIMEOUT: Duration = Duration::from_secs(10);
+use crate::deadlines::{AUTH_TIMEOUT, LOAD_TIMEOUT, SYNC_TIMEOUT};
 
 /// 两段等待的上限（单测用短的）
 #[derive(Debug, Clone, Copy)]

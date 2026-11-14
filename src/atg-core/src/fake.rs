@@ -4,24 +4,21 @@
 //! `classify` → 序号 → 三线合成 → 事件流。所以假后端测到的监督、序号、故障广播就是正式的那份。
 //! 不碰 tdlib-rs 的全局收线程，测试可以并行跑多个。
 //!
-//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；
-//! 每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）与假时钟留给用到它的块（CLI `--fake`）。
+//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）与假时钟留给用到它的块（CLI `--fake`）。
 //!
 //! 登录（第 4 块）：[`FakeBackend::set_auth`] 给一个假账号 [`FakeAuth`]，`start` 后自己推到 `wait_phone`
 //! （已登录的推到 `ready`）；每步提交按账号核对，对了就推下一步的授权状态（TDLib JSON 形状，带提示字段，
 //! 走与真实后端同一段 [`AuthPrompt::from_td`]），错了回 TDLib 会回的那个错误（经 `map_td_error`）。
-//! [`FakeBackend::fail_next`] 给某一步注入一次错误。记账只记动作名，**不记输入的值**。
+//! [`FakeBackend::fail_next`] 给某一步注入一次错误（或一直不应答）。记账只记动作名，**不记输入的值**。
 //!
 //! 会话（第 5 块）：[`FakeBackend::set_chats`] 给某个列表排好一串会话（每个会话是几条 TDLib JSON 更新）。
-//! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。
-//! 应答之前先等收线程把这批更新处理完（[`Feed::Barrier`]），与真实 TDLib「更新先于应答」一致。
+//! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。应答之前先等收线程把这批更新处理完（[`Feed::Barrier`]），与真实 TDLib「更新先于应答」一致。
 //! [`FakeBackend::push_net`] 推一条连接状态。
 //!
 //! 消息（第 8 块）：[`FakeBackend::set_chat`] 给 `chat_get` 时要推的更新（`updateNewChat`、`updateUser`……），
 //! [`FakeBackend::set_history`] 给某会话的消息（TDLib `message` 对象）。`history` 照 TDLib 的切法（`offset` 为 0
 //! 不含 `from` 那条、往旧；负 `offset` 含它、另给比它新的），返回从新到旧；[`FakeBackend::stall_history`] 让接下来
-//! 几次只回起点那一条；[`FakeBackend::short_first_history`]
-//! 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
+//! 几次只回起点那一条；[`FakeBackend::short_first_history`] 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
 
 use crate::auth::{self, AuthPrompt};
 use crate::backend::{
@@ -389,6 +386,8 @@ impl FakeBackend {
         }
     }
 
+    /// 注入「一直不应答」（测期限）：`fail_next(动作, CoreError::Internal { what: HANG })`
+    pub const HANG: &str = "fake_hang";
     /// 下一次 `action`（记账里的名字）回这个错误，一次性
     pub fn fail_next(&self, action: &'static str, e: CoreError) {
         lock(&self.fail_next).push((action, e));
@@ -398,6 +397,19 @@ impl FakeBackend {
         let mut f = lock(&self.fail_next);
         let i = f.iter().position(|(a, _)| *a == action)?;
         Some(f.remove(i).1)
+    }
+
+    /// 注入的错误（[`Self::HANG`] 则一直不应答）；内核故障时照样以 `disconnected` 返回
+    async fn injected(&self, action: &'static str) -> Result<(), CoreError> {
+        let injected = self.take_failure(action);
+        link::guard(self.shared.clone(), async move {
+            match injected {
+                Some(CoreError::Internal { what: Self::HANG }) => std::future::pending().await,
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        })
+        .await?
     }
 
     fn kind(&self) -> ServerKind {
@@ -415,14 +427,7 @@ impl FakeBackend {
     /// 一个登录动作的公共部分：记账 → 注入的错误 → 内核故障。过了才轮到账号核对
     async fn auth_call(&self, action: &'static str) -> Result<FakeAuth, CoreError> {
         lock(&self.calls).push(Call::Auth(action));
-        let injected = self.take_failure(action);
-        link::guard(self.shared.clone(), async move {
-            match injected {
-                Some(e) => Err(e),
-                None => Ok(()),
-            }
-        })
-        .await??;
+        self.injected(action).await?;
         self.account()
     }
 
@@ -1134,14 +1139,7 @@ impl Backend for FakeBackend {
 impl FakeBackend {
     /// 读消息这组的公共部分：注入的错误 → 内核故障 → 没登录回 401
     async fn ready_or_401(&self, action: &'static str) -> Result<(), CoreError> {
-        let injected = self.take_failure(action);
-        link::guard(self.shared.clone(), async move {
-            match injected {
-                Some(e) => Err(e),
-                None => Ok(()),
-            }
-        })
-        .await??;
+        self.injected(action).await?;
         if self.step() != AuthStep::Ready {
             return Err(map_td_error(401, "Unauthorized"));
         }

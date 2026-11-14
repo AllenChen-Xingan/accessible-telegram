@@ -32,9 +32,7 @@ pub struct FwdArgs {
     pub params: Value,
 }
 
-/// 两帧之间最多等多久：一条 `chats` 最长约 30 秒（等授权 + 加载 + 等补发各 10 秒），执行方还可能先在处理
-/// 别人的请求；`send` 出完 `plan` 之后要等人按 Touch ID（最多 60 秒）再等结果（最多 30 秒），中间没有帧——留足
-pub const FRAME_TIMEOUT: Duration = Duration::from_secs(150);
+use crate::deadlines::FRAME_TIMEOUT;
 
 /// 执行方中途退出时给人的话
 pub const EXECUTOR_GONE_ZH: &str = "替你执行的进程中途退出了，结果不完整，请重试";

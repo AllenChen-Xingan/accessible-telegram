@@ -41,10 +41,7 @@ use std::time::{Duration, Instant};
 
 /// 连着几次没拿到新消息就停（防 TDLib 一直回同一批时死循环）
 pub const MAX_IDLE: u32 = 3;
-/// 等「补发完了」最多多久（同 `chats`）；未读位置要等补发完才准
-pub const SYNC_TIMEOUT: Duration = chats::SYNC_TIMEOUT;
-/// `saved` 要自己的用户 id：登录后 TDLib 自己推 `my_id`，最多等这么久
-const ME_TIMEOUT: Duration = Duration::from_secs(5);
+use crate::deadlines::{ME_TIMEOUT, SYNC_TIMEOUT};
 
 /// 会话：数字 id，或 `saved`（自己的收藏夹）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
