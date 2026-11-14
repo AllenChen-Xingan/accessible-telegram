@@ -325,7 +325,7 @@ impl Hub {
         v
     }
 
-    /// 会话租约（`--chat` 开会话前从这里要一份，开失败退掉）。已标走、还没摘掉的订阅者仍占着它那份
+    /// 会话租约（`--chat` 经 [`lease::open`] 要一份）。读方走了先标 `dead`，到摘掉（reap / 收尾）时才放回
     pub fn leases(&self) -> &Arc<Leases> {
         &self.leases
     }
@@ -350,9 +350,7 @@ impl Hub {
                 s.dead = true;
             }
         }
-        let (gone, live) = std::mem::take(&mut self.subs)
-            .into_iter()
-            .partition(|s| s.dead);
+        let (gone, live): (Vec<Sub>, Vec<Sub>) = self.subs.drain(..).partition(|s| s.dead);
         self.subs = live;
         self.give_back(gone)
     }
@@ -388,11 +386,13 @@ impl Hub {
         close
     }
 
-    /// 只给最后挂上的那个写错误、摘掉它（`watch` 接入途中出错，如 `--chat` 找不到）；回退出码
+    /// 只给最后挂上的那个写错误、摘掉它（`watch` 接入途中出错，如 `--chat` 找不到）；回退出码。
+    /// 只在 [`Hub::open_chat`] 之前调（还没占租约，开失败的已退掉）：不用放；`fail_unless_stopped` 同理
     pub fn fail_last(&mut self, f: &Fail) -> u8 {
         let Some(mut s) = self.subs.pop() else {
             return 1;
         };
+        debug_assert!(s.chat.is_none(), "fail_last 摘了已占租约的订阅者");
         let (line, code) = s.watcher.error_line(f);
         let _ = s.out.line(&line);
         s.out.finish(code);
@@ -795,7 +795,7 @@ fn watch_loop<B: Backend>(
         }
         max_pending = max_pending.max(fed);
         fetch_topics(b, feed, stop);
-        lease::close(b, feed.hub.reap(), &mut Stdio);
+        lease::close(b, feed.hub.reap(), "atg-cli watch", &mut Stdio);
         if feed.hub.is_empty() {
             break Ended::Stopped;
         }
@@ -811,7 +811,7 @@ fn watch_loop<B: Backend>(
     // 后端故障时不再关会话（请求发不出去；同 serve）。正常结束才配对 chat_close
     match ended {
         Ended::Stopped => {
-            lease::close(b, feed.hub.finish_all(), &mut Stdio);
+            lease::close(b, feed.hub.finish_all(), "atg-cli watch", &mut Stdio);
             0
         }
         Ended::Faulted => {

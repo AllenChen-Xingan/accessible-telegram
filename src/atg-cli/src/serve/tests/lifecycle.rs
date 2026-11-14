@@ -364,3 +364,59 @@ fn forwarded_watch_ends_when_stdout_reader_leaves() {
     stop.store(true, Ordering::SeqCst);
     assert_eq!(server.join().unwrap(), 0);
 }
+
+/// 两个 watch 订阅同一会话（`config-privacy.md` 第一节第 2 小节）：只开一次；先走的不关，最后走的才关，只关一次
+#[test]
+fn two_watches_on_same_chat_share_one_open() {
+    use atg_core::fake::Call;
+    let p = profile("watch-share", ServerKind::Main);
+    let b = Arc::new(backend());
+    let stop = Arc::new(AtomicBool::new(false));
+    let (st, pc, bb) = (stop.clone(), p.clone(), b.clone());
+    let server = std::thread::spawn(move || {
+        let mut cap = Cap::default();
+        serve(
+            &*bb,
+            &pc,
+            Format::Json,
+            &st,
+            &mut cap,
+            fast(),
+            Instant::now(),
+        )
+    });
+    let path = ipc::socket_path(&p);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !matches!(ipc::connect_at(&path), Connect::Ok(_)) {
+        assert!(Instant::now() < deadline, "执行方没起来");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let params = json!({"chat": "1", "reveal": false});
+    let (out1, stop1, c1) = watch_client(&p, params.clone());
+    out1.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+    let (out2, stop2, c2) = watch_client(&p, params);
+    out2.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+    let opens = || {
+        b.calls()
+            .iter()
+            .filter(|c| **c == Call::ChatOpen(1))
+            .count()
+    };
+    let closes = || {
+        b.calls()
+            .iter()
+            .filter(|c| **c == Call::ChatClose(1))
+            .count()
+    };
+    assert_eq!(opens(), 1, "第二个不再开");
+
+    stop1.store(true, Ordering::SeqCst);
+    assert_eq!(c1.join().unwrap(), 0);
+    stop2.store(true, Ordering::SeqCst);
+    assert_eq!(c2.join().unwrap(), 0);
+    wait_call(&b, &Call::ChatClose(1));
+    stop.store(true, Ordering::SeqCst);
+    assert_eq!(server.join().unwrap(), 0);
+    // 先走的那个若也关了，这里会是 2
+    assert_eq!((opens(), closes()), (1, 1));
+}

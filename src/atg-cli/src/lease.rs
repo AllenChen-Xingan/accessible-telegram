@@ -7,8 +7,9 @@
 //! 后端故障时不关，由调用方决定（故障时不调 [`close`]）。
 //!
 //! 内部带锁、方法都吃 `&self`：执行方是单线程的，但转写这类长动作握着一份租约的同时，
-//! `watch` 订阅者还要照常开关，不能让一份守卫把整张表独占住（arch 2026-11-14）。
-//! 以后 atg-cli 有了 lib 目标，随它一起挪
+//! `watch` 订阅者还要照常开关，所以持有者只拿共享引用（`&Leases` / `Arc<Leases>`），不独占整张表
+//! （架构负责会话 arch 2026-11-14 批）。转写用的守卫（放手走 [`Leases::give`]）随转写命令那个 PR 加。
+//! 表的实例暂时寄放在 [`crate::watch::Hub`] 上（执行方里只有一个），以后 atg-cli 有了 lib 目标，随它一起挪
 
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
 use crate::out::Sink;
@@ -39,7 +40,7 @@ impl Leases {
     }
 
     /// 放一份。回 `true` = 这是最后一份，调用方去 `chat_close`（后端故障时调用方不关）。
-    /// 放一个没要过的：不回关（配对错了，宁可不关也不替别人关掉）；测试里 `debug_assert` 抓出来
+    /// 放一个没要过的：不回关（配对错了，宁可不关也不替别人关掉）；debug 构建（含测试）里 `debug_assert` 直接 panic
     pub fn give(&self, chat: ChatId) -> bool {
         self.release(chat)
     }
@@ -71,7 +72,11 @@ impl Leases {
     }
 }
 
-/// 要一份租约，是第一份就真开；开失败退掉那份（`serve`、直跑的 `watch` 共用这一处）
+/// 要一份租约，是第一份就真开；开失败退掉那份（`serve`、直跑的 `watch` 共用这一处）。
+///
+/// 「要」和「开」不是一步：前提是从 `take` 到 `chat_open` 应答之间没有别人在同一张表上要同一个会话
+/// （否则后来的那个拿到「已有人开着」，而第一个开失败退掉后会话其实没开）。现在所有使用者都在执行方线程上
+/// 一件一件跑，成立；以后有了跨线程的使用者，要先把「开着没开成」也记进表里再放开
 pub fn open<B: Backend>(b: &B, leases: &Leases, chat: ChatId) -> Result<(), CoreError> {
     if leases.take(chat) {
         bounded(b, b.chat_open(chat), QUERY_TIMEOUT).inspect_err(|_| leases.undo(chat))?;
@@ -79,12 +84,13 @@ pub fn open<B: Backend>(b: &B, leases: &Leases, chat: ChatId) -> Result<(), Core
     Ok(())
 }
 
-/// 关掉放完租约、已没人开着的会话（[`Leases::give`] 回 `true` 的那些）；出错只记一句码。
-/// 停止标志可能已立起，只看期限。后端故障时调用方不调它（请求发不出去）
-pub fn close<B: Backend>(b: &B, chats: Vec<ChatId>, own: &mut dyn Sink) {
+/// 关掉放完租约、已没人开着的会话（[`Leases::give`] 回 `true` 的那些）；出错只记一句码，`who` 是日志前缀。
+/// 用 [`bounded`] 不用 `within`：收尾时 Ctrl+C 往往已经按了，关会话的请求照发，只受期限管。
+/// 后端故障时调用方不调它（请求发不出去）
+pub fn close<B: Backend>(b: &B, chats: Vec<ChatId>, who: &str, own: &mut dyn Sink) {
     for c in chats {
         if let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT) {
-            own.err(&format!("atg-cli: 关闭会话时出错（{}）", e.code()));
+            own.err(&format!("{who}: 关闭会话时出错（{}）", e.code()));
         }
     }
 }
@@ -138,11 +144,21 @@ mod tests {
         assert!(l.give(1));
     }
 
-    /// 配对错了（放了没要过的）：测试构建里 `debug_assert` 抓出来
+    /// 配对错了（放了没要过的）：debug 构建里 `debug_assert` 抓出来
+    #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "没要过")]
     fn give_unheld_is_caught_in_debug() {
         Leases::default().give(7);
+    }
+
+    /// 发布构建里：不 panic、不回关、表里不留东西
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn give_unheld_does_not_close() {
+        let l = Leases::default();
+        assert!(!l.give(7));
+        assert_eq!(l.held(7), 0);
     }
 
     #[test]

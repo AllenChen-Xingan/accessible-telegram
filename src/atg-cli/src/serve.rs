@@ -157,7 +157,7 @@ pub fn serve<B: Backend>(
             Err(_) => std::thread::sleep(POLL),
         }
         crate::watch::fetch_topics(b, &mut feed, stop);
-        crate::lease::close(b, feed.hub.reap(), own);
+        crate::lease::close(b, feed.hub.reap(), "atg-cli serve", own);
         if b.status().lines.core == CoreState::Faulted {
             faulted = true;
             break;
@@ -168,7 +168,7 @@ pub fn serve<B: Backend>(
     if faulted {
         feed.hub.fail_all(&Fail::Core(CoreError::Disconnected));
     } else {
-        crate::lease::close(b, feed.hub.finish_all(), own);
+        crate::lease::close(b, feed.hub.finish_all(), "atg-cli serve", own);
     }
     // 先删套接字再放锁（关后端时放），中间没有「锁空着、旧套接字还在」的窗口让后来者误连
     drop(listener);
