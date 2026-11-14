@@ -18,11 +18,11 @@
 //! 进度（R3a 第一刀，2026-11-14）：已换 core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、
 //! `session/tests.rs`。还没换的同类助手（各在别的线手上，那条线合并后各补一刀）：core `gate/tests.rs`、`send_limits.rs`、
 //! `send/tests.rs`、`ipc.rs` 的测试、`tests/send_limits.rs`；cli `chats.rs`（R2a 后在 `chats/tests.rs`）、`login/tests.rs`、
-//! `send/tests.rs`、`serve/tests.rs`、`voice/tests.rs`、`watch/tests.rs`。`tests/config.rs` 里 `atg-test-phone` 那处
-//! 是一个文件路径，不是目录助手，不换。造 TDLib JSON 的助手（各测试里的 `chat`、`msg`……）是 R3b。
+//! `send/tests.rs`、`serve/tests.rs`、`voice/tests.rs`、`watch/tests.rs`；还有 `tests/config.rs` 里 `atg-test-phone` 那个只带
+//! 进程号的临时目录（同一文件，但不在本刀的 4 处替换里，下一刀一起换）。造 TDLib JSON 的助手（各测试里的 `chat`、`msg`……）是 R3b。
 
 use crate::config::{Profile, ServerKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 一个新的空临时目录：`系统临时目录/atg-<tag>-<进程号>-<本进程第几个>`。先删同名残留再建。
@@ -36,11 +36,21 @@ pub fn temp_dir(tag: &str) -> PathBuf {
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
     ));
-    let _ = std::fs::remove_dir_all(&d);
-    if let Err(e) = std::fs::create_dir_all(&d) {
+    fresh(&d);
+    d
+}
+
+/// 把 `d` 弄成一个空目录：有残留就删（进程号会被重用，可能撞上上一次留下的），删不掉就报错——绝不把一个
+/// 删了一半、还留着旧东西的目录当成新的交出去（codex 044 第 1 轮 #1）。不存在算删好了
+fn fresh(d: &Path) {
+    match std::fs::remove_dir_all(d) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => panic!("testkit：清理残留的临时目录 {} 失败：{e}", d.display()),
+    }
+    if let Err(e) = std::fs::create_dir_all(d) {
         panic!("testkit：建临时目录 {} 失败：{e}", d.display());
     }
-    d
 }
 
 /// 在新的临时目录里建一个档案。档案名固定是 `main`（CLI 的默认档案名），与服务器种类无关：`kind` 传 `Test` 得到的是
@@ -49,5 +59,46 @@ pub fn profile(tag: &str, kind: ServerKind) -> Profile {
     match Profile::create(&temp_dir(tag), "main", kind) {
         Ok(p) => p,
         Err(e) => panic!("testkit：建档案失败：{}", e.code()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn temp_dir_is_new_and_empty_even_with_same_tag() {
+        let a = temp_dir("testkit-same");
+        std::fs::write(a.join("x"), b"x").unwrap();
+        let b = temp_dir("testkit-same");
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read_dir(&b).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn leftover_is_wiped() {
+        let d = temp_dir("testkit-left");
+        std::fs::create_dir_all(d.join("old/deep")).unwrap();
+        fresh(&d);
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn leftover_that_cannot_be_removed_is_an_error_not_reused() {
+        // root 不受目录权限限制，删得掉，这条测不出来
+        // SAFETY: geteuid 不读写内存、总是成功
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let d = temp_dir("testkit-stuck");
+        let locked = d.join("locked");
+        std::fs::create_dir_all(locked.join("inner")).unwrap();
+        // 子目录去掉全部权限：普通用户删不掉里面的东西，remove_dir_all 会失败
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let r = std::panic::catch_unwind(|| fresh(&d));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(r.is_err(), "删不掉残留时必须报错，不能把旧目录当新的");
     }
 }
