@@ -13,17 +13,18 @@
 //! 起不来时照样调 `shutdown` 收尾（客户端建好之后才失败的情况，`td.rs` 头部）。
 
 use crate::args::Global;
+use crate::deadlines::{START_TIMEOUT, within};
 use crate::login::{self, AuthSub, Prompter};
 use crate::out::Fail;
 use crate::tty::Tty;
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::{self, Profile, ServerKind};
 use atg_core::error::CoreError;
-use atg_core::link::block_on;
 use atg_core::secret::Secret;
 use atg_core::status::AuthStep;
 use serde_json::Value;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// 要跑的那件事
 #[derive(Clone, Copy)]
@@ -179,7 +180,7 @@ fn real(
     on_step: &mut dyn FnMut(AuthStep),
 ) -> Result<Value, Fail> {
     let b = td_backend()?;
-    drive(&b, profile, job, p, on_step)
+    drive(&b, profile, job, p, on_step, &crate::signals::STOP)
 }
 
 /// `chats`：选档案、起真实后端、列（`--fake` 场景目录还没做）
@@ -262,7 +263,8 @@ pub fn download(
     {
         let profile = open_profile(g)?;
         let b = td_backend()?;
-        crate::voice::run_download(&b, &profile, q, started)
+        // `download` 不装信号处理：Ctrl+C 照默认直接结束进程（同 `chats` / `history`），停止标志永远立不起来
+        crate::voice::run_download(&b, &profile, q, &AtomicBool::new(false), started)
     }
 }
 
@@ -371,7 +373,8 @@ pub fn links(
     }
 }
 
-/// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）
+/// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）。
+/// `stop`（Ctrl+C）立起 → `interrupted`，照常关后端、出结尾行（#63）
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn drive<B: Backend>(
     b: &B,
@@ -379,23 +382,26 @@ pub fn drive<B: Backend>(
     job: Job,
     p: &mut dyn Prompter,
     on_step: &mut dyn FnMut(AuthStep),
+    stop: &AtomicBool,
 ) -> Result<Value, Fail> {
     // 这组命令不读事件流：取出来就丢掉，事件不在无界通道里越攒越多
     drop(b.subscribe());
-    if let Err(e) = block_on(b.start(profile)) {
+    let deadline = std::time::Instant::now() + START_TIMEOUT;
+    if let Err(f) = within(b, b.start(profile), deadline, stop).and_then(|r| r.map_err(Fail::Core))
+    {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
-        return Err(Fail::Core(e));
+        return Err(f);
     }
     let kind = profile.kind();
     let r = match job {
-        Job::Login => login::login(b, kind, p, on_step),
+        Job::Login => login::login(b, kind, p, on_step, stop),
         Job::Auth(sub) => {
             let test_phone = (kind == ServerKind::Test)
                 .then(|| config::load_test_phone(&config::default_env_file()))
                 .flatten();
-            login::auth_step(b, kind, sub, test_phone.as_ref(), p, on_step)
+            login::auth_step(b, kind, sub, test_phone.as_ref(), p, on_step, stop)
         }
-        Job::Logout => login::logout(b, p, on_step),
+        Job::Logout => login::logout(b, p, on_step, stop),
     };
     if let Err(e) = b.shutdown(SHUTDOWN_TIMEOUT) {
         // 结尾行仍按这件事本身的结果；关闭出错另在标准错误说一声（只有机读码）

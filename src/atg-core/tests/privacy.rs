@@ -301,3 +301,54 @@ fn send_types_debug_never_leaks_content() {
     };
     assert_clean("ResendItem", format!("{item:?}"));
 }
+
+/// 转写（#59 3b）：转写原文进了表、进了投影，`{:?}`（结果事件、Store、投影、转写本身）照样漏不出
+#[test]
+fn transcript_debug_never_leaks_content() {
+    use atg_core::tree::{FileRef, Transcript, TranscriptSegment, TranscriptSource};
+    let mut store = Store::new();
+    store.apply(Input::OpenChat { chat_id: 101 });
+    let voice = Body::Content(Content {
+        body: vec![],
+        attachment: Some(Attachment::Voice {
+            duration: 3,
+            listened: false,
+            file: FileRef { id: 9 },
+        }),
+        sensitive: false,
+    });
+    store.apply(Input::Update {
+        seq: 1,
+        // 去掉助手默认带的临时内容：有效内容得是这条语音才取得到凭据
+        event: CoreEvent::NewMessage(Message {
+            ephemeral: None,
+            ..message(60, voice)
+        }),
+    });
+    let id = MsgId {
+        chat_id: 101,
+        message_id: 60,
+    };
+    let ticket = store.transcript_ticket(id).expect("语音该有凭据");
+    let transcript = Transcript {
+        lang: "zh-CN".into(),
+        source: TranscriptSource::Local,
+        segments: vec![TranscriptSegment {
+            text: s("转写"),
+            start_s: 0.0,
+            end_s: 1.0,
+        }],
+    };
+    assert_clean("Transcript", format!("{transcript:?} {transcript:#?}"));
+    let input = Input::Transcribed(atg_core::store::Transcribed { ticket, transcript });
+    assert_clean("Input::Transcribed", format!("{input:?}"));
+    store.apply(input);
+    let doc = project::message(&store, id).unwrap();
+    assert!(
+        serde_json::to_string(&doc).unwrap().contains(SECRET),
+        "暗号没进投影，测试失效"
+    );
+    assert_clean("Store", format!("{store:?}"));
+    assert_clean("Doc", format!("{doc:?} {doc:#?}"));
+    assert_clean("transcript()", format!("{:?}", store.transcript(id)));
+}

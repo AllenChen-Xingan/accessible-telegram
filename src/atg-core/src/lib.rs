@@ -70,6 +70,8 @@
         clippy::expect_used
     )
 )]
+// 测试里一律可以无期限地等（卡住就是测试失败）；产品代码由 `clippy.toml` 的 `disallowed-methods` 管（#78）
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
 
 pub mod auth;
 pub mod backend;
