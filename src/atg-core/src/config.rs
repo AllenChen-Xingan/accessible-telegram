@@ -169,14 +169,14 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), CoreError> {
 }
 
 impl Profile {
-    /// 建一个档案（已有则核对种类）：建目录、写标记。种类对不上就拒绝——测试与正式绝不混用
+    /// 建一个档案（已有则核对种类）：建目录、写标记。种类对不上就拒绝——测试与正式绝不混用。
+    /// 缺标记时只有新档案（见 `is_fresh`）才写，留着任何东西的都报 `profile_marker_missing`（#61）
     pub fn create(root: &Path, name: &str, kind: ServerKind) -> Result<Self, CoreError> {
         if !valid_name(name) {
             return Err(CoreError::InvalidInput { td: None });
         }
         let dir = root.join("profiles").join(name);
-        ensure_private_dir(&root.join("profiles"))?;
-        ensure_private_dir(&dir)?;
+        // 先读标记、判新旧，再动盘：要拒绝的档案，连目录权限都不碰（#61）
         match read_marker(&dir) {
             Ok(k) if k == kind => {}
             Ok(_) => {
@@ -184,14 +184,33 @@ impl Profile {
                     what: "profile_kind_mismatch",
                 });
             }
-            Err(MarkerError::Missing) => write_private(&dir.join(MARKER), kind.marker())?,
+            // #61：只有新档案才补写标记；留着数据却缺标记（标记被删、写标记前就中断……），
+            // 按契约拒绝启动，绝不按调用方猜种类
+            Err(MarkerError::Missing) if is_fresh(&dir) => {
+                ensure_private_dir(&root.join("profiles"))?;
+                ensure_private_dir(&dir)?;
+                write_marker(&dir, kind)?
+            }
+            Err(MarkerError::Missing) => {
+                return Err(CoreError::Internal {
+                    what: "profile_marker_missing",
+                });
+            }
             Err(MarkerError::Unreadable) => {
                 return Err(CoreError::Internal {
                     what: "profile_marker_unreadable",
                 });
             }
         }
-        Self::open(root, name)
+        // 种类以落盘的标记为准再核一次：两个进程同时建同一个新档案、种类不同时，后到的在这里被拒
+        // （它的 `write_marker` 撞上已有标记，不覆盖）
+        let p = Self::open(root, name)?;
+        if p.kind != kind {
+            return Err(CoreError::Internal {
+                what: "profile_kind_mismatch",
+            });
+        }
+        Ok(p)
     }
 
     /// 打开已有档案。标记缺失或读不懂就拒绝（`use_test_dc` 只从它来）
@@ -353,6 +372,41 @@ fn read_marker(dir: &Path) -> Result<ServerKind, MarkerError> {
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(MarkerError::Missing),
         Err(_) => Err(MarkerError::Unreadable),
+    }
+}
+
+/// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 什么都没有。
+/// 不只看 TDLib 的库：`send-guard.json`、`account-limited`、`send-pending` 这类落盘状态
+/// （`config-privacy.md` 第一节第 1 小节）也跟着档案种类走，留着任何一样都不算新。读目录出错也算不新，宁可拒绝
+fn is_fresh(dir: &Path) -> bool {
+    let empty_dir = |p: &Path| fs::read_dir(p).is_ok_and(|mut e| e.next().is_none());
+    match fs::read_dir(dir) {
+        Ok(entries) => entries.into_iter().all(|e| {
+            e.is_ok_and(|e| {
+                matches!(e.file_name().to_str(), Some("db" | "files")) && empty_dir(&e.path())
+            })
+        }),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+/// 只新建、不覆盖：别的进程抢先写了，就留给调用方按落盘的标记核种类
+fn write_marker(dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(dir.join(MARKER))
+    {
+        Ok(mut f) => f
+            .write_all(kind.marker().as_bytes())
+            .map_err(|_| CoreError::Internal {
+                what: "profile_dir_io",
+            }),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(_) => Err(CoreError::Internal {
+            what: "profile_dir_io",
+        }),
     }
 }
 
