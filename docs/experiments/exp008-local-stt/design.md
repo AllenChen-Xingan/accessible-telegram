@@ -42,21 +42,23 @@ core 与 audio 互不依赖
    - 为什么不放 `model::Message` 旁边：内容和它的文件拆两处，TDLib 整块替换内容时映射要写两处（违背唯一写入口）
 2. **下载完才解码**：exp007 测出截断文件会被静默解出半截、不报错。所以 `file_download` 只在 TDLib 报下载完成（`file.local.is_downloading_completed`）后才把本地路径交出去；没完成就是错误，不交半截给解码
 3. **转写结果挂哪**：转写结果**不是**消息本身的内容（TDLib 不知道它；`Content` 规定「只取决于消息本身」，只由 TDLib 的三种更新改：内容替换、临时内容变化、已听 / 已看标记——`specs/content-tree.md` 第二节），所以**不进存下来的 `Content`**：
-   - store 新加一张表 `transcripts`，键用 store 的稳定键（`stable_key` / `current_id`）→ `Transcript { segments, lang, source }`；`source` 先只有 `local`，以后接 Telegram 的 `speech_recognition_result` 也落同一个节点
-   - 写入只经 reducer：组合动作产出一个新事件，喂进 store；**删和迁也由 reducer 做**（发送成功 / 失败换 id、撤回、内容替换、临时内容出现或消失时）——这和上面否掉的「旁字段」不同：那里是 TDLib 映射要写两处，这里是派生数据，写和删都在 reducer 一处
-   - **迟到的结果不许复活旧转写**（codex 017 第 1 轮 #1、第 5 轮 #1）：**从 store 里读出这条语音、拿到它的 `FileRef` 的那一刻**就取凭据（不是转写开始时）——凭据贯穿下载、解码、转写、提交，下载或解码期间内容被换掉也逃不过检查。取凭据时（稳定键 + 当时最后一条更新的序号，同 `HistoryTicket` 的做法）；结果事件带着凭据回来，reducer 只在「消息还在、没被撤回、这条消息的有效内容在凭据序号之后没变过」时才写，否则丢弃。同一条并发重转：后到的覆盖先到的，但都要过这道检查
+   - store 新加一张表 `transcripts`，键用消息**现在的** id（`current_id`；3b 改，原为稳定键，理由见下面「删和迁收成一处」）→ `Transcript { segments, lang, source }`；`source` 先只有 `local`，以后接 Telegram 的 `speech_recognition_result` 也落同一个节点
+   - 写入只经 reducer：组合动作产出一个新事件，喂进 store；**删和迁也由 reducer 做**（什么时候删，正本是下面「删和迁收成一处」那条）——这和上面否掉的「旁字段」不同：那里是 TDLib 映射要写两处，这里是派生数据，写和删都在 reducer 一处
+   - **迟到的结果不许复活旧转写**（codex 017 第 1 轮 #1、第 5 轮 #1）：**从 store 里读出这条语音、拿到它的 `FileRef` 的那一刻**就取凭据（不是转写开始时）——凭据贯穿下载、解码、转写、提交，下载或解码期间内容被换掉也逃不过检查。**凭据 = 取凭据时的消息 id + 这条语音的文件 id**（`store::TranscriptTicket`；**#59 设计变更，人定 2026-11-13**，原为「稳定键 + 当时最后一条更新的序号」）；结果事件带着凭据回来，reducer 沿换 id 链找到现在的 id：不是活消息 → 作废（消息没了）；有效内容不是语音或文件 id 不同 → 作废（内容变了）；否则写在现在的 id 上。同一条并发重转：后到的覆盖先到的，但都要过这道检查
+     - 为什么改：转写的对象就是那段音频，判它还作不作数就该看「现在的有效内容是不是同一个音频文件」。按序号判有三处误杀——换 id（`rename` 清掉字段序号、记新版本，而本条要求换 id 后接受）、同时标已听（改的是 `content` 里的 `listened`）、历史重拉（整条快照替换、内容没变）
+     - **删和迁收成一处**：表按消息现在的 id 存；每次 `apply` 末尾整理一遍，消息不是活的了、或有效内容不再是那个语音文件的就删（撤回、删除、删旧、内容替换、临时内容出现或消失、受限一处判完），换过 id 的把键挪到新 id。删了就是删了：之后有效内容又变回那段语音（临时内容消失），要再转一次。**不按稳定键存**（3b 自审改）：重发让失败那条与新那条一段时间里同时是活消息、共用一个稳定键；重发应答还可能晚于新那条的换 id 才到，事后改掉它的稳定键。代码 `store/transcripts.rs`
    - **先打开会话才收得到更新**（第 8 轮 #1）：超级群、频道只有打开的会话 TDLib 才推实时更新（`actions.md:84`）。所以 `transcribe` 在取这条消息**之前**调 `chat_open`（L0，绝不标已读），提交之后关；用一个守卫对象保证**所有退出路径**（成功、作废、错误、取消）都释放。
      - **会话开着是共享的**（第 9 轮 #1）：同一进程里 GUI 正在看、`watch` 订阅者、几项转写可能同时要同一个会话开着。统一按 `config-privacy.md` 第一节第 2 小节给订阅者定的**引用计数**（「租约」）：第一个要的人真调 `chat_open`，最后一个放手才真调 `chat_close`；转写拿的是一份租约，放手只减一。**这套计数只写一处**：在 `atg-cli/src/lease.rs`（arch 2026-11-14 批：计数内部带锁、守卫拿共享引用，不独占；先单开小 PR 迁过来）：执行方的 `watch` 订阅者、直跑的 `watch --chat`、转写都从它要，GUI 以后也用它，不另写
      - CLI 一次性的 `transcribe` 是这个进程里唯一的使用者，租约退化成「开一次、关一次」
      - 测试：假后端「没打开就不推更新」，断言没开时校验抓不到、开了能抓到；「转写中 GUI 切走会话（放掉自己那份）仍收得到」「两项转写先结束一项不关」「转写结束但 GUI 仍开着不关」；每条退出路径都释放租约
    - **更新的消费顺序**（第 3 轮 #2）：转写期间更新照常排进事件流（收线程不停），但没人喂进 store。所以**提交结果之前，先把事件流里已收到的更新全部按序喂进 store（`feed.drain`），再提交结果事件**——凭据检查看到的就是截至提交那一刻收到的全部更新。后端在提交之后才关（CLI：组合动作在 `with_backend` 的闭包里做完提交）；GUI 常驻同理，提交与喂更新走同一个消费循环。提交之后才到的撤回 / 替换，由 reducer 按「删和迁」那条清掉转写，结果一样
-   - **提交的结果决定输出**（第 4 轮 #2）：提交是 store 的一个输入，reducer 回「接受（带当前身份）」或「作废（原因：消息没了 / 内容变了）」。`transcribe` 只在「接受」时输出成功节点，节点里的 id 用 reducer 回的**当前**身份（换过 id 的就是新 id）；作废时不出成功节点：消息没了 → `not_found{what:"message"}`，内容变了 → `internal{what:"transcript_stale"}`（再跑一次即可）。`no_speech` 同样要过这道检查（只是接受后不写表）
+   - **提交的结果决定输出**（第 4 轮 #2）：提交是 store 的一个输入（`Input::Transcribed`）；接受还是作废由**同一个裁决函数** `Store::transcript_verdict` 判，回「接受（带当前身份）」或「作废（`Stale::Gone` 消息没了 / `Stale::Changed` 内容变了）」。reducer 不返回值（3b 定）：调用方提交前先调裁决决定输出，再喂 `Input::Transcribed`，reducer 用同一个函数再判一次决定写不写——两步之间插不进别的输入（store 只在调用方自己的线程上一件件地喂），所以两次判的结果一样。`transcribe` 只在「接受」时输出成功节点，节点里的 id 用 reducer 回的**当前**身份（换过 id 的就是新 id）；作废时不出成功节点：消息没了 → `not_found{what:"message"}`，内容变了 → `internal{what:"transcript_stale"}`（再跑一次即可）。`no_speech` 同样要过这道检查（只是接受后不写表）
    - 测试：撤回、内容替换、换 id **经假后端的真实事件流**进队列（不是直接调 reducer），分别落在「下载中」「转写中」两段时间里，断言 CLI 的输出（作废的错误码、换 id 后节点用新 id）；外加两次重转乱序回来
    - **失败不覆盖成功**：只有成功结果会写进表；失败只回给调用方，不动表里已有的那条
-   - 投影 `Doc` 时把它填到语音节点上（JSON 新增可选字段 `voice.transcript`，没有就不输出 → `v` 不加一），和「名字投影时填」同一条规矩
+   - 投影 `Doc` 时填到消息上（JSON 新增可选字段 `transcript`，没有就不输出 → `v` 不加一），和「名字投影时填」同一条规矩。**挂消息上、不挂 `voice` 附件里**（3b 改）：附件属于存下来的 `Content`，转写不是；挂附件上还得让存下来的每条语音都带一个永远为空的字段。18+ 遮挡的语音没展开时不输出、不读
    - **只在内存里，不落盘**（大总管定）：转写文字等同消息内容，落盘就是一份新的明文副本；重转一次约一秒
    - **脱敏登记**（codex 017 #2，`specs/contracts/config-privacy.md` 第三节验收判据）：`Transcript`、结果事件、`atg-audio` 的 `Recognition` 都是含内容的类型——不派生完整 `Debug`，登记进 `redact.rs`（`atg-audio` 里同样手写只打印 `类型 { <redacted> }` 的 `Debug`）；暗号测试 `tests/privacy.rs` 补上：结果事件、Store、投影的 `{:?}` 里零出现，辅助程序的畸形输出（含暗号的坏 JSON）解析失败时错误里也零出现
-4. **读法**（`speech.rs`，句子是 AI 草稿，**待人实听**）：
+4. **读法**（`speech/media.rs`，句子是 AI 草稿，**待人实听**）：
    - `brief` **不变**：「林小雨：语音 12 秒，19:34」（`specs/style/message.md:95`）。「已转文字」是状态，按人定原则（`specs/content-tree.md` 第九节：名称只放谁发的、说了什么、几点）进 `detail`，不进 `brief`
    - `full`：转写全文（人按全文键逐句读）；没转过读「还没转文字」，要不要带按键提示（如「按 T 转」，键由调用方给，同 R1）留给 GUI 那一块定
    - 补标点只在这里做（第三节第 2 条）
@@ -87,7 +89,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 
 测试：这张表逐行做成表驱动单测（单跑、双跑各一组）。
 
-**`transcribe` 输出的是「本次结果」，不是表里的那份**（第 3 轮 #3）：本次结果是一个树节点 `Doc::Transcription { id, outcome }`，`outcome` = `text(Transcript)` 或 `no_speech`，JSON 由 `json` 出、句子由 `speech` 出（「没有听出内容」只在这里出现）。表里存的那份只在投影消息（`history` 等）时填进 `voice.transcript`。所以「重转为空」时本次输出 `no_speech`，而**同一个常驻 store**（GUI、以后的执行方）里投影出的消息仍带上一次的转写——两者分开。**CLI 的边界**（第 4 轮 #3）：每条 CLI 命令各起各的 store、用完即丢，表只在内存，所以 `transcribe` 的结果对之后的另一条 `history` 命令**不可见**（v0 就是这样，不为跨命令共享设计写回路径；要共享得经常驻执行方，等转发做了再说）。快照：首次就空、同一 store 里有旧转写时重转为空、正常有字
+**`transcribe` 输出的是「本次结果」，不是表里的那份**（第 3 轮 #3）：本次结果是一个树节点 `Doc::Transcription { id, outcome }`，`outcome` = `text(Transcript)` 或 `no_speech`，JSON 由 `json` 出、句子由 `speech` 出（「没有听出内容」只在这里出现）。表里存的那份只在投影消息（`history` 等）时填进消息的 `transcript`。所以「重转为空」时本次输出 `no_speech`，而**同一个常驻 store**（GUI、以后的执行方）里投影出的消息仍带上一次的转写——两者分开。**CLI 的边界**（第 4 轮 #3）：每条 CLI 命令各起各的 store、用完即丢，表只在内存，所以 `transcribe` 的结果对之后的另一条 `history` 命令**不可见**（v0 就是这样，不为跨命令共享设计写回路径；要共享得经常驻执行方，等转发做了再说）。快照：首次就空、同一 store 里有旧转写时重转为空、正常有字
 
 | 案 | 做法 | 代价 | 实测 |
 |---|---|---|---|
@@ -163,7 +165,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 **已改**（PR2，2026-11-13）：`cli.md` `play` 一行（`playback` 节点、非终结 `control_rejected`、EOF 与跳到末尾、`--mark-listened` 顺序与阅后即焚 v0 拒绝、`--redact`）；`download` 一行补 `--redact`；`content-tree.md` 顶层加 `playback`
 
 **待改**：
-- PR3：`actions.md:125` `speech_to_text` 改成本机（#59 取代 F4，L0；「不外发」以 Apple 端侧说明为据，**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en]`（一行 `kind:"transcription"` + `result`，`--redact` 报 `not_implemented`）；`errors.md` 码表与 `cli.md` 退出码表加 `stt_unavailable`；`content-tree.md` 加 `Transcript`、`Doc::Transcription`、`voice.transcript`
+- PR3：`actions.md:125` `speech_to_text` 改成本机（#59 取代 F4，L0；「不外发」以 Apple 端侧说明为据，**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en]`（一行 `kind:"transcription"` + `result`，`--redact` 报 `not_implemented`）；`errors.md` 码表与 `cli.md` 退出码表加 `stt_unavailable`；`content-tree.md` 加 `Doc::Transcription`（`Transcript` 与消息的 `transcript` 已随 3b 改）
 
 `--redact` 的口径（第 5 轮 #2、第 6 轮 #2、第 8 轮 #3）：`transcribe` 带转写原文；`download` 带本机路径（含用户名，`cli.md` 打码规则不放行文件名与路径）；`play` 每行带 `speech` 读法与说明（`cli.md` 要求打码时也替换）——打码还没做，三条都报 `not_implemented`。测试：三条命令加 `--redact` 两种输出格式都只有一行 `not_implemented`
 
