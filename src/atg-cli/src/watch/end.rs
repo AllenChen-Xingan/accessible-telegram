@@ -10,16 +10,19 @@ pub(super) fn fail_line(mut out: Box<dyn LineOut>, format: Format, f: &Fail) -> 
     crate::out::fail_with_to(&mut sink, format, f)
 }
 
-/// 出 `status` 之前就失败了（如授权线还没定）：已按过 Ctrl+C 就照约定写一条 `result`、退 0（#95），否则照实报错
+/// 出 `status` 之前就结束：已按过 Ctrl+C（等授权线成没成都一样）就照约定只写一条 `result`、退 0（#95），
+/// 否则照实报 `ready` 的错
 pub(super) fn before_status(
     mut out: Box<dyn LineOut>,
     format: Format,
-    f: &Fail,
+    ready: Result<(), Fail>,
     stop: &AtomicBool,
     watcher: impl FnOnce() -> Watcher,
 ) -> u8 {
-    if !stop.load(Ordering::SeqCst) {
-        return fail_line(out, format, f);
+    if !stop.load(Ordering::SeqCst)
+        && let Err(f) = ready
+    {
+        return fail_line(out, format, &f);
     }
     let _ = out.line(&watcher().result_line());
     out.finish(0);

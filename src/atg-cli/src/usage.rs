@@ -62,14 +62,21 @@ fn text(v: Option<&ContextValue>) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// 用户写到了哪一层子命令：只认定义里有的名字，所以印出来的都是命令自己的词
+/// 用户写到了哪一层子命令：只认定义里有的名字，所以印出来的都是命令自己的词。
+/// 选项后面跟的值（如 `--profile auth` 的档案名）跳过，不当子命令认
 fn path(argv: &[OsString]) -> String {
     let mut cmd = Cli::command();
+    cmd.build(); // 全局选项传到各子命令上，下面才认得出它们收不收值
     let mut out = String::from("atg-cli");
-    for a in argv.iter().skip(1) {
+    let mut it = argv.iter().skip(1);
+    while let Some(a) = it.next() {
         let Some(a) = a.to_str() else { continue };
         if a == "--" {
             break;
+        }
+        if takes_value(&cmd, a) {
+            it.next();
+            continue;
         }
         let Some(sub) = cmd.find_subcommand(a).cloned() else {
             continue;
@@ -79,6 +86,21 @@ fn path(argv: &[OsString]) -> String {
         cmd = sub;
     }
     out
+}
+
+/// `--name` / `-n`（不带 `=`、不连写值）是当前这层定义里收值的选项：下一个词是它的值
+fn takes_value(cmd: &clap::Command, a: &str) -> bool {
+    let arg = if let Some(long) = a.strip_prefix("--") {
+        cmd.get_arguments().find(|x| x.get_long() == Some(long))
+    } else if let Some(short) = a.strip_prefix('-')
+        && short.chars().count() == 1
+    {
+        cmd.get_arguments()
+            .find(|x| x.get_short() == short.chars().next())
+    } else {
+        None
+    };
+    arg.is_some_and(|x| x.get_action().takes_values())
 }
 
 #[cfg(test)]
@@ -130,5 +152,16 @@ mod tests {
         assert!(s.contains("--format") && s.contains("json"), "{s}");
         let s = text_for(&["auth", "code", "40419"]);
         assert!(s.contains("atg-cli auth code --help"), "{s}");
+        // 选项的值恰好是子命令名：不当子命令认（codex 027 第 1 轮 #2）
+        let s = text_for(&[
+            "--profile",
+            "auth",
+            "send",
+            "1",
+            "--text",
+            "auth",
+            "--bogus",
+        ]);
+        assert!(s.contains("atg-cli send --help"), "{s}");
     }
 }

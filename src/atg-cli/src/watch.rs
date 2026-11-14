@@ -743,15 +743,15 @@ fn watch_loop<B: Backend>(
     clock: fn() -> i64,
     started: Instant,
 ) -> u8 {
-    if let Err(f) = chats::ensure_ready(b) {
+    let ready = chats::ensure_ready(b);
+    if ready.is_err() || stop.load(Ordering::SeqCst) {
         let w = || Watcher::new(cx, format, None, clock).since(started);
-        return end::before_status(out, format, &f, stop, w);
+        return end::before_status(out, format, ready, stop, w);
     }
     if !out.line(&status_line(b, format)) {
         return 0;
     }
-    // 订阅者先挂上、再喂流：之后喂的每一条（含找 `--chat` 会话那几步里到的积压）它都看得到，
-    // 补发结束的 `sync_done` 也是它自己看到的那条
+    // 订阅者先挂上再喂流：之后每一条（含找 `--chat` 时到的积压、补发结束的 `sync_done`）它都看得到
     feed.hub.add(Sub {
         out,
         watcher: Watcher::new(cx, format, None, clock).since(started),

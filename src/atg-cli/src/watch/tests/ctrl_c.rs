@@ -35,6 +35,10 @@ fn ctrl_c_before_status_still_ends_with_result() {
     assert_eq!(code, 0);
     assert_eq!(ls.len(), 1, "{ls:?}");
     assert_eq!(ls[0]["kind"], "result");
+    // 已登录、一开始就按了：也不出 `status`，只有一行 `result`
+    let (code, ls) = run_watch_from(&backend(), Query { chat: None }, false, |_| false, true);
+    assert_eq!((code, ls.len()), (0, 1), "{ls:?}");
+    assert_eq!(ls[0]["kind"], "result");
     let (code, ls) = run_watch(&not_logged_in(), Query { chat: None }, false, |_| false);
     assert_ne!(code, 0);
     assert_eq!(ls.last().unwrap()["data"]["code"], "auth_required");
