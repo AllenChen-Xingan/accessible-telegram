@@ -121,7 +121,7 @@ fn main_server_asks_and_says_it_may_revoke() {
     let t = plan.confirm_text();
     assert!(t.starts_with("撤销待发 · 私聊 · 林小雨 · id 777\n"), "{t}");
     assert!(
-        t.contains("可能是 AI") && t.contains("已送达的给所有人撤回，刚发出的只删自己这边"),
+        t.contains("可能是 AI") && t.contains("已送达的全员撤回，刚发出的只删本机"),
         "{t}"
     );
     assert!(t.contains("atg 测试 待发"), "{t}");
@@ -152,6 +152,23 @@ fn sent_message_is_not_pending() {
     );
     let e = block_on(prepare_cancel(&b, FRIEND, &[], SendOrigin::Cli)).unwrap_err();
     assert_eq!(e.code(), "invalid_input");
+}
+
+/// 带附件的待发消息：正文给不出、绑不进凭据，整批不撤（codex 029 #3）
+#[test]
+fn non_text_pending_is_refused() {
+    let b = rig(true, false, Arc::default());
+    let mut m = own(FRIEND, 1_048_579, "", pending_state());
+    m["content"] = json!({"@type": "messagePhoto", "caption": {"@type": "formattedText", "text": "atg 测试 图", "entities": []},
+        "photo": {"@type": "photo", "has_stickers": false, "sizes": []}});
+    b.set_history(FRIEND, vec![m]);
+    let e = block_on(prepare_cancel(&b, FRIEND, &[1_048_579], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(
+        e,
+        CoreError::InvalidSend {
+            why: InvalidSendWhy::NotText
+        }
+    );
 }
 
 #[test]

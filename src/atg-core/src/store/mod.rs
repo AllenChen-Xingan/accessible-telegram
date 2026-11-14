@@ -31,7 +31,7 @@ const MAX_ORPHANS: usize = 4096;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreConfig {
     /// 非当前会话最多留多少条活消息（拍板 006 甲1）。超出的从最旧的删起；
-    /// 会话的最后一条、墓碑、换 id 的链不算在内、不删。当前打开的会话不限。
+    /// 会话的最后一条、待发的、墓碑、换 id 的链不算在内、不删。当前打开的会话不限。
     pub keep_per_chat: usize,
 }
 
@@ -621,7 +621,7 @@ impl Store {
         let victims: Vec<i64> = ids
             .iter()
             .copied()
-            .filter(|&m| Some(m) != last)
+            .filter(|&m| self.table.prunable(chat_id, m, last))
             .take(excess)
             .collect();
         if victims.is_empty() {

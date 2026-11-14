@@ -162,6 +162,9 @@ fn fate(store: &Store, old: MsgId) -> Option<Value> {
             SendingState::Failed => ("failed", Some(cur.message_id)),
             SendingState::Pending => return None,
         },
+        // 换了 id 的正式消息不在了：可能只是被删旧，证明不了删过，不报（codex 029 #2）
+        None if cur != old => return None,
+        // 待发的不参与删旧（`store::table::prunable`），没换 id 就不在了 = 真被删了
         _ => ("deleted", None),
     };
     Some(
@@ -237,8 +240,13 @@ fn run_cancel<B: Backend>(
         .into_iter()
         .filter(|m| m.chat_id == chat_id)
         .map(|m| m.message_id)
-        .take(delete::MAX_IDS)
         .collect();
+    // 「撤此刻全部」：超了不截断（截断后报 `all_cancelled` 是假话，codex 029 #1）
+    if ids.len() > delete::MAX_IDS {
+        return Err(Fail::Core(atg_core::error::CoreError::InvalidSend {
+            why: atg_core::error::InvalidSendWhy::TooMany,
+        }));
+    }
     if ids.is_empty() {
         return Err(Fail::Core(atg_core::error::CoreError::InvalidSend {
             why: atg_core::error::InvalidSendWhy::NotPending,
@@ -336,9 +344,11 @@ fn run_cancel<B: Backend>(
 fn cancel_outcome(store: &Store, w: &Waited) -> (&'static str, Option<i64>) {
     match w {
         Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted) => ("cancelled", None),
+        // 只认删除留下的墓碑；store 里没有了（被删旧、清缓存）证明不了删过，按未知报（codex 029 #2）
         Waited::Succeeded(m) => match store.entry(m.id) {
             Some(Entry::Live(_)) => ("already_sent", Some(m.id.message_id)),
-            _ => ("sent_deleted_here", Some(m.id.message_id)),
+            Some(Entry::Tombstone(_)) => ("sent_deleted_here", Some(m.id.message_id)),
+            None => ("unknown", Some(m.id.message_id)),
         },
         Waited::Failed { message, .. } => ("failed", Some(message.id.message_id)),
         Waited::Unknown(_) => ("unknown", None),

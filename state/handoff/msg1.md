@@ -31,7 +31,8 @@
 - 第 2 轮 P1：跨进程临时 id 重编 → `pending cancel CHAT_ID` 不收 id、同进程取全部待发（大总管同意）
 - 第 3 轮 P1：删除被换成正式 id → `revoke=false` + `sent_deleted_here`（大总管同意）
 - 第 4 轮 P1：换 id 的删除与发出成功同批到、第二次等待等不到 → 下落按 store 判（`cancel_outcome`，有单测）
+- codex 029 第 1 轮（`docs/reviews/029_pending-57-codex.md`）：P1×3 属实已修（待发不参与删旧 + 超 100 整批拒；`sent_deleted_here` 只认墓碑；带附件的整批拒 `not_text`），P2×1 已开 issue #109（撤销交出后超时被报成普通 network）
 - 剩余 P2（待开 issue）：确认框只能放三种结局里的两句；`DeletePlan` 等 M2.7 再加 revoke 字段；`serve/l2.rs` 名字与内容（含只读列表）不完全一致；文字格式结尾统计句在 CLI 里拼（架构守则第 3 条，同 send / resend 现状）
 
 ## 下一步
-名额：编译 + 测试 → 自审第 5 轮（要连续两轮无 P0/P1）→ 实测 → codex（029）→ 报「可以提交」
+人定 A：不再自审。名额：编译 + 测试 + tdlib 编译 + 实测 → 大总管提交 → codex 029 第 2 轮（脚本交大总管代跑）→ 报「可以提交」

@@ -352,6 +352,13 @@ fn raced_cancel_is_sent_deleted_here() {
         },
     });
     assert_eq!(cancel_outcome(&s, &w), ("sent_deleted_here", Some(50)));
+    // store 里干脆没有（被删旧）：证明不了删过，报未知（codex 029 #2）
+    let other = Waited::Succeeded({
+        let mut m = sent.clone();
+        m.id.message_id = 77;
+        m
+    });
+    assert_eq!(cancel_outcome(&s, &other), ("unknown", Some(77)));
     let gone = Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted);
     assert_eq!(cancel_outcome(&s, &gone), ("cancelled", None));
 }

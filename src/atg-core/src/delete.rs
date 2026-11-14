@@ -116,7 +116,7 @@ impl Gated for DeletePlan {
             })
             .collect();
         format!(
-            "撤销待发 · {}\n{}\n已送达的给所有人撤回，刚发出的只删自己这边\n{}",
+            "撤销待发 · {}\n{}\n已送达的全员撤回，刚发出的只删本机\n{}",
             send::target_zh(&self.target),
             send::origin_zh(self.origin),
             items.join("\n"),
@@ -183,9 +183,13 @@ async fn load_pending<B: Backend>(
                 why: InvalidSendWhy::NotPending,
             });
         }
+        // 带附件的给不出全文：人确认不了、凭据也绑不住它的说明文字（复查看不出变化），整批不撤（codex 029 #3）
+        let text = send::confirmable_text(&m).ok_or(CoreError::InvalidSend {
+            why: InvalidSendWhy::NotText,
+        })?;
         items.push(DeleteItem {
             id,
-            text: send::confirmable_text(&m),
+            text: Some(text),
         });
     }
     Ok(items)

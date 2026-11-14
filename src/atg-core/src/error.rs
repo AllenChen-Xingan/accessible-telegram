@@ -112,6 +112,10 @@ pub enum InvalidSendWhy {
     Paid,
     /// 要撤销的那条不是自己的待发消息（已发出、失败了、或本来就不是自己发的）
     NotPending,
+    /// 要撤销的待发消息里有不是纯文字的（带附件）：正文给不了人确认、也绑不进凭据，不撤（codex 029 #3）
+    NotText,
+    /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
+    TooMany,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -344,6 +348,12 @@ impl CoreError {
                 InvalidSendWhy::EmptyText => "要发的内容是空的",
                 InvalidSendWhy::TooLong => "要发的内容太长（超过 64 KB）",
                 InvalidSendWhy::NotFailed => "这条消息不是发送失败的，不用重发",
+                InvalidSendWhy::NotText => {
+                    "待发的消息里有不是纯文字的（带附件），给不出全文让你确认，本应用不撤；什么都没撤销"
+                }
+                InvalidSendWhy::TooMany => {
+                    "这个会话里待发的超过 100 条，一次撤不完，本应用不分批撤；什么都没撤销"
+                }
                 InvalidSendWhy::NotPending => {
                     "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
                 }

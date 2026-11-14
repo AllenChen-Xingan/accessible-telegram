@@ -37,6 +37,16 @@ impl Table {
     pub(super) fn contains(&self, id: MsgId) -> bool {
         self.messages.contains_key(&id)
     }
+    /// 删旧时能不能删这条：会话的最后一条不删；**待发的不删**（`pending_sends` 要列全、撤销要撤全，codex 029 #1）
+    pub(super) fn prunable(&self, chat_id: ChatId, message_id: i64, last: Option<i64>) -> bool {
+        let id = MsgId {
+            chat_id,
+            message_id,
+        };
+        let pending = matches!(self.messages.get(&id), Some(Entry::Live(m)) if m.sending == SendingState::Pending);
+        Some(message_id) != last && !pending
+    }
+
     /// 全部活消息（顺序不定）
     pub(super) fn live(&self) -> impl Iterator<Item = &Message> {
         self.messages.values().filter_map(|e| match e {

@@ -65,3 +65,10 @@ fn resolved_ones_drop_out() {
     push(&mut s, deleted(CHAT, &[1_000_003], true, false));
     assert!(s.pending_sends().is_empty());
 }
+
+/// 待发的不参与删旧：非当前会话超过 `keep_per_chat`（默认 50）条待发也一条不丢（codex 029 #1）
+#[test]
+fn pending_survive_pruning() {
+    let s = feed((1..=60).map(|i| new(pending(CHAT, 1_000_000 + i))));
+    assert_eq!(s.pending_sends().len(), 60);
+}
