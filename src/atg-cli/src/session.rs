@@ -5,6 +5,8 @@
 //!   服务器档案——没有就按测试档案新建，已有的是正式档案就拒绝启动（`internal{profile_kind_mismatch}`）
 //! - 不带 `--test-dc`：打开 `--profile`（默认 `main`）。`main` 第一次用时按正式档案新建；别的名字必须已存在
 //!   （档案种类只由档案自己的标记定，不由选项定）
+//! - 两种都一样：档案缺标记、目录里却留着东西（库、文件、发送状态……），拒绝启动（`internal{profile_marker_missing}`），
+//!   不按选项补写种类（#61）
 //!
 //! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake` 的场景目录还没做（要假时钟与时间线，
 //! `testing.md` 第一节第 3 小节，留给用到它的块；`chats` 的逻辑由假后端单测覆盖）。
@@ -16,10 +18,12 @@ use crate::out::Fail;
 use crate::tty::Tty;
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::{self, Profile, ServerKind};
+use atg_core::error::CoreError;
 use atg_core::link::block_on;
 use atg_core::secret::Secret;
 use atg_core::status::AuthStep;
 use serde_json::Value;
+use std::path::Path;
 
 /// 要跑的那件事
 #[derive(Clone, Copy)]
@@ -42,16 +46,23 @@ pub fn profile_name(g: &Global) -> &str {
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn open_profile(g: &Global) -> Result<Profile, Fail> {
     let root = config::default_root().map_err(Fail::Core)?;
-    if g.test_dc {
+    pick_profile(&root, g.test_dc, profile_name(g)).map_err(Fail::Core)
+}
+
+/// 选档案的规则本身（模块头），根目录由调用方给，测试才不碰真实档案目录
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+fn pick_profile(root: &Path, test_dc: bool, name: &str) -> Result<Profile, CoreError> {
+    if test_dc {
         // 已有的是正式档案：`create` 核对种类不符，报 `internal{profile_kind_mismatch}`，不启动
-        return Profile::create(&root, profile_name(g), ServerKind::Test).map_err(Fail::Core);
+        return Profile::create(root, name, ServerKind::Test);
     }
-    match Profile::open(&root, &g.profile) {
+    match Profile::open(root, name) {
         Ok(p) => Ok(p),
-        Err(_) if g.profile == "main" => {
-            Profile::create(&root, "main", ServerKind::Main).map_err(Fail::Core)
-        }
-        Err(e) => Err(Fail::Core(e)),
+        // 缺标记一律交给 `create`：全新的 main 就此建好，留着数据的由它拒绝（#61）；读不懂的标记等别的错误原样报
+        Err(CoreError::Internal {
+            what: "profile_marker_missing",
+        }) if name == "main" => Profile::create(root, "main", ServerKind::Main),
+        Err(e) => Err(e),
     }
 }
 
@@ -510,3 +521,6 @@ fn l2_run(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
