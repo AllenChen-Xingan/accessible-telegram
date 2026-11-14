@@ -14,6 +14,9 @@ from _common import REPO, REVIEW, SIZE, SOURCES, git, run  # noqa: F401
 class FileSize(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="atg-size-")
+        # 不读本机的全局 / 系统 git 配置与全局忽略文件：未跟踪文件算不算「被忽略」不能随机器变（#92）
+        self._env = {k: os.environ.get(k) for k in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "XDG_CONFIG_HOME", "HOME")}
+        os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", XDG_CONFIG_HOME=self.d, HOME=self.d)
         git(self.d, "init", "-q")
         os.makedirs(os.path.join(self.d, "src/a/src"))
         os.makedirs(os.path.join(self.d, "src/tdlib-rs"))
@@ -28,6 +31,11 @@ class FileSize(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
         shutil.rmtree(self.d)
 
     def write(self, rel: str, n: int) -> None:
@@ -59,9 +67,53 @@ class FileSize(unittest.TestCase):
         git(self.d, "add", "-A")
         self.assertEqual(self.check().returncode, 0)
 
-    def test_untracked_file_is_ignored(self):
+    def test_untracked_file_is_checked(self):
+        # #92：还没 git add 的新文件本地也要查出来，不能等 CI
+        self.write("src/a/src/scratch.rs", 900)
+        r = self.check()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("scratch.rs：900 行，新超标", r.stdout)
+
+    def test_gitignored_file_is_not_checked(self):
+        with open(os.path.join(self.d, ".gitignore"), "w") as f:
+            f.write("scratch.rs\n")
         self.write("src/a/src/scratch.rs", 900)
         self.assertEqual(self.check().returncode, 0)
+
+    def test_untracked_file_does_not_leak_into_worktree_baseline(self):
+        # 不带 --rev 写基线：只记已跟踪的，没提交的草稿不许预先进基线
+        self.write("src/a/src/scratch.rs", 900)
+        r = run(SIZE, "--root", self.d, "--write-baseline")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.base(), {"src/a/src/big.rs": 700})
+
+    def test_untracked_baseline_file_counts_as_deleted(self):
+        # codex 028 第 1 轮 #1：基线里的文件 git rm --cached 后留在盘上，干净检出里已经没了——本机也得报「已删除」
+        git(self.d, "rm", "-q", "--cached", "src/a/src/big.rs")
+        r = self.check()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("big.rs：已守线或已删除（0 行）", r.stdout)
+        r = run(SIZE, "--root", self.d, "--tighten")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.base(), {})
+
+    def test_tighten_does_not_add_untracked_files(self):
+        self.write("src/a/src/scratch.rs", 900)
+        r = run(SIZE, "--root", self.d, "--tighten")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.base(), {"src/a/src/big.rs": 700})
+
+    def test_untracked_file_in_build_dir_is_not_checked(self):
+        os.makedirs(os.path.join(self.d, "src/a/target"))
+        self.write("src/a/target/gen.rs", 900)
+        self.assertEqual(self.check().returncode, 0)
+
+    def test_untracked_file_does_not_leak_into_rev_mode(self):
+        # --rev 只读那个提交：工作区里的未跟踪文件不进基线
+        self.write("src/a/src/scratch.rs", 900)
+        r = run(SIZE, "--root", self.d, "--write-baseline", "--rev", "HEAD")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.base(), {"src/a/src/big.rs": 700})
 
     def test_baseline_file_growing_is_red(self):
         self.write("src/a/src/big.rs", 701)
