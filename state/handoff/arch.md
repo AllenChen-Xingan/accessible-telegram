@@ -1,6 +1,6 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
-- **手上**：#52 已合（PR #90），大总管已 merge 新 main；基线按 `origin/main`（68ac7a0）重记为 17 个，门槛自测 59 条 + 行数 + 五条正本比对全绿；010 的行数 / 行号按合并后的 main 更新完（S14 S15 D1–D4 D8 标了 #52 已修的部分）。等大总管推送、#86 转可合并；接着 R1a（行号按合并后的 main 重核：gate 现 1202 = 753 + 测试 449）
+- **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是 `token: ConfirmToken` 类型标注）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
 - **做到哪**（2026-11-13）：
   - ✅ `scripts/check-file-size.py`（600 行 + 棘轮；`--write-baseline --rev REV` 按某提交记基线，`--tighten` 只降不升）· 基线 `scripts/file-size-baseline.json`（按 main 记 14 个）
   - ✅ `scripts/check-sources.py`（五条检查：error-codes · exit-codes · subcommands · versions · workspace；前四条在 main 与 #52 分支都绿）
