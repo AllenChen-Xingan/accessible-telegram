@@ -21,8 +21,10 @@
 
 use crate::tree::*;
 
+mod content;
 mod playback;
 mod status;
+use content::dur;
 
 /// 读法需要、但不在树里的东西
 #[derive(Debug, Clone)]
@@ -169,6 +171,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
             if let Some(d) = m.tail.delivery {
                 parts.push(delivery(d).to_owned());
             }
+            parts.extend(content::transcript_detail(m, cx.reveal));
             parts.join("；")
         }
         Doc::Service(sv) => date(sv.date, cx),
@@ -184,7 +187,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
 /// 系统消息、撤回占位与名称同一句、不带钟点；别的节点同 [`brief`]
 pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
-        Doc::Message(m) => full_content(&m.content, cx.reveal),
+        Doc::Message(m) => content::full(m, cx.reveal),
         Doc::Service(sv) => service(sv, cx.reveal).0,
         Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
         Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
@@ -830,18 +833,6 @@ fn hm(t: Time, cx: &SpeechCtx) -> String {
     let offset = cx.offset_at.map_or(cx.utc_offset, |f| f(t.0));
     let (h, m) = t.local_hm(offset);
     format!("{h}:{m:02}")
-}
-
-/// 时长：「12 秒」「1 分 5 秒」「1 小时 2 分」
-fn dur(secs: u32) -> String {
-    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
-    match (h, m) {
-        (0, 0) => format!("{s} 秒"),
-        (0, _) if s == 0 => format!("{m} 分"),
-        (0, _) => format!("{m} 分 {s} 秒"),
-        _ if m == 0 => format!("{h} 小时"),
-        _ => format!("{h} 小时 {m} 分"),
-    }
 }
 
 #[cfg(test)]
