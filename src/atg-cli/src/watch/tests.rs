@@ -1,5 +1,4 @@
 //! `watch` 的单测：判定、渲染、直跑的起停与收尾
-
 //! 假后端 + 假时钟：数据全是编的（名字、会话名只用 `fixtures/names.txt` 里的），不碰真实账号、不碰本机档案目录。
 use super::*;
 use crate::deadlines::TOPIC_TIMEOUT;
