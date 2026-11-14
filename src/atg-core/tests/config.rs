@@ -66,6 +66,82 @@ fn missing_or_garbled_marker_refuses_to_start() {
     );
 }
 
+/// #61：已有数据却缺标记的档案，`create` 不许按调用方补写种类（正式库被 `--test-dc` 改标成测试档案）。
+/// 数据不只 TDLib 的库：档案目录里留着任何落盘状态（如账号被限标记）都算
+#[test]
+fn create_never_relabels_existing_profile_without_marker() {
+    let missing = Some(CoreError::Internal {
+        what: "profile_marker_missing",
+    });
+    for leftover in ["db/stub", "files/stub", "account-limited"] {
+        let sub = leftover.replace('/', "-");
+        let root = temp_root(&format!("relabel-{sub}"));
+        let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
+        std::fs::write(p.dir().join(leftover), "x").unwrap();
+        std::fs::remove_file(p.dir().join("server-kind")).unwrap();
+        for kind in [ServerKind::Test, ServerKind::Main] {
+            assert_eq!(Profile::create(&root, "main", kind).err(), missing, "{sub}");
+            assert!(!p.dir().join("server-kind").exists(), "{sub}");
+        }
+        assert_eq!(Profile::open(&root, "main").err(), missing, "{sub}");
+    }
+}
+
+/// 新档案（目录不存在，或里面只有空的 `db/`、`files/`）照常写标记
+#[test]
+fn create_writes_marker_only_for_fresh_profile() {
+    let root = temp_root("fresh");
+    assert_eq!(
+        Profile::create(&root, "test", ServerKind::Test)
+            .unwrap()
+            .kind(),
+        ServerKind::Test
+    );
+    // 目录在、子目录空、缺标记：仍算新档案
+    let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
+    std::fs::remove_file(p.dir().join("server-kind")).unwrap();
+    assert_eq!(
+        Profile::create(&root, "main", ServerKind::Main)
+            .unwrap()
+            .kind(),
+        ServerKind::Main
+    );
+}
+
+/// 读不懂的标记不当缺失处理，`create` 也不覆盖它
+#[test]
+fn create_keeps_garbled_marker() {
+    let root = temp_root("garbled");
+    let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
+    std::fs::write(p.dir().join("server-kind"), "maybe").unwrap();
+    assert_eq!(
+        Profile::create(&root, "main", ServerKind::Main).err(),
+        Some(CoreError::Internal {
+            what: "profile_marker_unreadable"
+        })
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.dir().join("server-kind")).unwrap(),
+        "maybe"
+    );
+}
+
+/// `db/` 读不了（不是目录）按「不是新的」处理，宁可拒绝
+#[test]
+fn unreadable_data_dir_is_not_fresh() {
+    let root = temp_root("notdir");
+    let dir = root.join("profiles").join("main");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("db"), "x").unwrap();
+    assert_eq!(
+        Profile::create(&root, "main", ServerKind::Main).err(),
+        Some(CoreError::Internal {
+            what: "profile_marker_missing"
+        })
+    );
+    assert!(!dir.join("server-kind").exists());
+}
+
 #[test]
 fn profile_names_cannot_escape() {
     let root = temp_root("names");

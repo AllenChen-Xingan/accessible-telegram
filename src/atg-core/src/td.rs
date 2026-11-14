@@ -174,7 +174,7 @@ mod real {
             let spawned = std::thread::Builder::new()
                 .name("atg-send-submit".into())
                 .spawn(move || {
-                    let r = match link::block_on(link::guard(shared.clone(), fut)) {
+                    let r = match link::block_on_guarded(shared.clone(), fut) {
                         Ok(Ok(v)) => Ok(v),
                         Ok(Err(e)) => Err(map_error_on(&shared, &e)),
                         Err(e) => Err(e),

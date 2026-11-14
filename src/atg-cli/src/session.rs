@@ -5,21 +5,26 @@
 //!   服务器档案——没有就按测试档案新建，已有的是正式档案就拒绝启动（`internal{profile_kind_mismatch}`）
 //! - 不带 `--test-dc`：打开 `--profile`（默认 `main`）。`main` 第一次用时按正式档案新建；别的名字必须已存在
 //!   （档案种类只由档案自己的标记定，不由选项定）
+//! - 两种都一样：档案缺标记、目录里却留着东西（库、文件、发送状态……），拒绝启动（`internal{profile_marker_missing}`），
+//!   不按选项补写种类（#61）
 //!
 //! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake` 的场景目录还没做（要假时钟与时间线，
 //! `testing.md` 第一节第 3 小节，留给用到它的块；`chats` 的逻辑由假后端单测覆盖）。
 //! 起不来时照样调 `shutdown` 收尾（客户端建好之后才失败的情况，`td.rs` 头部）。
 
 use crate::args::Global;
+use crate::deadlines::{START_TIMEOUT, within};
 use crate::login::{self, AuthSub, Prompter};
 use crate::out::Fail;
 use crate::tty::Tty;
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::{self, Profile, ServerKind};
-use atg_core::link::block_on;
+use atg_core::error::CoreError;
 use atg_core::secret::Secret;
 use atg_core::status::AuthStep;
 use serde_json::Value;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// 要跑的那件事
 #[derive(Clone, Copy)]
@@ -42,16 +47,23 @@ pub fn profile_name(g: &Global) -> &str {
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn open_profile(g: &Global) -> Result<Profile, Fail> {
     let root = config::default_root().map_err(Fail::Core)?;
-    if g.test_dc {
+    pick_profile(&root, g.test_dc, profile_name(g)).map_err(Fail::Core)
+}
+
+/// 选档案的规则本身（模块头），根目录由调用方给，测试才不碰真实档案目录
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+fn pick_profile(root: &Path, test_dc: bool, name: &str) -> Result<Profile, CoreError> {
+    if test_dc {
         // 已有的是正式档案：`create` 核对种类不符，报 `internal{profile_kind_mismatch}`，不启动
-        return Profile::create(&root, profile_name(g), ServerKind::Test).map_err(Fail::Core);
+        return Profile::create(root, name, ServerKind::Test);
     }
-    match Profile::open(&root, &g.profile) {
+    match Profile::open(root, name) {
         Ok(p) => Ok(p),
-        Err(_) if g.profile == "main" => {
-            Profile::create(&root, "main", ServerKind::Main).map_err(Fail::Core)
-        }
-        Err(e) => Err(Fail::Core(e)),
+        // 缺标记一律交给 `create`：全新的 main 就此建好，留着数据的由它拒绝（#61）；读不懂的标记等别的错误原样报
+        Err(CoreError::Internal {
+            what: "profile_marker_missing",
+        }) if name == "main" => Profile::create(root, "main", ServerKind::Main),
+        Err(e) => Err(e),
     }
 }
 
@@ -168,7 +180,7 @@ fn real(
     on_step: &mut dyn FnMut(AuthStep),
 ) -> Result<Value, Fail> {
     let b = td_backend()?;
-    drive(&b, profile, job, p, on_step)
+    drive(&b, profile, job, p, on_step, &crate::signals::STOP)
 }
 
 /// `chats`：选档案、起真实后端、列（`--fake` 场景目录还没做）
@@ -251,7 +263,8 @@ pub fn download(
     {
         let profile = open_profile(g)?;
         let b = td_backend()?;
-        crate::voice::run_download(&b, &profile, q, started)
+        // `download` 不装信号处理：Ctrl+C 照默认直接结束进程（同 `chats` / `history`），停止标志永远立不起来
+        crate::voice::run_download(&b, &profile, q, &AtomicBool::new(false), started)
     }
 }
 
@@ -360,7 +373,8 @@ pub fn links(
     }
 }
 
-/// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）
+/// 起后端、跑这件事、关后端（任何后端都一样；单测用假后端走这里）。
+/// `stop`（Ctrl+C）立起 → `interrupted`，照常关后端、出结尾行（#63）
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 pub fn drive<B: Backend>(
     b: &B,
@@ -368,23 +382,26 @@ pub fn drive<B: Backend>(
     job: Job,
     p: &mut dyn Prompter,
     on_step: &mut dyn FnMut(AuthStep),
+    stop: &AtomicBool,
 ) -> Result<Value, Fail> {
     // 这组命令不读事件流：取出来就丢掉，事件不在无界通道里越攒越多
     drop(b.subscribe());
-    if let Err(e) = block_on(b.start(profile)) {
+    let deadline = std::time::Instant::now() + START_TIMEOUT;
+    if let Err(f) = within(b, b.start(profile), deadline, stop).and_then(|r| r.map_err(Fail::Core))
+    {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
-        return Err(Fail::Core(e));
+        return Err(f);
     }
     let kind = profile.kind();
     let r = match job {
-        Job::Login => login::login(b, kind, p, on_step),
+        Job::Login => login::login(b, kind, p, on_step, stop),
         Job::Auth(sub) => {
             let test_phone = (kind == ServerKind::Test)
                 .then(|| config::load_test_phone(&config::default_env_file()))
                 .flatten();
-            login::auth_step(b, kind, sub, test_phone.as_ref(), p, on_step)
+            login::auth_step(b, kind, sub, test_phone.as_ref(), p, on_step, stop)
         }
-        Job::Logout => login::logout(b, p, on_step),
+        Job::Logout => login::logout(b, p, on_step, stop),
     };
     if let Err(e) = b.shutdown(SHUTDOWN_TIMEOUT) {
         // 结尾行仍按这件事本身的结果；关闭出错另在标准错误说一声（只有机读码）
@@ -510,3 +527,6 @@ fn l2_run(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

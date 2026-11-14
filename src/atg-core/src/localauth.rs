@@ -22,7 +22,7 @@ unsafe extern "C" {}
 /// `LAPolicyDeviceOwnerAuthentication`：Touch ID，不行就系统密码
 const POLICY_DEVICE_OWNER: isize = 2;
 /// 人最多想多久。受一个上限约束：命令经本机接口转给常驻的 `atg-cli serve` 执行时，转发的那个进程每收到一行
-/// 输出后最多再等 150 秒（`atg-cli` 的 `forward::FRAME_TIMEOUT`）；`send` 出完计划行后要等这里（≤ 60 秒）
+/// 输出后最多再等 150 秒（`atg-cli` 的 `deadlines::FRAME_TIMEOUT`）；`send` 出完计划行后要等这里（≤ 60 秒）
 /// 再等发送结果（≤ 30 秒）才有下一行，所以这里不能超过 150 − 30 秒，留足余量取 60
 const WAIT: Duration = Duration::from_secs(60);
 
