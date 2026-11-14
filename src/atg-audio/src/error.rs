@@ -13,7 +13,7 @@ pub enum AudioError {
 }
 
 impl AudioError {
-    /// 码（进 `internal{what}` 的那个字符串；`stt_unavailable` 由转写那块加）
+    /// 码（进 `internal{what}` 的那个字符串；转写的码在 [`crate::stt::SttError::what`]）
     pub fn what(self) -> &'static str {
         match self {
             AudioError::Decode => "audio_decode_failed",
