@@ -1,7 +1,7 @@
 # 评审 023 · R1a 拆 `gate.rs`、`send.rs`（#60 第二段）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`src/atg-core/src/gate.rs` + `gate/{check,display,tests}.rs`，`src/atg-core/src/send.rs` + `send/{text,outcome,resending,tests}.rs` + `send/tests/{text,resending}.rs`；口径是只挪不改，公开名字原样导出。重点写在 `_tmp/20261113-r1a-codex/focus.md`（不入库）。
-> **状态：第 1 轮（2026-11-14）· 总评「修改」· P1 一条，驳回（范围给错造成的假象）。等合入新 main 后用三点范围另起第 2 轮。**
+> **第 3 轮（2026-11-14）· 总评「通过」· 已达停止线（第 2、3 轮连续无 P0/P1；P2 无）。本评审结束。** 第 1 轮的唯一一条 P1 是范围给错造成的假象，已驳回（见下）；第 2 轮起改用三点范围、换新 name，停止线从第 2 轮数起。累计：提出 1 条，驳回 1 条，属实 0 条；现状页的行数「不符」1 条已改。
 > 之前：多视角自审 1 轮（atg-review），P0/P1 零。P2×7 都是摆放问题：发文字和重发共用的助手归到模块根；模块改名 `wait` → `outcome`、`resend` → `resending`，免得 intra-doc 链接撞名；模块根补上文件分工；`Outcome` 放回 gate 根。已按纯挪动改完。机器验收：行多重集比对只多出 mod、pub use、use、注释和 5 处测试用的 `pub(super)`；公开名字 gate 33、send 32，前后一致；`#[test]` 前后都是 41 条；fmt、no-debug、clippy 两种、`test --workspace` 全绿。
 > 隐私扫描：密钥类命中 15 条，全是参数类型标注 `token: ConfirmToken`（源文件 5 处，加上 diff 里删、增各 5 处）。人在大总管会话里确认是误报（2026-11-14），放行 `--force-secrets`。
 
@@ -24,3 +24,29 @@
 ### 是否再审
 
 要再审：本轮的 P1 被驳回，按协议开下一轮，让 codex 看到驳回理由，同时用正确的范围再审一遍。
+
+## 第 2 轮（2026-11-14）· 总评「通过」
+
+范围改成三点 `origin/main...HEAD`（先合入新 main：#91 #93 #96，复编全绿），身份换新 name `r1a-3dot`，停止线从这一轮重新数。原文：`_tmp/20261113-r1a-codex/r1a-3dot-codex-1.md`（不入库）。effort medium，60 秒（`result: P0×0 P1×0 P2×0 P3×0`）。
+本轮 P0/P1：0 · 停止线：连续第 1 轮 · 留作 issue 的 P2：无
+
+- 第 1 轮被驳回的那条：codex 认可三点 patch 里没有 config、session 的改动，不再报。
+- codex 在内存里还原了拆分前的内容，逐块核对增删行：没有逻辑行被改、漏掉或重复；5 处可见性调整都是测试要用，没有新增 crate 外可见的项；测试 gate 19 条、send 22 条，共 41 条。
+
+### 引用抽查
+
+- 「不符」1 条：`state/handoff/arch.md:3` 写 `gate/display.rs` 64 行、`send.rs` 255 行，实际是 62 行、253 行（自审后又删了一行 import，现状页没跟着改）。处理：现状页改成实际数。不影响守线结论。
+- 「核实属实」6 条：根上的重新导出、`#[must_use]` 的位置、`pub(super)` 的范围、`#[cfg(test)]` 与测试数、各文件行数。
+- 无法核实：fmt、clippy、测试、rustdoc 没有复跑（只读沙箱）。由本地实跑补上；rustdoc 只静态看了链接的作用域。
+
+### 是否再审
+
+再审一轮，确认是否连续第 2 轮无 P0/P1。
+
+## 第 3 轮（2026-11-14）· 总评「通过」
+
+原文：`_tmp/20261113-r1a-codex/r1a-3dot-codex-2.md`（不入库）。`result: P0×0 P1×0 P2×0 P3×0`。
+本轮 P0/P1：0 · 停止线：**满足**（第 2、3 轮连续无 P0/P1）· 留作 issue 的 P2：无
+
+- codex 确认第 2 轮那条行数「不符」已改；再次逐块比对拆分，没有逻辑行被改、漏掉或重复。
+- 引用抽查：「核实属实」7 条，「不符」0 条；无法核实的同第 2 轮（编译、rustdoc 由本地实跑补上）。
