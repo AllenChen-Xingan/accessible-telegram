@@ -22,6 +22,8 @@ pub const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
 pub const LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 /// 一次查询类请求（取会话、开关会话、取一条消息、标已听……）· 同 [`LOAD_TIMEOUT`] 取值 · 大总管定 2026-11-13、#78
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+/// 下载一个文件（语音等，`download` / `play`）· 大文件慢网也要下得完；到点报 `network`，Ctrl+C 照样停 · 大总管定 2026-11-13、#78，人可推翻
+pub const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 /// 起后端（开本地库、交 TDLib 参数）· 本地操作，正常一两秒；大库或慢盘留足 · #78 新加，人可推翻
 pub const START_TIMEOUT: Duration = Duration::from_secs(30);
 /// 登录每一步：提交与随后等授权线离开这一步共用 · 要连服务器 · `cli.md` 登录、#63

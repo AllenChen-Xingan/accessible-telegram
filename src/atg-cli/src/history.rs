@@ -27,7 +27,7 @@ use atg_core::backend::{Backend, HistoryReq, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
 use atg_core::json::Layers;
-use atg_core::link::{EventStream, block_on};
+use atg_core::link::EventStream;
 use atg_core::model::{Body, ChatId, MsgId};
 use atg_core::project;
 use atg_core::speech::{self, SpeechCtx};
@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 
 /// 连着几次没拿到新消息就停（防 TDLib 一直回同一批时死循环）
 pub const MAX_IDLE: u32 = 3;
-use crate::deadlines::{ME_TIMEOUT, SYNC_TIMEOUT};
+use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 
 /// 会话：数字 id，或 `saved`（自己的收藏夹）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,7 +167,7 @@ pub(crate) fn with_backend<B: Backend, T>(
     f: impl FnOnce(&B, &mut EventStream, &mut Feed) -> Result<T, Fail>,
 ) -> Result<T, Fail> {
     let mut stream = b.subscribe().map_err(Fail::Core)?;
-    if let Err(e) = block_on(b.start(profile)) {
+    if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return Err(Fail::Core(e));
     }
@@ -211,7 +211,7 @@ pub(crate) fn load_chat<B: Backend>(
     feed: &mut Feed,
     chat_id: ChatId,
 ) -> Result<(), Fail> {
-    block_on(b.chat_get(chat_id)).map_err(Fail::Core)?;
+    bounded(b, b.chat_get(chat_id), QUERY_TIMEOUT).map_err(Fail::Core)?;
     feed.drain(stream);
     if feed.store().chat(chat_id).is_none() {
         return Err(Fail::Core(CoreError::NotFound {
@@ -361,7 +361,7 @@ impl<B: Backend> Fetcher<'_, B> {
             local_only: self.local_only,
         };
         let ticket = self.feed.pump_mut().store_mut().ticket(self.chat_id);
-        let messages = block_on(self.b.history(req)).map_err(Fail::Core)?;
+        let messages = bounded(self.b, self.b.history(req), QUERY_TIMEOUT).map_err(Fail::Core)?;
         // 应答里提到的用户、会话已经先经更新到了：先喂更新，名字才查得到
         self.feed.drain(self.stream);
         let ids = messages
@@ -634,7 +634,7 @@ pub fn collect_links<B: Backend>(
         chat_id,
         message_id: q.message_id,
     };
-    let m = block_on(b.message_get(id)).map_err(Fail::Core)?;
+    let m = bounded(b, b.message_get(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
     feed.drain(stream);
     // 有效内容（有临时内容就用它）；受限的存下来时已换成受限节点，里面没有正文，也就没有链接
     let links = match m.effective() {

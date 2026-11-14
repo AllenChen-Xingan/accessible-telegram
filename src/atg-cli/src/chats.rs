@@ -22,7 +22,7 @@ use crate::out::Fail;
 use atg_core::backend::{Backend, ChatsLoad, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
-use atg_core::link::{EventStream, block_on, block_on_timeout};
+use atg_core::link::{EventStream, block_on_timeout};
 use atg_core::model::{ChatId, ChatList};
 use atg_core::project;
 use atg_core::pump::Pump;
@@ -31,7 +31,7 @@ use atg_core::store::Store;
 use atg_core::tree::ChatItem;
 use std::time::{Duration, Instant};
 
-use crate::deadlines::{AUTH_TIMEOUT, LOAD_TIMEOUT, SYNC_TIMEOUT};
+use crate::deadlines::{AUTH_TIMEOUT, LOAD_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 
 /// 两段等待的上限（单测用短的）
 #[derive(Debug, Clone, Copy)]
@@ -125,7 +125,7 @@ pub fn run_with<B: Backend>(
     limits: Limits,
 ) -> Result<Listing, Fail> {
     let mut stream = b.subscribe().map_err(Fail::Core)?;
-    if let Err(e) = block_on(b.start(profile)) {
+    if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return Err(Fail::Core(e));
     }

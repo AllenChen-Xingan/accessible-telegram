@@ -18,6 +18,7 @@
 
 use crate::args::{ChatsArgs, Format, Global, HistoryArgs, LinksArgs, WatchArgs};
 use crate::chats::{self, Feed, Limits};
+use crate::deadlines::{AUTH_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
 use crate::forward::FwdArgs;
 use crate::login::{self, AuthSub, Prompter};
 use crate::out::{Code, Fail, Sink, Stdio, emit_to, envelope, fail_to, fail_with_to};
@@ -27,7 +28,7 @@ use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
 use atg_core::ipc::{Accepted, Conn, Frame, Listener, PROTOCOL_V, ReadError, Request};
-use atg_core::link::{EventStream, block_on};
+use atg_core::link::EventStream;
 use atg_core::model::CoreEvent;
 use atg_core::secret::Secret;
 use atg_core::status::{AuthStep, CoreState};
@@ -112,7 +113,7 @@ pub fn serve<B: Backend>(
         Err(e) => return fail_with_to(own, format, &Fail::Core(e)),
     };
     // 拿档案锁在 `start` 里：拿不到就 `profile_busy`，不开接口
-    if let Err(e) = block_on(b.start(profile)) {
+    if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return fail_with_to(own, format, &Fail::Core(e));
     }
@@ -124,9 +125,7 @@ pub fn serve<B: Backend>(
         }
     };
     // 等授权线离开「等参数」再报状态（等不到也照常开始，状态如实报）
-    let _ = b.wait_auth(crate::deadlines::AUTH_TIMEOUT, &|s| {
-        s != AuthStep::WaitParameters
-    });
+    let _ = b.wait_auth(AUTH_TIMEOUT, &|s| s != AuthStep::WaitParameters);
     status_line(b, format, own);
 
     let kind = profile.kind();
@@ -209,7 +208,7 @@ pub fn serve<B: Backend>(
 
 /// 关掉替 `watch` 开的会话（与 `chat_open` 配对）；出错只记一句
 fn close_chat<B: Backend>(b: &B, chat: atg_core::model::ChatId, own: &mut dyn Sink) {
-    if let Err(e) = block_on(b.chat_close(chat)) {
+    if let Err(e) = bounded(b, b.chat_close(chat), QUERY_TIMEOUT) {
         own.err(&format!("atg-cli serve: 关闭会话时出错（{}）", e.code()));
     }
 }
@@ -376,7 +375,7 @@ fn join_watch<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, req: &Request, own: &
         let opened = crate::watch::resolve(ctx.b, ctx.stream, ctx.feed, c).and_then(|id| {
             // 同一会话已有别的订阅者替它开着：不再开（关时按引用计数配对）
             if ctx.feed.hub.opened(id) == 0 {
-                block_on(ctx.b.chat_open(id)).map_err(Fail::Core)?;
+                bounded(ctx.b, ctx.b.chat_open(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
             }
             Ok(id)
         });

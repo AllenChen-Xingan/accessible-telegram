@@ -21,7 +21,6 @@
 mod args;
 // 列会话的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
-#[expect(clippy::disallowed_methods, reason = "待收口：#78")]
 mod chats;
 // 期限有的只在真实后端路径上用；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
@@ -30,7 +29,6 @@ mod download;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
-#[expect(clippy::disallowed_methods, reason = "待收口：#78")]
 mod history;
 mod login;
 mod out;
@@ -39,11 +37,9 @@ mod out;
 mod play;
 // 发送的流程只有真实后端与单测调
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
-#[expect(clippy::disallowed_methods, reason = "待收口：#78")]
 mod send;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
-#[expect(clippy::disallowed_methods, reason = "待收口：#78")]
 mod serve;
 mod session;
 mod signals;
@@ -53,7 +49,6 @@ mod speech;
 mod tty;
 // 语音的组合动作只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
-#[expect(clippy::disallowed_methods, reason = "待收口：#78")]
 mod voice;
 // 直跑只有真实后端起；不编 TDLib 时只有单测与执行方用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]

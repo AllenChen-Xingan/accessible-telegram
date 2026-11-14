@@ -252,7 +252,7 @@ pub fn download(
     {
         let profile = open_profile(g)?;
         let b = td_backend()?;
-        crate::voice::run_download(&b, &profile, q, started)
+        crate::voice::run_download(&b, &profile, q, &crate::signals::STOP, started)
     }
 }
 
