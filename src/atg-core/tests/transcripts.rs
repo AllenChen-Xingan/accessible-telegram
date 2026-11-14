@@ -207,6 +207,78 @@ fn send_succeeded_moves_to_new_id() {
     assert!(!has(&s, V));
 }
 
+fn pending_voice(message_id: i64, file: i32) -> Message {
+    let mut m = msg(CHAT, message_id, voice_with(file));
+    m.outgoing = true;
+    m.sending = SendingState::Pending;
+    m
+}
+
+fn sent_as(m: &Message, new_id: i64, file: i32) -> Message {
+    let mut s = m.clone();
+    s.id = id(CHAT, new_id);
+    s.content = voice_with(file);
+    s.sending = SendingState::Sent;
+    s
+}
+
+/// 先写了转写、再换 id（整理时挪键）：新 id 上原文还在、旧 id 上没了；换两次（失败换 id 再成功换 id）也跟着走；
+/// 换 id 时文件变了就删
+#[test]
+fn committed_then_renamed_moves_key() {
+    let mut s = Store::new();
+    let p = pending_voice(5, 7);
+    push(&mut s, new(p.clone()));
+    let t = s.transcript_ticket(V).unwrap();
+    commit(&mut s, t, &["编的原文"]);
+    let failed_as = {
+        let mut f = sent_as(&p, 50, 7);
+        f.sending = SendingState::Failed;
+        f
+    };
+    push(
+        &mut s,
+        CoreEvent::SendFailed {
+            old_id: V,
+            message: failed_as.clone(),
+            error: atg_core::error::CoreError::Internal { what: "编的" },
+            can_retry: true,
+        },
+    );
+    assert!(!has(&s, V));
+    assert!(
+        full_of_id(&s, id(CHAT, 50)).ends_with("编的原文"),
+        "第一次换 id 没挪过去"
+    );
+    push(
+        &mut s,
+        CoreEvent::SendSucceeded {
+            old_id: id(CHAT, 50),
+            message: sent_as(&failed_as, 51, 7),
+        },
+    );
+    assert!(!has(&s, id(CHAT, 50)));
+    assert!(
+        full_of_id(&s, id(CHAT, 51)).ends_with("编的原文"),
+        "第二次换 id 没挪过去"
+    );
+
+    // 换 id 时文件变了：删
+    let mut s = Store::new();
+    let p = pending_voice(5, 7);
+    push(&mut s, new(p.clone()));
+    let t = s.transcript_ticket(V).unwrap();
+    commit(&mut s, t, &["编的原文"]);
+    push(
+        &mut s,
+        CoreEvent::SendSucceeded {
+            old_id: V,
+            message: sent_as(&p, 50, 8),
+        },
+    );
+    assert!(!has(&s, V) && !has(&s, id(CHAT, 50)));
+}
+
 fn failed(message_id: i64) -> Message {
     let mut m = msg(CHAT, message_id, voice());
     m.outgoing = true;
@@ -337,7 +409,11 @@ fn json_has_transcript_only_when_present() {
     assert!(before["data"].get("transcript").is_none(), "没有转写不输出");
     commit(&mut s, t, &["编的"]);
     let after = json::value(&doc(&s), &cx());
-    assert_eq!(after["v"], before["v"], "新增可选字段，v 不加一");
+    assert_eq!(
+        before["v"], 1,
+        "v 不加一：新增可选字段（固定值，不和同一个序列化器自己比）"
+    );
+    assert_eq!(after["v"], 1);
     let j = &after["data"]["transcript"];
     assert_eq!(j["lang"], "zh-CN");
     assert_eq!(j["source"], "local");
@@ -359,7 +435,13 @@ fn sensitive_voice_hides_transcript_until_revealed() {
         !speech::detail(&doc(&s), &cx()).contains("已转文字"),
         "遮着时连有没有转写都不说"
     );
-    assert!(json::line(&doc(&s), &cx()).find("编的暗句").is_none());
+    // 整个字段不输出（不只是没有原文：lang、source、空的 segments 也不许留）
+    assert!(
+        json::value(&doc(&s), &cx())["data"]
+            .get("transcript")
+            .is_none()
+    );
+    assert!(!json::line(&doc(&s), &cx()).contains("transcript"));
     let open = SpeechCtx {
         reveal: true,
         ..cx()
@@ -367,4 +449,29 @@ fn sensitive_voice_hides_transcript_until_revealed() {
     assert!(speech::full(&doc(&s), &open).contains("编的暗句"));
     assert!(speech::detail(&doc(&s), &open).ends_with("已转文字"));
     assert!(json::line(&doc(&s), &open).contains("编的暗句"));
+}
+
+/// 会话项的最后一条（`chat_item.last`）是同一份消息投影：18+ 遮着时转写同样整个不输出，展开了才有
+#[test]
+fn chat_item_last_hides_sensitive_transcript() {
+    let mut m = msg(CHAT, 5, voice());
+    m.sensitive = true;
+    let mut s = feed([CoreEvent::ChatAdded {
+        chat: chat(CHAT, 1),
+        last_message: Some(m),
+    }]);
+    let t = s.transcript_ticket(V).expect("前提：最后一条进了 store");
+    commit(&mut s, t, &["编的暗句"]);
+    let items = project::chat_list(&s, &ChatList::Main);
+    assert_eq!(items.len(), 1);
+    let hidden = json::line(&items[0], &cx());
+    assert!(!hidden.contains("transcript") && !hidden.contains("编的暗句"));
+    let open = SpeechCtx {
+        reveal: true,
+        ..cx()
+    };
+    assert!(
+        json::line(&items[0], &open).contains("编的暗句"),
+        "前提：会话项确实带转写"
+    );
 }

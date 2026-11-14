@@ -255,7 +255,7 @@ pub struct Store {
     requests: u64,
     /// 自己的用户 id（事件 `my_id_changed`）；还不知道是 `None`
     me: Option<UserId>,
-    /// 转写表（[`transcripts`]）：稳定键 → 转写。只在内存
+    /// 转写表（[`transcripts`]）：消息现在的 id → 转写。只在内存
     transcripts: transcripts::Transcripts,
 }
 
