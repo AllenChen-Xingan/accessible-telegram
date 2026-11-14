@@ -35,12 +35,12 @@
 | `atg-cli/src/history.rs` | 1264 | 558 | `links` 那段（603–706）独立成 `links.rs`；起后端那段（138–225）并入 R5；测试挪出 |
 | `atg-core/src/store/mod.rs` | 1263 | 296 | `store/patch.rs`（Patch、FieldSeqs、按字段合并）· 按输入分 `store/chats.rs`、`store/messages.rs`；`mod.rs` 只留 Store、Input、查询 |
 | `atg-core/src/gate.rs` | 1202 | 449 | ✅ R1a：`gate.rs` 留作模块根（常量、凭据、摘要、人的确认、`Outcome`、防重复记录 `GuardStore`）· `gate/check.rs`（闸本体 `Gate` 与直发留痕）· `gate/display.rs`（确认框里看不见的字符转义）· `gate/tests.rs`；每个 ≤ 450 行 |
-| `atg-core/src/notify.rs` | 1247 | 618 | 测试挪出即 629；再把 `effective`（三层静音的取值，194–246）拆成 `notify/mute.rs` |
+| `atg-core/src/notify.rs` | 1247 | 618 | ✅ R2a（`refactor/r2a-move-tests`）：根剩 578；有效通知设置（`Layer`、`Effective`、`effective`）挪成 `notify/settings.rs`；测试成 `notify/tests.rs`（夹具）+ `notify/tests/{messages,sync,typing}.rs`。只挪不改 |
 | `atg-cli/src/login.rs` | 1077 | 685 | 测试挪出即 392 |
 | `atg-core/src/tree/text.rs` | 671 | 0 | 测试已由 #76 挪到 `tree/text/tests.rs`。还要做的：建树（`build`，240–510）留下；查询（`links`、`links_marked`、`link_hidden`、`contains_spoiler`、`plain_text`，511–）成 `tree/query.rs` |
 | `atg-core/src/speech.rs` | 855 | 0 | 测试已由 #76 挪到 `speech/tests.rs`。还要做的：`speech.rs` 留作模块根（brief / detail / full 入口）· `speech/service.rs`（系统消息，约 490–571）· `speech/content.rs`（正文与附件，约 572–）· 常量表一处 |
 | `atg-cli/src/send.rs` | 971 | 416 | 测试已由 fix 线（#63/#73/#78/#79 那个 PR）挪成 `send/tests.rs`（剩 566），原计划的 R1b 取消；`saved` 解析、输出一行、计划句子各归 R4、R5、R6 |
-| `atg-cli/src/chats.rs` | 853 | 468 | 测试挪出即 385 |
+| `atg-cli/src/chats.rs` | 853 | 468 | ✅ R2a（`refactor/r2a-move-tests`）：测试挪成 `chats/tests.rs`，根剩 377。只挪不改 |
 | `atg-core/src/tdjson.rs` | 862 | 0 | 它是 TDLib JSON → model 的**唯一映射**（正式路径和夹具共用，好）。按对象拆：`tdjson/event.rs` · `chat.rs` · `message.rs` · `text.rs`（实体）；夹具专用的 `World` 单放 `tdjson/world.rs` |
 | `atg-core/src/fake.rs` | 1172 | 0 | 按后端能力拆：`fake/auth.rs` · `fake/read.rs`（会话、历史）· `fake/send.rs`（#52 加的发送与假确认，约 350 行）· `fake.rs` 留作模块根（共用状态、开关） |
 | `atg-core/src/td.rs` | 991 | 159 | 同上：`td/auth.rs` · `td/read.rs` · `td/send.rs`（#52 加的发送）· `td.rs` 留作模块根（起停、收线程） |
@@ -150,7 +150,7 @@ D1、D3、D4、D8 已修（#52 与此前的 main）；其余随第二段相关 P
 | 序 | 项 | 收益 | 风险 | 冲突 | 什么时候 |
 |---|---|---|---|---|---|
 | R1 | 拆 #52 新增的超线文件：core `send.rs`、`gate.rs`（R1a，✅ 只挪不改）；cli `send.rs` 的测试由 fix 线挪走，R1b 取消 | 中：三个新超标清掉 | 低（按职责挪，不改逻辑） | 与 send2 撞 | #52 合并后**最先**（大总管定） |
-| R2 | 行内测试挪出（chats、login、serve、notify、history、watch、store、td；`speech`、`tree/text` 的已由 fix 线 `fix/68-70-speech` 挪走，不重复做）；超 600 行的测试按主题再分 | 中：chats、login 2 个文件守线、serve 降到 610（login、serve 的测试各分两份），其余明显变小 | 极低（零行为变化） | 挪哪个文件就和改它的线撞：等那条线合并 | R1 后；按文件逐个，避开 media 在改的 |
+| R2 | 行内测试挪出（R2a ✅ chats、notify；其余 login、serve、history、watch、store、td 等各自在途的线合并后做；`speech`、`tree/text` 的已由 fix 线 `fix/68-70-speech` 挪走，不重复做）；超 600 行的测试按主题再分 | 中：chats、login 2 个文件守线、serve 降到 610（login、serve 的测试各分两份），其余明显变小 | 极低（零行为变化） | 挪哪个文件就和改它的线撞：等那条线合并 | R1 后；按文件逐个，避开 media 在改的 |
 | R3 | `atg-core::testkit`（S11：只收数据与后端夹具；CLI 输出替身留在 `atg-cli` 测试）。**R3a 第一刀** ✅：`testkit::{temp_dir, profile}` + 4 处换用（core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`）；其余 11 处等各自的线合并后补，清单在 `testkit.rs` 头；**R3b**：造 TDLib JSON 的助手 | 中：删掉 9 个文件里重复的造数据 | 低（只动测试） | 低 | R2 同批或之后 |
 | R4 | 目标解析与参数范围收一（S6、S7、S12；`target.rs`） | 中：3→1，#52 的第 4 份一并收 | 低 | 动 history/watch/send：#52 后 | R3 后 |
 | R5 | 命令登记表 + 一条执行路径（`cmd.rs`；删 `session.rs` 四个三岔函数、`serve.rs` 各支、`main.rs` run_X）。登记表里命令分两种：**一次性**（函数 → 结果与退出码）与**订阅**（`watch` 这类：返回订阅句柄，定义取消、清理、结尾帧；保留 `cli.md` 第一节第 5 小节六条例外与 `config-privacy.md`「流式订阅」的全部行为）。先写清这两种的接口与验收（并发订阅、读方断开、发起方 Ctrl+C、上限 8 个），再删原分支 | **高**：命令 × 跑法从乘法变加法，以后加命令只加一行 + 一个函数 | 中（改接线；`serve` 转发快照测试 `forwarded_*_matches_direct` 兜底） | 和所有加命令的线撞：#52 后、media 加 `play`/`download` 前最好 | R4 后，尽早 |
