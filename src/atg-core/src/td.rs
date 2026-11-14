@@ -38,9 +38,9 @@ mod real {
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
     use crate::tree::FileRef;
-    use serde_json::{Value, json};
+    use serde_json::json;
     use std::future::Future;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
     use std::thread::JoinHandle;
@@ -50,8 +50,9 @@ mod real {
     /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
     static INSTANCE: AtomicBool = AtomicBool::new(false);
 
-    /// TDLib 原生日志单文件上限（`config-privacy.md` 第一节第 5 小节）
-    const TD_LOG_MAX_BYTES: i64 = 10 * 1024 * 1024;
+    // 建客户端之前的两步（日志降级改道、系统语言）
+    mod setup;
+    use setup::{quiet_tdlib_log, system_language};
 
     fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
         m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -244,51 +245,6 @@ mod real {
     pub fn tdlib_version() -> Option<String> {
         let v = tdlib_rs::execute(json!({ "@type": "getOption", "name": "version" }))?;
         v["value"].as_str().map(str::to_owned)
-    }
-
-    /// 建客户端之前：TDLib 日志级别降到 0、输出改到档案自己的日志文件
-    fn quiet_tdlib_log(log_dir: &Path, profile: &str) -> Result<(), CoreError> {
-        let ok = |r: Option<Value>| r.is_some_and(|v| v["@type"] == "ok");
-        let level = tdlib_rs::execute(json!({
-            "@type": "setLogVerbosityLevel",
-            "new_verbosity_level": 0,
-        }));
-        if !ok(level) {
-            return Err(CoreError::Internal {
-                what: "td_log_level",
-            });
-        }
-        config::ensure_private_dir(log_dir)?;
-        let path = log_dir.join(format!("tdlib-{profile}.log"));
-        let path = path.to_str().ok_or(CoreError::Internal {
-            what: "td_log_path",
-        })?;
-        let stream = tdlib_rs::execute(json!({
-            "@type": "setLogStream",
-            "log_stream": {
-                "@type": "logStreamFile",
-                "path": path,
-                "max_file_size": TD_LOG_MAX_BYTES,
-                "redirect_stderr": false,
-            },
-        }));
-        if !ok(stream) {
-            return Err(CoreError::Internal {
-                what: "td_log_stream",
-            });
-        }
-        Ok(())
-    }
-
-    /// 系统语言（`setTdlibParameters` 必填）：取 `LANG` 的语言部分，取不到用 `en`
-    fn system_language() -> String {
-        std::env::var("LANG")
-            .ok()
-            .and_then(|l| {
-                let code: String = l.chars().take_while(char::is_ascii_lowercase).collect();
-                (code.len() == 2).then_some(code)
-            })
-            .unwrap_or_else(|| "en".to_owned())
     }
 
     /// 收线程的来源：`receive()` 最多等 2 秒；更新原样序列化回 TDLib JSON
@@ -818,6 +774,19 @@ mod real {
                             .map(|m| m.and_then(Self::map_message))
                             .collect(),
                     ))
+                }
+                SealedKind::Delete { request } => {
+                    let bad = || CoreError::Internal {
+                        what: "send_request_shape",
+                    };
+                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
+                    let ids: Vec<i64> = serde_json::from_value(request["message_ids"].clone())
+                        .map_err(|_| bad())?;
+                    let revoke = request["revoke"].as_bool().ok_or_else(bad)?;
+                    logline::info("send_submit", &[Field::Name("kind", "delete")]);
+                    self.detached(functions::delete_messages(chat, ids, revoke, id))
+                        .await?;
+                    Ok(Answer::Deleted)
                 }
             }
         }

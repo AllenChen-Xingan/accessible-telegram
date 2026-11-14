@@ -84,8 +84,9 @@ pub enum Command {
     Logout,
     /// 自己是谁
     Me(Rest),
-    /// 待发出的消息；`pending cancel CHAT_ID MSG_ID` 撤销一条
-    Pending(Rest),
+    /// 列出待发出的消息（本应用总开着本地库：上次没发完的会在任何一条命令启动时自动续发，跑这条也一样）；
+    /// `pending cancel CHAT_ID` 尽力撤销这个会话里全部待发消息：请求已到服务器的照样送达、之后给所有人撤回。确认方式同 send
+    Pending(PendingArgs),
     /// 内核 / 授权 / 连接状态
     Status(Rest),
     /// 列会话，一行一个，顺序同官方客户端。会等服务器把离线期间漏掉的更新（新消息、未读数）补送完再出，
@@ -297,6 +298,27 @@ pub struct ResendArgs {
     /// 只输出要重发什么，不重发
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// `pending` 的参数
+#[derive(Args)]
+pub struct PendingArgs {
+    #[command(subcommand)]
+    pub sub: Option<PendingCmd>,
+}
+
+#[derive(Subcommand)]
+pub enum PendingCmd {
+    /// 尽力撤销这个会话里此刻全部待发消息（临时 id 每次启动都重编，不按 id 选）：先输出一行要撤销哪几条、
+    /// 每条正文（kind:"plan"），确认后交出，等这几条的下落
+    Cancel {
+        /// 会话 id，或 saved（自己的收藏夹）
+        #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+        chat: String,
+        /// 只输出要撤销什么，不撤销
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// `speech` 的参数（`specs/contracts/cli.md`）。`--fixture` 是单个读法夹具文件。`--scenario` 现在**没有**，名字预留给以后的场景目录

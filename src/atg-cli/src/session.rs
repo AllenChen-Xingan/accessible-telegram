@@ -417,18 +417,25 @@ pub fn send(
     p: &crate::send::SendParams,
     started: std::time::Instant,
 ) -> u8 {
-    l2_run(g, format, "send", started, &mut |b, stream, feed, sink| {
-        crate::send::execute_send(
-            b,
-            stream,
-            feed,
-            p,
-            sink,
-            format,
-            started,
-            atg_core::send::RESULT_TIMEOUT,
-        )
-    })
+    l2_run(
+        g,
+        format,
+        "send",
+        g.unsafe_direct_send,
+        started,
+        &mut |b, stream, feed, sink| {
+            crate::send::execute_send(
+                b,
+                stream,
+                feed,
+                p,
+                sink,
+                format,
+                started,
+                atg_core::send::RESULT_TIMEOUT,
+            )
+        },
+    )
 }
 
 /// `resend` 直跑
@@ -442,6 +449,7 @@ pub fn resend(
         g,
         format,
         "resend",
+        g.unsafe_direct_send,
         started,
         &mut |b, stream, feed, sink| {
             crate::send::execute_resend(
@@ -453,6 +461,37 @@ pub fn resend(
                 format,
                 started,
                 atg_core::send::RESULT_TIMEOUT,
+            )
+        },
+    )
+}
+
+/// `pending` / `pending_cancel` 直跑（撤销是 L2，直发与否同样看本进程的 `--unsafe-direct-send`）
+pub fn pending(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    params: &serde_json::Value,
+    started: std::time::Instant,
+) -> u8 {
+    // 列表是只读的：不以直发起后端，也就不出直发开场（那行 `status` 的 `pending_sends` 是空的，会和列表自相矛盾）
+    let direct = g.unsafe_direct_send && command == "pending_cancel";
+    l2_run(
+        g,
+        format,
+        command,
+        direct,
+        started,
+        &mut |b, stream, feed, sink| {
+            crate::pending::execute(
+                b,
+                stream,
+                feed,
+                command,
+                params.clone(),
+                sink,
+                format,
+                started,
             )
         },
     )
@@ -478,12 +517,13 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的 `--unsafe-direct-send`）→
+/// 发送类命令（`send`、`resend`、`pending cancel`，以及同一外壳的 `pending` 列表）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的 `--unsafe-direct-send`）→
 /// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
 fn l2_run(
     g: &Global,
     format: crate::args::Format,
     command: &'static str,
+    direct: bool,
     started: std::time::Instant,
     body: &mut L2Body<'_>,
 ) -> u8 {
@@ -500,7 +540,7 @@ fn l2_run(
     }
     #[cfg(not(feature = "tdlib"))]
     {
-        let _ = (started, body);
+        let _ = (started, body, direct);
         fail_with_to(
             &mut Stdio,
             format,
@@ -513,7 +553,7 @@ fn l2_run(
     #[cfg(feature = "tdlib")]
     {
         let r = open_profile(g).and_then(|profile| {
-            let b = td_backend_with(g.unsafe_direct_send)?;
+            let b = td_backend_with(direct)?;
             crate::history::with_backend(&b, &profile, started, |b, stream, feed| {
                 if b.gate().direct() {
                     crate::send::direct_banner(b, &mut Stdio, format);

@@ -41,4 +41,10 @@ pub enum Call {
         preview: bool,
         resend: bool,
     },
+    /// 交出口的 `deleteMessages`
+    Delete {
+        chat: ChatId,
+        ids: Vec<i64>,
+        revoke: bool,
+    },
 }

@@ -20,6 +20,7 @@
 use crate::model::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod query;
 mod table;
 use table::Table;
 
@@ -420,33 +421,6 @@ impl Store {
     /// 消息是否已知受限（不论它还在不在缓存里、有没有被撤回）
     pub fn is_restricted(&self, id: MsgId) -> bool {
         self.table.is_restricted(id)
-    }
-
-    /// 某个列表当前的会话顺序：按 (order, 会话 id) 从大到小；order 为 0 的不在列表里
-    pub fn chat_list(&self, list: &ChatList) -> Vec<ChatId> {
-        let mut v: Vec<(i64, ChatId)> = self
-            .chats
-            .values()
-            .filter_map(|c| {
-                c.positions
-                    .iter()
-                    .find(|p| &p.list == list && p.order != 0)
-                    .map(|p| (p.order, c.id))
-            })
-            .collect();
-        v.sort_unstable_by(|a, b| b.cmp(a));
-        v.into_iter().map(|(_, id)| id).collect()
-    }
-
-    /// 主列表里 `after` 之后第一个有未读的会话；到底不回绕（A3）。`after` 不在列表里时从头找
-    pub fn next_unread_chat(&self, after: Option<ChatId>) -> Option<ChatId> {
-        let list = self.chat_list(&ChatList::Main);
-        let start = after
-            .and_then(|a| list.iter().position(|&c| c == a))
-            .map_or(0, |i| i + 1);
-        list.into_iter()
-            .skip(start)
-            .find(|id| self.chats.get(id).is_some_and(|c| c.unread_count > 0))
     }
 
     // ───── 更新 ─────

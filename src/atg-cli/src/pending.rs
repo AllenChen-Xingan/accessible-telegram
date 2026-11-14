@@ -1,0 +1,385 @@
+//! `pending`：列出待发出的消息（#57，T04）。契约：`specs/contracts/cli.md` `pending` 行，
+//! 动作：`specs/contracts/actions.md`「待发出的消息」；列表本身是 Store 查询 [`atg_core::store::Store::pending_sends`]。
+//!
+//! 开着消息库时，上次没发完的消息在 TDLib 启动时**当场续发**（TDLib 1.8.69 `MessagesManager.cpp:35925-35930`），
+//! 跑 `pending` 本身也会触发；续发时临时 id 与时间都重编（`:35851-35856`），与上次 `send_outcome_unknown` 报的临时 id
+//! 对不上。所以这里列的是「等连接就绪之后**仍**没发出的」，另把本次运行里看着它从待发变成已发出 / 失败 / 被删的
+//! 记进 `resolved`（只算看到的：续发与结果在第一次取事件之前就都到了的，两头都不出现）。
+//!
+//! 输出（直跑与经本机接口转发同一段代码）：每条待发一行 `kind:"message"`（内容树，读法同 `history`，带「发送中」）+
+//! 结尾一行 `result`（`pending_sends`、`resolved`、`synced`）。
+//!
+//! `pending cancel CHAT_ID`（`pending_cancel`，L2，按删除过闸，动作在 [`atg_core::delete`]）：撤这个会话里**此刻**全部
+//! 待发消息——不按 id 选：临时 id 每次启动都重编，上一次运行列出的 id 到这次多半对不上，直发 / 测试豁免下没人看确认框，
+//! 旧 id 万一被另一条待发消息复用就会撤错（自审第 2 轮 P1）。所以在同一进程里取 Store 的待发清单再定计划。一行 `plan` →
+//! 确认（同 `send`）→ 交出 `deleteMessages` → 等这几条的下落：临时 id 出现在 `messages_deleted` 里 = 撤下了（`cancelled`）；
+//! 先来了 `send_succeeded` = 没赶上、已发出（`already_sent`；若随后它的正式 id 也被删了，是 TDLib 把删除换成了正式 id、
+//! 只从自己这边删掉，报 `sent_deleted_here`，对方那边还在，见 `atg_core::delete`）；`send_failed` = 失败了；都没等到 = 未知。
+//! 「撤下了」也只是尽力：请求已到服务器的照样送达，之后 TDLib 会给所有人撤回（模块 `atg_core::delete` 的文档）。
+
+use crate::args::Format;
+use crate::chats::{self, Feed};
+use crate::deadlines::{CANCEL_RACE_WAIT, CANCEL_WAIT, QUERY_TIMEOUT, SYNC_TIMEOUT, bounded};
+use crate::history;
+use crate::out::{self, Fail, Sink, emit_to, envelope};
+use atg_core::backend::Backend;
+use atg_core::delete::{self, DeletePlan};
+use atg_core::gate::{ConfirmMode, Gated};
+use atg_core::link::EventStream;
+use atg_core::model::{MsgId, SendingState};
+use atg_core::project;
+use atg_core::send::{SendOrigin, Waited};
+use atg_core::speech;
+use atg_core::status::NetState;
+use atg_core::store::{Entry, Store};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::time::Instant;
+
+/// 一次 `pending` 要的东西（经本机接口转发时原样序列化过去）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingParams {
+    /// 读法时区（全局选项，发起方填进来）
+    #[serde(default)]
+    pub tz: Option<String>,
+}
+
+/// 按命令名执行（`pending` 列表 / `pending_cancel` 撤销；直跑与执行方共用）。参数解不开 → `ipc_bad_request`
+#[allow(clippy::too_many_arguments)]
+pub fn execute<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    command: &str,
+    params: Value,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+) -> u8 {
+    let bad = Fail::Core(atg_core::error::CoreError::Internal {
+        what: "ipc_bad_request",
+    });
+    match command {
+        "pending_cancel" => match serde_json::from_value::<CancelParams>(params) {
+            Ok(p) => execute_cancel(b, stream, feed, &p, sink, format, started),
+            Err(_) => out::fail_with_to(sink, format, &bad),
+        },
+        "pending" => match serde_json::from_value::<PendingParams>(params) {
+            Ok(p) => execute_list(b, stream, feed, &p, sink, format, started),
+            Err(_) => out::fail_with_to(sink, format, &bad),
+        },
+        _ => out::fail_with_to(sink, format, &bad),
+    }
+}
+
+/// 在已起好的后端上列待发消息，输出写到 `sink`，返回退出码（直跑与执行方共用）
+pub fn execute_list<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    p: &PendingParams,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+) -> u8 {
+    match list(b, stream, feed, p, sink, format, started) {
+        Ok(code) => code,
+        Err(f) => out::fail_with_to(sink, format, &f),
+    }
+}
+
+fn list<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    p: &PendingParams,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+) -> Result<u8, Fail> {
+    let cx = history::speech_ctx(p.tz.as_deref(), false)?;
+    chats::ensure_ready(b)?;
+    // 先取一次：续发的那几条此时多半还是「待发」（网络请求要等连接）
+    feed.drain(stream);
+    let before = feed.store().pending_sends();
+    let synced = b
+        .wait_net(SYNC_TIMEOUT, &|n| *n == NetState::Ready)
+        .is_some();
+    feed.drain(stream);
+    let now = feed.store().pending_sends();
+
+    let mut items = Vec::new();
+    for &id in &now {
+        if let Some(doc) = project::message(feed.store(), id) {
+            match format {
+                Format::Json => {
+                    let mut line = atg_core::json::value(&doc, &cx);
+                    if let Some(o) = line.as_object_mut() {
+                        o.insert("at".into(), json!(out::now_rfc3339_ms()));
+                    }
+                    emit_to(sink, &line);
+                }
+                // 文字格式也带会话 id 与临时 id：认消息、对照 `send` / `pending cancel` 的输出用（撤销本身按会话，不收 id）
+                Format::Text => sink.out(&format!(
+                    "会话 {} · 临时 id {}：{}",
+                    id.chat_id,
+                    id.message_id,
+                    speech::brief(&doc, &cx).replace('\n', " ")
+                )),
+            }
+        }
+        let date = feed.store().message(id).map(|m| m.date.rfc3339());
+        items.push(json!({"chat_id": id.chat_id, "temp_message_id": id.message_id, "date": date}));
+    }
+    let resolved: Vec<Value> = before
+        .iter()
+        .filter(|id| !now.contains(id))
+        .filter_map(|&id| fate(feed.store(), id))
+        .collect();
+
+    let data = json!({
+        "command": "pending",
+        "count": items.len(),
+        "pending_sends": items,
+        "resolved": resolved,
+        "synced": synced,
+        "elapsed_ms": crate::elapsed_ms(started),
+    });
+    match format {
+        Format::Json => emit_to(sink, &envelope("result", data)),
+        Format::Text => sink.out(&summary_zh(now.len(), &resolved, synced)),
+    }
+    Ok(0)
+}
+
+/// 本次运行里不再待发的那条去了哪：换了 id 的看新 id 那条的状态；不在了 = 被删（自己撤销、别的设备上删了，
+/// 或 TDLib 放弃）。换了 id 仍在待发的（新 id 已在待发清单里）不算有着落，回 `None`
+fn fate(store: &Store, old: MsgId) -> Option<Value> {
+    let cur = store.current_id(old);
+    let (outcome, id) = match store.entry(cur) {
+        Some(Entry::Live(m)) if cur != old => match m.sending {
+            SendingState::Sent => ("succeeded", Some(cur.message_id)),
+            SendingState::Failed => ("failed", Some(cur.message_id)),
+            SendingState::Pending => return None,
+        },
+        _ => ("deleted", None),
+    };
+    Some(
+        json!({"chat_id": old.chat_id, "temp_message_id": old.message_id, "outcome": outcome, "message_id": id}),
+    )
+}
+
+/// 文字格式的结尾一句（参数用法以外的说明；数字来自上面同一份数据）
+fn summary_zh(n: usize, resolved: &[Value], synced: bool) -> String {
+    let count = |o: &str| resolved.iter().filter(|r| r["outcome"] == o).count();
+    let mut s = if n == 0 {
+        "没有待发出的消息".to_owned()
+    } else {
+        format!("待发出 {n} 条（之后每次启动都会自动续发；待发超过 24 小时的不再续发、变成失败）")
+    };
+    let (ok, failed, gone) = (count("succeeded"), count("failed"), count("deleted"));
+    if ok + failed + gone > 0 {
+        s.push_str(&format!(
+            "；这次启动后已有着落：发出 {ok} 条，失败 {failed} 条，被删掉 {gone} 条（自己撤销、别的设备上删了或 Telegram 放弃）"
+        ));
+    }
+    if !synced {
+        s.push_str("；还没连上服务器，列表可能不全");
+    }
+    s
+}
+
+// ───────────────────────── cancel ─────────────────────────
+
+/// 一次 `pending cancel` 要的东西
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelParams {
+    pub chat: String,
+    pub dry_run: bool,
+}
+
+/// 在已起好的后端上撤销待发消息（直跑与执行方共用）
+pub fn execute_cancel<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    p: &CancelParams,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+) -> u8 {
+    match run_cancel(b, stream, feed, p, sink, format, started) {
+        Ok(code) => code,
+        // L2 的错误一律 `retryable:false`（同 `send`）
+        Err(Fail::Core(e)) => crate::send::l2_fail(sink, format, &e, json!({})),
+        Err(f) => out::fail_with_to(sink, format, &f),
+    }
+}
+
+fn run_cancel<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    p: &CancelParams,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+) -> Result<u8, Fail> {
+    let chat =
+        history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
+    chats::ensure_ready(b)?;
+    let chat_id = crate::send::resolve(b, chat)?;
+    // 续发的那几条在 TDLib 启动重放本地日志时就推来了（授权到 ready 之前），这里已在流里
+    feed.drain(stream);
+    let ids: Vec<i64> = feed
+        .store()
+        .pending_sends()
+        .into_iter()
+        .filter(|m| m.chat_id == chat_id)
+        .map(|m| m.message_id)
+        .take(delete::MAX_IDS)
+        .collect();
+    if ids.is_empty() {
+        return Err(Fail::Core(atg_core::error::CoreError::InvalidSend {
+            why: atg_core::error::InvalidSendWhy::NotPending,
+        }));
+    }
+    let plan = bounded(
+        b,
+        delete::prepare_cancel(b, chat_id, &ids, SendOrigin::Cli),
+        QUERY_TIMEOUT,
+    )
+    .map_err(Fail::Core)?;
+    feed.drain(stream);
+    emit_plan(sink, format, &plan);
+    if p.dry_run {
+        let data = json!({"command": "pending_cancel", "dry_run": true, "chat_id": chat_id,
+            "elapsed_ms": crate::elapsed_ms(started)});
+        finish(sink, format, data, "只看了计划，没有撤销");
+        return Ok(0);
+    }
+    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
+        sink.err(CANCEL_AUTH_PROMPT_ZH);
+    }
+    let token = b.gate().issue(&plan, false).map_err(Fail::Core)?;
+    let mode = bounded(b, delete::cancel(b, &plan, token), QUERY_TIMEOUT).map_err(Fail::Core)?;
+    let temps: Vec<MsgId> = plan
+        .items()
+        .iter()
+        .map(|i| MsgId {
+            chat_id,
+            message_id: i.id,
+        })
+        .collect();
+    let waited = atg_core::send::wait(stream, &temps, CANCEL_WAIT, &mut |env| feed.apply(env));
+    // 没赶上、已发出的：TDLib 可能把删除换成了它的正式 id（`atg_core::delete` 模块文档）。那条删除多半和发出成功
+    // 落在同一批、已被上面喂进 store（自审第 4 轮 P1），所以下落一律看 store；还活着的再给晚到的更新留一小会儿
+    let still_live = |feed: &Feed| {
+        waited.iter().any(|w| match w {
+            Waited::Succeeded(m) => matches!(feed.store().entry(m.id), Some(Entry::Live(_))),
+            _ => false,
+        })
+    };
+    if still_live(feed) {
+        let live: Vec<MsgId> = waited
+            .iter()
+            .filter_map(|w| match w {
+                Waited::Succeeded(m) => Some(m.id),
+                _ => None,
+            })
+            .collect();
+        atg_core::send::wait(stream, &live, CANCEL_RACE_WAIT, &mut |env| feed.apply(env));
+    }
+    let items: Vec<Value> = temps
+        .iter()
+        .zip(&waited)
+        .map(|(t, w)| {
+            let (outcome, id) = cancel_outcome(feed.store(), w);
+            json!({"temp_message_id": t.message_id, "outcome": outcome, "message_id": id})
+        })
+        .collect();
+    let count = |o: &str| items.iter().filter(|i| i["outcome"] == o).count();
+    let zh = format!(
+        "撤销了 {} 条（{}）；没赶上、已发出 {} 条（其中 {} 条只从自己这边删掉了，对方那边还在）；原消息发送失败 {} 条；{} 秒内没等到下落 {} 条（跑 pending 按正文再看）",
+        count("cancelled"),
+        delete::CANCEL_NOTE_ZH,
+        count("already_sent") + count("sent_deleted_here"),
+        count("sent_deleted_here"),
+        count("failed"),
+        CANCEL_WAIT.as_secs(),
+        count("unknown"),
+    );
+    // 文字格式也给出没撤销的那几条的 id（`resend` 要用失败那条的新 id，自审第 4 轮）
+    let mut zh = zh;
+    for i in items.iter().filter(|i| i["outcome"] != "cancelled") {
+        zh.push_str(&format!(
+            "；临时 id {} → {}{}",
+            i["temp_message_id"],
+            i["outcome"].as_str().unwrap_or(""),
+            i["message_id"]
+                .as_i64()
+                .map(|m| format!("，消息 id {m}"))
+                .unwrap_or_default()
+        ));
+    }
+    let all = count("cancelled") == items.len();
+    let data = json!({"command": "pending_cancel", "chat_id": chat_id, "confirm": mode.as_str(),
+        "all_cancelled": all, "items": items, "note_zh": delete::CANCEL_NOTE_ZH,
+        "elapsed_ms": crate::elapsed_ms(started)});
+    // 每条的下落都是确定的数据（含「没等到」），照总规矩以 `result` 结尾、退出码 0；没全撤下看 `all_cancelled`
+    finish(sink, format, data, &zh);
+    Ok(0)
+}
+
+/// 撤销之后一条待发消息的下落（`cli.md` `pending` 行的 `outcome`）。没赶上、已发出的，看 store 里它的正式 id 还在不在：
+/// 不在了（被删成墓碑或拿掉）= TDLib 把删除换成了正式 id、只删了自己这边（`sent_deleted_here`）
+fn cancel_outcome(store: &Store, w: &Waited) -> (&'static str, Option<i64>) {
+    match w {
+        Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted) => ("cancelled", None),
+        Waited::Succeeded(m) => match store.entry(m.id) {
+            Some(Entry::Live(_)) => ("already_sent", Some(m.id.message_id)),
+            _ => ("sent_deleted_here", Some(m.id.message_id)),
+        },
+        Waited::Failed { message, .. } => ("failed", Some(message.id.message_id)),
+        Waited::Unknown(_) => ("unknown", None),
+    }
+}
+
+/// 要人按 Touch ID 前在标准错误说一句（同 `send`）
+const CANCEL_AUTH_PROMPT_ZH: &str =
+    "atg-cli：请在弹出的系统框里按 Touch ID 或输入系统密码，确认这次撤销（60 秒内）";
+
+fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &DeletePlan) {
+    match format {
+        Format::Json => emit_to(sink, &envelope("plan", plan.json())),
+        Format::Text => {
+            let items: Vec<String> = plan
+                .items()
+                .iter()
+                .map(|i| match &i.text {
+                    Some(t) => format!("id {}：{}", i.id, atg_core::gate::visible(t)),
+                    None => format!("id {}：不是纯文字", i.id),
+                })
+                .collect();
+            sink.out(&format!(
+                "将撤销 {} 里的待发消息 {}；{}",
+                atg_core::send::target_zh(plan.target()),
+                items.join("；"),
+                delete::CANCEL_NOTE_ZH,
+            ));
+        }
+    }
+}
+
+fn finish(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
+    match format {
+        Format::Json => emit_to(sink, &envelope("result", data)),
+        Format::Text => sink.out(zh),
+    }
+}
+
+// 真后端实测（`#[ignore]`，要显式开）：见 `pending/exp_real.rs` 文件头
+#[cfg(all(test, feature = "tdlib"))]
+mod exp_real;
+#[cfg(test)]
+mod tests;

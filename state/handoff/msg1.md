@@ -1,0 +1,37 @@
+# 现状页 · msg1（批次 b18：发送这一侧收尾）
+
+交代：MAIN `_tmp/20261113-b18/msg1.md`。分支 `feat/57-pending`。顺序：#57 pending（评审 029）→ 删除（030）→ 编辑（031）。
+
+## 手上
+**#57 `atg-cli pending` + `pending cancel CHAT_ID`**：自审 4 轮，每轮各有 P1，均已修（见下「自审记录」）；第 4 轮修后待编译验证，再跑第 5 轮。全量（第 1 轮修后）487 过、clippy 净、tdlib 特性编译过。实测（大总管已同意：正式档案 main 收藏夹 + 直发，「atg 实验 待发撤销 N」3 次）代码在 `src/atg-cli/src/pending/exp_real.rs`（`#[ignore]` + 环境变量），等名额
+
+## 已核的事实（TDLib 1.8.69 源码，`resources/td/td/telegram/MessagesManager.cpp`）
+1. 开着消息库时，上次留下的待发消息在 TDLib 启动重放 binlog 时**当场续发**（`:35925-35930`），并推 `updateNewMessage`。任何一条命令（含 `pending` 本身）一启动就续发
+2. 续发时**临时 id 和 `date` 都重编**（`:35851-35856`），`sending_id` 不落盘
+3. 超过 24 小时（`MAX_RESEND_DELAY`，`MessagesManager.h:1708`）的不再续发、直接变失败（非收藏夹）
+4. 删除待发消息只停本地请求（`:21330-21345`）；服务器已收到的，成功应答回来时 TDLib 自动 `revoke=true` 删（`:27848-27851` → `:8484-8490`）；会话不可访问时放弃
+5. `deleteMessages` 先把临时 id 换成发出后的正式 id（`get_persistent_message_id`，`:8415`、`:21075-21087`；登记在 `:26949`、`:28347`）→ 撤销用 **`revoke=false`**（大总管同意），赶上恰好发出的只删自己这边，CLI 报 `sent_deleted_here`
+
+## 大总管定（2026-11-14）
+- Q1 `pending_cancel` 按 L2 过闸（同删除）
+- Q2 `PendingMessage` 时间改 `date`，契约写明续发后 id 与时间都会变
+
+## 改了什么（#57）
+- core：`store/query.rs`（新：`pending_sends`，迁入 `chat_list` / `next_unread_chat`）· `delete.rs`（新：`DeletePlan`、`prepare_cancel`、`cancel`，以后给所有人删除也放这里）· `send.rs` 交出口加 `SealedKind::Delete` / `Answer::Deleted`；确认文字函数迁到 `confirm_box.rs` · `td.rs` 加 `deleteMessages` 交出，建客户端前两步迁到 `td/real/setup.rs` · `fake/submit.rs`（新：重发迁入 + 删除）· `error.rs` 加 `not_pending`
+- CLI：`pending.rs`（新：列表 + 撤销）· `pending/exp_real.rs`（新：实测）· `deadlines::CANCEL_RACE_WAIT` 1 秒· `serve/l2.rs`（新：执行方的发送类分派，send / resend 迁入）· args / main / session / forward 接线 · `deadlines::CANCEL_WAIT` 5 秒
+- 契约：actions（待发出的消息、PendingMessage）· cli（pending 行、send 行结果未知）· errors（not_pending）· config-privacy（能转 pending）
+
+## 报大总管 / 要人定的
+- 超线文件变小（fake / send / store/mod / td / serve），要跑 `python3 scripts/check-file-size.py --tighten` 收紧基线——`scripts/` 不在我可写范围，请大总管跑或授权
+- 架构守则第 3 条：`pending` 文字格式的结尾一句是在 CLI 里拼的统计句（同 send / resend 现状），没有「命令结尾统计」树节点；建议另开 issue 统一处理
+- 误操作留痕：跑文件行数检查时用了一次 `git add -N`（只登记意向），发现违规立刻 `git reset` 撤回，工作区恢复原状
+
+## 自审记录（atg-review）
+- 第 1 轮 P1×3：一条 `messages_deleted` 只认第一条（`send::verdict` 改返回多条）· 文字格式缺 id · `result` 配退出码 10（改退出码 0 + `all_cancelled`）
+- 第 2 轮 P1：跨进程临时 id 重编 → `pending cancel CHAT_ID` 不收 id、同进程取全部待发（大总管同意）
+- 第 3 轮 P1：删除被换成正式 id → `revoke=false` + `sent_deleted_here`（大总管同意）
+- 第 4 轮 P1：换 id 的删除与发出成功同批到、第二次等待等不到 → 下落按 store 判（`cancel_outcome`，有单测）
+- 剩余 P2（待开 issue）：确认框只能放三种结局里的两句；`DeletePlan` 等 M2.7 再加 revoke 字段；`serve/l2.rs` 名字与内容（含只读列表）不完全一致；文字格式结尾统计句在 CLI 里拼（架构守则第 3 条，同 send / resend 现状）
+
+## 下一步
+名额：编译 + 测试 → 自审第 5 轮（要连续两轮无 P0/P1）→ 实测 → codex（029）→ 报「可以提交」

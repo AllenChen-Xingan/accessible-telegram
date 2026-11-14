@@ -3,6 +3,8 @@
 //! 从 `gate.rs` 挪出来（超长基线只许变小，新逻辑进新文件）；`gate` 照旧再导出这几个名字。
 
 use crate::gate::visible;
+use crate::model::{ChatKind, ChatTarget};
+use crate::send::SendOrigin;
 
 // Touch ID 确认框的说明区放得下多少（系统面板高度固定，放不下的被截掉）。下面三个数都是**估计值，没在真弹框上量过**：
 // 待人在场时用 `localauth` 的刻度尺测试实测（`ruler_popup`，交接记录里叫「冒烟 B」，`state/handoff/send2.md`），
@@ -144,6 +146,53 @@ pub fn fits_confirm_box(text: &str) -> bool {
 /// 放进确认框的文字：[`visible`] 之外再把制表符换成看得见、宽度可估的 ⇥（终端与计划行里的制表符照常保留）
 pub fn confirm_visible(s: &str) -> String {
     visible(s).replace('\t', "⇥")
+}
+
+// ───── 确认说明的文字（从 `send.rs` 挪来，`send` 照旧再导出） ─────
+
+/// 确认时说给人的「网络中断也会发」（`actions.md` 第一节第 2 小节）
+pub const QUEUE_NOTE_ZH: &str = "若网络中断，恢复后仍会发出";
+/// 同一个意思的短说法，给 Touch ID 弹框（VoiceOver 会读，要短）
+pub const CONFIRM_QUEUE_ZH: &str = "网络断了也会在恢复后发出";
+
+/// 弹框里的「内容」：先说全文几字几行，再给正文——换行显示成 ⏎、看不见的字符转义，压成一段。防的是用一串空行
+/// 把真正要发的话挤出可见区（自审第 4 轮 P1）。放不放得下由闸按整段说明把关（`gate::fits_confirm_box`，放不下就拒 `too_long_to_confirm`，不做「只显示前段、
+/// 全文见终端」——发起 `send` 的终端多半是 AI 的输出，人看不到），这里不截
+pub fn confirm_body(text: &str) -> String {
+    let chars = text.chars().count();
+    let lines = text.lines().count().max(1);
+    // 这里的「行」是原文的换行行数，不是确认框里折出来的视觉行（那个由 `gate::fits_confirm_box` 数）
+    format!("共 {chars} 字 {lines} 行：\n{}", flatten(text))
+}
+
+/// 压成一段给人看：看不见的字符转义、换行显示成 ⏎
+fn flatten(text: &str) -> String {
+    confirm_visible(text).replace('\n', "⏎")
+}
+
+pub(crate) fn origin_zh(o: SendOrigin) -> &'static str {
+    match o {
+        SendOrigin::Cli => "来自命令行，可能是 AI",
+        SendOrigin::Gui => "来自界面",
+    }
+}
+
+/// 「私聊 · 名字 · id 777」（名字转义控制字符）
+pub fn target_zh(t: &ChatTarget) -> String {
+    let kind = if t.saved {
+        "收藏夹"
+    } else {
+        match t.kind {
+            ChatKind::Private => "私聊",
+            ChatKind::Secret => "加密聊天",
+            ChatKind::Group => "群",
+            ChatKind::Supergroup if t.is_forum => "话题群",
+            ChatKind::Supergroup => "超级群",
+            ChatKind::Channel => "频道",
+            ChatKind::Unknown { .. } => "会话",
+        }
+    };
+    format!("{kind} · {} · id {}", confirm_visible(&t.title), t.id)
 }
 
 #[cfg(test)]

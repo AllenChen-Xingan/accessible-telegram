@@ -33,7 +33,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 ### 3. 动作表
 
-记法：`名字(参数) -> 返回`。返回里的 `ChatItem`、`Message`、`UserRef`、`MsgId`（消息身份，`{chat_id, message_id}` 一个对象）是 `tree` 定的内容节点，正式名以 `specs/content-tree.md` 第三节第 7 小节为准（群不是单独类型，是 `ChatItem` 的 `ChatKind`）；不属于内容树的 `SendPlan`、`PendingMessage`、`Page`、`MessageProps` 在本文第一节第 6 小节定义。`Ack` = 成功无返回值。所有动作都可能返回 `disconnected`、`network`、`rate_limited`、`internal`，下表「错误」列只写**额外**的。
+记法：`名字(参数) -> 返回`。返回里的 `ChatItem`、`Message`、`UserRef`、`MsgId`（消息身份，`{chat_id, message_id}` 一个对象）是 `tree` 定的内容节点，正式名以 `specs/content-tree.md` 第三节第 7 小节为准（群不是单独类型，是 `ChatItem` 的 `ChatKind`）；不属于内容树的 `SendPlan`、`DeletePlan`、`PendingMessage`、`Page`、`MessageProps` 在本文第一节第 6 小节定义。`Ack` = 成功无返回值。所有动作都可能返回 `disconnected`、`network`、`rate_limited`、`internal`，下表「错误」列只写**额外**的。
 
 **生命周期**
 
@@ -74,6 +74,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `search_chats(query: String, limit: u32)` | `Vec<ChatItem>` | — | L0 | `searchChats`（`:12523`，本地）；不够再 `searchChatsOnServer`（`:12529`） |
 | Store：`chat_list(list)` | 当前排好序的 `Vec<ChatItem>` | — | — | 纯查询 |
 | Store：`next_unread_chat(after: ChatId)` | `Option<ChatId>` | — | — | 纯查询，T09；到底不回绕，返回空，界面读「没有更多未读」（A3） |
+| Store：`pending_sends()` | `Vec<MsgId>`（按会话 id、消息 id 排） | — | — | 纯查询，T04；store 里活着、还在「待发」的自己的消息（见「发送」表下「待发出的消息」） |
 
 `ChatListKind`：`main` · `archive`（`td_api.tl:3970,3973`）。文件夹第一阶段不做。
 
@@ -106,10 +107,13 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `resend(plan: ResendPlan, token: ConfirmToken)` | 每条一项：`PendingMessage` 或该条的错误 | `send_refused` | **L2** | `resendMessages`（`:13195`）；凭据绑交出的 `resendMessages` 请求（会话 + 这几条 id）、每条重发后的回复关系与**每条的正文**；确认时同发文字一样给人看全文（Touch ID 框里每条「id N 那条（回复 id M 那条），共 X 字 Y 行：正文」（重发后仍保留的回复对象照给、也进凭据摘要；会被去掉的只说「会去掉回复关系」）），不是纯文字的消息给不出全文、合起来超过 150 字，正式服务器默认模式下都拒（`too_long_to_confirm`）——失败消息的正文可能从没经人眼（如直发时失败留下的），只给 id 让人按等于没确认（自审第 6 轮 P1）；重发不进直发的重复提交拦截（第 5 小节）；TDLib 对不能重发的那条返回 null（`:13190`），逐条报告，不当整体失败；交出前重取每条的失败态、正文与回复关系，与人确认过的计划比，变了拒 `send_refused(content_mismatch)`、什么都不交出 |
 | `draft_set(chat: ChatId, text: String, token: ConfirmToken)` · `draft_clear(chat, token)`（第二批） | `Ack` | `send_refused` | **L1，按 L2 同级把关** | `setChatDraftMessage`（`:14488`）；不发给对方，但会同步到你手机的输入框——AI 写进去、人在手机上顺手一按就发了；清掉则会毁掉你手写的草稿。所以与发送用**同一道闸、同一种凭据**（绑会话 + 内容摘要；测试服务器 + 收藏夹免确认）。GUI 输入框里的草稿默认**只存本机、不同步到云端**——「人在打字」同样证明不了是人（computer use 也能打字） |
 | `typing(chat: ChatId)` | `Ack` | — | **L1** | `sendChatAction`（`:14159`）；A2 人定进 MVP：GUI 输入框里打字时发（同官方客户端，`002_roadmap.md` M4.1）；CLI 不发 |
-| `delete_prepare(chat: ChatId, ids: Vec<MessageId>)` | `SendPlan`（删哪几条、给所有人） | `not_found` `forbidden` | L0 | 只查不发；逐条按 `message_properties` 的「能否删除（双方）」检查，不能的拒。⚠️ 收藏夹里的消息不能给所有人删（`MessagesManager.cpp:8346`），必拒 |
+| `delete_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（删哪几条、给所有人） | `not_found` `forbidden` | L0 | 只查不发；逐条按 `message_properties` 的「能否删除（双方）」检查，不能的拒。⚠️ 收藏夹里的消息不能给所有人删（`MessagesManager.cpp:8346`），必拒 |
+| `pending_cancel_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（撤哪几条、每条正文） | `not_found` · `invalid_input`：`why:"not_pending"`（不是自己的待发消息）；id 为空或超过 100 条时不带 `why` | L0 | 只查不删；逐条 `getMessage` 查「自己发的、还在待发」（见下「待发出的消息」）。临时 id 只在同一进程里有效（续发会重编），CLI 在同一进程里从 Store 的 `pending_sends` 取这个会话的全部待发再调它 |
+| `pending_cancel(plan, token: ConfirmToken)` | `Ack`；撤没撤下经事件（临时 id 出现在 `messages_deleted` = 撤销了；先来 `send_succeeded` = 没赶上，随后正式 id 也被删 = 只从自己这边删掉了） | `send_refused` `invalid_input`（`not_pending`：交出前再查，已发出或正文变了） | **L2** | `deleteMessages`（`:13226`）**`revoke=false`**（见下「待发出的消息」）；凭据绑会话 + 这几条 id + 每条正文；只是尽力撤销 |
 | `delete(plan, token: ConfirmToken)` | `Ack`；结果经 `messages_deleted` | `send_refused` `forbidden` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表 |
 
-**待发出的消息**（MVP 必做）：`status()` 列出「待发出」的消息（会话 id、临时消息 id、确认时间）；`pending_cancel(MsgId)` 删除待发消息，**只是尽力撤销**：删除只停本机的网络请求（`MessagesManager.cpp:21330-21345`），请求已发出就照样送达，TDLib 随后才在服务器上撤回；会话变得不可访问时连撤回都没有，消息留在对方那边（`:27848-27851`、`:8463-8473`）。所以它不是「结果未知」时的补救，确认说明里也不许写成「可以撤销」（003 发3、建议第 8 条）。实际效果在测试服务器上实测，列为 M2.1 验收项；启动时先列出上次留下的待发消息并告诉人（开着消息库时 TDLib 下次启动会自动续发，003 发8）。能否抢在续发之前撤销，**未核**。
+**待发出的消息**（MVP 必做）：Store 查询 `pending_sends` 列出（Store 只给 `MsgId`，`date` 由调用方从 Store 里那条消息取，合起来就是 `PendingMessage`；`status()` 也该带，`status` 命令还没做；现在直发模式开头那一行 `status`（第 5 小节「启动时提示」）里的 `pending_sends` 还是写死的空数组，**不能拿它当「没有待发」的证据**）「待发出」的消息（会话 id、临时消息 id、**交给 TDLib 的时间**——消息的 `date`）；`pending_cancel_prepare` → 闸 → `pending_cancel(plan, token)` 删除待发消息（词：**撤销** = 在本机停掉还没发出的请求、删掉这条待发消息；**撤回** = 消息已在服务器上，给会话里所有人删掉，对方设备上也没了，但对方可能已看到或收到过通知），**只是尽力撤销**：删除只停本机的网络请求（`MessagesManager.cpp:21330-21345`），请求已发出就照样送达，TDLib 收到成功应答时自己以 `revoke=true` 在服务器上撤回（`:27848-27851` → `:8484-8490`，对方可能已看到）；会话变得不可访问时连撤回都没有，消息留在对方那边（`:8463-8473`）。所以它不是「结果未知」时的补救，确认说明里也不许写成「可以撤销」（003 发3、建议第 8 条）。**等级 L2**，与 `delete` 同一道闸、同一种凭据（大总管定 2026-11-14：赶上已送达会给所有人撤回，属对外影响）：准备时逐条查「自己发的、还在待发」（否则 `invalid_input`，`why:"not_pending"`），凭据绑会话 + 这几条 id + 每条正文，交出前再查一遍（准备到交出之间发出了，再删就成了给所有人删除——拒，`not_pending`）；Touch ID 框里写明「已送达的会给所有人撤回」。**交出时用 `revoke=false`**（自审第 3 轮 P1）：TDLib 删除时先把临时 id 换成它发出后的正式 id（`get_persistent_message_id`，`:8415`、`:21075-21087`），交出前的复查与 TDLib 处理删除之间隔着一次往返，恰好在这段空隙里发出的那条会被当成正式消息删——`revoke=true` 就成了给所有人删除。`revoke=false` 对还在待发的消息没有区别（只停本机请求），TDLib 事后的自动撤回固定用 `true`、不受影响；赶上恰好发出的只删掉自己这边，对方那边留着。撤没撤下看之后的事件：临时 id 出现在 `messages_deleted` 里 = 撤销了（仍是尽力）；先来了它的 `send_succeeded` = 没赶上、已发出，随后（约 1 秒内）它的正式 id 也出现在 `messages_deleted` 里 = 被换成正式 id、只从自己这边删掉了，否则消息留着。
+⚠️ **续发**（TDLib 1.8.69 源码）：开着消息库时，上次没发完的消息在 TDLib **启动重放本地日志时当场续发**（`:35925-35930`），任何一条命令（含 `pending` 本身）一启动就续发，「抢在续发之前撤销」做不到，只能赶在网络请求真正发出前；续发时**临时 id 与 `date` 都重编**（`:35851-35856`，`sending_id` 不落盘），所以上一个进程报 `send_outcome_unknown` 时给的 `temp_message_id` 与这次列出的对不上，原始确认时间也拿不到（大总管定 2026-11-14：清单里的时间改为 `date`）；待发超过 24 小时的不再续发、直接变失败（`MAX_RESEND_DELAY`，`MessagesManager.h:1708`；收藏夹除外）。实际撤销效果在服务器上实测，列为 M2.1 验收项。
 
 `Draft` 第一阶段只有：纯文本 + 可选「回复哪条」（`inputMessageText` `:6680`、`inputMessageReplyToMessage` `:3518`）。Markdown 转实体（`parseMarkdown` `:13836`）第二批。
 
@@ -184,8 +188,9 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 | 类型 | 字段 |
 |---|---|
-| `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值。删除时内容换成：要删的消息 id 与各自简短读法 · 给所有人 |
-| `PendingMessage` | `chat_id` · 临时 `message_id` · 确认时间 |
+| `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值（删除用 `DeletePlan`，见下一行） |
+| `DeletePlan` | 目标（同 `SendPlan`）· 每条 `temp_message_id` 与能给人确认的正文（不是纯文字为空）· `hidden_chars` · 发起方 · 确认方式 · 摘要 · `note_zh`（「只是尽力撤销」）。`action` 现在只有 `pending_cancel`（交出 `revoke=false`）；M2.7 再加「给所有人」（`revoke=true`）一项；`docs/plan/002_roadmap.md` M2.7「删除（给所有人）」也用它（那时 id 叫 `message_id`） |
+| `PendingMessage` | `chat_id` · `temp_message_id`（临时 id）· `date`（交给 TDLib 或续发的时间；续发时与临时 id 一起重编） |
 | `Page<T>` | `items` · `next_cursor`（无更多时为空）· `total`（TDLib 给得出时才有，否则空） |
 | `MessageProps` | 能否回复 / 转发 / 编辑 / 删除（仅自己）/ 删除（双方）· 能否收听 |
 
@@ -329,3 +334,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：发送前查限流截止（`rate_limited`）与账号受限，两者收到即落盘；`Gated` 只许核心内的计划实现
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：交出前（所有等待之后）再查一次受限与限流；限制标记读不准就拒发
 - 2026-11-13 issue #52 codex 016 第 7 轮后（属技术细节）：确认框估行数时连字符、斜杠、标点等断行机会也算（两种断法取多的）；估算挪到 `atg-core::confirm_box`
+- 2026-11-14 #57 pending（msg1，大总管定 Q1 / Q2）：「待发出的消息」写明续发时机与 id / 时间重编、`pending_cancel` 按 L2 过闸、`not_pending`、撤没撤下怎么判；动作表加 `pending_cancel_prepare` / `pending_cancel` 两行；自审第 2–4 轮：`pending_cancel` 交出用 `revoke=false`（`get_persistent_message_id` 换 id）、写明撤销 / 撤回词义、`delete_prepare` 返回改 `DeletePlan` 并加 `DeletePlan` 类型行、加 Store `pending_sends` 行、`PendingMessage` 用 `temp_message_id`；`PendingMessage` 的「确认时间」改为 `date`

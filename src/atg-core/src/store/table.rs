@@ -37,6 +37,13 @@ impl Table {
     pub(super) fn contains(&self, id: MsgId) -> bool {
         self.messages.contains_key(&id)
     }
+    /// 全部活消息（顺序不定）
+    pub(super) fn live(&self) -> impl Iterator<Item = &Message> {
+        self.messages.values().filter_map(|e| match e {
+            Entry::Live(m) => Some(m),
+            Entry::Tombstone(_) => None,
+        })
+    }
     pub(super) fn is_live(&self, id: MsgId) -> bool {
         matches!(self.messages.get(&id), Some(Entry::Live(_)))
     }

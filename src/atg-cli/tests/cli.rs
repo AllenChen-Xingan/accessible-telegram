@@ -6,13 +6,12 @@ use std::process::{Command, Output};
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
     "login", "auth", "logout", "chats", "speech", "history", "links", "watch", "send", "resend",
-    "serve", "download", "play",
+    "serve", "download", "play", "pending",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
 const PLACEHOLDERS: &[&str] = &[
     "me",
-    "pending",
     "status",
     "next-unread",
     "open",

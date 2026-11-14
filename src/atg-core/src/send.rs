@@ -34,7 +34,7 @@ use crate::config::ServerKind;
 use crate::error::{CoreError, InvalidSendWhy, SendRefusedReason, UnknownWhy};
 use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
 use crate::link::{Envelope, EventStream, block_on_timeout};
-use crate::model::{ChatId, ChatKind, CoreEvent, Message, MsgId, ReplyRef, Topic};
+use crate::model::{ChatId, CoreEvent, Message, MsgId, ReplyRef, Topic};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
@@ -46,11 +46,6 @@ pub const TEXT_MAX_BYTES: u64 = 64 * 1024;
 
 /// `send` 等结果的上限（`cli.md` `send` 行；发9）
 pub const RESULT_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// 确认时说给人的「网络中断也会发」（`actions.md` 第一节第 2 小节）
-pub const QUEUE_NOTE_ZH: &str = "若网络中断，恢复后仍会发出";
-/// 同一个意思的短说法，给 Touch ID 弹框（VoiceOver 会读，要短）
-pub const CONFIRM_QUEUE_ZH: &str = "网络断了也会在恢复后发出";
 
 pub use crate::model::ChatTarget;
 
@@ -73,6 +68,11 @@ impl<'a> Sealed<'a> {
     pub(crate) fn into_kind(self) -> SealedKind<'a> {
         self.kind
     }
+    /// `deleteMessages`：只由 [`crate::delete`] 在闸验过凭据之后造
+    pub(crate) fn delete(request: &'a Value) -> Self {
+        let kind = SealedKind::Delete { request };
+        Self { kind }
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -80,6 +80,8 @@ pub(crate) enum SealedKind<'a> {
     Message { request: &'a Value, preview: bool },
     /// `resendMessages`：请求 JSON（TDLib 形状；摘要算过的就是它）
     Resend { request: &'a Value },
+    /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
+    Delete { request: &'a Value },
 }
 
 /// 交出口的应答
@@ -89,6 +91,8 @@ pub enum Answer {
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
+    /// `deleteMessages`：TDLib 回了 `ok`
+    Deleted,
 }
 
 // ───────────────────────── 发文字 ─────────────────────────
@@ -167,45 +171,9 @@ impl Gated for TextPlan {
     }
 }
 
-/// 弹框里的「内容」：先说全文几字几行，再给正文——换行显示成 ⏎、看不见的字符转义，压成一段。防的是用一串空行
-/// 把真正要发的话挤出可见区（自审第 4 轮 P1）。放不放得下由闸按整段说明把关（`gate::fits_confirm_box`，放不下就拒 `too_long_to_confirm`，不做「只显示前段、
-/// 全文见终端」——发起 `send` 的终端多半是 AI 的输出，人看不到），这里不截
-pub fn confirm_body(text: &str) -> String {
-    let chars = text.chars().count();
-    let lines = text.lines().count().max(1);
-    // 这里的「行」是原文的换行行数，不是确认框里折出来的视觉行（那个由 `gate::fits_confirm_box` 数）
-    format!("共 {chars} 字 {lines} 行：\n{}", flatten(text))
-}
-
-/// 压成一段给人看：看不见的字符转义、换行显示成 ⏎
-fn flatten(text: &str) -> String {
-    gate::confirm_visible(text).replace('\n', "⏎")
-}
-
-fn origin_zh(o: SendOrigin) -> &'static str {
-    match o {
-        SendOrigin::Cli => "来自命令行，可能是 AI",
-        SendOrigin::Gui => "来自界面",
-    }
-}
-
-/// 「私聊 · 名字 · id 777」（名字转义控制字符）
-pub fn target_zh(t: &ChatTarget) -> String {
-    let kind = if t.saved {
-        "收藏夹"
-    } else {
-        match t.kind {
-            ChatKind::Private => "私聊",
-            ChatKind::Secret => "加密聊天",
-            ChatKind::Group => "群",
-            ChatKind::Supergroup if t.is_forum => "话题群",
-            ChatKind::Supergroup => "超级群",
-            ChatKind::Channel => "频道",
-            ChatKind::Unknown { .. } => "会话",
-        }
-    };
-    format!("{kind} · {} · id {}", gate::confirm_visible(&t.title), t.id)
-}
+// 确认说明的几段文字（正文、发起方、目标）在 `confirm_box`，与「放不放得下」放在一处
+pub(crate) use crate::confirm_box::origin_zh;
+pub use crate::confirm_box::{CONFIRM_QUEUE_ZH, QUEUE_NOTE_ZH, confirm_body, target_zh};
 
 /// 要发什么
 #[derive(Clone)]
@@ -290,7 +258,7 @@ fn random_sending_id() -> Result<i32, CoreError> {
     Ok(i32::from_le_bytes(b).checked_abs().unwrap_or(1).max(1))
 }
 
-fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
+pub(crate) fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
     match b.gate().use_test_dc() {
         Some(true) => Ok(ServerKind::Test),
         Some(false) => Ok(ServerKind::Main),
@@ -389,7 +357,7 @@ async fn preview_check<B: Backend>(b: &B, plan: &TextPlan) -> Result<(), CoreErr
         Answer::Message(m) => {
             check_kept(plan, &m).map_err(|reason| CoreError::SendRefused { reason, last: None })
         }
-        Answer::Resent(_) => Err(CoreError::Internal {
+        Answer::Resent(_) | Answer::Deleted => Err(CoreError::Internal {
             what: "preview_answer_shape",
         }),
     }
@@ -456,7 +424,7 @@ pub async fn send_text<B: Backend>(
     };
     match crate::send_limits::submit(b, sealed).await {
         Ok(Answer::Message(m)) => Ok(Submitted { mode, temp: m.id }),
-        Ok(Answer::Resent(_)) => Err(CoreError::Internal {
+        Ok(Answer::Resent(_) | Answer::Deleted) => Err(CoreError::Internal {
             what: "send_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
@@ -513,25 +481,25 @@ pub enum Waited {
     Unknown(UnknownWhy),
 }
 
-/// 这条事件说的是不是这几条待发消息之一的下落
-fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
+/// 这条事件说了这几条待发消息里哪些的下落（一次删几条只来一条 `messages_deleted`，所以可能不止一条）
+fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Vec<(MsgId, Waited)> {
     match ev {
         CoreEvent::SendSucceeded { old_id, message } if temps.contains(old_id) => {
-            Some((*old_id, Waited::Succeeded(message.clone())))
+            vec![(*old_id, Waited::Succeeded(message.clone()))]
         }
         CoreEvent::SendFailed {
             old_id,
             message,
             error,
             can_retry,
-        } if temps.contains(old_id) => Some((
+        } if temps.contains(old_id) => vec![(
             *old_id,
             Waited::Failed {
                 message: message.clone(),
                 error: error.clone(),
                 can_retry: *can_retry,
             },
-        )),
+        )],
         // 发3：待发那条被删，TDLib 不来失败。谁会删：人在别的设备上删了它、会话变得不可访问、TDLib 重发前先删旧的。
         // 为什么「被删」反而可能已送达：请求可能早已到了服务器，删除只停本机的等待，服务器的成功应答照样回来
         // （TDLib 1.8.69 `MessagesManager.cpp:27848-27851`）。所以按结果未知报、不许重发——当成失败会让人重发出第二条
@@ -541,9 +509,10 @@ fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
             ..
         } => temps
             .iter()
-            .find(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
-            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted))),
-        _ => None,
+            .filter(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
+            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted)))
+            .collect(),
+        _ => vec![],
     }
 }
 
@@ -572,11 +541,12 @@ pub fn wait(
             }
             Some(Some(batch)) => {
                 for env in batch {
-                    if let Some((id, w)) = verdict(&env.event, temps)
-                        && let Some(i) = temps.iter().position(|t| *t == id)
-                        && got[i].is_none()
-                    {
-                        got[i] = Some(w);
+                    for (id, w) in verdict(&env.event, temps) {
+                        if let Some(i) = temps.iter().position(|t| *t == id)
+                            && got[i].is_none()
+                        {
+                            got[i] = Some(w);
+                        }
                     }
                     on_event(env);
                 }
@@ -709,7 +679,7 @@ impl ResendReply {
 }
 
 /// 消息里能给人确认的正文：纯文字消息的全文；带媒体、系统消息给不出全文 → `None`
-fn confirmable_text(m: &crate::model::Message) -> Option<String> {
+pub(crate) fn confirmable_text(m: &crate::model::Message) -> Option<String> {
     match m.effective() {
         crate::model::Body::Content(c) if c.attachment.is_none() => {
             Some(crate::tree::text::plain_text(&c.body))
@@ -946,7 +916,7 @@ pub async fn resend<B: Backend>(
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
             .collect()),
-        Ok(Answer::Message(_)) => Err(CoreError::Internal {
+        Ok(Answer::Message(_) | Answer::Deleted) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
@@ -1043,7 +1013,7 @@ pub fn resend_plan_json(plan: &ResendPlan) -> Value {
     })
 }
 
-fn target_json(t: &ChatTarget) -> Value {
+pub(crate) fn target_json(t: &ChatTarget) -> Value {
     json!({
         "chat_id": t.id,
         "kind": t.kind,
