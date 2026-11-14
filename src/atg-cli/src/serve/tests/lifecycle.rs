@@ -365,22 +365,43 @@ fn forwarded_watch_ends_when_stdout_reader_leaves() {
     assert_eq!(server.join().unwrap(), 0);
 }
 
-/// 两个 watch 订阅同一会话（`config-privacy.md` 第一节第 2 小节）：只开一次；先走的不关，最后走的才关，只关一次
+/// 执行方自己的日志（标准错误那几行）收起来，测试里看订阅者表现在几个
+#[derive(Clone, Default)]
+struct Log(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl Sink for Log {
+    fn out(&mut self, _: &str) {}
+    fn err(&mut self, line: &str) {
+        self.0.lock().unwrap().push(line.to_owned());
+    }
+}
+
+impl Log {
+    /// 最近一次 watch 接入时执行方报的订阅者数
+    fn subscribers(&self) -> Option<usize> {
+        let ls = self.0.lock().unwrap();
+        let l = ls.iter().rev().find(|l| l.contains("watch 接入（现有 "))?;
+        l.split("现有 ").nth(1)?.split(' ').next()?.parse().ok()
+    }
+}
+
+/// 两个 watch 订阅同一会话（`config-privacy.md` 第一节第 2 小节）：只开一次；先走的那个摘掉后、
+/// 另一个还挂着时一次都不关；最后走的才关，只关一次
 #[test]
 fn two_watches_on_same_chat_share_one_open() {
     use atg_core::fake::Call;
     let p = profile("watch-share", ServerKind::Main);
     let b = Arc::new(backend());
     let stop = Arc::new(AtomicBool::new(false));
-    let (st, pc, bb) = (stop.clone(), p.clone(), b.clone());
+    let log = Log::default();
+    let (st, pc, bb, mut own) = (stop.clone(), p.clone(), b.clone(), log.clone());
     let server = std::thread::spawn(move || {
-        let mut cap = Cap::default();
         serve(
             &*bb,
             &pc,
             Format::Json,
             &st,
-            &mut cap,
+            &mut own,
             fast(),
             Instant::now(),
         )
@@ -412,11 +433,27 @@ fn two_watches_on_same_chat_share_one_open() {
 
     stop1.store(true, Ordering::SeqCst);
     assert_eq!(c1.join().unwrap(), 0);
+    // 同步点：反复挂一个不开会话的探针，直到执行方报「现有 2 个」= 第二个 + 这次的探针，即第一个已摘掉
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (probe, stop_p, cp) = watch_client(&p, json!({"reveal": false}));
+        probe.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+        let n = log.subscribers();
+        stop_p.store(true, Ordering::SeqCst);
+        assert_eq!(cp.join().unwrap(), 0);
+        if n == Some(2) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "第一个一直没摘掉：{n:?}");
+        // 留一拍让执行方转一圈摘掉上一个探针，否则下一个探针总在它被摘之前接入、数里一直多一个
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(closes(), 0, "第二个还挂着，先走的不关");
+
     stop2.store(true, Ordering::SeqCst);
     assert_eq!(c2.join().unwrap(), 0);
     wait_call(&b, &Call::ChatClose(1));
     stop.store(true, Ordering::SeqCst);
     assert_eq!(server.join().unwrap(), 0);
-    // 先走的那个若也关了，这里会是 2
     assert_eq!((opens(), closes()), (1, 1));
 }

@@ -16,6 +16,7 @@ use crate::out::Sink;
 use atg_core::backend::Backend;
 use atg_core::error::CoreError;
 use atg_core::model::ChatId;
+use atg_core::status::CoreState;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
@@ -86,8 +87,11 @@ pub fn open<B: Backend>(b: &B, leases: &Leases, chat: ChatId) -> Result<(), Core
 
 /// 关掉放完租约、已没人开着的会话（[`Leases::give`] 回 `true` 的那些）；出错只记一句码，`who` 是日志前缀。
 /// 用 [`bounded`] 不用 `within`：收尾时 Ctrl+C 往往已经按了，关会话的请求照发，只受期限管。
-/// 后端故障时调用方不调它（请求发不出去）
+/// 后端已故障就一个都不关（请求发不出去）：判在这一处，读方断开与故障同时到时调用方先 `reap` 再判故障也不会关
 pub fn close<B: Backend>(b: &B, chats: Vec<ChatId>, who: &str, own: &mut dyn Sink) {
+    if b.status().lines.core == CoreState::Faulted {
+        return;
+    }
     for c in chats {
         if let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT) {
             own.err(&format!("{who}: 关闭会话时出错（{}）", e.code()));

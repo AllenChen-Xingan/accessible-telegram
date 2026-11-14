@@ -106,6 +106,21 @@ fn other_holder_keeps_chat_open() {
     assert!(leases.give(PEER), "最后一份由它放，它去关");
 }
 
+/// 读方断开与后端故障同时到：先摘掉、再判故障的循环里也不关（codex 026 第 1 轮 #1）
+#[test]
+fn no_close_after_backend_fault() {
+    let b = started("hub-fault");
+    let mut hub = Hub::default();
+    let x = subscribe(&b, &mut hub, PEER);
+    b.crash();
+    b.join_receiver();
+    x.store(true, Ordering::SeqCst);
+    let close = hub.reap();
+    assert_eq!(close, vec![PEER], "租约照放");
+    lease::close(&b, close, "t", &mut Quiet);
+    assert_eq!(count(&b, &Call::ChatClose(PEER)), 0);
+}
+
 /// 开失败退掉那份：下一个要的仍是第一份、真去开（不会以为「已有人开着」而永远不开）
 #[test]
 fn failed_open_is_undone() {
