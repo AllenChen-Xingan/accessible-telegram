@@ -103,16 +103,18 @@
 - 验收：`cargo fmt --check`、`clippy -D warnings`（含 `tdlib-api` 特性）、`cargo test --workspace`、`check-no-debug.sh`（领名额）；`check-file-size.py --tighten` 收紧基线并一起提交；`git diff --stat` 证明是纯挪动（新增行 ≈ 删除行，差额只在 `mod` / `use` 行）；对外 `pub` 名字清单前后一致（`cargo doc` 或 `grep '^pub'` 对比）
 - 前置：#52 合并、本 PR #86 合并（基线在库里）；开工前与 fix 线（#78 动 `link.rs`、`deadlines.rs`）、media 线确认不撞这三个文件
 
-## R3 设计：`atg-core::testkit`（2026-11-14，未动代码，等大总管确认文件）
+## R3 设计：`atg-core::testkit`（2026-11-14；R3a 第一刀已提交，见下「实际做的」）
 
 依据：main @ 315b388 实查。S11 的「重复造数据」分两类，分两刀：
 
 **R3a：临时目录与档案**（12 份几乎一样，唯一性却有 4 种做法：进程号 + 线程号、进程号 + 计数器、进程号 + 纳秒时间、只有进程号——后两种同一个 tag 用两次会撞）。
 - 新 `src/atg-core/src/testkit.rs`，挂 `#[cfg(any(test, feature = "testkit"))]`，正式构建不带它：
-  - `temp_dir(tag) -> PathBuf`：`系统临时目录/atg-<tag>-<进程号>-<全进程计数>`，先删残留，**不建**（`Profile::create` 要自己建）
+  - `temp_dir(tag) -> PathBuf`：`系统临时目录/atg-<tag>-<进程号>-<全进程计数>`，先删残留**再建**（实现时改的：原来 4 份里 3 份都建，`Profile::create` 在已有的空目录上也能建；不建的只有 history 那份）
   - `profile(tag, ServerKind) -> Profile`：在 `temp_dir` 上 `Profile::create(…, "main", kind)`
 - `atg-core` 加特性 `testkit = []`。`atg-cli` 的 dev-dependencies 写 `atg-core = { path = "../atg-core", features = ["testkit"] }`；`atg-core` 的集成测试（`tests/*.rs`）走自身 dev-dependency：`atg-core = { path = ".", features = ["testkit"] }`。`clippy --all-targets` 会编到它，正式构建编不到。
 - 替换处（各删一个 6–10 行的助手，调用点不变或只改一个参数）：core 的 `gate/tests.rs`、`send_limits.rs`（`create_dir_all` 留在调用处）、`tests/config.rs`、`tests/lifecycle.rs`；cli 的 `chats/tests.rs`、`history/tests.rs`、`login/tests.rs`、`session/tests.rs`、`send/tests.rs`、`serve/tests.rs`、`voice/tests.rs`、`watch/tests.rs`。
 - 行为变化只在测试里：临时目录换名、唯一性统一成计数器。
 
 **R3b：造 TDLib JSON 的助手**（`chat` ×4、`msg` ×4，`private`、`group`、`new_msg`、`typing`、`user`、`text`、`position` 各 ×2；签名各不相同）。要先定一套参数形状再逐个换，改动面大，等 R3a 合并、在途线都合并之后再做，单独设计。
+
+**R3a 实际做的（第一刀）**：大总管核了在途线，可写的只有 4 处——core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`，都已换用 testkit。另外 11 处在别的线手上，那条线合并后各补一刀：core `gate/tests.rs`、`send_limits.rs`、`send/tests.rs`（msg1 / msg2）、`ipc.rs` 的测试、`tests/send_limits.rs`；cli `chats/tests.rs`（R2a #105）、`login/tests.rs`、`watch/tests.rs`（fix）、`serve/tests.rs`（media #106）、`voice/tests.rs`（media 3c）、`send/tests.rs`。实查共 15 份（010 原写 5 份，已改）。清单的正本在 `testkit.rs` 头注释。

@@ -11,7 +11,7 @@
 //!
 //! 接 TDLib（第一刀第 3 块）：
 //! - [`backend`]：`Backend` 特征（意图级动作：生命周期、登录、会话、消息、发送的查询与唯一交出口）· [`auth`]：登录的提示、号码校验、测试号规则（第 4 块）
-//! - [`td`]：真实后端（`tdlib-api` / `tdlib` 特性）· [`fake`]：假后端
+//! - [`td`]：真实后端（`tdlib-api` / `tdlib` 特性）· [`fake`]：假后端 · `testkit`：测试共用夹具（只在测试或开了 `testkit` 特性时有）
 //! - [`link`]：收线程（带序号）、监督与故障广播、事件流——两份后端共用
 //! - [`pump`]：消费方把事件成批喂 reducer、重拉、重发应答
 //! - [`error`]：`CoreError` 与 `map_td_error` · [`status`]：三条状态线与合成
@@ -60,7 +60,7 @@
 // 拍板 005 补丁 ③（`docs/plan/005_decisions-b3.md`）：TDLib 对象（及由它映射来的含内容的类型）不许用 `{:?}` 整个打印。
 // 非测试代码：这行拦 print! / write! 系的 Debug、`dbg!`，以及 unwrap / expect（失败时用 Debug 打出错误值）；
 // format! / panic! / assert_eq! / 日志宏 clippy 管不到，由 `scripts/check-no-debug.sh` 拦（CI 跑）。
-// 测试里的夹具是假数据，放行。
+// 测试里的夹具是假数据，放行。例外：`testkit` 开特性时不算 cfg(test)，照产品代码管（见那个文件头）。
 #![cfg_attr(
     not(test),
     deny(

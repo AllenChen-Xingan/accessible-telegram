@@ -45,7 +45,8 @@ testkit = []
 
 [dev-dependencies]
 insta = "1"
-# 让 tests/*.rs 用得上 `atg_core::testkit`
+# 自己依赖自己，不是写错：tests/*.rs 每个文件单独编成一个 crate，链接的是不带 cfg(test) 的库，只能靠特性打开 testkit。
+# Cargo.lock 里因此有一条 atg-core → atg-core
 atg-core = { path = ".", features = ["testkit"] }
 
 # 本机冒烟：测试服务器 → wait_phone（要 TDLib 库；不在 CI）

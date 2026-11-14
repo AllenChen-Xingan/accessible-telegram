@@ -64,7 +64,7 @@
 | S8 | 隐藏内容的说法与遮挡规则 | `content-tree.md` 第八节 → `tree::mask` + `speech::HIDDEN` | `history.rs` `HIDDEN_LINK`（同一个「隐藏内容」）且 `render_links` 自己判断要不要遮 | links 走树、走 `mask`（R6） |
 | S9 | 状态行字段（core/auth/net/user_status/pending_sends/direct_send…） | 应是 `Doc::Status` | `serve.rs` `status_line` 与 `watch.rs` 各手拼一份 `json!` | 扩 `tree::Status`，两处都渲染它（R6） |
 | S10 | 「现在」与时区 | — | `watch::now_ms`、`link::now_ms`、`atg-cli/speech.rs::now`（秒）、`out::now_rfc3339_ms`；系统时区 `local_offset_at` 在 CLI 里，GUI 也要 | 收进 `atg-core/src/tree/time.rs`（R8） |
-| S11 | 测试用的 TDLib JSON 造法 | — | 手拼 `json!({"@type": …})` 散在 9 个文件约 90 处；`temp_root`/`profile` 5 份 | 数据与后端夹具（TDLib JSON 造法、临时档案）收进一个 `atg-core::testkit`（R3）。CLI 的输出替身（`Cap`）**不进 core**：`history`、`serve` 的两份收标准输出 / 标准错误（`Sink`），可在 `atg-cli` 的测试里合成一份；`watch` 那份实现 `LineOut` 且带「到条件就停」，不等价，单留 |
+| S11 | 测试用的 TDLib JSON 造法 | — | 手拼 `json!({"@type": …})` 散在 9 个文件约 90 处；临时目录 / 档案助手实查 15 份（core 7、cli 8；唯一性有 4 种做法，只用进程号、用纳秒时间的同一个 tag 用两次会撞） | 数据与后端夹具（TDLib JSON 造法、临时档案）收进一个 `atg-core::testkit`（R3）。CLI 的输出替身（`Cap`）**不进 core**：`history`、`serve` 的两份收标准输出 / 标准错误（`Sink`），可在 `atg-cli` 的测试里合成一份；`watch` 那份实现 `LineOut` 且带「到条件就停」，不等价，单留 |
 | S12 | 超时与轮询间隔 | 各自 | `ME_TIMEOUT` 两份（history、watch）同为 5 秒；`chats::SYNC_TIMEOUT` 被 `history` 转引（好） | **由 fix 线做**（#78）：命令层期限全收进 `atg-cli/src/deadlines.rs`，每个一行注释（等什么、为什么是这个数、出处），两份 `ME_TIMEOUT` 合一；内核机制类（`SHUTDOWN_TIMEOUT`、ipc 两个）留原处 |
 | S13 | 互斥锁取值助手 `lock<T>` | — | `fake.rs`、`link.rs`、`td.rs`、#52 的 `gate.rs` 各一份 | 一份 `pub(crate)`（R8） |
 | S14 | 一行要不要提示 | `notify::Verdict.alert`（结构化） | `forward.rs:241–248` `count_line` 文字模式下拿中文前缀**重判**这一行要不要提示——读法句子成了协议（media 线自审发现，已核实）。#52 后 JSON 模式已改按结构化的 `notify.alert` 计数，文字模式的前缀也改引 `watch::NEW_PREFIX_ZH` 等常量（改措辞不再悄悄算错），但仍是解析句子 | 执行方转发的每一帧事件带结构化的 `alert` 标记（文字模式也带，不只是那行字），发起方按标记计数，不再解析句子；这样与 `cli.md` 第一节第 5 小节例外④「Ctrl+C 时发起方按收到的行在本地写结尾」一致；随 R5、R6 |
@@ -151,7 +151,7 @@ D1、D3、D4、D8 已修（#52 与此前的 main）；其余随第二段相关 P
 |---|---|---|---|---|---|
 | R1 | 拆 #52 新增的超线文件：core `send.rs`、`gate.rs`（R1a，✅ 只挪不改）；cli `send.rs` 的测试由 fix 线挪走，R1b 取消 | 中：三个新超标清掉 | 低（按职责挪，不改逻辑） | 与 send2 撞 | #52 合并后**最先**（大总管定） |
 | R2 | 行内测试挪出（chats、login、serve、notify、history、watch、store、td；`speech`、`tree/text` 的已由 fix 线 `fix/68-70-speech` 挪走，不重复做）；超 600 行的测试按主题再分 | 中：chats、login 2 个文件守线、serve 降到 610（login、serve 的测试各分两份），其余明显变小 | 极低（零行为变化） | 挪哪个文件就和改它的线撞：等那条线合并 | R1 后；按文件逐个，避开 media 在改的 |
-| R3 | `atg-core::testkit`（S11：只收数据与后端夹具；CLI 输出替身留在 `atg-cli` 测试） | 中：删掉 9 个文件里重复的造数据 | 低（只动测试） | 低 | R2 同批或之后 |
+| R3 | `atg-core::testkit`（S11：只收数据与后端夹具；CLI 输出替身留在 `atg-cli` 测试）。**R3a 第一刀** ✅：`testkit::{temp_dir, profile}` + 4 处换用（core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`）；其余 11 处等各自的线合并后补，清单在 `testkit.rs` 头；**R3b**：造 TDLib JSON 的助手 | 中：删掉 9 个文件里重复的造数据 | 低（只动测试） | 低 | R2 同批或之后 |
 | R4 | 目标解析与参数范围收一（S6、S7、S12；`target.rs`） | 中：3→1，#52 的第 4 份一并收 | 低 | 动 history/watch/send：#52 后 | R3 后 |
 | R5 | 命令登记表 + 一条执行路径（`cmd.rs`；删 `session.rs` 四个三岔函数、`serve.rs` 各支、`main.rs` run_X）。登记表里命令分两种：**一次性**（函数 → 结果与退出码）与**订阅**（`watch` 这类：返回订阅句柄，定义取消、清理、结尾帧；保留 `cli.md` 第一节第 5 小节六条例外与 `config-privacy.md`「流式订阅」的全部行为）。先写清这两种的接口与验收（并发订阅、读方断开、发起方 Ctrl+C、上限 8 个），再删原分支 | **高**：命令 × 跑法从乘法变加法，以后加命令只加一行 + 一个函数 | 中（改接线；`serve` 转发快照测试 `forwarded_*_matches_direct` 兜底） | 和所有加命令的线撞：#52 后、media 加 `play`/`download` 前最好 | R4 后，尽早 |
 | R6 | 绕开树的输出收回树（第三节第 1 小节**表里每一行**：Alert、`watch` 的其余事件、Link、Summary、Status、Plan、未读分隔 `divider`、登录步骤、版本；逐种输出先列出现有字段、映射到节点类型，字段一个不少；含 #74，PR 写 Closes #74） | **高**：「一切都是树」真正成立，GUI 直接复用 | 中（文字模式输出的字要逐字不变：快照兜底；句子本身不改措辞） | 动 watch/history/send 渲染 | R5 后 |
