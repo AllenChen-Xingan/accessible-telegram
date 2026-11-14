@@ -4,11 +4,11 @@
   "files": {
     "src/atg-cli/src/history.rs": 707,
     "src/atg-cli/src/serve.rs": 615,
-    "src/atg-cli/src/watch.rs": 864,
+    "src/atg-cli/src/watch.rs": 849,
     "src/atg-core/src/fake.rs": 1153,
     "src/atg-core/src/speech.rs": 839,
     "src/atg-core/src/store/mod.rs": 958,
-    "src/atg-core/src/td.rs": 874,
+    "src/atg-core/src/td.rs": 834,
     "src/atg-core/src/tdjson.rs": 859,
     "src/atg-core/src/tree/text.rs": 671,
     "src/atg-core/tests/reducer.rs": 2102

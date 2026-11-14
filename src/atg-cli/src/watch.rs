@@ -730,24 +730,6 @@ pub fn run<B: Backend>(
     r
 }
 
-/// 出错时写一行 `error`，回退出码
-fn fail_line(mut out: Box<dyn LineOut>, format: Format, f: &Fail) -> u8 {
-    let mut sink = LineSink(&mut *out);
-    crate::out::fail_with_to(&mut sink, format, f)
-}
-
-/// 把 [`LineOut`] 当 [`crate::out::Sink`] 用（错误行走同一段渲染）
-struct LineSink<'a>(&'a mut dyn LineOut);
-
-impl crate::out::Sink for LineSink<'_> {
-    fn out(&mut self, line: &str) {
-        let _ = self.0.line(line);
-    }
-    fn err(&mut self, line: &str) {
-        eprintln!("{line}");
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn watch_loop<B: Backend>(
     b: &B,
@@ -761,14 +743,15 @@ fn watch_loop<B: Backend>(
     clock: fn() -> i64,
     started: Instant,
 ) -> u8 {
-    if let Err(f) = chats::ensure_ready(b) {
-        return fail_line(out, format, &f);
+    let ready = chats::ensure_ready(b);
+    if ready.is_err() || stop.load(Ordering::SeqCst) {
+        let w = || Watcher::new(cx, format, None, clock).since(started);
+        return end::before_status(out, format, ready, stop, w);
     }
     if !out.line(&status_line(b, format)) {
         return 0;
     }
-    // 订阅者先挂上、再喂流：之后喂的每一条（含找 `--chat` 会话那几步里到的积压）它都看得到，
-    // 补发结束的 `sync_done` 也是它自己看到的那条
+    // 订阅者先挂上再喂流：之后每一条（含找 `--chat` 时到的积压、补发结束的 `sync_done`）它都看得到
     feed.hub.add(Sub {
         out,
         watcher: Watcher::new(cx, format, None, clock).since(started),
@@ -857,6 +840,8 @@ fn close_chat<B: Backend>(b: &B, chat: Option<ChatId>) {
     }
 }
 
+mod end;
+use end::fail_line;
 mod topics;
 pub use topics::fetch_topics;
 
