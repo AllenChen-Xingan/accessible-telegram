@@ -342,6 +342,18 @@ fn transcript_debug_never_leaks_content() {
     assert_clean("Transcript", format!("{transcript:?} {transcript:#?}"));
     let input = Input::Transcribed(atg_core::store::Transcribed { ticket, transcript });
     assert_clean("Input::Transcribed", format!("{input:?}"));
+    let Input::Transcribed(t) = &input else {
+        unreachable!()
+    };
+    let node = atg_core::tree::Transcription {
+        id,
+        sensitive: false,
+        outcome: atg_core::tree::Outcome::Text(t.transcript.clone()),
+    };
+    assert_clean(
+        "Transcription",
+        format!("{node:?} {node:#?} {:?}", node.outcome),
+    );
     store.apply(input);
     let doc = project::message(&store, id).unwrap();
     assert!(

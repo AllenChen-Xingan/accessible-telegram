@@ -177,9 +177,16 @@ fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
 
 /// 把一条消息放进 store 再投影（被回复那条：store 里不一定有它）。store = 本进程的消息与会话缓存；投影
 /// （`atg_core::project`）= 从 store 生成要读、要打印的内容树，只读 store 里已有的；store 只收经 `pump` 喂的输入。
+fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
+    let id = m.id;
+    remember(feed, m);
+    project::message(feed.store(), id)
+}
+
+/// 把单独取来的一条消息放进 store（`send` 回显、`transcribe` 取凭据共用）。store 里已有就不动（它随更新保持最新）。
 /// 单条消息没有专门的输入，借「打开会话 + 这一页历史到了」放进去：这里的 `ticket` 是**历史请求凭据**
 /// （`HistoryTicket`，防旧应答盖新的），与发送闸的确认凭据无关；只动本进程的 store，不是 TDLib 的 `openChat`，不标已读
-fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
+pub(crate) fn remember(feed: &mut Feed, m: Message) {
     let id = m.id;
     if feed.store().message(id).is_none() {
         feed.pump_mut().apply(Input::OpenChat {
@@ -191,7 +198,6 @@ fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
             messages: vec![m],
         });
     }
-    project::message(feed.store(), id)
 }
 
 /// 回显一条消息（JSON：`kind:"message"` 一行；文字：一句读法）——同 `history`

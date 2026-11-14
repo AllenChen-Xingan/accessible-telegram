@@ -206,6 +206,11 @@ pub enum CoreError {
         why: InvalidSendWhy,
     },
     Cancelled,
+    /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
+    /// 不安全、起不来、版本不对，或系统的语言模型没装（#59，design 第三节第 4、6、7 条）。`what` 只放写死的码
+    SttUnavailable {
+        what: &'static str,
+    },
     /// 406（附件都不建）或本项目自己的 bug。`what` 只放写死的说明，不放运行时的值
     Internal {
         what: &'static str,
@@ -238,6 +243,7 @@ impl CoreError {
             Self::SendRefused { .. } => "send_refused",
             Self::SendOutcomeUnknown { .. } => "send_outcome_unknown",
             Self::Cancelled => "cancelled",
+            Self::SttUnavailable { .. } => "stt_unavailable",
             Self::Internal { .. } => "internal",
             Self::Unknown { .. } => "unknown",
         }
@@ -272,6 +278,7 @@ impl CoreError {
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
             | Self::Cancelled
+            | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
         }
     }
@@ -351,6 +358,9 @@ impl CoreError {
                 }
             },
             Self::Cancelled => "已取消",
+            Self::SttUnavailable { .. } => {
+                "本机语音转文字用不了：请在系统设置里装好中文、英文的语言模型；开发时先跑 src/atg-audio/stt-helper/build.sh"
+            }
             Self::Internal { .. } => "程序内部出错",
             Self::Unknown { .. } => "出现了无法识别的错误",
         }

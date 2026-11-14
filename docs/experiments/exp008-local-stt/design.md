@@ -151,7 +151,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 ### 7. 辅助程序的构建、定位与隐私（arch 定 + 本设计补）
 
 - 源码 `src/atg-audio/stt-helper/main.swift` + 同目录 `build.sh`，编到 `_build/<时间戳>/`（照 `src/tdlib-build` 先例），**不用 build.rs**、不建 `src/atg-stt/`（守则第 10 条）
-- 运行时找：环境变量 `ATG_STT_HELPER` > 可执行文件旁边 > `_build` 最新一份；辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
+- 运行时找（arch 定 2026-11-14，代码 `atg-audio/src/stt/locate.rs`）：环境变量 `ATG_STT_HELPER`（设了就只认它，指错 → `stt_unavailable{helper_env_invalid}`，不往下找）> 可执行文件旁边 > 开发时从可执行文件往上找仓库根（要同时有 `src/atg-audio/stt-helper/` 才算，不编译期写死路径）的 `_build` 最新一份。找到的要是普通文件、属主可执行、属于当前用户、组和其他人不可写，否则 `stt_unavailable{helper_unsafe | helper_not_runnable}`、不执行。辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
 - 授权：exp008 在终端和 `.app`（经 LaunchServices 拉起）两种方式下都没弹窗、不需要 Info.plist 用途说明；Apple Development 签名版未测，写代码时顺带验
 - **隐私**：辅助程序的标准输出只有协议行（版本、结果）；**标准错误与错误信息只带码、长度、语种、耗时，绝不带转写文字**；Rust 端不把辅助程序的标准错误原样转出。测试：假辅助程序在标准错误写一句暗号，断言 CLI 的标准错误、错误 JSON 里都没有它
 
@@ -164,8 +164,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 
 **已改**（PR2，2026-11-13）：`cli.md` `play` 一行（`playback` 节点、非终结 `control_rejected`、EOF 与跳到末尾、`--mark-listened` 顺序与阅后即焚 v0 拒绝、`--redact`）；`download` 一行补 `--redact`；`content-tree.md` 顶层加 `playback`
 
-**待改**：
-- PR3：`actions.md:125` `speech_to_text` 改成本机（#59 取代 F4，L0；「不外发」以 Apple 端侧说明为据，**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en]`（一行 `kind:"transcription"` + `result`，`--redact` 报 `not_implemented`）；`errors.md` 码表与 `cli.md` 退出码表加 `stt_unavailable`；`content-tree.md` 加 `Doc::Transcription`（`Transcript` 与消息的 `transcript` 已随 3b 改）
+**已改**（PR3c，2026-11-14）：`actions.md` `speech_to_text` 改成本机（#59 取代 F4，L0；**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en] [--reveal]` 一行与 `transcription` 行；`errors.md` 码表加 `stt_unavailable`、`cli.md` 退出码表加 11（arch 定 2026-11-14：「本机缺能力 / 环境不满足」一档，同类的码以后也进来）；`content-tree.md` 加 `Doc::Transcription`。18+ 遮挡的语音：`--reveal` 才输出文字，不加时照转、照写表、`outcome` 为 `hidden`（大总管定 2026-11-14）。辅助程序怎么找、找到后怎么验，见第 7 条（arch 定 2026-11-14）
 
 `--redact` 的口径（第 5 轮 #2、第 6 轮 #2、第 8 轮 #3）：`transcribe` 带转写原文；`download` 带本机路径（含用户名，`cli.md` 打码规则不放行文件名与路径）；`play` 每行带 `speech` 读法与说明（`cli.md` 要求打码时也替换）——打码还没做，三条都报 `not_implemented`。测试：三条命令加 `--redact` 两种输出格式都只有一行 `not_implemented`
 

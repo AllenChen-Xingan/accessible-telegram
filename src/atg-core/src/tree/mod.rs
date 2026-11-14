@@ -17,7 +17,8 @@ mod time;
 mod top;
 
 pub use media::{
-    Expirable, FileRef, PlayState, Playback, Transcript, TranscriptSegment, TranscriptSource,
+    Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
+    TranscriptSource, Transcription,
 };
 pub use top::{Status, UserStatus};
 
@@ -60,6 +61,8 @@ pub enum Doc {
     Status(Status),
     /// 语音播放状态（`play`，M2.6）
     Playback(Playback),
+    /// `transcribe` 这一次的结果（#59）
+    Transcription(Transcription),
     /// 不认识的顶层对象
     Unknown(Unknown),
 }

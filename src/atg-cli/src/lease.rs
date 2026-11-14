@@ -8,7 +8,7 @@
 //!
 //! 内部带锁、方法都吃 `&self`：执行方是单线程的，但转写这类长动作握着一份租约的同时，
 //! `watch` 订阅者还要照常开关，所以持有者只拿共享引用（`&Leases` / `Arc<Leases>`），不独占整张表
-//! （架构负责会话 arch 2026-11-14 批）。转写用的守卫（放手走 [`Leases::give`]）随转写命令那个 PR 加。
+//! （架构负责会话 arch 2026-11-14 批）。转写这类一次一件的使用者拿 [`Guard`]，所有退出路径都放。
 //! 表的实例暂时寄放在 [`crate::watch::Hub`] 上（执行方里只有一个），以后 atg-cli 有了 lib 目标，随它一起挪
 
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
@@ -18,7 +18,7 @@ use atg_core::error::CoreError;
 use atg_core::model::ChatId;
 use atg_core::status::CoreState;
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// 各会话现在有几份租约。没有一份的会话不在表里
 #[derive(Debug, Default)]
@@ -96,6 +96,42 @@ pub fn close<B: Backend>(b: &B, chats: Vec<ChatId>, who: &str, own: &mut dyn Sin
         }
         if let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT) {
             own.err(&format!("{who}: 关闭会话时出错（{}）", e.code()));
+        }
+    }
+}
+
+/// 一份租约的守卫（转写用，design 第二节第 3 条）：[`Guard::take`] 经 [`open`] 要一份、必要时真开；`Drop` 时放回，
+/// 是最后一份就经 [`close`] 真关。成功、作废、错误、取消（`?` 提前返回、panic 展开）都走 `Drop`。
+/// 拿的是 `Arc<Leases>`，守卫在的时候调用方照样能 `&mut` 喂 store、别的使用者照样开关
+pub struct Guard<'a, B: Backend> {
+    b: &'a B,
+    leases: Arc<Leases>,
+    chat: ChatId,
+    /// 关会话出错时日志的前缀
+    who: &'static str,
+}
+
+impl<'a, B: Backend> Guard<'a, B> {
+    pub fn take(
+        b: &'a B,
+        leases: Arc<Leases>,
+        chat: ChatId,
+        who: &'static str,
+    ) -> Result<Self, CoreError> {
+        open(b, &leases, chat)?;
+        Ok(Self {
+            b,
+            leases,
+            chat,
+            who,
+        })
+    }
+}
+
+impl<B: Backend> Drop for Guard<'_, B> {
+    fn drop(&mut self) {
+        if self.leases.give(self.chat) {
+            close(self.b, vec![self.chat], self.who, &mut crate::out::Stdio);
         }
     }
 }

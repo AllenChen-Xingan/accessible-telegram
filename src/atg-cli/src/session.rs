@@ -305,6 +305,38 @@ pub fn play_prepare(
     }
 }
 
+/// `transcribe`：选档案、起真实后端、取凭据 → 下载 → 解码 → 本机转写 → 提交、关后端。v0 不转发（arch 定 2026-11-13）
+pub fn transcribe(
+    g: &Global,
+    q: &crate::voice::VoiceQuery,
+    locales: Vec<String>,
+    started: std::time::Instant,
+) -> Result<atg_core::tree::Transcription, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "transcribe",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, locales, started);
+        Err(Fail::NotImplemented {
+            command: "transcribe",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        // 先找辅助程序：找不到、不安全就不起后端
+        let helper = atg_audio::stt::locate().map_err(crate::voice::transcribe::helper_fail)?;
+        let opts = crate::voice::transcribe::SttOpts { helper, locales };
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::voice::transcribe::run(&b, &profile, q, &opts, &crate::signals::STOP, started)
+    }
+}
+
 /// `watch`：选档案、起真实后端、订阅到 Ctrl+C（输出由 `watch` 自己写标准输出，回退出码）
 pub fn watch(
     g: &Global,

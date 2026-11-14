@@ -6,11 +6,14 @@
 use crate::decode::{Pcm, SAMPLE_RATE};
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
+
+mod locate;
+pub use locate::locate;
 
 /// 协议版本。Swift 那边的 `PROTO` 由测试 `proto_matches_swift` 比对
 pub const PROTO: u32 = 1;
@@ -206,30 +209,6 @@ fn read_protocol(
         Some(n) if n == locales.len() && got.len() == locales.len() => Ok(got),
         _ => Err(SttError::HelperFailed),
     }
-}
-
-/// 找辅助程序：环境变量 `ATG_STT_HELPER` > 可执行文件旁边的 `atg-stt` > `<repo_root>/_build/*/atg-stt` 最新一份
-/// （arch 定 2026-11-13）。`repo_root` 是仓库根（`_build` 的上一级），不知道就传 `None`
-pub fn locate(repo_root: Option<&Path>) -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("ATG_STT_HELPER") {
-        return Some(PathBuf::from(p));
-    }
-    if let Some(p) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(|d| d.join("atg-stt")))
-        && p.is_file()
-    {
-        return Some(p);
-    }
-    let dir = repo_root?.join("_build");
-    let mut runs: Vec<PathBuf> = std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path().join("atg-stt"))
-        .filter(|p| p.is_file())
-        .collect();
-    runs.sort();
-    runs.pop()
 }
 
 /// 锁住（某线程 panic 过也照样拿到：收尾必须做）

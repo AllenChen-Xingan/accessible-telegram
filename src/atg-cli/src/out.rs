@@ -84,6 +84,7 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::SendRefused { .. } | E::Cancelled => 8,
         E::ProfileBusy { .. } | E::DbKeyInvalid { .. } => 9,
         E::SendOutcomeUnknown { .. } => 10,
+        E::SttUnavailable { .. } => 11,
         E::Internal { .. } | E::Unknown { .. } => 1,
     }
 }
@@ -106,7 +107,9 @@ pub fn core_error_data(e: &CoreError) -> Value {
     let extra = match e {
         CoreError::AuthWrongState { expected } => json!({ "expected": to_value(expected) }),
         CoreError::RateLimited { retry_after_s, .. } => json!({ "retry_after_s": retry_after_s }),
-        CoreError::NotFound { what, .. } | CoreError::Internal { what } => json!({ "what": what }),
+        CoreError::NotFound { what, .. }
+        | CoreError::Internal { what }
+        | CoreError::SttUnavailable { what } => json!({ "what": what }),
         CoreError::ProfileBusy { holder: Some(h) } => json!({ "holder": to_value(h) }),
         CoreError::DbKeyInvalid { source } => json!({ "source": to_value(source) }),
         CoreError::SendRefused { reason, last } => {
@@ -356,6 +359,12 @@ mod tests {
             (CoreError::Forbidden { td: None }, 7),
             (CoreError::AuthPhoneNotForProfile, 3),
             (CoreError::Cancelled, 8),
+            (
+                CoreError::SttUnavailable {
+                    what: "helper_not_found",
+                },
+                11,
+            ),
             (
                 CoreError::ProfileBusy {
                     holder: Some(Holder::Gui),
