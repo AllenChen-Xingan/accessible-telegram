@@ -18,7 +18,7 @@
 
 use crate::args::{ChatsArgs, Format, Global, HistoryArgs, LinksArgs, WatchArgs};
 use crate::chats::{self, Feed, Limits};
-use crate::deadlines::{AUTH_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
+use crate::deadlines::{AUTH_TIMEOUT, START_TIMEOUT, bounded};
 use crate::forward::FwdArgs;
 use crate::login::{self, AuthSub, Prompter};
 use crate::out::{Code, Fail, Sink, Stdio, emit_to, envelope, fail_to, fail_with_to};
@@ -157,24 +157,18 @@ pub fn serve<B: Backend>(
             Err(_) => std::thread::sleep(POLL),
         }
         crate::watch::fetch_topics(b, &mut feed, stop);
-        for c in feed.hub.reap() {
-            close_chat(b, c, own);
-        }
+        crate::lease::close(b, feed.hub.reap(), own);
         if b.status().lines.core == CoreState::Faulted {
             faulted = true;
             break;
         }
     }
     // 挂着的 watch 一并收尾：正常停是 result（interrupted）+ 0；故障是 disconnected
-    let closing = if faulted {
-        feed.hub.fail_all(&Fail::Core(CoreError::Disconnected))
+    // 故障时不关会话（请求发不出去）
+    if faulted {
+        feed.hub.fail_all(&Fail::Core(CoreError::Disconnected));
     } else {
-        feed.hub.finish_all()
-    };
-    if !faulted {
-        for c in closing {
-            close_chat(b, c, own);
-        }
+        crate::lease::close(b, feed.hub.finish_all(), own);
     }
     // 先删套接字再放锁（关后端时放），中间没有「锁空着、旧套接字还在」的窗口让后来者误连
     drop(listener);
@@ -203,13 +197,6 @@ pub fn serve<B: Backend>(
         )),
     }
     0
-}
-
-/// 关掉替 `watch` 开的会话（与 `chat_open` 配对）；出错只记一句
-fn close_chat<B: Backend>(b: &B, chat: atg_core::model::ChatId, own: &mut dyn Sink) {
-    if let Err(e) = bounded(b, b.chat_close(chat), QUERY_TIMEOUT) {
-        own.err(&format!("atg-cli serve: 关闭会话时出错（{}）", e.code()));
-    }
 }
 
 /// 起好后的那一行 `status`
@@ -370,10 +357,8 @@ fn join_watch<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, req: &Request, own: &
     });
     if let Some(c) = q.chat {
         let opened = crate::watch::resolve(ctx.b, ctx.stream, ctx.feed, c).and_then(|id| {
-            // 同一会话已有别的订阅者替它开着：不再开（关时按引用计数配对）
-            if ctx.feed.hub.opened(id) == 0 {
-                bounded(ctx.b, ctx.b.chat_open(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
-            }
+            // 同一会话已有别人替它开着：不再开（关时按租约配对）
+            crate::lease::open(ctx.b, ctx.feed.hub.leases(), id).map_err(Fail::Core)?;
             Ok(id)
         });
         match opened {

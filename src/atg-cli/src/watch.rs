@@ -19,7 +19,8 @@ use crate::args::{Format, WatchArgs};
 use crate::chats::{self, Feed};
 use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
 use crate::history::ChatRef;
-use crate::out::{Fail, envelope};
+use crate::lease::{self, Leases};
+use crate::out::{Fail, Stdio, envelope};
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
 use atg_core::error::CoreError;
@@ -34,6 +35,7 @@ use atg_core::status::CoreState;
 use atg_core::store::Store;
 use atg_core::tree::Doc;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -294,6 +296,8 @@ pub struct Sub {
 #[derive(Default)]
 pub struct Hub {
     subs: Vec<Sub>,
+    /// 替谁开着会话（订阅者各占一份；以后转写也从这里要）
+    leases: Arc<Leases>,
 }
 
 impl Hub {
@@ -321,9 +325,9 @@ impl Hub {
         v
     }
 
-    /// 某会话现在有几个订阅者替它开着。已标走、还没摘掉的也算：它开的那次要等摘掉时才配对关
-    pub fn opened(&self, chat: ChatId) -> usize {
-        self.subs.iter().filter(|s| s.chat == Some(chat)).count()
+    /// 会话租约（`--chat` 开会话前从这里要一份，开失败退掉）。已标走、还没摘掉的订阅者仍占着它那份
+    pub fn leases(&self) -> &Arc<Leases> {
+        &self.leases
     }
 
     pub fn on_event(&mut self, store: &Store, seq: u64, event: &CoreEvent) {
@@ -346,21 +350,11 @@ impl Hub {
                 s.dead = true;
             }
         }
-        let gone: Vec<Option<ChatId>> = self
-            .subs
-            .iter()
-            .filter(|s| s.dead)
-            .map(|s| s.chat)
-            .collect();
-        self.subs.retain(|s| !s.dead);
-        let mut close: Vec<ChatId> = gone
+        let (gone, live) = std::mem::take(&mut self.subs)
             .into_iter()
-            .flatten()
-            .filter(|c| self.opened(*c) == 0)
-            .collect();
-        close.sort_unstable();
-        close.dedup();
-        close
+            .partition(|s| s.dead);
+        self.subs = live;
+        self.give_back(gone)
     }
 
     /// 全部正常收尾：各写结尾行 `result` + 退出码 0，交出它们替开过的会话
@@ -374,17 +368,23 @@ impl Hub {
     }
 
     fn end_all(&mut self, end: impl Fn(&Watcher) -> (String, u8)) -> Vec<ChatId> {
-        let mut close = Vec::new();
-        for mut s in std::mem::take(&mut self.subs) {
-            if !s.dead {
-                let (line, code) = end(&s.watcher);
-                let _ = s.out.line(&line);
-                s.out.finish(code);
-            }
-            close.extend(s.chat);
+        let mut subs = std::mem::take(&mut self.subs);
+        for s in subs.iter_mut().filter(|s| !s.dead) {
+            let (line, code) = end(&s.watcher);
+            let _ = s.out.line(&line);
+            s.out.finish(code);
         }
+        self.give_back(subs)
+    }
+
+    /// 摘掉的订阅者各放回它那份租约；回放完已没人开着的会话（调用方去 `chat_close`）
+    fn give_back(&self, gone: Vec<Sub>) -> Vec<ChatId> {
+        let mut close: Vec<ChatId> = gone
+            .into_iter()
+            .filter_map(|s| s.chat)
+            .filter(|c| self.leases.give(*c))
+            .collect();
         close.sort_unstable();
-        close.dedup();
         close
     }
 
@@ -399,7 +399,7 @@ impl Hub {
         code
     }
 
-    /// 最后挂上的那个订阅者打开了这个会话（它也是正在输入要看的「当前会话」）
+    /// 最后挂上的那个订阅者打开了这个会话（它也是正在输入要看的「当前会话」）。调用方已替它要过一份租约，摘掉时放回
     pub fn open_chat(&mut self, chat: ChatId) {
         if let Some(s) = self.subs.last_mut() {
             s.chat = Some(chat);
@@ -780,7 +780,7 @@ fn watch_loop<B: Backend>(
         Err(f) => return fail_unless_stopped(feed, stop, &f),
     };
     if let Some(c) = chat {
-        if let Err(e) = bounded(b, b.chat_open(c), QUERY_TIMEOUT) {
+        if let Err(e) = lease::open(b, feed.hub.leases(), c) {
             return fail_unless_stopped(feed, stop, &Fail::Core(e));
         }
         feed.hub.open_chat(c);
@@ -795,7 +795,7 @@ fn watch_loop<B: Backend>(
         }
         max_pending = max_pending.max(fed);
         fetch_topics(b, feed, stop);
-        feed.hub.reap();
+        lease::close(b, feed.hub.reap(), &mut Stdio);
         if feed.hub.is_empty() {
             break Ended::Stopped;
         }
@@ -807,14 +807,11 @@ fn watch_loop<B: Backend>(
         }
         std::thread::sleep(POLL);
     };
-    // 后端故障时不再关会话（请求发不出去；同 serve）。正常结束才配对 chat_close
-    if matches!(ended, Ended::Stopped) {
-        close_chat(b, chat);
-    }
     eprintln!("atg-cli watch: 单次最多待处理 {max_pending} 条");
+    // 后端故障时不再关会话（请求发不出去；同 serve）。正常结束才配对 chat_close
     match ended {
         Ended::Stopped => {
-            feed.hub.finish_all();
+            lease::close(b, feed.hub.finish_all(), &mut Stdio);
             0
         }
         Ended::Faulted => {
@@ -845,15 +842,6 @@ fn fail_unless_stopped(feed: &mut Feed, stop: &AtomicBool, f: &Fail) -> u8 {
         0
     } else {
         feed.hub.fail_last(f)
-    }
-}
-
-/// 收尾时关会话：停止标志已立起，只看期限
-fn close_chat<B: Backend>(b: &B, chat: Option<ChatId>) {
-    if let Some(c) = chat
-        && let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT)
-    {
-        eprintln!("atg-cli: 关闭会话时出错（{}）", e.code());
     }
 }
 

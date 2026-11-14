@@ -30,6 +30,9 @@ mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod history;
+// 会话租约只有执行方与直跑的 `watch` 用；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod lease;
 mod login;
 mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它

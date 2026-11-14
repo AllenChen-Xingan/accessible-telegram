@@ -9,6 +9,7 @@ use atg_core::link::block_on;
 use std::sync::{Arc, Mutex};
 
 mod ctrl_c;
+mod hub;
 
 const PEER: i64 = 101;
 const GROUP: i64 = -1001;
