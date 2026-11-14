@@ -2,10 +2,13 @@
 
 //! 假后端 + 假时钟：数据全是编的（名字、会话名只用 `fixtures/names.txt` 里的），不碰真实账号、不碰本机档案目录。
 use super::*;
+use crate::deadlines::TOPIC_TIMEOUT;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::link::block_on;
 use std::sync::{Arc, Mutex};
+
+mod ctrl_c;
 
 const PEER: i64 = 101;
 const GROUP: i64 = -1001;
@@ -355,15 +358,20 @@ fn stop_while_forum_topic_hangs_returns_at_once() {
         feed.drain(&mut stream);
         std::thread::sleep(Duration::from_millis(10));
     }
-    let stop = std::sync::Arc::new(AtomicBool::new(false));
-    let s = stop.clone();
-    let h = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(300));
-        s.store(true, Ordering::SeqCst);
-    });
+    // 等假后端记下取话题的请求（已交出、卡住）再立停止标志，不靠固定延时
+    let stop = AtomicBool::new(false);
     let t1 = Instant::now();
-    fetch_topics(&b, &mut feed, &stop);
-    h.join().unwrap();
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            while !b.calls().contains(&Call::ForumTopicGet(GROUP, 7))
+                && t1.elapsed() < Duration::from_secs(5)
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        fetch_topics(&b, &mut feed, &stop);
+    });
     assert!(t1.elapsed() < TOPIC_TIMEOUT, "{:?}", t1.elapsed());
     assert!(
         b.calls().contains(&Call::ForumTopicGet(GROUP, 7)),

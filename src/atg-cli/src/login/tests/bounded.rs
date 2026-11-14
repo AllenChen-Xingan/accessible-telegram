@@ -13,6 +13,26 @@ fn hang(b: &FakeBackend, action: &'static str) {
     );
 }
 
+/// 等假后端记下这次请求（已交出、卡在等应答）再立停止标志：不靠固定延时，机器再慢也先走到挂起点。
+/// 5 秒还没记下就照样立起，后面「确实交出」的断言会如实变红
+fn stop_once_sent<R>(
+    b: &FakeBackend,
+    action: &'static str,
+    run: impl FnOnce(&AtomicBool) -> R,
+) -> R {
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let t0 = Instant::now();
+            while !auth_calls(b).contains(&action) && t0.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        run(&stop)
+    })
+}
+
 /// 过 `after` 之后在别的线程立起停止标志（像信号处理函数那样，不唤醒等的线程）
 fn stop_later(after: Duration) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {
     let stop = Arc::new(AtomicBool::new(false));
@@ -32,17 +52,17 @@ fn ctrl_c_while_submit_hangs_is_interrupted_and_shut_down() {
     let b = FakeBackend::new().unwrap();
     b.set_auth(account());
     hang(&b, "phone");
-    let (stop, h) = stop_later(Duration::from_millis(300));
     let t0 = Instant::now();
-    let r = session::drive(
-        &b,
-        &p,
-        Job::Login,
-        &mut Script::new(&[PHONE]),
-        &mut |_| {},
-        &stop,
-    );
-    h.join().unwrap();
+    let r = stop_once_sent(&b, "phone", |stop| {
+        session::drive(
+            &b,
+            &p,
+            Job::Login,
+            &mut Script::new(&[PHONE]),
+            &mut |_| {},
+            stop,
+        )
+    });
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
     // 真卡在提交上（号码已交出），不是卡在前面等授权线
@@ -67,18 +87,18 @@ fn ctrl_c_while_resend_hangs_is_interrupted() {
     );
     assert!(r.is_ok(), "先走到等验证码");
     hang(&b, "resend");
-    let (stop, h) = stop_later(Duration::from_millis(300));
     let t0 = Instant::now();
-    let r = auth_step(
-        &b,
-        ServerKind::Test,
-        AuthSub::Resend,
-        None,
-        &mut s,
-        &mut |_| {},
-        &stop,
-    );
-    h.join().unwrap();
+    let r = stop_once_sent(&b, "resend", |stop| {
+        auth_step(
+            &b,
+            ServerKind::Test,
+            AuthSub::Resend,
+            None,
+            &mut s,
+            &mut |_| {},
+            stop,
+        )
+    });
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
     assert!(
@@ -96,10 +116,10 @@ fn ctrl_c_while_logout_hangs_is_interrupted() {
     };
     let (b, _p) = started("hang-logout", ServerKind::Test, a);
     hang(&b, "logout");
-    let (stop, h) = stop_later(Duration::from_millis(300));
     let t0 = Instant::now();
-    let r = logout(&b, &mut Script::new(&["yes"]), &mut |_| {}, &stop);
-    h.join().unwrap();
+    let r = stop_once_sent(&b, "logout", |stop| {
+        logout(&b, &mut Script::new(&["yes"]), &mut |_| {}, stop)
+    });
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
 }

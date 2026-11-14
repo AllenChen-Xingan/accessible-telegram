@@ -59,25 +59,29 @@ impl Tty {
 
     /// 读一行，不回显。回车结束；结果装进 [`Secret`]
     pub fn read_secret(&mut self, prompt: &str) -> Result<Secret, ReadEnd> {
-        self.read_raw(prompt, false).map(Secret::new)
+        // 不论怎么结束，缓冲区都先装进 Secret（丢掉时清零），出错路径也一样
+        let (buf, end) = self.read_raw(prompt, false);
+        let secret = Secret::new(buf);
+        end.map(|()| secret)
     }
 
     /// 读一行，照常回显（登出确认这类不是秘密的回答）。返回去掉首尾空白的小写形式。
     /// 终端同样切成逐字节、Ctrl+C 不发信号、自己回显：登录这组命令装了信号处理，规范模式下 Ctrl+C 只立标志、
     /// 读会被内核重启，提示停着不动；这里自己认 Ctrl+C，结果同读秘密（`interrupted`）
     pub fn read_visible(&mut self, prompt: &str) -> Result<String, ReadEnd> {
-        let line = self.read_raw(prompt, true)?;
-        Ok(String::from_utf8_lossy(&line).trim().to_lowercase())
+        let (line, end) = self.read_raw(prompt, true);
+        end.map(|()| String::from_utf8_lossy(&line).trim().to_lowercase())
     }
 
-    /// 切好终端（`~ECHO ~ICANON ~ISIG ~IEXTEN`）再出提示、读一行；`echo` = 自己把敲的字写回终端
-    fn read_raw(&mut self, prompt: &str, echo: bool) -> Result<Vec<u8>, ReadEnd> {
+    /// 切好终端（`~ECHO ~ICANON ~ISIG ~IEXTEN`）再出提示、读一行；`echo` = 自己把敲的字写回终端。
+    /// 缓冲区不论成败都交回（读秘密的那边要清零）
+    fn read_raw(&mut self, prompt: &str, echo: bool) -> (Vec<u8>, Result<(), ReadEnd>) {
         let fd = self.file.as_raw_fd();
         // SAFETY: termios 是纯数据结构，全零是合法初值，随即由 tcgetattr 填满
         let mut orig: libc::termios = unsafe { std::mem::zeroed() };
         // SAFETY: fd 有效，orig 可写
         if unsafe { libc::tcgetattr(fd, &mut orig) } != 0 {
-            return Err(ReadEnd::Cancelled);
+            return (Vec::new(), Err(ReadEnd::Cancelled));
         }
         let mut raw = orig;
         raw.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
@@ -85,7 +89,7 @@ impl Tty {
         raw.c_cc[libc::VTIME] = 0;
         // SAFETY: 同上
         if unsafe { libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) } != 0 {
-            return Err(ReadEnd::Cancelled);
+            return (Vec::new(), Err(ReadEnd::Cancelled));
         }
         let guard = Restore { fd, orig };
         // 先切好终端再出提示：切换时会丢掉已敲进来的输入，提示在前的话，看到提示就敲的人（或脚本）会被吞掉
@@ -102,7 +106,7 @@ impl Tty {
         drop(guard);
         // 回车不回显，补一个换行，下一句另起一行
         let _ = writeln!(self.file);
-        end.map(|()| buf)
+        (buf, end)
     }
 }
 
@@ -125,18 +129,15 @@ fn read_raw_line(
             0x04 if buf.is_empty() => return Err(ReadEnd::Cancelled),
             // 退格：删掉最后一个字（UTF-8 的续字节一起删）
             0x7f | 0x08 => {
-                if !buf.is_empty() {
+                let start = buf.iter().rposition(|x| x & 0xC0 != 0x80).unwrap_or(0);
+                for _ in 0..cols(&buf[start..]) {
                     echo(b"\x08 \x08");
                 }
-                while let Some(last) = buf.pop() {
-                    if last & 0xC0 != 0x80 {
-                        break;
-                    }
-                }
+                buf.truncate(start);
             }
             // Ctrl+U：清空这一行
             0x15 => {
-                for _ in buf.iter().filter(|x| **x & 0xC0 != 0x80) {
+                for _ in 0..cols(buf) {
                     echo(b"\x08 \x08");
                 }
                 for x in buf.iter_mut() {
@@ -150,6 +151,33 @@ fn read_raw_line(
             }
             _ => {}
         }
+    }
+}
+
+/// 这几个字节在终端上占几列（回显时退格按它擦）。不拷贝：读秘密时也走这里。
+/// 中日韩、全角、表情占 2 列，组合附加符号占 0 列，其余 1 列；解不出来（半个字）按字节数
+fn cols(bytes: &[u8]) -> usize {
+    std::str::from_utf8(bytes).map_or(bytes.len(), |s| s.chars().map(char_cols).sum())
+}
+
+fn char_cols(c: char) -> usize {
+    match u32::from(c) {
+        0x0300..=0x036F | 0x200B..=0x200F | 0xFE00..=0xFE0F => 0,
+        0x1100..=0x115F
+        | 0x2E80..=0x303E
+        | 0x3041..=0x33FF
+        | 0x3400..=0x4DBF
+        | 0x4E00..=0x9FFF
+        | 0xA000..=0xA4CF
+        | 0xAC00..=0xD7A3
+        | 0xF900..=0xFAFF
+        | 0xFE30..=0xFE4F
+        | 0xFF00..=0xFF60
+        | 0xFFE0..=0xFFE6
+        | 0x1F300..=0x1F64F
+        | 0x1F900..=0x1F9FF
+        | 0x20000..=0x3FFFD => 2,
+        _ => 1,
     }
 }
 
@@ -177,22 +205,24 @@ mod tests {
         assert_eq!(read(b"1\x012\r"), (Ok(()), b"12".to_vec()));
     }
 
-    /// 回显：收下的字原样交回，退格、Ctrl+U 按字交回「退一格」，Ctrl+C 不回显
+    /// 回显：收下的字原样交回；退格、Ctrl+U 按显示宽度交回「退一格」（汉字两格、组合符号零格）
     #[test]
     fn echo_follows_editing() {
         let mut buf = Vec::with_capacity(MAX_INPUT);
         let mut seen = Vec::new();
+        let bs = "\x08 \x08";
         let r = read_raw_line(
-            &mut &"ab\x7f码\x15y\r".as_bytes()[..],
+            &mut &"ab\x7f码\x15y码\x7fe\u{301}\x7f\r".as_bytes()[..],
             &mut buf,
             &mut |b| seen.extend_from_slice(b),
         );
         assert_eq!(r, Ok(()));
-        assert_eq!(buf, b"y");
-        let mut want = b"ab\x08 \x08".to_vec();
-        want.extend_from_slice("码".as_bytes());
-        want.extend_from_slice(b"\x08 \x08\x08 \x08y");
-        assert_eq!(seen, want);
+        assert_eq!(buf, "ye".as_bytes());
+        // a b ⌫(b 一格) 码 ⌃U(a 一格 + 码 两格) y 码 ⌫(两格) e ◌́ ⌫(组合符号零格)
+        let want = format!("ab{bs}码{}y码{}e\u{301}", bs.repeat(3), bs.repeat(2));
+        assert_eq!(String::from_utf8(seen).unwrap(), want);
+        assert_eq!(cols("码".as_bytes()), 2);
+        assert_eq!(cols(&"码".as_bytes()[..2]), 2, "半个字按字节数");
     }
 
     #[test]

@@ -144,7 +144,6 @@ pub fn serve<B: Backend>(
             Ok(Some(Accepted::Conn(c))) => {
                 let ctx = Ctx {
                     b,
-                    stop,
                     kind,
                     limits,
                     stream: &mut stream,
@@ -240,8 +239,6 @@ fn status_line<B: Backend>(b: &B, format: Format, own: &mut dyn Sink) {
 /// 处理一个请求要用的东西
 struct Ctx<'a, B: Backend> {
     b: &'a B,
-    /// 停止标志：只有转来的 `auth state` 等授权线时看它；其余转来的请求按期限等（`bounded`），不看
-    stop: &'a AtomicBool,
     kind: atg_core::config::ServerKind,
     limits: Limits,
     stream: &'a mut EventStream,
@@ -537,7 +534,8 @@ fn execute<B: Backend>(
                 None,
                 &mut NoSecrets,
                 &mut |s| crate::emit_step(sink, format, s),
-                ctx.stop,
+                // 执行方收尾时也先做完手上的请求（`cli.md` `serve`）：不看它的停止标志，只按期限等
+                &AtomicBool::new(false),
             );
             let job = Job::Auth(AuthSub::State);
             ("auth", crate::job_output(sink, format, job, r, started))

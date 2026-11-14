@@ -503,15 +503,19 @@ fn ctrl_c_while_download_hangs_is_interrupted() {
             what: FakeBackend::HANG,
         },
     );
-    let stop = Arc::new(AtomicBool::new(false));
-    let s = stop.clone();
-    let h = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        s.store(true, Ordering::SeqCst);
-    });
+    // 等假后端记下下载请求（已交出、卡住）再立停止标志，不靠固定延时
+    let stop = AtomicBool::new(false);
     let t0 = Instant::now();
-    let r = run_download(&b, &profile("hang"), &q(1), &stop, t0);
-    h.join().unwrap();
+    let r = std::thread::scope(|s| {
+        s.spawn(|| {
+            let sent = |b: &FakeBackend| b.calls().contains(&Call::FileDownload(FILE));
+            while !sent(&b) && t0.elapsed() < std::time::Duration::from_secs(5) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        run_download(&b, &profile("hang"), &q(1), &stop, t0)
+    });
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t0.elapsed() < crate::deadlines::QUERY_TIMEOUT);
     assert!(

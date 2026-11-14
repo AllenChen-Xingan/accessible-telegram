@@ -17,7 +17,7 @@
 
 use crate::args::{Format, WatchArgs};
 use crate::chats::{self, Feed};
-use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, TOPIC_TIMEOUT, bounded, within};
+use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
 use crate::history::ChatRef;
 use crate::out::{Fail, envelope};
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
@@ -705,7 +705,8 @@ pub fn run<B: Backend>(
         Ok(s) => s,
         Err(e) => return fail_line(out, format, &Fail::Core(e)),
     };
-    // 起后端不看 Ctrl+C（watch 按了照常出 `result`、退 0）：等它起完（最多 START_TIMEOUT），进循环第一圈就停
+    // 起后端不看 Ctrl+C：等它起完（最多 START_TIMEOUT），起好了进循环第一圈就停、照常出 `result`；
+    // 起不来（含到点）照实报错——还没开始订阅，没有可收尾的（`serve` 同）
     if let Err(e) = bounded(b, b.start(profile), START_TIMEOUT) {
         let _ = b.shutdown(SHUTDOWN_TIMEOUT);
         return fail_line(out, format, &Fail::Core(e));
@@ -776,11 +777,11 @@ fn watch_loop<B: Backend>(
     });
     let chat = match q.chat.map(|c| resolve(b, stream, feed, c)).transpose() {
         Ok(c) => c,
-        Err(f) => return feed.hub.fail_last(&f),
+        Err(f) => return fail_unless_stopped(feed, stop, &f),
     };
     if let Some(c) = chat {
         if let Err(e) = bounded(b, b.chat_open(c), QUERY_TIMEOUT) {
-            return feed.hub.fail_last(&Fail::Core(e));
+            return fail_unless_stopped(feed, stop, &Fail::Core(e));
         }
         feed.hub.open_chat(c);
     }
@@ -837,37 +838,13 @@ impl crate::out::Sink for Collect {
     }
 }
 
-/// 取判到时还没设置的论坛话题（`getForumTopic`，只读），应答喂 store（只在还没有时收）；取不到只记错误码。
-/// 每个最多等 [`TOPIC_TIMEOUT`]；`stop` 立起就把剩下的留着不取、直接回去让主循环收尾（#73）
-pub fn fetch_topics<B: Backend>(b: &B, feed: &mut Feed, stop: &AtomicBool) {
-    for (chat, topic) in feed.hub.take_missing_topics() {
-        let deadline = Instant::now() + TOPIC_TIMEOUT;
-        let r = match within(b, b.forum_topic_get(chat, topic), deadline, stop) {
-            Ok(r) => r,
-            Err(Fail::Core(e)) => Err(e),
-            Err(Fail::Interrupted) => return,
-            Err(Fail::Usage(_) | Fail::NotImplemented { .. } | Fail::Unsupported(_)) => continue,
-        };
-        match r {
-            Ok(state) => {
-                let _ = feed.pump_mut().apply(atg_core::store::Input::TopicLoaded {
-                    chat_id: chat,
-                    topic_id: topic,
-                    state,
-                    received_ms: now_ms(),
-                });
-            }
-            // 取不到：这个话题本次订阅里不再取，一直按 topic_unknown 不提示（宁可不吵）
-            Err(e) => eprintln!("atg-cli watch: 取论坛话题设置出错（{}）", error_label(&e)),
-        }
-    }
-}
-
-/// 标准错误里说错误用的：码，`internal` 另带写死的 `what`（与 `errors.md` 登记的对得上）
-fn error_label(e: &CoreError) -> String {
-    match e {
-        CoreError::Internal { what } => format!("internal:{what}"),
-        other => other.code().to_owned(),
+/// 开订阅前的请求没成：等的时候已按了 Ctrl+C 就照约定出 `result`、退 0（`cli.md` `watch`），否则报这个错
+fn fail_unless_stopped(feed: &mut Feed, stop: &AtomicBool, f: &Fail) -> u8 {
+    if stop.load(Ordering::SeqCst) {
+        feed.hub.finish_all();
+        0
+    } else {
+        feed.hub.fail_last(f)
     }
 }
 
@@ -879,6 +856,9 @@ fn close_chat<B: Backend>(b: &B, chat: Option<ChatId>) {
         eprintln!("atg-cli: 关闭会话时出错（{}）", e.code());
     }
 }
+
+mod topics;
+pub use topics::fetch_topics;
 
 #[cfg(test)]
 mod tests;
