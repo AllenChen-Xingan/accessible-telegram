@@ -6,12 +6,11 @@
 //!
 //! - 标准输出：起好后一行 `status`（带 `listening:true`），结束时一行 `result`（`reason:"interrupted"`，退出码 0，
 //!   同 `watch` 被打断算正常结束）；后端故障就以 `disconnected` 结尾，好让人重开
-//! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）
+//! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）；`watch` 接入、离开各记一句现有几个（离开那句在摘掉、关完会话之后才记，测试按它认「摘掉做完了」）
 //! - 能执行的见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类的凭据由本进程的闸开（本进程以 `--unsafe-direct-send` 启动才直发）；流式的 `watch` 挂进订阅者表（`join_watch`）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
 //!   版本号不对、请求形状不对回 `internal{ipc_version_mismatch | ipc_bad_request}`（这时还不知道要哪种格式，一律 JSON）
 //! - 只连上就断的（发起方探一下执行方在不在）不记
-//! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，
-//!   不让事件在通道里越攒越多
+//! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，不让事件在通道里越攒越多
 //! - 时间字段（`at`、`elapsed_ms`、`first_chat_ms`）在这边当场生成：`elapsed_ms` 从收到请求起算，
 //!   `first_chat_ms` 是执行方启动到这个列表第一次有会话（主列表、归档从启动起就在记，不是「第一次被问」的时刻）；
 //!   其余与直跑逐字节一致（同一段渲染代码）
@@ -157,14 +156,17 @@ pub fn serve<B: Backend>(
             Err(_) => std::thread::sleep(POLL),
         }
         crate::watch::fetch_topics(b, &mut feed, stop);
+        let before = feed.hub.len();
         crate::lease::close(b, feed.hub.reap(), "atg-cli serve", own);
+        if let Some(n) = Some(feed.hub.len()).filter(|n| *n < before) {
+            own.err(&format!("atg-cli serve: watch 离开（现有 {n} 个）"));
+        }
         if b.status().lines.core == CoreState::Faulted {
             faulted = true;
             break;
         }
     }
-    // 挂着的 watch 一并收尾：正常停是 result（interrupted）+ 0；故障是 disconnected
-    // 故障时不关会话（请求发不出去）
+    // 挂着的 watch 一并收尾：正常停是 result（interrupted）+ 0；故障是 disconnected、不关会话（请求发不出去）
     if faulted {
         feed.hub.fail_all(&Fail::Core(CoreError::Disconnected));
     } else {
@@ -370,10 +372,8 @@ fn join_watch<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, req: &Request, own: &
             }
         }
     }
-    own.err(&format!(
-        "atg-cli serve: watch 接入（现有 {} 个）",
-        ctx.feed.hub.len()
-    ));
+    let n = ctx.feed.hub.len();
+    own.err(&format!("atg-cli serve: watch 接入（现有 {n} 个）"));
 }
 
 /// 订阅者表满了（上限 [`crate::watch::MAX_SUBSCRIBERS`]）
