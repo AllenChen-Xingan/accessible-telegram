@@ -5,6 +5,9 @@ use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+/// 这些测试不按 Ctrl+C
+static NEVER: AtomicBool = AtomicBool::new(false);
+
 const ME: i64 = 100;
 const LIN: i64 = 101;
 const GROUP: i64 = -1001;
@@ -94,7 +97,7 @@ fn code(r: Result<VoiceFile, Fail>) -> String {
 fn downloads_the_voice_file() {
     let b = backend();
     b.set_file(FILE, Some(downloaded()));
-    let v = run_download(&b, &profile("ok"), &q(1), Instant::now())
+    let v = run_download(&b, &profile("ok"), &q(1), &NEVER, Instant::now())
         .unwrap_or_else(|_| panic!("没下到"));
     assert_eq!(v.id.message_id, 1);
     assert_eq!(v.duration, 12);
@@ -121,7 +124,13 @@ fn not_a_voice_is_invalid_input_and_downloads_nothing() {
     let b = backend();
     b.set_file(FILE, Some(downloaded()));
     assert_eq!(
-        code(run_download(&b, &profile("text"), &q(2), Instant::now())),
+        code(run_download(
+            &b,
+            &profile("text"),
+            &q(2),
+            &NEVER,
+            Instant::now()
+        )),
         "invalid_input"
     );
     assert!(!b.calls().iter().any(|c| matches!(c, Call::FileDownload(_))));
@@ -132,7 +141,13 @@ fn unfinished_download_is_an_error_not_half_a_file() {
     let b = backend();
     b.set_file(FILE, None);
     assert_eq!(
-        code(run_download(&b, &profile("half"), &q(1), Instant::now())),
+        code(run_download(
+            &b,
+            &profile("half"),
+            &q(1),
+            &NEVER,
+            Instant::now()
+        )),
         "internal"
     );
 }
@@ -142,12 +157,24 @@ fn missing_file_and_missing_message_are_not_found() {
     let b = backend();
     // 第 3 条的文件 id 是 0（TDLib 没给）；假后端没登记 → 找不到
     assert_eq!(
-        code(run_download(&b, &profile("nofile"), &q(3), Instant::now())),
+        code(run_download(
+            &b,
+            &profile("nofile"),
+            &q(3),
+            &NEVER,
+            Instant::now()
+        )),
         "not_found"
     );
     let b = backend();
     assert_eq!(
-        code(run_download(&b, &profile("nomsg"), &q(99), Instant::now())),
+        code(run_download(
+            &b,
+            &profile("nomsg"),
+            &q(99),
+            &NEVER,
+            Instant::now()
+        )),
         "not_found"
     );
 }
@@ -462,4 +489,39 @@ fn bad_chat_is_usage() {
         message: 1,
     };
     assert!(matches!(query(&m), Err(Fail::Usage(_))));
+}
+
+/// 下载一直不应答（#78）：调用方立起停止标志（`play` 的 Ctrl+C、以后 GUI 的取消）之后很快以 `interrupted` 结束，
+/// 后端照常关掉，不用等 `DOWNLOAD_TIMEOUT`。`download` 命令自己不装信号处理，传的是永远立不起来的标志
+#[test]
+fn ctrl_c_while_download_hangs_is_interrupted() {
+    let b = backend();
+    b.set_file(FILE, Some(downloaded()));
+    b.fail_next(
+        "file_download",
+        CoreError::Internal {
+            what: FakeBackend::HANG,
+        },
+    );
+    // 等假后端记下下载请求（已交出、卡住）再立停止标志，不靠固定延时
+    let stop = AtomicBool::new(false);
+    let t0 = Instant::now();
+    let r = std::thread::scope(|s| {
+        s.spawn(|| {
+            let sent = |b: &FakeBackend| b.calls().contains(&Call::FileDownload(FILE));
+            while !sent(&b) && t0.elapsed() < std::time::Duration::from_secs(5) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        run_download(&b, &profile("hang"), &q(1), &stop, t0)
+    });
+    assert!(matches!(r, Err(Fail::Interrupted)));
+    assert!(t0.elapsed() < crate::deadlines::QUERY_TIMEOUT);
+    assert!(
+        b.calls()
+            .iter()
+            .any(|c| matches!(c, Call::FileDownload(FILE)))
+    );
+    assert!(matches!(b.calls().last(), Some(Call::Shutdown)));
 }

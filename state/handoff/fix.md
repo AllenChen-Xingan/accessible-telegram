@@ -15,25 +15,28 @@
 - 自审修改后的小改（poll 判定走 spans、改名）还没编译过，下次领名额一并跑
 - codex 020 第 1 轮在跑（_tmp/reviews/）
 
-## 手上（2026-11-13 起）
-第二批 PR A：#61。分支 fix/61-profile-marker（大总管从 main 68ac7a0 开），codex 编号 021。第一批已合（PR #76）。
+## 手上（2026-11-13）
+第二批 PR B：#63 #73 #78 #79。分支 fix/63-bounded-waits（从 main 9b192a5，不含 #61——#61 是 PR #91），codex 编号 022。
 
-## 做到哪（#61）
-- config.rs `Profile::create`：缺标记只在新档案（`is_fresh`：db/、files/ 都不存在或为空，读目录出错算不新）时写；否则报 internal{profile_marker_missing}，什么都不写
-- session.rs `open_profile`：只有 profile_marker_missing 才转 create（main），unreadable 等原样报
-- tests/config.rs 加 3 条：已有 db/ 或 files/ 数据 → Test/Main 都拒绝且不写标记；新档案照写、读不懂的标记不覆盖；db 不是目录 → 拒绝
-- 名额第一次：fmt ✓ clippy ✓ test config 14 过 ✓ check ✓（已归还）
-- atg-review：P0/P1 无，P2×5 属实。已修：is_fresh 收紧成目录里只有空 db/ files/；写标记改 create_new；create 末尾按落盘标记再核种类；测试补 account-limited、拆出读不懂标记；session.rs 注释
-- 契约两处已改（大总管授权 2026-11-13）：errors.md 登记 profile_marker_missing/unreadable + 修订记录；config-privacy.md 第 37 行补新档案定义 + 修订记录
-- P3「另开 what」不采纳，大总管认可，记进 021
-- 名额第二次：fmt ✓ clippy ✓ test config 15 过 ✓ check ✓；变异验证 is_fresh 恒真 → 2 条红
-- codex 021 第 1 轮：P2×3 属实已改（create 先判后动盘、恢复先核种类、拆 pick_profile + session/tests.rs 5 条）；记录 docs/reviews/021_*
-- 修复验证：config 15 过、session 5 过；codex 021 第 2 轮通过，达停止线
-- **#61 完成**，PR 草稿 MAIN/_tmp/20261113-b18/pr-fix-61.md，等大总管提交开 PR；reviews/README 021 索引行待大总管补
-- 更正：之前写「profile_marker_missing 已在 errors.md 登记」是错的，没有
+## 做到哪（PR B 第一段：link + login + watch，没编译过）
+- 重盘：比原清单多 send.rs 4 处、voice 3 处（大总管定并入第二段）；core 3 处有意无期限（td.rs 交出线程、link blocking_batch、example）标 allow
+- arch 定：文件 `link/block.rs`（block_on / block_on_until / block_on_timeout 放一处），结果类型叫 `Until`（core 已有 send::Waited）
+- `block_on_until`：每次轮询前先看 stop（叫停后不发新请求），每片 ≤100 ms
+- `atg-cli/src/deadlines.rs`：AUTH/SYNC/LOAD/QUERY/START/STEP/AUTH_POLL/TOPIC/ME/FRAME + `within`（看 stop）/`bounded`（不看 stop，收尾用）/`stalled`
+- 新取值：START_TIMEOUT 30 秒（人可推翻）、QUERY 10 秒（大总管定按 LOAD）、DOWNLOAD 120 秒（第二段，大总管定）
+- login：每步提交与等授权线共用截止时刻；wait_line 每片 ≤200 ms 看 stop；drive 带 stop；main run_job 装 signals
+- watch：start / chat_get / chat_open / chat_close 用 bounded（不看 stop，Ctrl+C 仍走结尾 result）；fetch_topics 带 stop
+- 测试：login/tests.rs + tests/{bounded,interactive,stepwise}.rs；watch/tests.rs；#79 暗号「丙丁」只查 data.message 与 speech；新测 link/block/tests.rs 5 条、login bounded 6 条、watch 话题 2 条
+- 假后端：`FakeBackend::HANG` 注入一直不应答；auth_call / ready_or_401 合一个 `injected`（fake.rs 1155 → 1153）
+- 测试放行：lib.rs / main.rs `#![cfg_attr(test, allow(clippy::disallowed_methods))]`；core 两份集成测试文件头 allow
+- 其余 14 个函数暂标 expect（serve 3、chats 1、history 4、send 3、voice 3）
+- 名额已申请
 
 ## 下一步
-#61 收尾报大总管 → 再开 #63 #73 #78 #79 分支（codex 022）
+编译 → 第一段交大总管提交 → 第二段（chats/history/serve/send/voice 收口、expect 清零）→ atg-review → codex 022 → 期限对照表进 PR 描述
+
+## 大总管定（PR B，2026-11-13）
+- C 三处 allow；A（send）B（voice）并入第二段，撞车由大总管排；查询类 10 秒；DOWNLOAD_TIMEOUT 120 秒，超时报 network，Ctrl+C 照旧能停
 
 ## 要人定 / 等大总管
 - docs/reviews/README.md 的 020 索引行（不在我的可写范围）
@@ -142,3 +145,9 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 - 根因：`watch.rs:1058` `spoiler_hidden_unless_reveal` 断言整行 JSON `to_string()` 不含 "42"；行里有真实时间戳（at 等），时间里出现 42 就挂
 - 修法：只查 `data.message`（序列化后）与 `speech`；暗号「42」换成时间里不可能出现的字（如汉字「丙丁」，与 hidden.json 夹具同风格）
 - 位置：watch.rs 测试挪到 watch/tests.rs 后在那边改
+
+**2026-11-13 第一段编译全绿、已归还名额、报大总管待提交。** 编译时改：expect 挪到 main.rs 的 5 个 mod 声明；td.rs 改用 link::block_on_guarded（pub(crate)，tdlib-api）；serve 测试挪到 serve/tests.rs，快照随之挪到 serve/snapshots/；login 测试夹具 started() 先等授权线离开「等参数」（并行偶发失败）。基线已 --tighten。下一步：等第一段提交后开第二段（删 main.rs 那 5 行 expect）。
+
+**2026-11-13 第二段写完，等名额编译。** chats/history/serve/send 用 bounded（START / QUERY）；voice 的 find/download/fetch/run_download 加 stop 参数，下载 within DOWNLOAD_TIMEOUT 120 秒；main.rs 的 5 行 expect 删了；send 测试挪到 send/tests.rs；serve/tests.rs 拆出 tests/lifecycle.rs（第一段漏的：未跟踪文件 check-file-size 不数）。教训：第二段改完没领名额跑过一次 clippy，已向大总管认错。
+
+**2026-11-13 PR B 收尾。** codex 022 两轮收敛（第 1 轮 P2×5、第 2 轮 P2×4；第 2 轮 #1 #3 #4 停止线后修、有测试，#2 由大总管开 issue）。全量编译测试全绿（atg-cli 138+21）。PR 草稿：MAIN `_tmp/20261113-b18/pr-fix-63.md`。待大总管提交最后一批（login 片内再看停止、ensure_ready 到点报 network、退格连组合符号删、022 记录第 2 轮、README 索引、基线）并开 PR。

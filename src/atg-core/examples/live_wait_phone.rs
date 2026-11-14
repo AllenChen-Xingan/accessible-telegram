@@ -72,7 +72,12 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     };
     let t0 = Instant::now();
-    if let Err(e) = block_on(backend.start(&profile)) {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "一次性实验：人在终端前看着跑，卡住就 Ctrl+C"
+    )]
+    let started = block_on(backend.start(&profile));
+    if let Err(e) = started {
         eprintln!("start error={}", e.code());
         let _ = backend.shutdown(SHUTDOWN_TIMEOUT);
         return ExitCode::from(1);

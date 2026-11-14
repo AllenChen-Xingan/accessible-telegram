@@ -15,11 +15,16 @@
         clippy::expect_used
     )
 )]
+// 测试里一律可以无期限地等（卡住就是测试失败）；产品代码由 `clippy.toml` 的 `disallowed-methods` 管（#78）
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
 
 mod args;
 // 列会话的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod chats;
+// 期限有的只在真实后端路径上用；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod deadlines;
 mod download;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
@@ -136,11 +141,15 @@ fn main() -> ExitCode {
 /// 登录这组命令：每走到一步出一行 `auth`（只有步骤名），最后一行 `result` / `error`。
 /// 档案被占时只有 `auth state` 转给执行方（只读、不带秘密）；其余不转（秘密不过接口），照旧报 `profile_busy`
 fn run_job(g: &args::Global, format: Format, job: Job, started: Instant) -> ExitCode {
+    // 转给执行方的 `auth state` 不装信号处理：读帧不看停止标志，Ctrl+C 照默认直接结束（同其他转发命令）
     if matches!(job, Job::Auth(login::AuthSub::State))
         && let Some(code) = forward::try_forward(g, format, "auth", &json!({ "sub": "state" }))
     {
         return ExitCode::from(code);
     }
+    // 自己跑：Ctrl+C 只立标志，等着的请求停下、照常关后端、出结尾行 `interrupted`（130）；再按一次立刻 130 退出
+    // （#63）。读秘密和登出确认时终端关了信号，Ctrl+C 由读的那边自己报，结果一样（`tty.rs`）
+    signals::install();
     let r = session::run(g, job, &mut |step| emit_step(&mut Stdio, format, step));
     // 占着档案的是常驻进程（接口连得上），这条命令却不转：说清要先停掉它
     if let Err(Fail::Core(e @ atg_core::error::CoreError::ProfileBusy { .. })) = &r

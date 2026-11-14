@@ -1,0 +1,5 @@
+# 门槛（#78）：产品代码不许无期限地等。改用 `atg_core::link::block_on_until`（截止时刻 + 停止标志）
+# 或 `block_on_timeout`（只要期限）；有意一直等的地方标 `#[allow(clippy::disallowed_methods, reason = "…")]` 写明理由
+disallowed-methods = [
+    { path = "atg_core::link::block_on", reason = "无期限等待：改用 link::block_on_until（截止时刻 + 停止标志）或 link::block_on_timeout" },
+]
