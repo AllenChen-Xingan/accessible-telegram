@@ -1,4 +1,4 @@
-//! Ctrl+C / SIGTERM → 退出标志（`serve`、`watch`、`play` 共用）。第一次只立标志、正常收尾；第二次立刻以 130 退出、不出结尾行。
+//! Ctrl+C / SIGTERM → 退出标志（`serve`、`watch`、`play`、登录这组命令共用）。第一次只立标志、正常收尾；第二次立刻以 130 退出、不出结尾行。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
