@@ -377,11 +377,38 @@ impl Sink for Log {
 }
 
 impl Log {
-    /// 最近一次 watch 接入时执行方报的订阅者数
-    fn subscribers(&self) -> Option<usize> {
+    /// 执行方报过的各次 watch 接入时的订阅者数（接入是一件一件处理的，第 i 行就是第 i 个接入的）
+    fn joins(&self) -> Vec<usize> {
         let ls = self.0.lock().unwrap();
-        let l = ls.iter().rev().find(|l| l.contains("watch 接入（现有 "))?;
-        l.split("现有 ").nth(1)?.split(' ').next()?.parse().ok()
+        ls.iter()
+            .filter_map(|l| {
+                l.split("watch 接入（现有 ")
+                    .nth(1)?
+                    .split(' ')
+                    .next()?
+                    .parse()
+                    .ok()
+            })
+            .collect()
+    }
+
+    /// 屏障：挂一个 watch，等执行方把它接入做完（含 `--chat` 开会话、记日志），回那时的订阅者数。
+    /// 只等 `sync_done` 不够：它先于挂上订阅者发出
+    fn join(
+        &self,
+        p: &Profile,
+        params: Value,
+    ) -> (Shared, &'static AtomicBool, JoinHandle<u8>, usize) {
+        let before = self.joins().len();
+        let (out, stop, h) = watch_client(p, params);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(&n) = self.joins().get(before) {
+                return (out, stop, h, n);
+            }
+            assert!(Instant::now() < deadline, "执行方没做完接入");
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -413,10 +440,9 @@ fn two_watches_on_same_chat_share_one_open() {
         std::thread::sleep(Duration::from_millis(20));
     }
     let params = json!({"chat": "1", "reveal": false});
-    let (out1, stop1, c1) = watch_client(&p, params.clone());
-    out1.wait("sync_done", |v| v["data"]["type"] == "sync_done");
-    let (out2, stop2, c2) = watch_client(&p, params);
-    out2.wait("sync_done", |v| v["data"]["type"] == "sync_done");
+    let (_out1, stop1, c1, _) = log.join(&p, params.clone());
+    let (_out2, stop2, c2, n) = log.join(&p, params);
+    assert_eq!(n, 2);
     let opens = || {
         b.calls()
             .iter()
@@ -436,12 +462,10 @@ fn two_watches_on_same_chat_share_one_open() {
     // 同步点：反复挂一个不开会话的探针，直到执行方报「现有 2 个」= 第二个 + 这次的探针，即第一个已摘掉
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let (probe, stop_p, cp) = watch_client(&p, json!({"reveal": false}));
-        probe.wait("sync_done", |v| v["data"]["type"] == "sync_done");
-        let n = log.subscribers();
+        let (_probe, stop_p, cp, n) = log.join(&p, json!({"reveal": false}));
         stop_p.store(true, Ordering::SeqCst);
         assert_eq!(cp.join().unwrap(), 0);
-        if n == Some(2) {
+        if n == 2 {
             break;
         }
         assert!(Instant::now() < deadline, "第一个一直没摘掉：{n:?}");

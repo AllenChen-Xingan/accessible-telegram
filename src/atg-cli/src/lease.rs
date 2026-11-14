@@ -4,7 +4,7 @@
 //! 同一会话可能同时有几个使用者（几个 `watch` 订阅者、几项转写）：**第一份要的真开，最后一份放的真关**。
 //! 计数 [`Leases`] 只数，不碰后端（同 [`crate::watch::Hub::reap`] 的形状：回要关的，调用方去关）；
 //! 「第一份真开、开失败退掉」「最后一份真关、出错只记」写在旁边的 [`open`] / [`close`] 一处。
-//! 后端故障时不关，由调用方决定（故障时不调 [`close`]）。
+//! 后端故障时不关：判在 [`close`] 里（每关一个之前都看一次），调用方不用另判。
 //!
 //! 内部带锁、方法都吃 `&self`：执行方是单线程的，但转写这类长动作握着一份租约的同时，
 //! `watch` 订阅者还要照常开关，所以持有者只拿共享引用（`&Leases` / `Arc<Leases>`），不独占整张表
@@ -87,12 +87,13 @@ pub fn open<B: Backend>(b: &B, leases: &Leases, chat: ChatId) -> Result<(), Core
 
 /// 关掉放完租约、已没人开着的会话（[`Leases::give`] 回 `true` 的那些）；出错只记一句码，`who` 是日志前缀。
 /// 用 [`bounded`] 不用 `within`：收尾时 Ctrl+C 往往已经按了，关会话的请求照发，只受期限管。
-/// 后端已故障就一个都不关（请求发不出去）：判在这一处，读方断开与故障同时到时调用方先 `reap` 再判故障也不会关
+/// 后端已故障就不再关（请求发不出去）：判在这一处、每关一个之前都看，读方断开与故障同时到、
+/// 或关到一半后端坏了，剩下的都不发
 pub fn close<B: Backend>(b: &B, chats: Vec<ChatId>, who: &str, own: &mut dyn Sink) {
-    if b.status().lines.core == CoreState::Faulted {
-        return;
-    }
     for c in chats {
+        if b.status().lines.core == CoreState::Faulted {
+            return;
+        }
         if let Err(e) = bounded(b, b.chat_close(c), QUERY_TIMEOUT) {
             own.err(&format!("{who}: 关闭会话时出错（{}）", e.code()));
         }

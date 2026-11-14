@@ -22,4 +22,4 @@
 | 022 | 2026-11-13 | #63 #73 #78 #79 CLI 等待都有期限、Ctrl+C 能收尾（codex · 两轮） | 第一轮 P2×5、第二轮 P2×4，全部属实；8 条已修，1 条（watch 等授权线时按 Ctrl+C 的结尾行）开 issue；两轮无 P0/P1，收敛 → `022_bounded-waits-63-codex.md` |
 | 018 | 2026-11-13 | #4 下载与播放的代码（atg-audio、download / play；codex · 三轮，逐文件审） | 提出 8（P1×2、P2×6）：全部属实；代码全改，剩 1 条 P2 的测试缺口开 issue；第 2、3 轮无 P0/P1，收敛 → `018_pr4-voice-code-codex.md` |
 | 024 | 2026-11-13 | #59 转写底座（atg-audio 的 stt 模块与 Swift 辅助程序；codex · 逐文件审） | 第 1 轮 P1×3 P2×1、第 2 轮 P1×1 P2×2、第 3 轮 P1×1 P2×2、第 4 轮 P1×1 P2×2：全部属实，已改；第 5 轮 P1×1（同一处，人定丙：已改，边界调度竞态此后算 P2）；第 6、7 轮无 P0/P1，满足停止线，剩 P2×1 开 issue → `024_stt-base-codex.md` |
-| 026 | 2026-11-14 | #59 会话租约共用模块 lease.rs 与 Hub / serve / watch 迁移（codex · diff） | 第 1 轮仅 P2×2，属实，已改 → `026_lease-codex.md` |
+| 026 | 2026-11-14 | #59 会话租约共用模块 lease.rs 与 Hub / serve / watch 迁移（codex · diff） | 第 1、2 轮各 P2×2，全部属实已改；两轮无 P0/P1，满足停止线（第 2 轮的两条也直接改了，未开 issue）→ `026_lease-codex.md` |

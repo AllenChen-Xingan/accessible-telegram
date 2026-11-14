@@ -1,8 +1,25 @@
 # 评审 026 · #59 会话租约共用模块（lease.rs）与 Hub / serve / watch 迁移（codex · gpt-6-astra · read-only）
 
-> 对象：`git diff origin/main...HEAD`（`feat/59-lease`）：`src/atg-cli/src/lease.rs`（新）、`watch.rs`、`serve.rs`、`watch/tests/hub.rs`（新）、`serve/tests/lifecycle.rs`、`specs/contracts/config-privacy.md`、`docs/experiments/exp008-local-stt/design.md`、`scripts/file-size-baseline.json`；依据 design.md 第二节第 3 条、config-privacy.md 第一节第 2 小节、arch 2026-11-14 批文（计数内部带锁、方法吃 `&self`、放没要过的不回关但 `debug_assert`）。**最新一轮：第 1 轮（2026-11-14）· 总评「修改」（仅 P2）**。
+> 对象：`git diff origin/main...HEAD`（`feat/59-lease`）：`src/atg-cli/src/lease.rs`（新）、`watch.rs`、`serve.rs`、`watch/tests/hub.rs`（新）、`serve/tests/lifecycle.rs`、`specs/contracts/config-privacy.md`、`docs/experiments/exp008-local-stt/design.md`、`scripts/file-size-baseline.json`；依据 design.md 第二节第 3 条、config-privacy.md 第一节第 2 小节、arch 2026-11-14 批文（计数内部带锁、方法吃 `&self`、放没要过的不回关但 `debug_assert`）。**最新一轮：第 2 轮（2026-11-14）· 总评「修改」（仅 P2）· 满足停止线（第 1、2 轮连续无 P0/P1）**。
 > 之前：atg-review 自审一轮（三视角），P0/P1 无，P2×4 全改（`fail_last` 前提写死、`lease::open` 两步前提写明、后端层测试、serve 端到端测试），P3 大部分改。
-> 累计处理：P2×2 逐条核实，属实 2、驳回 0。
+> 累计处理：P2×4 逐条核实，属实 4、驳回 0；第 2 轮两条停止线后也直接改了（便宜），未开 issue、未再审。
+
+## 第 2 轮（2026-11-14）· 总评「修改」（仅 P2）· 停
+
+原文：`_tmp/20261113-media/reviews/lease-codex-2.md`（不入库）。effort medium，38 秒。带第 1 轮原文与本记录。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 1、2 轮连续无 P0/P1）
+
+- **P2｜关到一半后端坏了，剩下的仍会发 `chat_close`**（第 2 轮 #1）
+  - 核实：属实。第 1 轮的修复只在进 `close` 时判一次；模块头仍写「故障时调用方不调」，与实际（判在 `close` 里）不符
+  - 处理：每关一个之前都判故障，坏了就不发剩下的；模块头改成「判在 `close` 里，调用方不用另判」；补两会话批量测试（假后端在 `chat_close` 中途不会自己坏，测试用进来就已故障的两会话批量，与「每个之前都看」同一条判据——中途变坏的那一刻没直接测到）
+- **P2｜serve 同会话测试的同步点可能读到旧日志**（第 2 轮 #2）
+  - 核实：属实。执行方先给新订阅者发 `sync_done`、再挂上它、最后记「watch 接入（现有 N 个）」；测试收到 `sync_done` 就读「最近一次」计数，可能读到第二个接入时留下的 2，误判第一个已摘。开次数的断言同样早于第二个接入做完
+  - 处理：接入一件一件处理，日志第 i 行就是第 i 个接入的；测试的 `Log::join` 记下接入前的行数，等第 i 行出来才回数。两个正式订阅者与每个探针都过这道屏障，再断言后端次数
+- 引用抽查：「属实」6 条；「不符」1 条（`lease.rs` 模块头那句，即 #1，已改）
+
+### 是否再审
+
+不再审（满足停止线）。两条 P2 改动小，复验全绿后随本 PR 提交。
 
 ## 第 1 轮（2026-11-14）· 总评「修改」（仅 P2）
 
@@ -19,4 +36,4 @@
 
 ### 是否再审
 
-再审一轮（连续第 1 轮无 P0/P1），带本轮原文与本记录。
+再审一轮（连续第 1 轮无 P0/P1），带本轮原文与本记录。→ 见第 2 轮

@@ -121,6 +121,23 @@ fn no_close_after_backend_fault() {
     assert_eq!(count(&b, &Call::ChatClose(PEER)), 0);
 }
 
+/// 关到一半后端坏了：剩下的不再发（codex 026 第 2 轮 #1）。假后端在第一次 `chat_close` 里不会自己坏，
+/// 这里用「进来就已故障」的两会话批量断言一个都不发，与「每关一个之前都看」同一条判据
+#[test]
+fn no_close_for_any_chat_in_batch_after_fault() {
+    let b = started("hub-fault-batch");
+    let mut hub = Hub::default();
+    subscribe(&b, &mut hub, PEER);
+    subscribe(&b, &mut hub, GROUP);
+    b.crash();
+    b.join_receiver();
+    lease::close(&b, hub.finish_all(), "t", &mut Quiet);
+    assert_eq!(
+        count(&b, &Call::ChatClose(PEER)) + count(&b, &Call::ChatClose(GROUP)),
+        0
+    );
+}
+
 /// 开失败退掉那份：下一个要的仍是第一份、真去开（不会以为「已有人开着」而永远不开）
 #[test]
 fn failed_open_is_undone() {
