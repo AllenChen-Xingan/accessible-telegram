@@ -149,3 +149,5 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 **2026-11-13 第一段编译全绿、已归还名额、报大总管待提交。** 编译时改：expect 挪到 main.rs 的 5 个 mod 声明；td.rs 改用 link::block_on_guarded（pub(crate)，tdlib-api）；serve 测试挪到 serve/tests.rs，快照随之挪到 serve/snapshots/；login 测试夹具 started() 先等授权线离开「等参数」（并行偶发失败）。基线已 --tighten。下一步：等第一段提交后开第二段（删 main.rs 那 5 行 expect）。
 
 **2026-11-13 第二段写完，等名额编译。** chats/history/serve/send 用 bounded（START / QUERY）；voice 的 find/download/fetch/run_download 加 stop 参数，下载 within DOWNLOAD_TIMEOUT 120 秒；main.rs 的 5 行 expect 删了；send 测试挪到 send/tests.rs；serve/tests.rs 拆出 tests/lifecycle.rs（第一段漏的：未跟踪文件 check-file-size 不数）。教训：第二段改完没领名额跑过一次 clippy，已向大总管认错。
+
+**2026-11-13 PR B 收尾。** codex 022 两轮收敛（第 1 轮 P2×5、第 2 轮 P2×4；第 2 轮 #1 #3 #4 停止线后修、有测试，#2 由大总管开 issue）。全量编译测试全绿（atg-cli 138+21）。PR 草稿：MAIN `_tmp/20261113-b18/pr-fix-63.md`。待大总管提交最后一批（login 片内再看停止、ensure_ready 到点报 network、退格连组合符号删、022 记录第 2 轮、README 索引、基线）并开 PR。

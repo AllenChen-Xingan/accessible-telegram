@@ -27,7 +27,7 @@ use atg_core::link::{EventStream, block_on_timeout};
 use atg_core::model::{ChatId, ChatList};
 use atg_core::project;
 use atg_core::pump::Pump;
-use atg_core::status::{AuthStep, CoreState, NetState};
+use atg_core::status::{AuthStep, NetState};
 use atg_core::store::Store;
 use atg_core::tree::ChatItem;
 use std::time::{Duration, Instant};
@@ -223,12 +223,8 @@ pub fn ensure_ready<B: Backend>(b: &B) -> Result<(), Fail> {
     match b.wait_auth(AUTH_TIMEOUT, &|s| s != AuthStep::WaitParameters) {
         Some(AuthStep::Ready) => Ok(()),
         Some(_) => Err(Fail::Core(CoreError::AuthRequired { td: None })),
-        None if b.status().lines.core == CoreState::Faulted => {
-            Err(Fail::Core(CoreError::Disconnected))
-        }
-        None => Err(Fail::Core(CoreError::Internal {
-            what: "auth_state_timeout",
-        })),
+        // 到点：内核故障 → `disconnected`，否则 `network`（`cli.md`「最多等多久」，codex 022 第 2 轮 #3）
+        None => Err(Fail::Core(crate::deadlines::stalled(b))),
     }
 }
 

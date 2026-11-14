@@ -85,6 +85,10 @@ fn wait_line<B: Backend>(
             return Err(Fail::Core(stalled(b)));
         }
         if let Some(s) = wait(left.min(AUTH_POLL)) {
+            // 等的那一片里按了 Ctrl+C、新状态又同时到了：照样算打断，不往下问人（codex 022 第 2 轮 #1）
+            if stop.load(Ordering::SeqCst) {
+                return Err(Fail::Interrupted);
+            }
             return Ok(s);
         }
     }
@@ -267,6 +271,9 @@ pub fn login<B: Backend>(
             | AuthStep::WaitEmail
             | AuthStep::WaitEmailCode
             | AuthStep::WaitPassword => {}
+        }
+        if stop.load(Ordering::SeqCst) {
+            return Err(Fail::Interrupted);
         }
         let answer = ask_step(b, step, p)?;
         let seen = b.auth_generation();

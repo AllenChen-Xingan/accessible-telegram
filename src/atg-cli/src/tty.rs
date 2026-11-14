@@ -127,10 +127,19 @@ fn read_raw_line(
             b'\r' | b'\n' => return Ok(()),
             0x03 => return Err(ReadEnd::Interrupted),
             0x04 if buf.is_empty() => return Err(ReadEnd::Cancelled),
-            // 退格：删掉最后一个字（UTF-8 的续字节一起删）
+            // 退格：删掉最后一个字（UTF-8 的续字节一起删）；删到的是组合附加符号（零宽）就连它前面的基字一起删，
+            // 按基字的宽度擦，屏幕上不留半个字（codex 022 第 2 轮 #4）
             0x7f | 0x08 => {
-                let start = buf.iter().rposition(|x| x & 0xC0 != 0x80).unwrap_or(0);
-                for _ in 0..cols(&buf[start..]) {
+                let mut start = buf.len();
+                let mut width = 0;
+                while width == 0 && start > 0 {
+                    start = buf[..start]
+                        .iter()
+                        .rposition(|x| x & 0xC0 != 0x80)
+                        .unwrap_or(0);
+                    width = cols(&buf[start..]);
+                }
+                for _ in 0..width {
                     echo(b"\x08 \x08");
                 }
                 buf.truncate(start);
@@ -217,9 +226,9 @@ mod tests {
             &mut |b| seen.extend_from_slice(b),
         );
         assert_eq!(r, Ok(()));
-        assert_eq!(buf, "ye".as_bytes());
-        // a b ⌫(b 一格) 码 ⌃U(a 一格 + 码 两格) y 码 ⌫(两格) e ◌́ ⌫(组合符号零格)
-        let want = format!("ab{bs}码{}y码{}e\u{301}", bs.repeat(3), bs.repeat(2));
+        assert_eq!(buf, "y".as_bytes());
+        // a b ⌫(b 一格) 码 ⌃U(a 一格 + 码 两格) y 码 ⌫(两格) e ◌́ ⌫(连基字 e 一起删，擦一格)
+        let want = format!("ab{bs}码{}y码{}e\u{301}{bs}", bs.repeat(3), bs.repeat(2));
         assert_eq!(String::from_utf8(seen).unwrap(), want);
         assert_eq!(cols("码".as_bytes()), 2);
         assert_eq!(cols(&"码".as_bytes()[..2]), 2, "半个字按字节数");

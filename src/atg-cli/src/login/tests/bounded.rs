@@ -184,3 +184,15 @@ fn waiting_for_auth_line_honours_deadline_and_stop() {
     assert!(matches!(r, Err(Fail::Interrupted)));
     assert!(t1.elapsed() < Duration::from_secs(5), "{:?}", t1.elapsed());
 }
+
+/// 等授权线的那一片里按了 Ctrl+C、新状态又同时到了：算打断，不当成走到了下一步（codex 022 第 2 轮 #1）
+#[test]
+fn stop_during_a_slice_wins_over_a_new_state() {
+    let (b, _p) = started("slice", ServerKind::Test, account());
+    let stop = AtomicBool::new(false);
+    let r = wait_line(&b, Instant::now() + Duration::from_secs(5), &stop, |_| {
+        stop.store(true, Ordering::SeqCst);
+        Some(AuthStep::WaitCode)
+    });
+    assert!(matches!(r, Err(Fail::Interrupted)));
+}
