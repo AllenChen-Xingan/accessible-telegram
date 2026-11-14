@@ -381,32 +381,56 @@ fn read_marker(dir: &Path) -> Result<ServerKind, MarkerError> {
 fn is_fresh(dir: &Path) -> bool {
     let empty_dir = |p: &Path| fs::read_dir(p).is_ok_and(|mut e| e.next().is_none());
     match fs::read_dir(dir) {
+        // 标记本身也算新：调用方刚读到「缺」，这时出现的标记是别的进程刚建好、原子发布的（#97），
+        // 随后 `write_marker` 不覆盖它、`open` 按它核种类
         Ok(entries) => entries.into_iter().all(|e| {
-            e.is_ok_and(|e| {
-                matches!(e.file_name().to_str(), Some("db" | "files")) && empty_dir(&e.path())
+            e.is_ok_and(|e| match e.file_name().to_str() {
+                Some("db" | "files") => empty_dir(&e.path()),
+                Some(MARKER) => true,
+                _ => false,
             })
         }),
         Err(e) => e.kind() == std::io::ErrorKind::NotFound,
     }
 }
 
-/// 只新建、不覆盖：别的进程抢先写了，就留给调用方按落盘的标记核种类
+/// 只新建、不覆盖：别的进程抢先写了，就留给调用方按落盘的标记核种类。
+/// 原子发布（#97）：内容先写进档案目录**外**的临时文件（同在 `profiles/` 下、同一文件系统，
+/// 放在档案目录里会让别人的 `is_fresh` 看见它算「不新」），写完落盘再 `hard_link` 成标记——
+/// 别人要么读不到、要么读到完整的一份；`link` 撞上已有的报 `AlreadyExists`、不覆盖（`rename` 会覆盖，不用）
 fn write_marker(dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
-    match OpenOptions::new()
+    let io = || CoreError::Internal {
+        what: "profile_dir_io",
+    };
+    let (Some(parent), Some(name)) = (dir.parent(), dir.file_name().and_then(|n| n.to_str()))
+    else {
+        return Err(io());
+    };
+    // 本进程里也可能几个线程同时建：进程号 + 计数，不重名
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = parent.join(format!(".{name}.{MARKER}.{}.{seq}", std::process::id()));
+    // 上次崩在这一步留下的同名临时文件：先删（只可能是本进程号、早已不在的那次留下的）
+    let _ = fs::remove_file(&tmp);
+    let written = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
-        .open(dir.join(MARKER))
-    {
-        Ok(mut f) => f
-            .write_all(kind.marker().as_bytes())
-            .map_err(|_| CoreError::Internal {
-                what: "profile_dir_io",
-            }),
+        .open(&tmp)
+        .and_then(|mut f| {
+            f.write_all(kind.marker().as_bytes())?;
+            f.sync_all()
+        });
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+        return Err(io());
+    }
+    let published = fs::hard_link(&tmp, dir.join(MARKER));
+    let _ = fs::remove_file(&tmp);
+    match published {
+        Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(_) => Err(CoreError::Internal {
-            what: "profile_dir_io",
-        }),
+        Err(_) => Err(io()),
     }
 }
 

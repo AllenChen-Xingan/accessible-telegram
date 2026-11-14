@@ -20,7 +20,7 @@ use atg_core::backend::Backend;
 use atg_core::config::ServerKind;
 use atg_core::error::CoreError;
 use atg_core::secret::Secret;
-use atg_core::status::AuthStep;
+use atg_core::status::{AuthStep, CoreState};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -90,6 +90,10 @@ fn wait_line<B: Backend>(
                 return Err(Fail::Interrupted);
             }
             return Ok(s);
+        }
+        // 内核已故障：等的那一方会立刻空手回来，不再往下空转到期限（#100）
+        if b.status().lines.core == CoreState::Faulted {
+            return Err(Fail::Core(CoreError::Disconnected));
         }
     }
 }

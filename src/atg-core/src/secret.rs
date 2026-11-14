@@ -38,13 +38,25 @@ impl Secret {
 
 impl Drop for Secret {
     fn drop(&mut self) {
-        for b in self.0.iter_mut() {
-            // volatile：别让编译器把「写完就丢」的清零优化掉
-            // SAFETY: b 是这块 Vec 里有效、对齐的 u8
-            unsafe { std::ptr::write_volatile(b, 0) };
-        }
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        wipe_all(&mut self.0);
     }
+}
+
+/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）
+pub fn wipe_all(v: &mut Vec<u8>) {
+    let len = v.len();
+    // SAFETY: 先把长度设成 0，再把 0..capacity 整块当未初始化的字节写 0：写的都在这块分配之内、对齐的 u8；
+    // 随后长度恢复成原值，前 len 个字节是刚写好的 0，已初始化
+    unsafe {
+        v.set_len(0);
+        let p = v.as_mut_ptr();
+        for i in 0..v.capacity() {
+            // volatile：别让编译器把「写完就丢」的清零优化掉
+            std::ptr::write_volatile(p.add(i), 0);
+        }
+        v.set_len(len);
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 
 impl fmt::Debug for Secret {
@@ -71,4 +83,22 @@ pub fn base64(bytes: &[u8]) -> Secret {
         out.push(if chunk.len() > 2 { idx(0) } else { b'=' });
     }
     Secret(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wipe_all;
+
+    /// 截短后留在容量区的字节也清掉（#40）
+    #[test]
+    fn wipe_all_clears_the_spare_capacity_too() {
+        let mut v = Vec::with_capacity(16);
+        v.extend_from_slice(b"secret");
+        v.truncate(2);
+        wipe_all(&mut v);
+        assert_eq!(v, [0, 0]);
+        // SAFETY: 读的是本 Vec 自己分配的容量区，刚被 wipe_all 写过 0，已初始化
+        let spare = unsafe { std::slice::from_raw_parts(v.as_ptr(), v.capacity()) };
+        assert!(spare.iter().all(|&b| b == 0));
+    }
 }

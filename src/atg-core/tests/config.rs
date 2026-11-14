@@ -279,3 +279,48 @@ fn test_phone_only_from_env_file_and_only_test_numbers() {
     assert!(load_test_phone(&dir.join("missing")).is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 几个进程（这里用线程代）同时首次建同一个档案：标记原子发布，谁都不会读到半截或「缺」（#97）。
+/// 同种类全部成功；种类不同只许成功或 `profile_kind_mismatch`
+#[test]
+fn concurrent_first_create_never_sees_a_half_written_marker() {
+    for round in 0..50 {
+        let root = temp_root(&format!("race-{round}"));
+        let results: Vec<_> = std::thread::scope(|s| {
+            let hs: Vec<_> = (0..8)
+                .map(|i| {
+                    let root = &root;
+                    let kind = if round % 2 == 1 && i % 2 == 1 {
+                        ServerKind::Test
+                    } else {
+                        ServerKind::Main
+                    };
+                    s.spawn(move || Profile::create(root, "main", kind).map(|p| p.kind()))
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mismatch = Some(CoreError::Internal {
+            what: "profile_kind_mismatch",
+        });
+        let won = Profile::open(&root, "main").unwrap().kind();
+        for r in &results {
+            match r {
+                Ok(k) => assert_eq!(*k, won, "第 {round} 轮"),
+                Err(_) => assert_eq!(r.clone().err(), mismatch, "第 {round} 轮：{r:?}"),
+            }
+        }
+        if round % 2 == 0 {
+            assert!(
+                results.iter().all(Result::is_ok),
+                "第 {round} 轮：{results:?}"
+            );
+        }
+        let leftovers: Vec<_> = std::fs::read_dir(root.join("profiles"))
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.starts_with('.'))
+            .collect();
+        assert!(leftovers.is_empty(), "临时文件没删：{leftovers:?}");
+    }
+}

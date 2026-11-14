@@ -196,3 +196,15 @@ fn stop_during_a_slice_wins_over_a_new_state() {
     });
     assert!(matches!(r, Err(Fail::Interrupted)));
 }
+
+/// 内核故障之后等授权线：立刻报 `disconnected`，不空转到 30 秒期限（#100）
+#[test]
+fn core_fault_while_waiting_returns_at_once() {
+    let (b, _p) = started("fault-wait", ServerKind::Test, account());
+    b.crash();
+    b.join_receiver();
+    let t0 = Instant::now();
+    let r = wait_line(&b, Instant::now() + STEP_TIMEOUT, &NEVER, |_| None);
+    assert!(matches!(r, Err(Fail::Core(CoreError::Disconnected))));
+    assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+}
