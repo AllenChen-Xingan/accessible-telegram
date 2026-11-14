@@ -113,16 +113,24 @@ fn advance<B: Backend>(
     wait_line(b, deadline, stop, |t| b.wait_auth_update(t, seen))
 }
 
-/// 测试档案上要注册：自动注册并等下一步；正式档案 → 不支持
+/// 登录走不下去的几步（`errors.md`「登录走到不支持的一步时 CLI 怎么报」）：扫码确认、不支持的步骤、
+/// 正式档案要注册 → `auth_wrong_state`、退出码 3。`login` 与 `auth *`（含 `auth state`）共用这一处
+fn dead_end(step: AuthStep, kind: ServerKind) -> Result<(), Fail> {
+    match step {
+        AuthStep::WaitOtherDevice | AuthStep::Unsupported => Err(Fail::Unsupported(step)),
+        AuthStep::WaitRegistration if kind != ServerKind::Test => Err(Fail::Unsupported(step)),
+        _ => Ok(()),
+    }
+}
+
+/// 测试档案上要注册：自动注册并等下一步（正式档案先由 [`dead_end`] 拦下）
 fn register<B: Backend>(
     b: &B,
     kind: ServerKind,
     p: &mut dyn Prompter,
     stop: &AtomicBool,
 ) -> Result<AuthStep, Fail> {
-    if kind != ServerKind::Test {
-        return Err(Fail::Unsupported(AuthStep::WaitRegistration));
-    }
+    dead_end(AuthStep::WaitRegistration, kind)?;
     p.say("测试服务器上这个号码还没注册（测试服务器会定期清空），现在自动注册");
     let seen = b.auth_generation();
     let deadline = Instant::now() + STEP_TIMEOUT;
@@ -251,16 +259,15 @@ pub fn login<B: Backend>(
     on_step(step);
     let mut tries = 0u32;
     loop {
+        dead_end(step, kind)?;
         match step {
             AuthStep::Ready => return Ok(json!({ "command": "login", "step": step_name(step) })),
-            AuthStep::WaitRegistration => {
+            // 走不下去的几步上面已报，到这里只剩测试档案要注册
+            AuthStep::WaitRegistration | AuthStep::WaitOtherDevice | AuthStep::Unsupported => {
                 step = register(b, kind, p, stop)?;
                 on_step(step);
                 tries = 0;
                 continue;
-            }
-            AuthStep::WaitOtherDevice | AuthStep::Unsupported => {
-                return Err(Fail::Unsupported(step));
             }
             AuthStep::WaitParameters
             | AuthStep::LoggingOut
@@ -366,6 +373,7 @@ pub fn auth_step<B: Backend>(
 ) -> Result<Value, Fail> {
     let test_phone = test_phone.filter(|_| kind == ServerKind::Test);
     let step = settle(b, stop)?;
+    dead_end(step, kind)?;
     let done = |s: AuthStep| json!({ "command": "auth", "sub": sub.name(), "step": step_name(s) });
     let seen = b.auth_generation();
     let deadline = match sub.step() {
@@ -402,8 +410,10 @@ pub fn auth_step<B: Backend>(
         }
     };
     let mut next = advance(b, seen, deadline, stop)?;
-    if next == AuthStep::WaitRegistration && kind == ServerKind::Test {
+    dead_end(next, kind)?;
+    if next == AuthStep::WaitRegistration {
         next = register(b, kind, p, stop)?;
+        dead_end(next, kind)?;
     }
     on_step(next);
     Ok(done(next))

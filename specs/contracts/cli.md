@@ -119,7 +119,7 @@
 |---|---|---|
 | 0 | 成功 | — |
 | 1 | 内部错误 / 未知 / 子命令还没实现 | `internal` `unknown` `not_implemented` |
-| 2 | 用法错误（参数不对） | `usage` |
+| 2 | 用法错误（参数不对）。标准错误上那段说明只写哪类错、哪个参数、可选值和 `--help` 路径，**不回显用户写的任何值**（验证码、`send --text` 正文都可能写错地方，#64）；所有命令一样 | `usage` |
 | 3 | 要登录 / 登录失败 | `auth_*` |
 | 4 | 网络 / 连接 | `network` `disconnected` |
 | 5 | 限流 / 账号受限 | `rate_limited` `account_limited` |
