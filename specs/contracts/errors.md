@@ -81,7 +81,7 @@
 
 `unsupported` 收容本项目第一阶段不支持的授权步骤（如 `authorizationStateWaitPremiumPurchase`，`td_api.tl:217`），不崩，告诉人「这一步本应用暂不支持，请先在官方客户端完成」。
 
-**登录走到不支持的一步时 CLI 怎么报**：`login` / `auth *` 遇到 `unsupported`、`wait_other_device`（扫码确认）、或**正式档案**上的 `wait_registration`，以 `auth_wrong_state` 结尾，`expected` 写那一步，`message_zh` 换成上面那句，退出码 3。注意 `auth_wrong_state.expected` 一律是**现在所在**的那一步，不是调用方本想交的那一步。
+**登录走到不支持的一步时 CLI 怎么报**：`login` / `auth *` 遇到 `unsupported`、`wait_other_device`（扫码确认）、或**正式档案**上的 `wait_registration`，以 `auth_wrong_state` 结尾，`expected` 写那一步，`message_zh` 换成上面那句，退出码 3。注意 `auth_wrong_state.expected` 一律是**现在所在**的那一步，不是调用方本想交的那一步。`auth state` 停在这几步时同样这么报（#64）；这一步本来就收的输入照常交——正式档案等注册时 TDLib 允许换号（`actions.md` `auth_submit_phone`），`auth phone` 照收。
 
 **合成规则**（一个纯函数 `fn user_status(core, auth, net) -> UserStatus`，归本契约；`UserStatus` 这个数据类型定义在 `atg-core::tree`，JSON 形如 `{"type":"status","status":"offline"}`，见 `specs/content-tree.md`），优先级从高到低：
 
@@ -180,3 +180,4 @@
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：`internal.what` 登记 `send_limits_unreadable`；受限 / 限流只从交出口与收线程两处登记，交出前最后复查一次
 - 2026-11-13 issue #52 codex 016 第 6 轮后（属技术细节）：`internal.what` 登记 `send_limits_unwritable`，`send_limits_unreadable` 加「上一个进程没收尾」；交出应答的限制登记不受调用方等待期限影响（td 后端在独立线程里等应答）
 - 2026-11-13 issue #61（大总管授权 2026-11-13，属技术细节）：`internal.what` 登记 `profile_marker_missing`、`profile_marker_unreadable` 及人怎么恢复
+- 2026-11-14 issue #64（手下 fix，大总管定 2026-11-13 照契约字面）：写明 `auth state` 停在不支持的步骤也报 `auth_wrong_state`；正式档案等注册时 `auth phone` 换号照收

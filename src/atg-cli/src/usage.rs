@@ -12,7 +12,8 @@ use std::ffi::OsString;
 /// 标准错误上的那段话（末尾带换行）
 pub fn usage_text(e: &clap::Error, argv: &[OsString]) -> String {
     let mut s = format!("atg-cli: 参数不对：{}", kind_zh(e.kind()));
-    // 认不出的参数、值、子命令：`InvalidArg` / `InvalidValue` / `InvalidSubcommand` 里是用户的原文，不印
+    // `InvalidValue` / `InvalidSubcommand` 里是用户的原文，从不印。`InvalidArg` 要看错误类别：认不出的参数时
+    // 装的是用户敲的原文（不印），别的类别里是命令定义里的参数名（如 `--format <FORMAT>`，照印）
     if e.kind() != ErrorKind::UnknownArgument
         && let Some(arg) = text(e.get(ContextKind::InvalidArg))
     {

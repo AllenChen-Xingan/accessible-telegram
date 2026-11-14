@@ -11,7 +11,8 @@
 //! 用同步 `execute` 把 TDLib 日志降到 0、写到 `~/Library/Logs/atg/tdlib-<档案>.log`（级别 1 也会漏正文，
 //! `MessageContent.cpp:7696`）→ 放「运行中」标记 → 建客户端、起收线程 → `setTdlibParameters`（加密钥匙、
 //! `use_test_dc` 只从档案标记来）→ 显式设 `online = false`。
-//! 客户端建好之后 `start` 再失败（如钥匙不对、网络错）：客户端还在，调用方照常调 `shutdown` 收尾。
+//! 客户端建好之后 `start` 再失败（如钥匙不对、网络错）：客户端还在，调用方照常调 `shutdown` 收尾；例外是收线程起不来，
+//! `start` 自己交一次 `close`、清运行标记、退回没起（#62），调用方不用再收尾。
 //!
 //! tdlib-rs 的 `receive()` 是全进程共用的，内部 `OBSERVER` 是全局单例，所以一个进程只许一个 [`TdBackend`]。
 
@@ -306,10 +307,9 @@ mod real {
             let receiver = match link::spawn_receiver(self.shared.clone(), source(client_id)) {
                 Ok(h) => h,
                 Err(e) => {
-                    // 收线程起不来：交一次 close 就走（没人收得到应答）。tdlib-rs 1.4.0 `send_request`
-                    // 第一次 poll 就同步交给 TDLib（`lib.rs:61-68`），所以期限 0 正好交出去；升级时要核
+                    // 收线程起不来：交一次 close 不等应答（tdlib-rs 1.4.0 首次 poll 即同步交出，`lib.rs:61-68`；升级要核）
                     let _ = link::block_on_timeout(functions::close(client_id), Duration::ZERO);
-                    profile.mark_clean();
+                    lifecycle::release(&mut Some(profile_lock), || profile.mark_clean());
                     return Err(e);
                 }
             };

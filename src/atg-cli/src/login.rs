@@ -262,12 +262,16 @@ pub fn login<B: Backend>(
         dead_end(step, kind)?;
         match step {
             AuthStep::Ready => return Ok(json!({ "command": "login", "step": step_name(step) })),
-            // 走不下去的几步上面已报，到这里只剩测试档案要注册
-            AuthStep::WaitRegistration | AuthStep::WaitOtherDevice | AuthStep::Unsupported => {
+            // 正式档案的注册已由上面的 dead_end 报掉，到这里只剩测试档案
+            AuthStep::WaitRegistration => {
                 step = register(b, kind, p, stop)?;
                 on_step(step);
                 tries = 0;
                 continue;
+            }
+            // dead_end 已先报；穷举起见再写一遍，免得它的条件改了这里悄悄走别的路
+            AuthStep::WaitOtherDevice | AuthStep::Unsupported => {
+                return Err(Fail::Unsupported(step));
             }
             AuthStep::WaitParameters
             | AuthStep::LoggingOut
@@ -373,7 +377,14 @@ pub fn auth_step<B: Backend>(
 ) -> Result<Value, Fail> {
     let test_phone = test_phone.filter(|_| kind == ServerKind::Test);
     let step = settle(b, stop)?;
-    dead_end(step, kind)?;
+    // 停在走不下去的一步：`auth state` 与这一步不收的输入照契约报 `auth_wrong_state`；
+    // 这一步收的照常交（正式档案等注册时 TDLib 允许换号，`auth phone` 照收，`actions.md`「换号」）
+    let accepted = sub
+        .step()
+        .is_some_and(|t| auth::AuthAction::for_step(t).check(step).is_ok());
+    if !accepted {
+        dead_end(step, kind)?;
+    }
     let done = |s: AuthStep| json!({ "command": "auth", "sub": sub.name(), "step": step_name(s) });
     let seen = b.auth_generation();
     let deadline = match sub.step() {

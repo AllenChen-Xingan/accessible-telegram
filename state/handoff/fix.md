@@ -207,3 +207,4 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 ## 第三批进度（2026-11-14，分支 fix/62-64-95）
 - 已写（未编译）：#64.2 `link.rs` `apply_lines` + `set_auth` 一把锁，`link/tests.rs` 千次测；#62 按 arch（td/boot.rs 挂 tdlib-api、td/lifecycle.rs 纯类型可单测）拆，td.rs 874→832；#64.1 `src/atg-cli/src/usage.rs`（所有命令不回显原文），`cli.md` 退出码 2 一行写明；#64.3 `login.rs` `dead_end` 共用（login / auth * / auth state），stepwise 两条新测；#95 `watch/end.rs` `before_status`，watch.rs 864→849，`ctrl_c.rs` 新测。
 - 下一步：领名额 → fmt / clippy 两套 / test → `--tighten` → atg-review → codex 027。
+- 2026-11-14 大总管已提交 3663e8a。atg-review：P1×1（dead_end 误拦正式档案等注册时的 `auth phone` 换号）已修 + 测；P2×4、P3×8 已改（cli.md #95 三处 + 变更记录、errors.md:84 补句）。待名额复跑（排在 arch、msg1 之后）→ 请大总管提交 → codex 027（重点文件 scratchpad codex027-focus.md）。

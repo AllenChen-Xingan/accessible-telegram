@@ -1,4 +1,5 @@
-//! `watch` 的 Ctrl+C 约定：按了就照常出 `result`、退 0
+//! `watch` 的 Ctrl+C 约定：按了就照常出 `result`、退 0。
+//! 两种按法：`run_watch` 的 `until` 是看到某行再按；`run_watch_from(.., true)` 是一开始就已按下（测出 `status` 之前那段）
 use super::*;
 
 /// 开订阅前的请求没成（这里：会话找不到）：等的时候已按了 Ctrl+C → 照约定出 `result`、退 0；没按 → 照实报错

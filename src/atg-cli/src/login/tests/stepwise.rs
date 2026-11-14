@@ -256,10 +256,16 @@ fn stepwise_registration_on_main_profile_is_unsupported() {
     // 停在这一步时查状态也照契约报
     let (r, _) = step(&b, ServerKind::Main, AuthSub::State, None, &mut s);
     assert!(matches!(r, Err(Fail::Unsupported(S::WaitRegistration))));
+    // 号码输错了：这一步 TDLib 允许换号，`auth phone` 照收
+    let mut s = Script::new(&["+86 138 0000 0000"]);
+    let (r, steps) = step(&b, ServerKind::Main, AuthSub::Phone, None, &mut s);
+    assert!(r.is_ok(), "换号");
+    assert_eq!(steps, [S::WaitCode]);
 }
 
 #[test]
 fn stepwise_other_device_and_unsupported_steps_are_reported() {
+    // `WaitPremiumPurchase`：要先买会员才能登录，本项目不支持（`errors.md` 举的例子）
     for (td, want) in [
         (
             "authorizationStateWaitOtherDeviceConfirmation",

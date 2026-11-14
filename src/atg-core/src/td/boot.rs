@@ -69,10 +69,10 @@ pub(super) fn parameters(
         db.to_owned(),
         files.to_owned(),
         key_b64.to_owned(),
-        true,
-        true,
-        true,
-        false,
+        true,  // use_file_database
+        true,  // use_chat_info_database
+        true,  // use_message_database
+        false, // use_secret_chats：私密聊天第一阶段不做
         creds.api_id,
         creds.api_hash.expose_str().to_owned(),
         system_language(),
