@@ -39,9 +39,14 @@ objc2-foundation = "0.3"
 tdlib-api = ["dep:tdlib-rs"]
 # 真接 TDLib：链接 LOCAL_TDLIB_PATH 下的库。cargo build -p atg-core --features tdlib
 tdlib = ["tdlib-api", "tdlib-rs/local-tdlib"]
+# 测试共用夹具 `testkit`（临时目录、测试档案）。只给测试开：本 crate 的集成测试经下面的自身 dev-dependency、
+# atg-cli 经它的 dev-dependency；正式构建不开
+testkit = []
 
 [dev-dependencies]
 insta = "1"
+# 让 tests/*.rs 用得上 `atg_core::testkit`
+atg-core = { path = ".", features = ["testkit"] }
 
 # 本机冒烟：测试服务器 → wait_phone（要 TDLib 库；不在 CI）
 [[example]]

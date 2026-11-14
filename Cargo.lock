@@ -86,6 +86,7 @@ dependencies = [
 name = "atg-core"
 version = "0.0.0"
 dependencies = [
+ "atg-core",
  "block2",
  "futures-channel",
  "getrandom",

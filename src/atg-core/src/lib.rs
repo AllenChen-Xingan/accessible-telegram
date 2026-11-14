@@ -102,4 +102,7 @@ pub mod status;
 pub mod store;
 pub mod td;
 pub mod tdjson;
+// 测试共用夹具：只在测试与开了 testkit 特性时编（#60 R3）
+#[cfg(any(test, feature = "testkit"))]
+pub mod testkit;
 pub mod tree;

@@ -3,8 +3,8 @@ use super::*;
 use crate::out::Sink;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
+use atg_core::testkit;
 use serde_json::{Value, json};
-use std::path::PathBuf;
 
 const ME: i64 = 100;
 const LIN: i64 = 101;
@@ -12,20 +12,6 @@ const ZHOU: i64 = 102;
 const GROUP: i64 = -1001;
 /// 2026-10-26T11:30:00Z（东八区 19:30）
 const T0: i64 = 1_793_014_200;
-
-fn temp_root(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "atg-cli-history-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    d
-}
-
-fn profile(tag: &str) -> Profile {
-    Profile::create(&temp_root(tag), "main", ServerKind::Main).unwrap()
-}
 
 fn user(id: i64, name: &str) -> Value {
     json!({"@type": "updateUser", "user": {"@type": "user", "id": id, "first_name": name, "last_name": "",
@@ -100,7 +86,7 @@ fn q(anchor: Anchor, limit: usize) -> Query {
 }
 
 fn page(b: &FakeBackend, tag: &str, q: &Query) -> Page {
-    let p = profile(tag);
+    let p = testkit::profile(tag, ServerKind::Main);
     with_backend(b, &p, Instant::now(), |b, s, f| {
         collect(b, s, f, q, Duration::from_millis(300))
     })
@@ -283,14 +269,14 @@ fn saved_uses_own_chat() {
 fn errors_not_logged_in_and_unknown_chat() {
     let b = FakeBackend::new().unwrap();
     b.set_auth(FakeAuth::default());
-    let p = profile("nologin");
+    let p = testkit::profile("nologin", ServerKind::Main);
     let r = with_backend(&b, &p, Instant::now(), |b, s, f| {
         collect(b, s, f, &q(Anchor::Landing, 3), Duration::ZERO)
     });
     assert_eq!(fail_code(r), "auth_required");
 
     let b = backend(5, 4);
-    let p = profile("unknown");
+    let p = testkit::profile("unknown", ServerKind::Main);
     let mut query = q(Anchor::Landing, 3);
     query.chat = ChatRef::Id(-999);
     let r = with_backend(&b, &p, Instant::now(), |b, s, f| {
@@ -503,7 +489,7 @@ fn links_backend() -> FakeBackend {
 
 fn links_of(tag: &str, message_id: i64) -> Result<LinkList, Fail> {
     let b = links_backend();
-    let p = profile(tag);
+    let p = testkit::profile(tag, ServerKind::Main);
     let q = LinksQuery {
         chat: ChatRef::Id(GROUP),
         message_id,
