@@ -1,10 +1,18 @@
 # 评审 025 · #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡）（codex · gpt-6-astra · read-only）
 
-> 对象：`src/atg-core/src/store/{ticket.rs,transcripts.rs}`、`src/atg-core/src/tree/{media.rs,top.rs}`、`src/atg-core/src/speech/content.rs`、`src/atg-core/tests/transcripts.rs`；已跟踪文件的改动（`store/mod.rs`、`tree/mod.rs`、`mask.rs`、`speech.rs`、`project.rs`、`redact.rs`、`tests/privacy.rs`、快照）以差异文件作依据传入。依据 `docs/experiments/exp008-local-stt/design.md` 第二节第 3、4 条、`specs/content-tree.md`、`specs/architecture-rules.md`。**最新一轮：第 1 轮（2026-11-13）· 总评「修改」（仅 P2）· 连续第 1 轮无 P0/P1**。
+> 对象：`src/atg-core/src/store/{ticket.rs,transcripts.rs}`、`src/atg-core/src/tree/{media.rs,top.rs}`、`src/atg-core/src/speech/content.rs`、`src/atg-core/tests/transcripts.rs`；已跟踪文件的改动（`store/mod.rs`、`tree/mod.rs`、`mask.rs`、`speech.rs`、`project.rs`、`redact.rs`、`tests/privacy.rs`、快照）以差异文件作依据传入。依据 `docs/experiments/exp008-local-stt/design.md` 第二节第 3、4 条、`specs/content-tree.md`、`specs/architecture-rules.md`。**最新一轮：第 2 轮（2026-11-13）· 总评「通过」· 满足停止线（第 1、2 轮连续无 P0/P1），不再审**。
 > 为什么逐文件审（doc 类型）：开审时新文件还没进 git；大总管随后把 3b 提交到 `feat/59-transcript`，定为各轮保持 doc 类型、同一对象（停止线不重数）。
 > 之前：atg-review 自审一轮（三视角），P0/P1 无，P2×8 全改（含结构性一条：表键从稳定键改成现在的 id，见 design.md）。
 > 已定事项：凭据 = 消息 id + 语音文件 id（人定 2026-11-13）；转写挂消息的 `transcript`（大总管定）。
 > 累计处理：P2×3 及「不符」1 条逐条核实，属实 4、驳回 0。
+
+## 第 2 轮（2026-11-13）· 总评「通过」· 停
+
+原文：`_tmp/20261113-media/reviews/stt-tree-codex-2.md`（不入库）。effort medium。对象同第 1 轮（已跟踪文件的差异按 `feat/59-stt-base...HEAD` 重新落文件）。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 1、2 轮连续无 P0/P1）；剩余 P2：无
+
+- 无 P0–P2
+- 引用抽查：「属实」9 条（含第 1 轮四项处理都已落实、两个顶格文件净减行数）；「无法核实」2 条（`table.rs`、`redact.rs` 不在可读范围，同第 1 轮）
 
 ## 第 1 轮（2026-11-13）· 总评「修改」（仅 P2）
 
