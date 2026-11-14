@@ -1,4 +1,5 @@
-//! 媒体相关的节点：带文件的附件共用的小类型（`specs/content-tree.md` 第三节第 3 小节）、播放状态（`Doc::Playback`）。
+//! 媒体相关的节点：带文件的附件共用的小类型（`specs/content-tree.md` 第三节第 3 小节）、播放状态（`Doc::Playback`）、
+//! 语音的转写（`Transcript`）。
 
 use serde::Serialize;
 
@@ -44,4 +45,33 @@ pub struct Playback {
 pub enum PlayState {
     Playing,
     Paused,
+}
+
+/// 一条语音的转写（#59；`docs/experiments/exp008-local-stt/design.md` 第二节第 3 条）。
+/// 不是消息本身的内容：TDLib 不知道它，存在 store 的转写表里、投影时挂到消息上，只在内存、不落盘。
+/// 存原始片段，补标点只在读法里做。含转写原文：`Debug` 只在测试里派生，别处登记在 `redact.rs`
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct Transcript {
+    /// 识别用的语种（如 `zh-CN`）
+    pub lang: String,
+    pub source: TranscriptSource,
+    pub segments: Vec<TranscriptSegment>,
+}
+
+/// 转写从哪来。以后接 Telegram 的 `speech_recognition_result` 也落同一个节点
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptSource {
+    /// 本机端侧模型（`atg-audio` 的 `stt`）
+    Local,
+}
+
+/// 一段识别结果（时间是秒，从语音开头算）
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct TranscriptSegment {
+    pub text: String,
+    pub start_s: f64,
+    pub end_s: f64,
 }

@@ -21,7 +21,11 @@ use crate::model::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod table;
+mod ticket;
+mod transcripts;
 use table::Table;
+pub use ticket::{HistoryTicket, TranscriptTicket};
+pub use transcripts::{Stale, Transcribed};
 
 /// 记不全的「孤儿补丁」最多留多少条（见 [`Patch`]）
 const MAX_ORPHANS: usize = 4096;
@@ -62,6 +66,8 @@ pub enum Input {
     /// `resendMessages` 的应答：失败的那条 `old` 重发成了 `new`（TDLib 按请求顺序逐条返回）。
     /// 新的那条沿用旧的稳定键。删除失败那条的更新照常到（不当撤回）
     Resent { old: MsgId, new: MsgId },
+    /// 一条语音转写完了：凭据过得了裁决（[`Store::transcript_verdict`]）才写进转写表，过不了丢掉
+    Transcribed(Transcribed),
     /// `getForumTopic` 的应答（`received_ms`：收到应答的时刻，换静音到期用）。**只在 store 里还没有这个话题时收**：
     /// 应答可能比之后推来的 `updateForumTopic` 旧，不许盖掉它
     TopicLoaded {
@@ -70,16 +76,6 @@ pub enum Input {
         state: ForumTopicState,
         received_ms: i64,
     },
-}
-
-/// 发历史请求时记下的东西：哪个会话、当时的代次、当时最后一条更新的序号
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HistoryTicket {
-    pub chat_id: ChatId,
-    pub generation: u64,
-    pub since_seq: u64,
-    /// 请求编号，每张凭据加一：同一序号下，后发的请求的应答更新
-    pub request: u64,
 }
 
 /// 整条快照的版本：(序号, 请求编号)，按字典序比新旧。
@@ -259,6 +255,8 @@ pub struct Store {
     requests: u64,
     /// 自己的用户 id（事件 `my_id_changed`）；还不知道是 `None`
     me: Option<UserId>,
+    /// 转写表（[`transcripts`]）：稳定键 → 转写。只在内存
+    transcripts: transcripts::Transcripts,
 }
 
 /// 话题设置 → 存下的状态：剩余静音秒数按收到时刻换成绝对到期时刻；没有收到时刻（夹具）当一直静音
@@ -302,6 +300,7 @@ impl Store {
                 self.prune(chat_id);
             }
         }
+        self.tidy_transcripts();
     }
 
     fn apply_inner(&mut self, input: Input) {
@@ -320,6 +319,7 @@ impl Store {
                 }
             }
             Input::HistoryLoaded { ticket, messages } => self.history(ticket, messages),
+            Input::Transcribed(t) => self.commit_transcript(t),
             Input::TopicLoaded {
                 chat_id,
                 topic_id,
@@ -340,17 +340,6 @@ impl Store {
     }
 
     // ───── 查询（只读） ─────
-
-    /// 发历史请求前取一张凭据（请求编号加一，所以要 `&mut`）。会话不是当前窗口的，应答回来只进缓存
-    pub fn ticket(&mut self, chat_id: ChatId) -> HistoryTicket {
-        self.requests += 1;
-        HistoryTicket {
-            chat_id,
-            generation: self.generation,
-            since_seq: self.last_seq,
-            request: self.requests,
-        }
-    }
 
     pub fn last_seq(&self) -> u64 {
         self.last_seq
