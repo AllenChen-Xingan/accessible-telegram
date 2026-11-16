@@ -60,6 +60,7 @@ pub struct Global {
 
 impl Global {
     /// 本次运行是不是直发：默认是，加 `--confirm` 才要确认（人定 2026-11-16）
+    #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
     pub fn direct_send(&self) -> bool {
         !self.confirm
     }
@@ -441,8 +442,18 @@ mod direct_default_tests {
     fn direct_is_default_confirm_opts_in() {
         let p = |a: &[&str]| Cli::try_parse_from(a);
         assert!(p(&["atg-cli", "status"]).unwrap().global.direct_send());
-        assert!(p(&["atg-cli", "--unsafe-direct-send", "status"]).unwrap().global.direct_send());
-        assert!(!p(&["atg-cli", "status", "--confirm"]).unwrap().global.direct_send());
+        assert!(
+            p(&["atg-cli", "--unsafe-direct-send", "status"])
+                .unwrap()
+                .global
+                .direct_send()
+        );
+        assert!(
+            !p(&["atg-cli", "status", "--confirm"])
+                .unwrap()
+                .global
+                .direct_send()
+        );
         assert!(p(&["atg-cli", "--confirm", "--unsafe-direct-send", "status"]).is_err());
     }
 }
