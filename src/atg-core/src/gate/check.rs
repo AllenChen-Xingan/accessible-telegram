@@ -27,7 +27,7 @@ pub struct Gate {
 }
 
 impl Gate {
-    /// `direct`：本进程是不是以 `--unsafe-direct-send` 启动的（只认启动参数）
+    /// `direct`：本进程是不是直发（只认启动参数：CLI 默认是，`--confirm` 关掉）
     pub fn new(direct: bool, proc: Holder, auth: Box<dyn Authenticator>) -> Self {
         Self {
             direct,
