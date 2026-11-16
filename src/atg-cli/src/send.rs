@@ -149,7 +149,7 @@ pub const HUMAN_AUTH_PROMPT_ZH: &str =
 
 /// 直发模式直跑时的开场：标准错误一句醒目提示 + 标准输出第一行 `status`（`actions.md` 第一节第 5 小节）
 pub fn direct_banner<B: Backend>(b: &B, sink: &mut dyn Sink, format: Format) {
-    sink.err("⚠️ atg-cli：直发模式已开启——本次运行发送不再确认（--unsafe-direct-send）");
+    sink.err("atg-cli：直发（默认）——本次运行发送不确认；要按 Touch ID 确认请加 --confirm");
     let r = b.status();
     if format == Format::Json {
         emit_to(

@@ -91,7 +91,7 @@ pub enum ConfirmMode {
     TestExempt,
     /// Touch ID / 系统密码（001 拍板 9）
     HumanAuth,
-    /// 以 `--unsafe-direct-send` 启动的这次运行（001 拍板 11）
+    /// 直发的这次运行（001 拍板 11；CLI 默认如此，以 `--confirm` 启动才不是，人定 2026-11-16）
     DirectMode,
 }
 

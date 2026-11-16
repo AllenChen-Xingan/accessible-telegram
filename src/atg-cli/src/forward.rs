@@ -64,7 +64,7 @@ pub fn try_forward(g: &Global, format: Format, command: &str, params: &Value) ->
         format,
         command,
         params,
-        g.unsafe_direct_send,
+        g.unsafe_direct_send || g.confirm,
         &mut Stdio,
     ))
 }
@@ -266,7 +266,7 @@ fn existing_profile(g: &Global) -> Option<Profile> {
 }
 
 /// 发请求、转写应答，返回退出码。`busy` 是连不上时报的那个 `profile_busy`；`note_direct`：本次带了
-/// `--unsafe-direct-send`，连上后在标准错误说明它在执行方那边不起作用
+/// `--unsafe-direct-send` 或 `--confirm`，连上后在标准错误说明它在执行方那边不起作用
 pub fn forward(
     conn: Connect,
     busy: &CoreError,
@@ -286,7 +286,7 @@ pub fn forward(
     }
     if note_direct {
         sink.err(
-            "atg-cli: 档案正被常驻进程占着，这条命令交给它执行；--unsafe-direct-send 在那边不起作用（直发听执行方的）",
+            "atg-cli: 档案正被常驻进程占着，这条命令交给它执行；--confirm / --unsafe-direct-send 在那边不起作用（确不确认听执行方的）",
         );
     }
     loop {

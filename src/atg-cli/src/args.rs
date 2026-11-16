@@ -43,15 +43,26 @@ pub struct Global {
     /// 打码输出，用于贴进 issue：只留类型、计数、时间、状态、错误码，名字和正文换成「类型 + 长度」。还没做：会输出名字、正文的命令加了它报 not_implemented（免得以为打了码），别的命令收下不用
     #[arg(long, global = true)]
     pub redact: bool,
-    /// 直发模式：本次运行发消息免确认（细则见 `specs/contracts/actions.md` 第一节第 5 小节）
-    #[arg(long, global = true)]
+    /// 直发模式（默认就是它）：发消息免确认（细则见 `specs/contracts/actions.md` 第一节第 5 小节）。人定 2026-11-16 改为默认，
+    /// 这个参数留着只为兼容旧调用，加不加一样
+    #[arg(long, global = true, conflicts_with = "confirm")]
     pub unsafe_direct_send: bool,
+    /// 这次运行发消息要确认：正式服务器按 Touch ID 或输入系统密码（默认不确认、直接发）
+    #[arg(long, global = true)]
+    pub confirm: bool,
     /// 遇到 Telegram 限流（要求过 N 秒再试）就等够再继续，默认立刻报 rate_limited。还没做
     #[arg(long, global = true)]
     pub wait: bool,
     /// 读法里报钟点用的时区偏移：+08:00、-05:30、+0800、+8、Z 或 UTC。默认取系统时区。读消息时间的命令用（会话项不读时间）
     #[arg(long, global = true, value_name = "OFFSET", allow_hyphen_values = true)]
     pub tz: Option<String>,
+}
+
+impl Global {
+    /// 本次运行是不是直发：默认是，加 `--confirm` 才要确认（人定 2026-11-16）
+    pub fn direct_send(&self) -> bool {
+        !self.confirm
+    }
 }
 
 // 经本机接口转发时随请求带过去（`forward`）
@@ -112,7 +123,7 @@ pub enum Command {
     /// 搜索：`search chats` / `search messages`
     Search(Rest),
     /// 发文字或回复某条。先输出一行要发什么（kind:"plan"：发给谁、全文、回复哪条），再确认：测试服务器发自己的收藏夹
-    /// 不用确认；正式服务器要按 Touch ID 或输入系统密码；以全局选项 --unsafe-direct-send 启动时一律不确认。
+    /// 不用确认；正式服务器默认直接发、不确认；加全局选项 --confirm 才要按 Touch ID 或输入系统密码。
     /// 等到成功或失败才结束；30 秒没等到报 send_outcome_unknown（退出码 10）——消息可能已发出，不要重发
     Send(SendArgs),
     /// 订阅更新：一行一个事件，新消息带读法与提不提示的判定；Ctrl+C 结束。不标已读
@@ -417,5 +428,21 @@ impl Command {
             Command::Serve => "serve",
             Command::Version => "version",
         }
+    }
+}
+
+#[cfg(test)]
+mod direct_default_tests {
+    use super::Cli;
+    use clap::Parser;
+
+    // 人定 2026-11-16：默认直发，--confirm 才要 Touch ID；两个一起给是用法错误
+    #[test]
+    fn direct_is_default_confirm_opts_in() {
+        let p = |a: &[&str]| Cli::try_parse_from(a);
+        assert!(p(&["atg-cli", "status"]).unwrap().global.direct_send());
+        assert!(p(&["atg-cli", "--unsafe-direct-send", "status"]).unwrap().global.direct_send());
+        assert!(!p(&["atg-cli", "status", "--confirm"]).unwrap().global.direct_send());
+        assert!(p(&["atg-cli", "--confirm", "--unsafe-direct-send", "status"]).is_err());
     }
 }
