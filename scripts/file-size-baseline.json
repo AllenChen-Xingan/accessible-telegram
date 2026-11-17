@@ -1,7 +1,5 @@
 {
   "max": 600,
   "note": "只许变小（scripts/check-file-size.py --tighten）",
-  "files": {
-    "src/atg-core/src/fake.rs": 1021
-  }
+  "files": {}
 }
