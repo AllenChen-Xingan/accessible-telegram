@@ -148,7 +148,8 @@ pub trait Gated: Sealed {
     fn target(&self) -> ChatId;
     /// 凭据绑的摘要（[`digest`]）
     fn digest(&self) -> [u8; 32];
-    /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要
+    /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要。闸只经 [`Gated::intents`] 读它（默认实现）；
+    /// 覆写了 `intents` 的多指纹计划不会被读这个值
     fn intent(&self) -> [u8; 32];
     /// 防重复按哪几个指纹拦（#10）：默认就是 [`Gated::intent`] 一个。一次动好几条、每条都可能单独重来的（转发），
     /// 每条一个——换一批、取子集也拦得住其中结果未知的那条。有几个时与 [`Gated::log_items`] 一一对应、同序
@@ -235,7 +236,8 @@ fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&
         .max_by_key(|e| e.at)
 }
 
-/// 多指纹计划（#10）命中好几条时报哪条：拦得最久的优先（结果未知 / 已提交 24 小时，先于已发出的 10 分钟），同类取最新。
+/// 多指纹计划（#10）命中好几条时报哪条：拦截等级最高的优先（结果未知 / 已提交那类拦 24 小时，先于已发出那类的 10 分钟；
+/// 按类别比，不比剩下还拦多久），同类取最新。
 /// 报文里的「几秒前、什么结果」是人决定等一等还是加 `--again` 的依据，报成已发出会把结果未知的那条也放过去
 pub(crate) fn worst_hit<'a>(
     entries: &'a [GuardEntry],
@@ -302,7 +304,7 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim_all`]）
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（单指纹的便捷版；闸的早拒用 [`Self::hit_any`]，交出前那次见 [`Self::claim_all`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
         Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
     }

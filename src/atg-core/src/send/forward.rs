@@ -193,7 +193,7 @@ pub async fn prepare_forward<B: Backend>(
         "remove_caption": false,
     });
     let server = super::server_of(b)?;
-    // 防重复看「同一意图」：请求本身（目标 + 来源 + 这几条），不看正文
+    // 整批的意图：只当 `Gated::intent` 的占位（不用来拦，拦看下面每条一个的 `intents`）
     let intent = gate::digest(&request, me.user_id, server);
     // 每条一个：同目标、同来源、同一条就是同一个意图，不管和哪几条一起转
     let intents = items
