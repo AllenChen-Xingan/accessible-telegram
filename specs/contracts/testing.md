@@ -91,13 +91,8 @@ src/atg-core/fixtures/
 |---|---|---|---|
 | 测试 | 收藏夹 | 无 | ✅ 闸自动开 `test_exempt`，发出 |
 | 测试 | 别的会话 | 无 | ❌ `send_refused(no_token)` |
-| 正式 | 收藏夹 | 无 | ❌ `send_refused(no_token)` |
-| 正式 | 别的会话 | 无 | ❌ `send_refused(no_token)` |
 | 任意 | 任意 | 目标不符 / 内容不符 / 过期 / 用过 | ❌ 对应 `reason` |
-| 正式 | 收藏夹 | 合法的 Touch ID 凭据 | ✅ 发出（假后端记账里看得到） |
-| 正式 | 别的会话 | 合法的 Touch ID 凭据 | ✅ 发出 |
-| 正式 | 任意（含收藏夹） | 只有终端确认 | ❌ 默认模式下终端确认不开凭据 |
-| 正式 · 直发模式 | 任意 | 无 | ✅ `direct_mode`，发出并留痕 |
+| 正式 | 任意（含收藏夹） | 闸开的 `direct_mode` 凭据 | ✅ 发出并留痕（Touch ID 已删除，#113） |
 | 测试 · 直发模式 | 别的会话（第二个测试号私聊除外） | 无 | ❌ `test_dc_saved_only` |
 | 任意 · 直发模式 | 任意（测试档案仍只许收藏夹） | 编辑 / 删除 / 回应 | ✅ `direct_mode`，留痕（D1 人定：全部免确认） |
 | 任意 · 直发模式 | 任意 | `account_limited` 已记录 | ❌ |
@@ -106,7 +101,6 @@ src/atg-core/fixtures/
 | 测试 | 收藏夹，但登录号不是 `99966` 开头 | 无 | ❌ 不豁免 |
 | 任意 | 任意 | `account_limited` 已记录 | ❌ `send_refused(account_limited)` |
 | 测试 | 一个**改名叫「收藏夹」**的别的会话 | 无 | ❌（收藏夹按自己的用户 id 认） |
-| 任意 | 任意 | 非交互环境请求人工凭据 | ❌ `send_refused(not_interactive)` |
 
 ### 5. 测试服务器（Telegram test DC）
 

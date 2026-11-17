@@ -6,8 +6,8 @@
 //! - **凭据** [`ConfirmToken`] 只能由 [`Gate::issue`] 开出：构造函数不公开，不实现 `Clone` / `Copy` /
 //!   `Serialize` / `Deserialize`，后端发送时按值吃掉它；60 秒（单调时钟：不受人改系统时间影响，改时间续不了期）；每张凭据带一个随机数，验过就记进本进程的「已用」表，同一张不能用两次；凭据本身**绝不交给
 //!   别的进程**（经本机接口转来的命令由执行方自己的闸重开）
-//! - **三种开法**（[`ConfirmMode`]）：测试服务器 + 收藏夹 → `test_exempt`（写死）；以直发参数启动 → `direct_mode`；
-//!   其余（正式服务器的一切目标，含自己的收藏夹）→ `human_auth`（Touch ID / 系统密码，[`Authenticator`]）
+//! - **两种开法**（[`ConfirmMode`]）：测试服务器 + 收藏夹 → `test_exempt`（写死）；正式服务器 → `direct_mode`（不确认）。
+//!   Touch ID / 系统密码确认已整个去掉（人定 2026-11-16「touch id 这个功能彻底关掉以及完全不用」，#113）
 //! - **收藏夹**：Telegram 里自己与自己的私聊；私聊的会话 id 就是对方的用户 id，所以收藏夹的会话 id = 自己的用户 id，
 //!   闸按这个等式认收藏夹，不认会话名字（别人可以把会话改名叫「收藏夹」）
 //! - **测试服务器只许发收藏夹**：判定只认本进程**实际**传给 `setTdlibParameters` 的 `use_test_dc`（后端起来时
@@ -89,9 +89,7 @@ pub fn unix_now() -> i64 {
 pub enum ConfirmMode {
     /// 测试服务器 + 自己的收藏夹：闸自动开（001 拍板 10）
     TestExempt,
-    /// Touch ID / 系统密码（001 拍板 9）
-    HumanAuth,
-    /// 直发的这次运行（001 拍板 11；CLI 默认如此，以 `--confirm` 启动才不是，人定 2026-11-16）
+    /// 正式服务器：不确认直接发（001 拍板 11；人定 2026-11-16 为唯一方式）
     DirectMode,
 }
 
@@ -109,7 +107,6 @@ impl ConfirmMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TestExempt => "test_exempt",
-            Self::HumanAuth => "human_auth",
             Self::DirectMode => "direct_mode",
         }
     }
@@ -150,24 +147,11 @@ pub trait Gated: Sealed {
     fn digest(&self) -> [u8; 32];
     /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要
     fn intent(&self) -> [u8; 32];
-    /// 给人确认时看的说明（Touch ID 弹框的文字）；已转义控制字符
-    fn confirm_text(&self) -> String;
     /// 进不进直发防重复（B17-2）。重发不进：对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
     fn dedup(&self) -> bool;
     /// 留痕里的内容类型（`text` / `resend`……），不是内容本身
     fn kind(&self) -> &'static str;
-    /// 要人确认的整段说明（[`Gated::confirm_text`]，含会话名、来源、每条正文）能不能在确认框里放下。放不下就不弹框
-    /// （人看不到全文，按下去等于没确认；自审第 5、7 轮 P1）
-    fn confirm_fits(&self) -> bool {
-        fits_confirm_box(&self.confirm_text())
-    }
 }
-
-// Touch ID 确认框放不放得下：见 [`crate::confirm_box`]（估算规则与上限的正本）
-pub use crate::confirm_box::{
-    CONFIRM_LINE_COLS, CONFIRM_MAX_CHARS, CONFIRM_MAX_LINES, confirm_visible, confirm_visual_lines,
-    fits_confirm_box,
-};
 
 /// 摘要：请求 JSON 的字节（不做 Unicode 规范化）+ 自己的账号 id + 服务器类别，SHA-256
 pub fn digest(request: &serde_json::Value, account: UserId, server: ServerKind) -> [u8; 32] {
@@ -207,35 +191,6 @@ fn fingerprint(key: &Secret, chat: ChatId, intent: &[u8; 32]) -> String {
 
 pub fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-// ───────────────────────── 人的确认 ─────────────────────────
-
-/// Touch ID / 系统密码。macOS 上是 [`crate::localauth::LocalAuth`]；单测给假的
-pub trait Authenticator: Send + Sync {
-    /// 弹框让人确认；`reason` 是框里的说明。没过 → `auth_failed`，弹不出 → `not_interactive`
-    fn authenticate(&self, reason: &str) -> Result<(), SendRefusedReason>;
-}
-
-/// 一律拒绝（没有本地认证的平台）
-pub struct NoAuth;
-
-impl Authenticator for NoAuth {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        Err(SendRefusedReason::NotInteractive)
-    }
-}
-
-/// 本机默认的认证器：macOS 用 LocalAuthentication，别的平台一律拒
-pub fn system_authenticator() -> Box<dyn Authenticator> {
-    #[cfg(target_os = "macos")]
-    {
-        Box::new(crate::localauth::LocalAuth)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Box::new(NoAuth)
-    }
 }
 
 /// 一次交出的结果（记账与留痕用）
