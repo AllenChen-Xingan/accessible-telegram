@@ -6,7 +6,6 @@
     "src/atg-cli/src/watch.rs": 837,
     "src/atg-core/src/fake.rs": 1020,
     "src/atg-core/src/speech.rs": 810,
-    "src/atg-core/src/store/mod.rs": 926,
     "src/atg-core/src/td.rs": 797,
     "src/atg-core/src/tdjson.rs": 836,
     "src/atg-core/src/tree/text.rs": 671,
