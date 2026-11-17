@@ -330,6 +330,7 @@ impl Gate {
             reaction: plan.log_target(),
             from_chat_id: plan.log_source(),
             old_id: None,
+            file: plan.log_file().map(|(kind, size)| FileLog { kind, size }),
         }
     }
 
@@ -435,6 +436,15 @@ struct DirectLogLine {
     /// 批量计划里这一行说的是哪条（[`Gated::log_items`]）：重发是重发前的旧 id（#83），转发是来源里那条的 id（#10）
     #[serde(skip_serializing_if = "Option::is_none")]
     old_id: Option<i64>,
+    /// 发文件（[`Gated::log_file`]，#12）：按图片还是按文件发、字节数；不记路径与文件名
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<FileLog>,
+}
+
+#[derive(Serialize)]
+struct FileLog {
+    kind: &'static str,
+    size: u64,
 }
 
 fn reaction_fields<S: serde::Serializer>(

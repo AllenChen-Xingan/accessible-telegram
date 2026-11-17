@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// 发文件的留痕字段（#12）
+mod file_log;
+
 struct Plan {
     target: ChatId,
     digest: [u8; 32],

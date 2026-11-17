@@ -27,7 +27,7 @@ use crate::tree::text::{self, Entity, EntityKind};
 use crate::tree::*;
 use serde_json::Value;
 
-mod file;
+pub mod file;
 mod interactive;
 mod react;
 use react::reactions;
