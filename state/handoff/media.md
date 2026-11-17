@@ -22,7 +22,9 @@
 - 留着的 P3（建议攒一个 issue）：`send::remember` 挪共用模块；`Outcome` 改名；`Guard` Drop 写死 Stdio；L0/F4/R1/场景目录等代号；build.sh 注释术语
 - 已定（大总管 2026-11-16）：`transcript_stale` 不挪、按注明处理；P3 五条随 PR 开一个 issue；名额排第四（arch → msg2 → fix → 我）
 - codex 039 干跑过：`_tmp/reviews-039/`，类型 diff、范围 origin/main（main 已在 HEAD 里）、隐私扫描无拦截（13 条测试假数据提示）
-- 下一步：名额复验 → codex 039 正式跑
+- codex 039：第 1 轮 P2×2（测试靠时序、租约测试不全）属实已改：闸门式假辅助程序、18+ 途中变化测试、守卫共存 / panic 测试，删 ok-zh-slow.sh；第 2 轮 P2×2（下载闸门、假后端没开不推，都要改超标的 fake.rs）→ 满足停止线，开 issue。记录 docs/reviews/039_transcribe-codex.md
+- 复验（名额，已还）：test 520 过 0 败；clippy 三遍、fmt、门槛过。守卫测试并行时偶发 auth_required（没等授权就绪）已修。已有偶发：serve lifecycle `two_watches_on_same_chat_share_one_open` 13 次挂 1 次（#106 那条，非 3c）
+- 下一步：报大总管提交、开 PR；PR 合后本线收尾
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 
