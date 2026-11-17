@@ -20,13 +20,7 @@ fn clock() -> i64 {
 }
 
 fn profile(tag: &str) -> Profile {
-    let root = std::env::temp_dir().join(format!(
-        "atg-cli-watch-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
-    Profile::create(&root, "main", ServerKind::Main).unwrap()
+    atg_core::testkit::profile(&format!("cli-watch-{tag}"), ServerKind::Main)
 }
 
 fn user(id: i64, name: &str) -> Value {
