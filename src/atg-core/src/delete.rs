@@ -196,19 +196,21 @@ pub async fn cancel<B: Backend>(
         });
     }
     b.gate().before_submit(mode, plan)?;
-    let r = crate::send_limits::submit(b, Sealed::delete(&plan.request)).await;
-    let (outcome, err) = match &r {
-        Ok(Answer::Deleted) => (Outcome::Succeeded, None),
-        Ok(_) => (Outcome::Failed, None),
-        Err(e) => (Outcome::Failed, Some(e)),
-    };
-    b.gate().after_outcome(mode, plan, 0, None, outcome, err);
-    match r {
-        Ok(Answer::Deleted) => Ok(mode),
-        Ok(_) => Err(CoreError::Internal {
-            what: "delete_answer_shape",
-        }),
-        Err(e) => Err(e),
+    match crate::send_limits::submit(b, Sealed::delete(&plan.request)).await {
+        Ok(Answer::Deleted) => {
+            b.gate()
+                .after_outcome(mode, plan, 0, None, Outcome::Succeeded, None);
+            Ok(mode)
+        }
+        Ok(_) => {
+            b.gate()
+                .after_outcome(mode, plan, 0, None, Outcome::Failed, None);
+            Err(CoreError::Internal {
+                what: "delete_answer_shape",
+            })
+        }
+        // 同发送：断线、网络、应答转不回来 = 可能已交出，按结果未知记账、报 `send_outcome_unknown`（codex 029 第 3 轮 #3）
+        Err(e) => Err(send::submit_failed(b, mode, plan, e)),
     }
 }
 

@@ -89,10 +89,6 @@ impl<'a> Sealed<'a> {
     pub(crate) fn into_kind(self) -> SealedKind<'a> {
         self.kind
     }
-    /// 只是预览（`only_preview`，不发）
-    pub(crate) fn is_preview(&self) -> bool {
-        matches!(self.kind, SealedKind::Message { preview: true, .. })
-    }
     /// `deleteMessages`：只由 [`crate::delete`] 在闸验过凭据之后造
     pub(crate) fn delete(request: &'a Value) -> Self {
         let kind = SealedKind::Delete { request };
@@ -174,7 +170,7 @@ pub(crate) fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
 /// 交出口回了错：分清「TDLib 明确拒了、没发出」和「请求可能已经交出、只是没等到应答」。
 /// 后一种（连接断了、内核关了、请求中止、应答转不回来）按结果未知记账并报 `send_outcome_unknown`——
 /// 记成失败会让直发防重复放过重跑，对方就收到两条（自审第 1 轮 P1）
-fn submit_failed<B: Backend>(
+pub(crate) fn submit_failed<B: Backend>(
     b: &B,
     mode: ConfirmMode,
     plan: &dyn Gated,

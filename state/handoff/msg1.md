@@ -3,6 +3,15 @@
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
 - **做到哪**：合并已提交 bbe2f20（大总管）。排队等编译名额（第二位）。#88：红测试已写 `src/atg-core/tests/send_limits.rs` 末尾两条（`late_limit_with_a_full_disk_still_stops_the_next_process` 现应红；`accepted_send_left_open_at_a_clean_close_leaves_no_manual_work` 现应绿、守 Q1=b）；单测三条（新 API `hold` / `await_outcome` / `outcome` / `closed`）暂放 scratchpad `88-unit-tests.rs`，红跑之后再放回 `send_limits.rs`。大总管定：#8 直发；`actions.md:294` 是历史记录不改；Q1 先按 b
+- **第三次名额（b20，2026-11-17）**：全量 520 过 0 败；开 TDLib 493 过 0 败；clippy 两种净；fmt / 空白 / 行数（--tighten 后 0 报错）过。修了自己引入的两处：新单测临时目录名与旧测试撞名（`early` → `outcome-first`）、clippy `match_like_matches_macro`；`fake.rs` 超基线 → `play_send` 挪进 `fake/submit.rs`（顺带成为假后端唯一登记处）。提交信息 `_tmp/msg1/commit-b20-2.md`。下一步：提交后 codex 029 新身份第 2 轮
+- **atg-review（#88 #109）**：P0×1（同 codex #1）、P2×9、P3×10，已合并处理：登记只留每个后端一处、删 `Sealed::is_preview`；补测试 2 条（成败先到、只认永久删除）；文档（正常关闭定义、断网可留很久、Q1 改指 issue #88、errors.md 期限与 temp=0）。**未改的 P3**（报大总管开 issue）：`jam` 两份且依赖 `write_atomic` 临时文件名；`cancel_unknown` 留痕没测；「守卫」「交出」等自造词无定义。记录已写进 029 第 3 轮。Q1 题面大总管已评论到 #88；余下 P3 开了 #127。排名额第二（fix 之后）
+- **codex 029 第 3 轮（pending-57-b20 第 1 轮，gpt-6-astra，read-only，medium）**：P1×2 P2×1，全部属实，已改（未编译）：
+  - #1 正常关闭误删上个进程留下的标记 → `inherited`，本进程从不自动删；测试 `inherited_mark_survives_a_clean_close`
+  - #2 关闭不等交出线程、放锁后还碰标记 → `closed(wait)` 先等在途归零（Condvar），放锁之前调，之后 `closed` 标志封住登记与删文件；测试 `close_waits_for_the_submit_thread_then_keeps_hands_off`
+  - #3 撤销交出时断线报成失败 → `delete::cancel` 复用 `send::submit_failed`，CLI 换撤销说明；测试 `cancel_disconnected_after_submit_is_outcome_unknown`
+  - `send_limits.rs` 测试挪进 `send_limits/tests.rs`（635 行超 600）；契约 config-privacy / cli / errors 同步
+- **评审在跑**：codex 029 第 3 轮（run-round3.sh，大总管准 `--force-secrets`，共同规矩第 15 条）与 atg-review（#88 #109，`git diff bbe2f20 3bdc42b`）并行后台跑，结果合着处理
+- **已提交 3bdc42b（大总管）**。codex 029 第 3 轮：脚本 `_tmp/codex-029/run-round3.sh`，被隐私扫描拦（9 处 `token: ConfirmToken` 误报，要人确认 `--force-secrets`），已报大总管；因本机 `main` 陈旧改用 `origin/main...HEAD`、新身份 `pending-57-b20`，停止线重新计数。建议先对 #88/#109 跑 atg-review，等大总管回
 - **第二次名额结果（b20）**：#57 收尾 + #109 + #88 全部验证：build 过；全量 515 过 0 败 5 忽略（#88 红测试已转绿）；开 TDLib 特性 488 过 0 败；clippy -D warnings 两种都净；tdlib 编译过；`--tighten` 后行数检查 0 报错；rustfmt 过（顺带格式化了合并时改的 `serve/l2.rs`、`session.rs`）。提交一笔，信息见 `_tmp/msg1/commits-b20.md`，交大总管提交。下一步：codex 029 第 3 轮（脚本交大总管）→ #8
 - **#88 已实现**：`send_limits.rs` 加 `hold` / `await_outcome` / `outcome` / `observe` / `closed`，标记盖到「在途交出 = 0 且待回成败为空且无未写入限制」；`early` 集让成败先于应答到、或登记两次都不卡；`link::Shared::event` 先 note 再 observe；`td.rs::detached` 线程自领守卫、应答成功当场登记 id（`td/requests.rs::sent` / `resent`）；td / fake 正常关闭调 `closed`（Q1=b）；单测 3 条放回 `send_limits.rs`；契约 config-privacy 同步。红测试第一次跑：`late_limit_with_a_full_disk_still_stops_the_next_process` 红（下一个进程放行），符合预期
 - 第一次名额结果（b20）：build 过、clippy 净（tdlib 特性下 main 的 `examples/live_wait_phone.rs:27` 多余 `self` 报错，已报大总管）、tdlib 编译过、全量 512 过 0 败；`td.rs` 解析挪进 `td/requests.rs`（847→832）
@@ -17,6 +26,15 @@
   - 修法 B（治②）：交出成功回来的临时 id 各领一个守卫，存进 `SendLimits`；`Shared::event` 收到该 id 的 SendSucceeded / SendFailed（先 note 再放）才放；临时 id 换正式 id 要跟上
   - 红测试：A——`SendLimits` 层模拟「调用方守卫先放、晚到受限写盘失败、线程守卫后放」→ 重启后 `check` 应拒（现在会放行）；B——假后端：交出成功 → 堵住限制文件 → 推 SendFailed(受限) → 新进程 `load` 应拒
   - 待定 Q1（见下）
+
+## #8 计划（b20，未动代码）
+分两段交付（roadmap 116 行）：先 **A 删除（给所有人，M2.7）**，后 **B 编辑（M5 ①）**；评审 030（删除）、031（编辑）。都是 L2，直发不确认（#113；现行规则以 actions.md 第一节第 5 小节为准，294 行是历史记录不改）。
+- A 删除：
+  - core：`Backend` 的 `getMessageProperties` 现只出 `can_reply`（`backend.rs:148`、`td.rs:707`）→ 加一个只读查询给出「能否给所有人删 / 能否编辑」（fake 同步）；`delete.rs` 加 `prepare_delete(chat, ids)`（L0：逐条查自己能删、给所有人；收藏夹必拒，`actions.md:110`）、`DeletePlan` 加 action `delete`（`revoke=true`）、`delete(plan, token)`（验凭据 → 交出前再查 → `send_limits::submit` → 错误走 `send::submit_failed`）；下落看永久的 `messages_deleted`
+  - CLI：`atg-cli delete CHAT_ID MSG_ID... [--dry-run]`（`cli.md:37`）：每条一行 `plan` → 结果；转发进 `serve/l2.rs`、`forward::is_l2`
+  - 测试：假后端全流程（成功、收藏夹拒、不能删的拒、交出前变了拒、断线报未知）；真账号只许 `--dry-run` 或收藏夹——收藏夹「给所有人删」TDLib 本就不许，正好验拒绝路径（只读查询，不交出）；成功路径要第二个测试号（N7，测试服务器登录不通 #35）→ 只能假后端，报大总管
+- B 编辑：`edit_text`（`actions.md:124`，`editMessageText`），同一套闸；真账号只在收藏夹试
+- 先问大总管：编辑 / 删除的时间窗（Telegram 48 小时编辑限制等）由 TDLib 的属性判，不自己算——这算技术细节，默认照此
 
 ## 要人定的事（b20）
 - **Q1 #88：进程正常退出时还有「交出了、结果没回来」的消息，标记留不留？**

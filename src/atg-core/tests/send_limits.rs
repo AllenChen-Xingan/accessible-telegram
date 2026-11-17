@@ -171,7 +171,7 @@ fn late_limit_with_a_full_disk_still_stops_the_next_process() {
 
 #[test]
 fn accepted_send_left_open_at_a_clean_close_leaves_no_manual_work() {
-    // #88 待定 Q1 默认 b：交出成功、结果没回来就正常关闭——标记删掉，下一个进程照常能发（失败由它登记）
+    // #88 暂定（待人定，题面在 issue #88）：交出成功、结果没回来就正常关闭——标记删掉，下一个进程照常能发（失败由它登记）
     let (b, stream) = rig("open-close");
     b.script_sends(vec![FakeSend::Silent]);
     let plan = block_on(prepare_text(&b, ME, &draft("测试六"), SendOrigin::Cli)).unwrap();

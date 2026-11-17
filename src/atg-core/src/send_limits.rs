@@ -11,15 +11,17 @@
 //! 由 [`SendLimits::load`] 读回，所以 CLI 每条命令一个新进程、AI 循环调用也绕不过（codex 016 第 3 轮 #2、第 4 轮
 //! #1 #2：先是只记在内存、后是只在下一次判开法时才落盘，进程一退就忘，按同类问题改成这一处）。
 //!
-//! 落盘两个文件，都在档案目录，都不记内容：
+//! 落盘三个文件，都在档案目录，都不记内容：
 //! - [`ACCOUNT_LIMITED_FILE`]：账号被 Telegram 限制。人处理好、删掉它才恢复
 //! - [`FLOOD_FILE`]：限流到什么时候（Unix 秒）之前不许再发；到点自然失效
 //! - [`PENDING_FILE`]：交出未完成。每次交出前先写，**等到能登记受限 / 限流的最后一刻**才删（#88）：交出的应答
 //!   回来并登记完（调用方等不及丢掉等待时，交出线程自己还攥着一份守卫，[`SendLimits::hold`]），交出成功的那几条
 //!   各自的成败也到了（[`SendLimits::await_outcome`] 登记、收线程 [`SendLimits::outcome`] 销账）。进程正常关闭时
-//!   还没回来的不再等（[`SendLimits::closed`]）：TDLib 下次启动续发，失败由那个进程登记（#88 待定 Q1 默认 b）。
-//!   常见情况都自己清，不留人工活；只有两种情况留着：进程没正常关闭就死掉，或某个受限 / 限流没写进盘（写失败时
-//!   会补写这个标记；磁盘满时补写也可能失败，所以标记要一直盖到这里，不能先删）。
+//!   还没回来的不再等（[`SendLimits::closed`]）：TDLib 下次启动续发，失败由那个进程登记（这一条暂定、待人定，题面
+//!   记在 issue #88）。「正常关闭」= 后端 `shutdown` 走完（命令跑完、Ctrl+C 走正常收尾、停 `serve`）；被杀、崩溃不算。
+//!   上一个进程留下的标记本进程从不自动删。常见情况都自己清，不留人工活；只有两种情况留着：进程没正常关闭就死掉，
+//!   或某个受限 / 限流没写进盘（写失败时会补写这个标记；磁盘满时补写也可能失败，所以标记要一直留到这里，不能先删）。
+//!   断网时消息会在待发队列里排着（最长 24 小时），这段时间里进程死掉，下一个进程就会拒发、要人删文件
 //!   新进程看到它就拒发，要人确认账号状态后删掉（codex 016 第 6 轮 #2：限制写盘失败只记日志时，下一个进程读到的
 //!   是旧状态、照常放行）
 
@@ -33,7 +35,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 /// 账号受限标记（`config-privacy.md` 落盘清单）
 pub const ACCOUNT_LIMITED_FILE: &str = "account-limited";
@@ -57,14 +60,21 @@ struct State {
     inflight: u32,
     /// 交出成功、成败还没回来的消息（临时 id）
     awaiting: HashSet<MsgId>,
-    /// 交出在途期间到过的成败：登记时跳过（成败可能比应答先到；同一条可能登记两次——真实后端的交出线程一次、
-    /// 交出口一次）。没有交出在途时清空
+    /// 交出在途期间到过的成败：登记时跳过。成败更新走收线程，`sendMessage` 的应答走交出线程，两条线程谁先到
+    /// 不一定——先到的成败若不记下，之后登记的那条就永远等不到、标记永远删不掉。只在有交出在途时记（没有在途的
+    /// 交出就不会再有登记，记了也没用），在途归零时清空
     early: HashSet<MsgId>,
+    /// 标记是上一个进程留下的（`load` 时就在）：本进程绝不自动删，要人确认账号状态后手动删（codex 029 第 3 轮 #1）
+    inherited: bool,
+    /// 后端已正常关闭：之后不再登记、不再碰标记文件（档案锁已放，可能是新进程的标记，codex 029 第 3 轮 #2）
+    closed: bool,
 }
 
 #[derive(Default)]
 pub struct SendLimits {
     state: Mutex<State>,
+    /// 在途交出归零时唤醒 [`SendLimits::closed`]
+    idle: Condvar,
 }
 
 impl SendLimits {
@@ -77,10 +87,14 @@ impl SendLimits {
     pub(crate) fn load(&self, dir: &Path) {
         let mut s = self.lock();
         s.dir = Some(dir.to_path_buf());
+        s.closed = false;
         // 上一个进程交出后没收尾（限制可能没写进去）：只有「不存在」才算干净
-        match fs::metadata(dir.join(PENDING_FILE)) {
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            _ => s.unreadable = true,
+        s.inherited = !matches!(
+            fs::metadata(dir.join(PENDING_FILE)),
+            Err(e) if e.kind() == ErrorKind::NotFound
+        );
+        if s.inherited {
+            s.unreadable = true;
         }
         match fs::metadata(dir.join(ACCOUNT_LIMITED_FILE)) {
             Ok(_) => s.limited = true,
@@ -188,6 +202,9 @@ impl SendLimits {
     /// 交出成功的这几条：成败回来之前标记留着
     pub(crate) fn await_outcome(&self, ids: &[MsgId]) {
         let mut s = self.lock();
+        if s.closed {
+            return;
+        }
         for id in ids {
             if !s.early.contains(id) {
                 s.awaiting.insert(*id);
@@ -211,7 +228,8 @@ impl SendLimits {
             CoreEvent::SendSucceeded { old_id, .. } | CoreEvent::SendFailed { old_id, .. } => {
                 self.outcome(*old_id);
             }
-            // 清缓存、暂时不可访问的不算：请求还在
+            // TDLib `updateDeleteMessages`：`message_ids` 就是交出时的临时 id；`from_cache`（只清了本机缓存）
+            // 与非 `is_permanent`（暂时不可访问）的不算——请求还在
             CoreEvent::MessagesDeleted {
                 chat_id,
                 message_ids,
@@ -229,11 +247,27 @@ impl SendLimits {
         }
     }
 
-    /// 后端正常关闭了：还没回来的成败不再等（下次启动 TDLib 续发，由那个进程登记）
-    pub(crate) fn closed(&self) {
+    /// 后端正常关闭（收线程已停、**档案锁放掉之前**调）：先等在途的交出线程登记完应答（最多 `wait`；TDLib 关闭时
+    /// 会回完所有请求），再清掉还没回来的成败（下次启动 TDLib 续发，由那个进程登记）、收尾标记。此后不再登记、
+    /// 不再碰标记文件——锁一放，档案目录里的标记可能已是新进程的。到点还有在途的：标记留着（宁可要人看一眼）
+    pub(crate) fn closed(&self, wait: Duration) {
+        let deadline = Instant::now() + wait;
         let mut s = self.lock();
+        while s.inflight > 0 {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                logline::warn("send_pending_inflight_at_close", &[]);
+                break;
+            }
+            s = self
+                .idle
+                .wait_timeout(s, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
         s.awaiting.clear();
         Self::settle(&mut s);
+        s.closed = true;
     }
 
     /// 交出这一步结束
@@ -241,16 +275,20 @@ impl SendLimits {
         let mut s = self.lock();
         s.inflight = s.inflight.saturating_sub(1);
         Self::settle(&mut s);
+        if s.inflight == 0 {
+            self.idle.notify_all();
+        }
     }
 
     /// 没有在途的交出、没有待回的成败、限制也都写进去了，就删标记
     fn settle(s: &mut State) {
-        if s.inflight > 0 {
+        if s.inflight > 0 || s.closed {
             return;
         }
         s.early.clear();
         if s.awaiting.is_empty()
             && !s.unsaved
+            && !s.inherited
             && let Some(dir) = &s.dir
         {
             match fs::remove_file(dir.join(PENDING_FILE)) {
@@ -268,21 +306,15 @@ impl SendLimits {
 }
 
 /// 交出口（`Backend::submit`）的唯一调用处：预览、发送、重发都经这里，回的错先登记进这一份限制
-/// 先写交出未完成标记，交出这一步结束时由守卫收尾（见 [`SendLimits::begin`]）
+/// 先写交出未完成标记，交出这一步结束时由守卫收尾（见 [`SendLimits::begin`]）。
+/// 交出成功、成败还要等的是哪几条，由后端在拿到应答的那一处登记（[`SendLimits::await_outcome`]，每条只登记一次）：
+/// 真实后端在交出线程里（调用方丢掉等待后也照登，`td::requests::sent` / `resent`），假后端在它的 `submit` 里
 pub(crate) async fn submit<B: Backend>(b: &B, sealed: Sealed<'_>) -> Result<Answer, CoreError> {
     let limits = b.gate().limits();
     let _pending = limits.begin()?;
-    let preview = sealed.is_preview();
     let r = b.submit(sealed).await;
-    match &r {
-        Err(e) => limits.note(e),
-        // 预览不发；删除的应答就是结果
-        Ok(Answer::Message(m)) if !preview => limits.await_outcome(&[m.id]),
-        Ok(Answer::Resent(ms)) => {
-            let ids: Vec<MsgId> = ms.iter().flatten().map(|m| m.id).collect();
-            limits.await_outcome(&ids);
-        }
-        Ok(_) => {}
+    if let Err(e) = &r {
+        limits.note(e);
     }
     r
 }
@@ -325,220 +357,4 @@ fn persist_flood(dir: &Path, until: i64) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("atg-limits-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
-        d
-    }
-
-    #[test]
-    fn account_limited_is_written_at_once_and_read_by_the_next_process() {
-        // codex 016 第 4 轮 #1：收到就落盘，不等下一次判开法；进程一退、重启照样停
-        let dir = temp_dir("limited");
-        let l = SendLimits::new();
-        l.load(&dir);
-        l.note(&CoreError::AccountLimited { td: None });
-        assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
-        let next = SendLimits::new();
-        next.load(&dir);
-        assert!(next.check(unix_now()).is_err());
-    }
-
-    #[test]
-    fn noted_before_the_dir_is_known_is_written_when_it_is() {
-        let dir = temp_dir("early");
-        let l = SendLimits::new();
-        l.note(&CoreError::AccountLimited { td: None });
-        l.note(&CoreError::RateLimited {
-            retry_after_s: 300,
-            td: None,
-        });
-        l.load(&dir);
-        assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
-        assert!(dir.join(FLOOD_FILE).exists());
-    }
-
-    #[test]
-    fn flood_wait_is_kept_across_processes_and_expires() {
-        // codex 016 第 4 轮 #2：限流的等待期写进档案目录，新进程也遵守；到点自然失效
-        let dir = temp_dir("flood");
-        let l = SendLimits::new();
-        l.load(&dir);
-        l.note(&CoreError::RateLimited {
-            retry_after_s: 120,
-            td: None,
-        });
-        let next = SendLimits::new();
-        next.load(&dir);
-        let now = unix_now();
-        match next.check(now) {
-            Err(CoreError::RateLimited { retry_after_s, .. }) => assert!(retry_after_s > 100),
-            other => panic!("应当限流：{other:?}"),
-        }
-        assert!(next.check(now + 121).is_ok());
-        // 短的不会把长的冲掉
-        next.note(&CoreError::RateLimited {
-            retry_after_s: 5,
-            td: None,
-        });
-        assert!(next.check(now + 60).is_err());
-    }
-
-    #[test]
-    fn unreadable_marks_fail_closed() {
-        // codex 016 第 5 轮 #2：截止文件内容坏了 → 不当成「没有记录」，拒发
-        let dir = temp_dir("bad");
-        fs::write(dir.join(FLOOD_FILE), b"not a number").unwrap();
-        let l = SendLimits::new();
-        l.load(&dir);
-        assert!(matches!(
-            l.check(unix_now()),
-            Err(CoreError::Internal {
-                what: "send_limits_unreadable"
-            })
-        ));
-        // 读不了（这里是同名目录）也一样
-        let dir2 = temp_dir("dir");
-        fs::create_dir_all(dir2.join(FLOOD_FILE)).unwrap();
-        let l2 = SendLimits::new();
-        l2.load(&dir2);
-        assert!(l2.check(unix_now()).is_err());
-    }
-
-    #[test]
-    fn unsaved_limit_keeps_the_pending_mark_for_the_next_process() {
-        // codex 016 第 6 轮 #2：限制写不进盘（这里用同名目录挡住）时，交出未完成标记留着，下一个进程照样停
-        let dir = temp_dir("unsaved");
-        let l = SendLimits::new();
-        l.load(&dir);
-        // 加载之后才把截止文件的位置占成非空目录：之后写截止时间（临时文件改名过去）必失败
-        fs::create_dir_all(dir.join(FLOOD_FILE).join("x")).unwrap();
-        let guard = l.begin().unwrap();
-        l.note(&CoreError::RateLimited {
-            retry_after_s: 60,
-            td: None,
-        });
-        drop(guard);
-        assert!(dir.join(PENDING_FILE).exists());
-        let next = SendLimits::new();
-        next.load(&dir);
-        assert!(next.check(unix_now()).is_err());
-        // 干净的一次交出：标记删掉
-        let ok = temp_dir("clean");
-        let c = SendLimits::new();
-        c.load(&ok);
-        drop(c.begin().unwrap());
-        assert!(!ok.join(PENDING_FILE).exists());
-        let after = SendLimits::new();
-        after.load(&ok);
-        assert!(after.check(unix_now()).is_ok());
-    }
-
-    /// 模拟磁盘满：在 `write_atomic` 的临时文件位置放一个目录，写就失败，而目标文件本身不存在（新进程看不出异样）
-    fn jam(dir: &Path, name: &str) {
-        let tmp = dir
-            .join(name)
-            .with_extension(format!("tmp{}", std::process::id()));
-        fs::create_dir_all(tmp.join("x")).unwrap();
-    }
-
-    #[test]
-    fn abandoned_wait_keeps_the_mark_until_the_answer_is_noted() {
-        // #88 ①：调用方等不及丢掉等待（它的守卫先放），交出线程还在等应答；晚到的限流写不进盘、补写标记也写不进
-        // （磁盘满）时，标记必须还在——交出线程自己的守卫没放，标记就不删
-        let dir = temp_dir("abandoned");
-        let l = SendLimits::new();
-        l.load(&dir);
-        let caller = l.begin().unwrap();
-        let answer = l.hold();
-        drop(caller);
-        assert!(dir.join(PENDING_FILE).exists());
-        jam(&dir, FLOOD_FILE);
-        jam(&dir, PENDING_FILE);
-        l.note(&CoreError::RateLimited {
-            retry_after_s: 60,
-            td: None,
-        });
-        drop(answer);
-        let next = SendLimits::new();
-        next.load(&dir);
-        assert!(next.check(unix_now()).is_err());
-    }
-
-    #[test]
-    fn accepted_send_keeps_the_mark_until_its_outcome() {
-        // #88 ②：交出成功（进了 TDLib 的待发队列）不等于结束，真正的成败晚到；到之前标记留着
-        let dir = temp_dir("accepted");
-        let l = SendLimits::new();
-        l.load(&dir);
-        let id = MsgId {
-            chat_id: 7,
-            message_id: 1_048_577,
-        };
-        let g = l.begin().unwrap();
-        l.await_outcome(&[id]);
-        drop(g);
-        assert!(dir.join(PENDING_FILE).exists());
-        // 别的消息的下落不算
-        l.outcome(MsgId {
-            chat_id: 7,
-            message_id: 9,
-        });
-        assert!(dir.join(PENDING_FILE).exists());
-        l.outcome(id);
-        assert!(!dir.join(PENDING_FILE).exists());
-    }
-
-    #[test]
-    fn clean_close_drops_the_mark_for_outcomes_still_out() {
-        // #88 待定 Q1 默认 b（大总管 2026-11-16 先按 b）：正常关闭时还没回来的下落不留人工活——标记删掉，
-        // 下个进程启动时 TDLib 续发、失败由它登记。但有限制没写进盘的，照样留着
-        let dir = temp_dir("close");
-        let l = SendLimits::new();
-        l.load(&dir);
-        let id = MsgId {
-            chat_id: 7,
-            message_id: 1_048_577,
-        };
-        drop({
-            let g = l.begin().unwrap();
-            l.await_outcome(&[id]);
-            g
-        });
-        l.closed();
-        assert!(!dir.join(PENDING_FILE).exists());
-        let dir2 = temp_dir("close-unsaved");
-        let u = SendLimits::new();
-        u.load(&dir2);
-        drop({
-            let g = u.begin().unwrap();
-            u.await_outcome(&[id]);
-            g
-        });
-        jam(&dir2, FLOOD_FILE);
-        u.note(&CoreError::RateLimited {
-            retry_after_s: 60,
-            td: None,
-        });
-        u.closed();
-        assert!(dir2.join(PENDING_FILE).exists());
-    }
-
-    #[test]
-    fn abandoned_or_overlapping_submits_clean_up_themselves() {
-        // 调用方等不及把交出丢掉（守卫随之 drop）也自己清；两次交错时最后一个收尾才删
-        let dir = temp_dir("overlap");
-        let l = SendLimits::new();
-        l.load(&dir);
-        let a = l.begin().unwrap();
-        let b = l.begin().unwrap();
-        drop(a);
-        assert!(dir.join(PENDING_FILE).exists());
-        drop(b);
-        assert!(!dir.join(PENDING_FILE).exists());
-    }
-}
+mod tests;

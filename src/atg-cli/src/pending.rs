@@ -231,6 +231,10 @@ fn execute_cancel_within<B: Backend>(
 ) -> u8 {
     match run_cancel(b, stream, feed, p, sink, format, started, submit_timeout) {
         Ok(code) => code,
+        // 交出后断线等「可能已交出」：换成撤销的说明（通用说明讲的是发送）
+        Err(Fail::Core(e @ CoreError::SendOutcomeUnknown { .. })) => {
+            crate::send::l2_fail(sink, format, &e, json!({ "message_zh": CANCEL_UNKNOWN_ZH }))
+        }
         // L2 的错误一律 `retryable:false`（同 `send`）
         Err(Fail::Core(e)) => crate::send::l2_fail(sink, format, &e, json!({})),
         Err(f) => out::fail_with_to(sink, format, &f),

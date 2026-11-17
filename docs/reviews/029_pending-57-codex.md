@@ -1,9 +1,37 @@
-# 评审 029 · #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）（codex · gpt-6-astra · read-only）
+# 评审 029 · #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex · gpt-6-astra · read-only）
 
-> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 2 轮（2026-11-14）· 总评「修改」（仅 P2）· 连续第 1 轮无 P0/P1，待第 3 轮确认**。
+> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 3 轮（2026-11-16，对象改为 `origin/main...HEAD`、身份 `pending-57-b20` 第 1 轮）· 总评「修改」· P1×2，停止线重新计数**。
 > 之前：atg-review 自审 4 轮，每轮各有 P1、均已修；「撤销之后报下落」这一处同类 P1 第三次出现时按共同规矩第 12 条停下报大总管，**人定 A（2026-11-14）：就此收住**，不再自审。大总管转达口径：此后 P1 若又落在撤销下落时序上，降级记 P2、写明理由。
 > 第 1 轮由大总管代跑（隐私扫描把 6 处 `token: ConfirmToken` 类型标注认成密钥赋值，按共同规矩第 13 条经人确认后加 `--force-secrets`）。
-> 累计处理：P1×3、P2×3 逐条回源码核实，属实 6、驳回 0；P2×1 开 issue #109。
+> 第 3 轮起本机 `main` 陈旧（停在 81f6195，检出在别的工作副本），三点范围改用 `origin/main...HEAD`，脚本身份换名 `pending-57-b20`（大总管同意），停止线从这一轮重新数。第 3 轮手下自跑，`--force-secrets` 经大总管逐条核实放行（共同规矩第 15 条：命中全是 `token: ConfirmToken`）。
+> 累计处理：P1×5、P2×4 逐条回源码核实，属实 9、驳回 0；P2×1 开 issue #109（已在第 3 轮前一并修掉，`Closes #109`）。
+
+## 第 3 轮（2026-11-16）· 总评「修改」
+
+原文：`_tmp/codex-029/pending-57-b20-codex-1.md`（不入库）。对象 `origin/main...HEAD`（提交 `3bdc42b`：#57 合 main 收尾 + #109 + #88）。模型 gpt-6-astra · read-only · medium，99 秒。
+同时跑了 atg-review 自审（#88 #109，`git diff bbe2f20 3bdc42b`）：P0×1（同本轮 #1）、P2×9、P3×10，合并处理，要点记在下面。
+本轮 P0/P1：2 条 · 停止线：未满足（新身份第 1 轮）
+
+- **P1｜`send_limits.rs:252` 正常关闭会误删上个进程留下的标记**（第 3 轮 #1；自审 P0 同）
+  - 核实：属实，#88 引入的回退。`load` 见到旧标记只设 `unreadable`；#88 新开了不经 `begin` 的两条路（`closed()`、收线程 `observe → outcome`）走到 `settle`，而 `settle` 不看是不是继承来的。跑一条只读命令再正常关闭，或续发的成功事件一到，就把它删了，下一个进程照常发
+  - 处理：`State.inherited`（`load` 时标记已在），`settle` 一律不删继承来的；单测 `inherited_mark_survives_a_clean_close`（两次正常启动后仍在、仍拒）
+- **P1｜`td.rs:816` 正常关闭不等交出线程、放锁后还碰标记**（第 3 轮 #2；自审 P2「关闭顺序反了」同）
+  - 核实：属实。`detached` 线程可在 `closed()` 之后才 `await_outcome`，留下永远等不到的 id；且 `closed()` 在放档案锁之后，可能删到新进程的标记
+  - 处理：`closed(wait)` 先等在途归零（`Condvar`，期限为关闭剩余时间），再清待回、收尾，之后置 `closed`：不再登记、不再删文件；td 与 fake 都改为放锁之前调；到点还在途的，标记留着。单测 `close_waits_for_the_submit_thread_then_keeps_hands_off`
+- **P2｜`delete.rs:203` 撤销交出时断线仍报成失败**（第 3 轮 #3）
+  - 核实：属实。#109 只修了超时
+  - 处理：`delete::cancel` 交出出错改走 `send::submit_failed`（断线 / 网络 / 应答转不回 → `send_outcome_unknown`、留痕记未知）；CLI 换撤销说明；单测 `cancel_disconnected_after_submit_is_outcome_unknown`；契约 cli / errors 同步
+- 自审另有属实、本轮照修的：
+  - 「要等成败的是哪几条」登记了两份（通用交出口按 `Answer`、真实后端交出线程按 tdlib 类型）→ 去掉通用那份，每个后端在拿到应答处登记一次（td 交出线程、fake 的 `submit`），删 `Sealed::is_preview`
+  - 缺测试：成败先于应答到、删除事件只认永久非缓存 → 补 `outcome_before_the_answer_is_not_waited_for_again`、`only_permanent_deletions_settle_an_outcome`
+  - 文档：写明「正常关闭」指什么、断网时标记可留很久（待发最长 24 小时）；「Q1 默认 b」改为「暂定、待人定、题面在 issue #88」；errors.md 写明撤销交出 10 秒、`temp_message_id` 恒为 0 的原因；模块文档「两个文件」改「三个」；`early` 为什么存在、删除事件字段含义补注释
+  - `send_limits.rs` 加测试后 635 行，单测挪进 `send_limits/tests.rs`
+- 自审余下 P3 未改（写进现状页）：`jam` 在单测与集成测试各一份且依赖 `write_atomic` 临时文件名；`cancel_unknown` 的留痕没测（测试服务器走测试豁免、`after_outcome` 不记）；「守卫」「交出」等自造词无定义
+- 引用抽查：「属实」4 条；「无法核实」1 条（TDLib 源码不在获准补读范围）
+
+### 是否再审
+
+本轮有 P1，改完再审（新身份第 2 轮）；要连续两轮无 P0/P1 才停。
 
 ## 第 2 轮（2026-11-14）· 总评「修改」（仅 P2）
 

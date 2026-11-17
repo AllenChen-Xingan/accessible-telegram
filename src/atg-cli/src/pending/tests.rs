@@ -225,6 +225,20 @@ fn saved_backend() -> FakeBackend {
 }
 
 #[test]
+fn cancel_disconnected_after_submit_is_outcome_unknown() {
+    // codex 029 第 3 轮 #3：交出时断线 = 可能已交出，同发送报结果未知（不是失败、不是可重试的网络错误）
+    let b = saved_backend();
+    b.fail_next("delete", atg_core::error::CoreError::Disconnected);
+    let (code, cap) = cancel_run(&b, "saved", false);
+    assert_eq!(code, 10);
+    let last = line(&cap, cap.out.len() - 1);
+    assert_eq!(last["data"]["code"], "send_outcome_unknown");
+    assert_eq!(last["data"]["why"], "disconnected");
+    assert_eq!(last["data"]["retryable"], false);
+    assert_eq!(last["data"]["message_zh"], CANCEL_UNKNOWN_ZH);
+}
+
+#[test]
 fn cancel_submit_timeout_is_outcome_unknown() {
     // #109：撤销交出后到点没回——删除可能已经交出，报结果未知（退出码 10、不可重试），不是能重跑的普通 network
     let b = saved_backend();

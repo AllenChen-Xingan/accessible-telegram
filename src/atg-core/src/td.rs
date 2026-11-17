@@ -809,11 +809,11 @@ mod real {
                     if let Some(h) = r.receiver.take() {
                         let _ = h.join();
                     }
-                    // 正常关闭：放掉档案锁（同一进程里可以再开这个档案）；重复关不再动标记
+                    // 收线程已停：放锁之前收尾交出未完成标记（#88）；再放掉档案锁（同一进程里可以再开）；重复关不再动标记
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    self.cfg.gate.limits().closed(left);
                     lifecycle::release(&mut r.lock, || r.profile.mark_clean());
                 }
-                // 收线程已停：还没回来的交出成败不再等（下次启动续发，#88）
-                self.cfg.gate.limits().closed();
                 logline::info("td_closed", &[]);
                 Ok(())
             } else if self.shared.is_faulted() {
