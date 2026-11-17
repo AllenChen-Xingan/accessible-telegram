@@ -117,6 +117,10 @@ pub enum InvalidSendWhy {
     NotText,
     /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
     TooMany,
+    /// 要转发的那条不能转（`messageProperties.can_be_forwarded` 为假，如来源会话开了禁止转发；#10）
+    NotForwardable,
+    /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
+    ForwardTooMany,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -375,6 +379,10 @@ impl CoreError {
                 InvalidSendWhy::ReactionStateUnknown => {
                     "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
                 }
+                InvalidSendWhy::NotForwardable => {
+                    "要转的消息里有不能转发的（来源会话可能禁止转发）；什么都没转"
+                }
+                InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
             },
             Self::Cancelled => "已取消",
             // 按 `what` 给修法（码的正本在 `errors.md` 的 `stt_unavailable` 行；写法由 `atg-audio` 的 `stt::locate` 出）

@@ -112,6 +112,13 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `pending_cancel(plan, token: ConfirmToken)` | `Ack`；撤没撤下经事件（临时 id 出现在 `messages_deleted` = 撤销了；先来 `send_succeeded` = 没赶上，随后正式 id 也被删 = 只从自己这边删掉了） | `send_refused` `invalid_input`（`not_pending`：交出前再查，已发出或正文变了） | **L2** | `deleteMessages`（`:13226`）**`revoke=false`**（见下「待发出的消息」）；凭据绑会话 + 这几条 id + 每条正文；只是尽力撤销 |
 | `delete(plan, token: ConfirmToken)` | `Ack`；结果经 `messages_deleted` | `send_refused` `forbidden` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表 |
 
+**转发（#10）**
+
+| 动作 | 返回 | 额外错误 | 等级 | TDLib |
+|---|---|---|---|---|
+| `forward_prepare(to: ChatId, from: ChatId, ids: Vec<i64>)` | `ForwardPlan`：目标与来源会话（类型、名字、id）、每条的 id 与纯文字正文（带附件、系统消息为空）、发起方、开法、摘要 | `not_found` `invalid_input`（`why`：`forward_too_many` 一次超过 20 条，不截断、不分批；`not_forwardable` 有一条不能转，如来源会话禁止转发，整批不转）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → 来源会话 → 逐条 `getMessage`（在不在）+ `getMessageProperties.can_be_forwarded` → 组请求、算摘要。id 去重、按从小到大排（TDLib 要严格递增）。目标是论坛群时不带话题，落进「General」（计划行写明）。只做普通转发（带原发送人），不做复制（`send_copy`，会隐去原作者）；20 条与「不做复制」是人定前的默认（2026-11-17，待人定） |
+| `forward(plan, token)` | 每条一项：`PendingMessage`（目标会话里的临时 id）或「转不了」（TDLib 应答里是 null） | `send_refused` `forbidden` `send_outcome_unknown` | **L2，直发** | `forwardMessages`（`:13180`，`options` 为空即默认、`send_copy=false`、`remove_caption=false`）。和其他 L2 一样直发（#113）。**交出前复核**：逐条重取，和计划比（内容、临时内容、受限、敏感、编辑时间、发送人）；准备到交出之间被编辑、删掉、变得不能转的，`send_refused(content_mismatch)`、什么都不交出。每条之后照 `send` 等结果（30 秒，连同交出），到点 `send_outcome_unknown`。**进重复提交拦截**（第 5 小节）：同一批转两次对方就收到两份。**留痕**另记来源会话 `from_chat_id`（只记 id） |
+
 **表情回应（#9）**
 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
@@ -131,7 +138,6 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|---|
 | `edit_text` | L2 | `editMessageText`（`:13252`） |
 | `delete(ids, revoke=false)` | L0 但本机不可逆 | 只删自己这边；要人当场确认（给所有人的已进 MVP，见上表） |
-| `forward` | L2 | `forwardMessages`（`:13180`） |
 | `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
 | `speech_to_text` | L0 | **本机转写**（#59 取代 F4）：`atg-audio` 的 `stt` 起本机辅助程序、用 Apple 端侧模型（SpeechAnalyzer），音频经管道喂、不落盘、不外发（以 Apple 端侧说明为据，**断网未实测**，待人验证）；不调 `recognizeSpeech`（`:13121`，那是 Telegram 服务器识别、要 Premium）。CLI `transcribe`；结果只在内存（转写表），不标已听 |
 | `mark_unread` | L0 | `toggleChatIsMarkedAsUnread`（`:14514`） |
@@ -186,10 +192,11 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
   - **何时拦**：同会话同指纹、上次是「已发出」且在 **10 分钟内**，或上次是「未知 / 已提交（没收尾）」且在 **24 小时内** → `send_refused(duplicate_recent)`，`error.data` 带 `last_at`、`last_ago_s`、`last_outcome`，说明写清「几秒前、什么结果」。上次是「失败」（服务器明确没收）不拦——失败的用 `resend`。10 分钟要长过「结果未知」的 30 秒，又不把同一句话长久拦死。结果未知的另留 24 小时：那条可能还在 TDLib 的本地待发队列里，下次任何一条命令启动 TDLib 都会自动续发（003 发8），断网几小时后才发出也有可能，10 分钟后放行就会发两条（自审第 2 轮）；仍有期限，不永远拦（B17-2「到期作废」）。每次写时删掉过期的。时间比「现在」还晚的记录（本机时钟被往回拨过）照样算数，等时钟追上再过期——丢掉就等于回拨时钟能解除拦截
   - **放行**：`send --again`（只这一次；经本机接口转发时随参数过去）。放行的那次照样记一条
   - `react` 也不进这套：同一个回应点两次 Telegram 那边不会多出一个
+  - `forward` **进**这套：指纹 = 目标 + 来源会话 + 这几条 id（请求本身）；同一批转给同一会话两次对方收到两份。`forward --again` 放行
   - `resend` 不进这套：重发对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
 - **测试档案**：仍然**只许发收藏夹**（`test_dc_saved_only`），外加第 4 小节第 2 条的第二个测试号私聊（N7）。测试服务器上的号谁都能登，可能是真人；`CLAUDE.md` 第五节「测试绝不向真实联系人发消息」
 - **启动时不提示**：直发是唯一方式，CLI 不出开场 `status` 行与醒目提示，GUI 标题不加「直发模式」、不播报（原规定随 #113 删除）
-- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
+- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 转发另有 `from_chat_id`（来源会话 id）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
 - **建议**（都不增加摩擦）：`plan` 行照常输出（AI 和人事后都能看到发了什么）；退出时汇总「本次直发 N 条」；`status` 显示本次已直发条数；`direct-send.log` 写不进去就拒绝直发（留痕是条件，不是可选）
 - 人已明确知道并接受：AI 能直接发；收到的消息里藏的指令可能诱导 AI 发错。本契约**不**为它加确认、白名单之类的门槛
 
@@ -199,6 +206,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|
 | `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值（删除用 `DeletePlan`，见下一行） |
 | `DeletePlan` | 目标（同 `SendPlan`）· 每条 `temp_message_id` 与能给人确认的正文（不是纯文字为空）· `hidden_chars` · 发起方 · 确认方式 · 摘要 · `note_zh`（「只是尽力撤销」）。`action` 现在只有 `pending_cancel`（交出 `revoke=false`）；M2.7 再加「给所有人」（`revoke=true`）一项；`docs/plan/002_roadmap.md` M2.7「删除（给所有人）」也用它（那时 id 叫 `message_id`） |
+| `ForwardPlan` | 目标与来源会话（类型、名字、id）· 每条 `message_id` 与纯文字正文（不是纯文字为空）· `hidden_chars` · `topic`（恒为空：论坛群落「General」）· 发起方 · 开法 · 摘要 |
 | `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 可能挤掉的我原先点的回应 · 这份名单拿不拿得准（`replaces_known`）· 发起方 · 开法 · 摘要值 |
 | `AddedReactions` | `total` · 这一页每项（回应种类 · 谁（发送人 id）· 是不是我 · 时间）· `next_offset`（空 = 没有更多） |
 | `PendingMessage` | `chat_id` · `temp_message_id`（临时 id）· `date`（交给 TDLib 或续发的时间；续发时与临时 id 一起重编） |
@@ -358,3 +366,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-16 #9 codex 032 第 2 轮后（手下 msg2）：`react` 交出前复核看当前连接线、`replace` 也刷新留痕、到点放弃的那条消息之后按拿不准拒
 - 2026-11-17 #9 codex 032 第 3、4 轮后（手下 msg2）：`react` 放弃了的请求槽位一直留着、断线按结果未知也留；有放弃了的请求时 `replace` 放行但留痕记 `null`；第二节第 3 条依据改为现行的「过闸」，intent 原句与 #113 冲突待人改
 - 2026-11-17 #9 codex 032 第 5 轮后（手下 msg2）：第二节第 3 条依据随 #133（intent 改为一律过闸、直发）去掉「待人改」括注；验收表「只认启动参数」改为「没有开关」
+- 2026-11-17 #10 转发（手下 msg2；人定前按默认：不做复制、一次最多 20 条、留痕记来源会话）：动作表加「转发」一组（`forward_prepare` · `forward`），第二批留位去掉 `forward`；第 5 小节写明 `forward` 进重复提交拦截、留痕另记 `from_chat_id`；第 6 小节加 `ForwardPlan`

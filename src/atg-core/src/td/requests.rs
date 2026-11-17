@@ -90,6 +90,30 @@ pub(super) fn react(request: &Value) -> Result<ReactArgs, CoreError> {
     })
 }
 
+/// `forwardMessages`（#10）：（目标会话、话题、来源会话、消息 id、选项、复制、去说明文字）
+pub(super) struct ForwardArgs {
+    pub chat: i64,
+    pub topic: Option<enums::MessageTopic>,
+    pub from: i64,
+    pub ids: Vec<i64>,
+    pub options: Option<types::MessageSendOptions>,
+    pub copy: bool,
+    pub remove_caption: bool,
+}
+
+pub(super) fn forward(request: &Value) -> Result<ForwardArgs, CoreError> {
+    let flag = |k: &str| request[k].as_bool().ok_or_else(bad);
+    Ok(ForwardArgs {
+        chat: request["chat_id"].as_i64().ok_or_else(bad)?,
+        topic: part(request, "topic_id")?,
+        from: request["from_chat_id"].as_i64().ok_or_else(bad)?,
+        ids: part(request, "message_ids")?,
+        options: part(request, "options")?,
+        copy: flag("send_copy")?,
+        remove_caption: flag("remove_caption")?,
+    })
+}
+
 // ───── 应答里交出成功、成败还要等的消息（`TdBackend::detached` 登记，#88）─────
 
 fn msg_id(m: &types::Message) -> MsgId {

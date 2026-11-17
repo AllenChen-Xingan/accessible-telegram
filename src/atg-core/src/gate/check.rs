@@ -174,6 +174,7 @@ impl Gate {
             result: Outcome::Submitted,
             error: None,
             reaction: plan.log_target(),
+            from_chat_id: plan.log_source(),
         };
         append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
             CoreError::Internal {
@@ -233,6 +234,7 @@ impl Gate {
             result: outcome,
             error: error.map(CoreError::code),
             reaction: plan.log_target(),
+            from_chat_id: plan.log_source(),
         };
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).is_err() {
             logline::warn("direct_log_write_failed", &[]);
@@ -299,6 +301,9 @@ struct DirectLogLine {
         serialize_with = "reaction_fields"
     )]
     reaction: Option<(i64, Option<usize>)>,
+    /// 转发的来源会话（[`Gated::log_source`]，#10）；只记 id
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from_chat_id: Option<ChatId>,
 }
 
 fn reaction_fields<S: serde::Serializer>(

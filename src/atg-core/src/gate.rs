@@ -155,6 +155,10 @@ pub trait Gated: Sealed {
     fn log_target(&self) -> Option<(i64, Option<usize>)> {
         None
     }
+    /// 留痕里另记的来源会话（`from_chat_id`）：只有转发有（#10）；只记 id
+    fn log_source(&self) -> Option<ChatId> {
+        None
+    }
 }
 
 /// 摘要：请求 JSON 的字节（不做 Unicode 规范化）+ 自己的账号 id + 服务器类别，SHA-256

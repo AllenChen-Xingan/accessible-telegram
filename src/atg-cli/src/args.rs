@@ -111,6 +111,9 @@ pub enum Command {
     React(ReactArgs),
     /// 看谁点了这条消息的回应，一行一个（kind:"reactor"）
     Reactions(ReactionsArgs),
+    /// 把一个会话里的一条或几条消息转发到另一个会话（带原发送人；一次最多 20 条）。先输出一行 plan，直接转、不确认；
+    /// 逐条等结果。测试服务器上只许转给收藏夹
+    Forward(ForwardArgs),
     /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
@@ -346,6 +349,26 @@ pub struct SendArgs {
     pub again: bool,
 }
 
+/// `forward` 的参数
+#[derive(Args)]
+pub struct ForwardArgs {
+    /// 来源会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "FROM_CHAT", allow_hyphen_values = true)]
+    pub from: String,
+    /// 要转的消息 id（一条或几条，最多 20 条）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
+    pub ids: Vec<i64>,
+    /// 转给哪个会话：id，或 saved
+    #[arg(long, value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub to: String,
+    /// 只输出要转什么，不转
+    #[arg(long)]
+    pub dry_run: bool,
+    /// 最近已把同一批转给同一会话会被拦下（已转出的 10 分钟内；结果不明的 24 小时内）；确要再转一次就加它
+    #[arg(long)]
+    pub again: bool,
+}
+
 /// `resend` 的参数
 #[derive(Args)]
 pub struct ResendArgs {
@@ -490,6 +513,7 @@ impl Command {
             Command::Delete(_) => "delete",
             Command::React(_) => "react",
             Command::Reactions(_) => "reactions",
+            Command::Forward(_) => "forward",
             Command::Resend(_) => "resend",
             Command::Show(_) => "show",
             Command::Search(_) => "search",

@@ -42,6 +42,7 @@ use crate::model::{ChatId, ChatKind, CoreEvent, Message, MsgId, ReplyRef, Topic}
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
+pub mod forward;
 mod outcome;
 pub mod react;
 pub(crate) mod resending;
@@ -107,6 +108,8 @@ pub(crate) enum SealedKind<'a> {
     React { request: &'a Value },
     /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
     Delete { request: &'a Value },
+    /// `forwardMessages`（#10）：请求 JSON，摘要算过的就是它；应答同重发（[`Answer::Resent`]）
+    Forward { request: &'a Value },
 }
 
 /// 交出口的应答

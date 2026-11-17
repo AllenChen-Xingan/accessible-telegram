@@ -59,6 +59,31 @@ impl TdBackend {
                     .await?;
                 Ok(Answer::Deleted)
             }
+            SealedKind::Forward { request } => {
+                let a = requests::forward(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "forward")]);
+                let enums::Messages::Messages(ms) = self
+                    .detached(
+                        functions::forward_messages(
+                            a.chat,
+                            a.topic,
+                            a.from,
+                            a.ids,
+                            a.options,
+                            a.copy,
+                            a.remove_caption,
+                            id,
+                        ),
+                        requests::resent,
+                    )
+                    .await?;
+                Ok(Answer::Resent(
+                    ms.messages
+                        .into_iter()
+                        .map(|m| m.and_then(Self::map_message))
+                        .collect(),
+                ))
+            }
             SealedKind::React { request } => {
                 let a = requests::react(request)?;
                 let kind = if a.remove { "unreact" } else { "react" };

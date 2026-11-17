@@ -127,3 +127,10 @@
 2. **留痕记不记来源会话 id**：A 记（事后能查转了哪个会话的东西，但多一处会话关系痕迹）· B 不记、只记条数（建议 A：留痕本来就记目标 `chat_id`，来源同一级，不涉内容）。默认 A
 3. **一次最多几条**：TDLib 上限 100。A 照 100 · B 先限 20（建议 B：误转一大批撤不回，防重复只拦同一批）。默认 B
 - 2026-11-17 大总管：三题进待定清单，先按默认做（不做 `--copy`、留痕记来源会话 id、一次最多 20 条）；等 #135 合后开工
+
+## #10 开工记录（2026-11-17，工作副本 atg-wt/msg2-10，分支 feat/10-forward）
+- CLI 命令文件名 `src/atg-cli/src/forwarding.rs`：`forward.rs` 已是本机接口转发；`specs/README.md` 命名规约只管档案，代码按命令名起，撞名时照 `send/resending.rs` 的先例用动名词（大总管同意）
+- 核心放 `send/forward.rs`（`Submitted` 只有 send 模块能造）；共享文件只新增：`send.rs`（`pub mod forward;`、`SealedKind::Forward`）、`gate.rs`（`log_source` 默认方法）、`gate/check.rs`（`from_chat_id` 字段两处）、`error.rs`（`NotForwardable`、`ForwardTooMany`），都经大总管批
+- 「能不能转」照 #8 的 `message_caps` 写（不另起 props.rs、不动 td.rs 的 getMessageProperties）。**#8 合进 main、合给我之后要补**：`model.rs` 的 `MessageCaps` 加 `can_forward`；`td/requests.rs` 的 `caps()` 加 `can_forward: p.can_be_forwarded`；`fake/caps.rs` 的 `Cap` 加 `Forward`、`caps()` 加 `can_forward: on(Cap::Forward)`。在那之前 core 编不过，不领名额
+- 2026-11-17 大总管：论坛群不带话题落进 General（不拒、计划行写明）进待定清单，默认照现在走；人要统一成拒再改。#10 代码与契约已写完，等 #8 合进 main、合给我后补 MessageCaps.can_forward 三处再编译
+- 2026-11-17 fix 的 codex 048 改了 --again 接法：fix 的 PR 进 main、合给我后，`send/forward.rs` 的 `forward()` 改用 `verify_again` / `before_submit_again`（原 verify / before_submit 变成不带 again 的包装）。回归靠 core 的 `same_batch_twice_is_held_unless_again` 与 CLI 的 `same_batch_again_is_held_then_released`：没改对它们会红

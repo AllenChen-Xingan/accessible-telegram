@@ -429,7 +429,7 @@ fn execute<B: Backend>(
             ("history", code)
         }
         // 走发送外壳的（L2 三条 + 只读的 `pending` 列表）：同一个出口（`serve/l2.rs`）
-        c @ ("send" | "resend" | "pending" | "pending_cancel") => l2::execute(
+        c @ ("send" | "resend" | "forward" | "pending" | "pending_cancel") => l2::execute(
             ctx.b, ctx.stream, ctx.feed, c, fa.params, sink, format, started,
         ),
         "react" | "reactions" => crate::react::serve(ctx, &req.command, fa, sink, started),
