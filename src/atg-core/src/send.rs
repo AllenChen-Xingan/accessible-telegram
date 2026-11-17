@@ -189,6 +189,17 @@ pub(crate) fn submit_failed<B: Backend>(
     plan: &dyn Gated,
     e: CoreError,
 ) -> CoreError {
+    submit_failed_for(b, mode, plan, e, None)
+}
+
+/// 同 [`submit_failed`]，留痕另记动在哪条已有消息上（`final_id`；编辑用，codex 031 #2）
+pub(crate) fn submit_failed_for<B: Backend>(
+    b: &B,
+    mode: ConfirmMode,
+    plan: &dyn Gated,
+    e: CoreError,
+    target: Option<i64>,
+) -> CoreError {
     let maybe_left = matches!(
         e,
         CoreError::Disconnected
@@ -199,7 +210,7 @@ pub(crate) fn submit_failed<B: Backend>(
     );
     if maybe_left {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+            .after_outcome(mode, plan, 0, target, Outcome::Unknown, None);
         CoreError::SendOutcomeUnknown {
             chat_id: Some(plan.target()),
             temp_message_id: 0,
@@ -207,7 +218,7 @@ pub(crate) fn submit_failed<B: Backend>(
         }
     } else {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Failed, Some(&e));
+            .after_outcome(mode, plan, 0, target, Outcome::Failed, Some(&e));
         e
     }
 }

@@ -194,7 +194,7 @@ pub async fn edit_text<B: Backend>(
             })
         }
         // 同发送：断线、网络、应答转不回来 = 可能已交出，按结果未知记账、报 `send_outcome_unknown`
-        Err(e) => Err(send::submit_failed(b, mode, plan, e)),
+        Err(e) => Err(send::submit_failed_for(b, mode, plan, e, Some(plan.id))),
     }
 }
 

@@ -20,6 +20,11 @@ fn own(chat: i64, id: i64, text: &str, state: Value) -> Value {
 }
 
 fn rig(test_dc: bool) -> FakeBackend {
+    rig_at(test_dc).0
+}
+
+/// 同 [`rig`]，另给档案目录（读直发留痕 `direct-send.log` 用）
+fn rig_at(test_dc: bool) -> (FakeBackend, std::path::PathBuf) {
     static N: AtomicU32 = AtomicU32::new(0);
     let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
@@ -57,7 +62,16 @@ fn rig(test_dc: bool) -> FakeBackend {
     block_on(b.start(&profile)).unwrap();
     b.wait_auth(Duration::from_secs(5), &|s| s == AuthStep::Ready)
         .unwrap();
-    b
+    (b, profile.dir().to_path_buf())
+}
+
+/// 直发留痕：每行一个 JSON 对象
+fn log_lines(dir: &std::path::Path) -> Vec<Value> {
+    std::fs::read_to_string(dir.join(crate::gate::DIRECT_LOG_FILE))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
 }
 
 fn edits(b: &FakeBackend) -> Vec<Call> {
@@ -327,4 +341,33 @@ fn disconnect_while_submitting_is_outcome_unknown() {
     b.fail_next("edit", CoreError::Disconnected);
     let e = block_on(edit_text(&b, &plan, token)).unwrap_err();
     assert_eq!(e.code(), "send_outcome_unknown");
+}
+
+/// codex 031 #2：成功、失败、结果未知三种，留痕都记改的是哪条（`final_id`），不记正文
+#[test]
+fn every_outcome_is_logged_with_the_message_id() {
+    let (b, dir) = rig_at(false);
+    let attempt = |text: &str, fail: Option<CoreError>| {
+        let plan = block_on(prepare_edit(&b, FRIEND, 5, text, SendOrigin::Cli)).unwrap();
+        let token = b.gate().issue(&plan, false).unwrap();
+        if let Some(e) = fail {
+            b.fail_next("edit", e);
+        }
+        let _ = block_on(edit_text(&b, &plan, token));
+    };
+    attempt("atg 测试 改后", None);
+    attempt("atg 测试 再改", Some(CoreError::Forbidden { td: None }));
+    attempt("atg 测试 再改", Some(CoreError::Disconnected));
+    // 每次交出前另有一行 `submitted`（闸记的，不带目标）；这里看三次的结果行
+    let log: Vec<Value> = log_lines(&dir)
+        .into_iter()
+        .filter(|l| l["result"] != "submitted")
+        .collect();
+    let results: Vec<&str> = log.iter().map(|l| l["result"].as_str().unwrap()).collect();
+    assert_eq!(results, ["succeeded", "failed", "unknown"], "{log:?}");
+    for l in &log {
+        assert_eq!(l["kind"], "edit", "{l}");
+        assert_eq!(l["final_id"], 5, "{l}");
+        assert!(!l.to_string().contains("atg 测试"), "留痕不记正文：{l}");
+    }
 }

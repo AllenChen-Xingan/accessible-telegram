@@ -34,6 +34,7 @@
 | 029 | 2026-11-16 | #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex） | 第 1 轮 P1×3 P2×1、第 2 轮 P2×2、第 3 轮（范围改 `origin/main...HEAD`，停止线重数）P1×2 P2×1、第 4 轮 P1×1，全部属实已修；#109 并入修掉；第 5、6 轮通过，收敛 → `029_pending-57-codex.md` |
 | 027 | 2026-11-14 | #62 #64 #95 第三批：td 起停收尾、用法错误不回显原文、auth 死路统一判、watch 出 status 前 Ctrl+C（codex · 两轮） | 第一轮 P2×2 全部属实已修；第二轮无发现；两轮无 P0/P1，收敛 → `027_batch3-62-64-95-codex.md` |
 | 030 | 2026-11-17 | #8 A 段给所有人删除（atg-cli delete、atg-core delete_prepare / delete）（codex · diff） | 第 1 轮 P2×1（附件改说明 / 换图复查不出）已修；第 2 轮 P2×1（同一秒再换图仍靠编辑时间认）开 issue；两轮无 P0/P1，收敛 → `030_delete-8a-codex.md` |
+| 031 | 2026-11-17 | #8 B 段编辑自己发的消息（atg-cli edit、atg-core edit_prepare / edit_text）（codex · diff） | 第 1 轮 P2×2（实测失败仍通过、交出报错留痕不记 id）已修 → `031_edit-8b-codex.md` |
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 045 | 2026-11-16 | #97 #98 #100 #40 第四批：标记原子发布、tty 读看停止标志、内核故障即报断开、密码缓冲区按容量清零（codex · diff 类） | 四轮：P1×5 属实已修、P2 留 #116；第 3、4 轮无 P0/P1，收敛 → `045_batch4-97-98-100-40-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |

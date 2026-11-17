@@ -56,9 +56,9 @@ fn exp_edit() {
                     feed.apply(env)
                 })
                 .map_err(Fail::Core)?;
+            // 前置发送没成：实测不成立，判失败（codex 031 #1）
             let Waited::Succeeded(sent) = w else {
-                eprintln!("第 {n} 轮：没发出，跳过");
-                continue;
+                panic!("第 {n} 轮：收藏夹那条没发出，实测不成立");
             };
             let id = sent.id.message_id;
             let new = format!("atg 实验 编辑 {n} 改后");
@@ -79,8 +79,10 @@ fn exp_edit() {
                 && plain(&again).as_deref() == Some(new.as_str());
             ok += u32::from(good);
             eprintln!("第 {n} 轮：准备到改完 {ms} 毫秒；应答与重取都是新文、带编辑时间：{good}");
+            assert!(good, "第 {n} 轮没改成");
         }
         eprintln!("改成 {ok} 轮（共 {ROUNDS} 轮）");
+        assert_eq!(ok, ROUNDS, "不是每轮都改成");
         Ok(())
     });
     if let Err(e) = r {
