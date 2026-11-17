@@ -1,8 +1,8 @@
 # 评审 032 · #9 表情回应（`react` / `reactions`，合 main 后直发）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`origin/main`（= 分叉点 719d5d1，评审时 main 没前进，两点与三点等价）对工作区的 diff；新文件 `src/atg-core/src/send/react/tests/replace.rs` 未跟踪，作依据附上。重点写在 `_tmp/reviews-032/focus.md`（不入库）。
-> **最新一轮：第 1 轮（2026-11-16）· 总评「修改」· 待第 2 轮**。
-> 累计：提出 3 条（P1×1、P2×2），属实 2 条、部分属实 1 条，驳回 0。
+> **最新一轮：第 2 轮（2026-11-16）· 总评「修改」· 待第 3 轮**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
+> 累计：提出 8 条（P1×3、P2×5），属实 6 条、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
 > 之前：多视角自审 5 轮（atg-review；第 4 轮 P1「普通群信缓存」按人定 A 修；第 5 轮 P0/P1 零）。机器验收：`cargo test -p atg-core -p atg-cli` 486 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib`）0。
 > 隐私扫描：密钥类命中 9 条，全是参数类型标注 `token: ConfirmToken`（同 023）；人定 2026-11-16 长期放行这一类，大总管逐条核实后准加 `--force-secrets`。chat-content 只提示 11 条，都是测试夹具里编的 TDLib JSON。
 
@@ -30,3 +30,35 @@
 ### 是否再审
 
 要再审：本轮有 P1，改完开第 2 轮，提示词附本记录。
+
+## 第 2 轮（2026-11-16）· 总评「修改」
+
+范围从两点 `origin/main` 改成三点 `origin/main...HEAD`：第 1 轮后 main 前进到 0538ffd，两点范围会把 main 的新提交显示成本分支的回退（同 023 的教训）；第 1 轮的改动已由大总管提交（eb38f0a），工作区干净。改了范围，脚本要求换 name（`react-9-3dot`），停止线从这一轮重新数。原文：`_tmp/reviews-032/react-9-3dot-codex-1.md`（不入库）。effort medium，95 秒（`result: P0×0 P1×2 P2×3 P3×0`）。
+上一轮处理的验证：codex 抽查确认第 1 轮 #2 的三处 Touch ID 说法已标历史 / 废止。
+本轮 P0/P1：2 条 · 停止线：未满足（连续第 1 轮也没满足）· 留作 issue 的 P2：#4 → #128
+
+- **P1｜src/atg-core/src/send/react.rs:252 复核沿用准备时的 `synced`**（第 2 轮 #1）
+  - 核实：属实。准备时补发完了，交出前断线重连、补发还没完，私聊仍凭旧的 `synced=true` 信缓存。
+  - 处理：`recheck` 里「补发完了」= 准备时完了 **且** 现在连接线仍是 `ready`（`wait_net(0)`）。补测试 `reconnect_after_prepare_is_unknown`。
+- **P1｜src/atg-core/src/send/react.rs:278 到点放弃等待后解锁，请求可能还在跑**（第 2 轮 #2）
+  - 核实：属实。`react_within` 到点丢掉 future，`InFlight` 随之解锁，但 TDLib 那边的请求没撤回（`td.rs` 的等待线程照旧等）；`serve` 接着收同一条消息的下一次请求就放行了。
+  - 处理：`InFlight` 交出前置 `armed`，等到应答再清；带着 `armed` 被丢掉的记成「放弃」，本进程里这条消息之后一律报 `reaction_state_unknown`，`replace` 才放行（人已接受可能挤掉）。补测试 `abandoned_submit_keeps_message_locked`。
+- **P2｜src/atg-core/src/send/react.rs:247 `replace` 跳过复核，留痕可能记 0**（第 2 轮 #3）
+  - 核实：属实。
+  - 处理：`replace` 只免拒绝、不免重算；交出前新算的结果拿来留痕（`recheck` 回刷新后的计划）。补测试 `replace_plan_logs_fresh_count`。到点那一行（`submit_within` 记「结果未知」）仍用准备时的数，记在这里。
+- **P2｜src/atg-cli/src/react.rs:290 统计没入树**（第 2 轮 #4，即第 1 轮 #3 的后半）
+  - 核实：规则属实；第二次提出。
+  - 处理：**交人裁决**（大总管转人）→ 大总管定 A（2026-11-16，人可推翻）：留到 R6，开 #128 记下 `reactions` 也要迁。我方理由：`history` / `links` / `chats` 的结尾统计同样在 CLI 组 JSON，`docs/plan/010_complexity-budget.md` 排在 R6 统一设计统计节点；现在单为 `reactions` 起节点会与 R6 分叉。选项 A 留 R6 并开 issue（建议）/ B 现在加节点。
+- **P2｜specs/contracts/cli.md:43 `send` 行仍写「再按闸要求确认」**（第 2 轮 #5）
+  - 核实：属实（#113 残留）。
+  - 处理：改为「过闸直发（不确认）」；全文再搜「确认后 / 按闸要求」已无现行要求。
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：4 条
+- 无法核实：无
+
+### 是否再审
+
+要再审：本轮有 P1，改完开第 3 轮。

@@ -278,7 +278,7 @@ fn concurrent_react_on_same_message_is_refused() {
     ))
     .unwrap();
     let t = r.b.gate().issue(&p, false).unwrap();
-    let busy = super::super::InFlight::take(r.b.gate(), id(FRIEND)).unwrap();
+    let busy = super::super::InFlight::take(r.b.gate(), id(FRIEND), false).unwrap();
     let e = react_within(&r.b, &p, t, Duration::from_secs(2)).unwrap_err();
     assert!(matches!(
         e,
@@ -288,4 +288,64 @@ fn concurrent_react_on_same_message_is_refused() {
     ));
     drop(busy);
     assert!(r.b.submitted().is_empty());
+}
+
+#[test]
+fn reconnect_after_prepare_is_unknown() {
+    // codex 032 第 2 轮 #1：准备时补发完了，交出前断线重连、补发还没完——私聊也不能再信缓存
+    let r = rig("reconnect", false);
+    let p = block_on(prepare_react(
+        &r.b,
+        id(FRIEND),
+        ask(THUMB, false, false),
+        SendOrigin::Cli,
+    ))
+    .unwrap();
+    let t = r.b.gate().issue(&p, false).unwrap();
+    r.b.push_net("connectionStateUpdating");
+    // 推连接状态是异步的：等它真变了再交出
+    r.b.wait_net(Duration::from_secs(2), &|n| {
+        *n != crate::status::NetState::Ready
+    })
+    .unwrap();
+    let e = react_within(&r.b, &p, t, Duration::from_secs(2)).unwrap_err();
+    assert!(matches!(
+        e,
+        CoreError::InvalidSend {
+            why: InvalidSendWhy::ReactionStateUnknown
+        }
+    ));
+    assert!(r.b.submitted().is_empty());
+}
+
+#[test]
+fn replace_plan_logs_fresh_count() {
+    // codex 032 第 2 轮 #3：replace 计划准备时没点过别的，交出前我点了 ❤️——留痕按交出前新算的记 1，不记准备时的 0
+    let r = rig("fresh", false);
+    let p = block_on(prepare_react(
+        &r.b,
+        id(FRIEND),
+        ask(THUMB, false, true),
+        SendOrigin::Cli,
+    ))
+    .unwrap();
+    assert!(p.replaces().is_empty());
+    once(&r, FRIEND, "❤️", false).unwrap();
+    let t = r.b.gate().issue(&p, false).unwrap();
+    react_within(&r.b, &p, t, Duration::from_secs(2)).unwrap();
+    assert_eq!(log_lines(&r).last().unwrap()["reaction"]["may_replace"], 1);
+}
+
+#[test]
+fn abandoned_submit_keeps_message_locked() {
+    // codex 032 第 2 轮 #2：交出后没等到应答就被放弃，请求可能还在走——之后再点这条按拿不准拒，replace 才放行
+    let r = rig("abandoned", false);
+    let mut one = super::super::InFlight::take(r.b.gate(), id(FRIEND), false).unwrap();
+    one.armed = true;
+    drop(one);
+    assert!(super::super::InFlight::take(r.b.gate(), id(FRIEND), false).is_err());
+    let again = super::super::InFlight::take(r.b.gate(), id(FRIEND), true).unwrap();
+    drop(again);
+    // 正常收尾（没放弃）之后就解开
+    assert!(super::super::InFlight::take(r.b.gate(), id(FRIEND), false).is_ok());
 }

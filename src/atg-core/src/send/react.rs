@@ -241,46 +241,84 @@ fn refuse_replace(replaces: &[ReactionKind], known: bool) -> Result<(), CoreErro
     Err(CoreError::InvalidSend { why })
 }
 
-/// 交出前复核（codex 032 第 1 轮 #1）：计划可能是早先准备的，期间我又点了别的（先后准备 👍、❤️ 两份计划再依次交出，
-/// 第二份就会挤掉第一份），所以没给 `replace` 的加回应在交出前按同样的条件再判一次
-async fn recheck<B: Backend>(b: &B, plan: &ReactPlan) -> Result<(), CoreError> {
-    if plan.remove || plan.replace {
-        return Ok(());
+/// 交出前复核（codex 032 第 1 轮 #1、第 2 轮 #1 #3）：计划可能是早先准备的，期间我又点了别的（先后准备 👍、❤️ 两份
+/// 计划再依次交出，第二份就会挤掉第一份），也可能断过线、补发还没完。所以加回应在交出前按同样的条件再判一次：
+/// 「补发完了」要准备时完了**且**现在连接线仍是 `ready`；没给 `replace` 的照旧拒，给了的不拒、只用新算的结果留痕。
+/// 回刷新后的计划（去掉回应原样回）
+async fn recheck<B: Backend>(b: &B, plan: &ReactPlan) -> Result<ReactPlan, CoreError> {
+    if plan.remove {
+        return Ok(plan.clone());
     }
+    let synced = plan.synced
+        && b.wait_net(Duration::ZERO, &|n| *n == crate::status::NetState::Ready)
+            .is_some();
     let m = b.message_get(plan.message).await?;
     let (replaces, known) =
-        would_replace(b, plan.message, &plan.target, &plan.kind, &m, plan.synced).await;
-    refuse_replace(&replaces, known)
+        would_replace(b, plan.message, &plan.target, &plan.kind, &m, synced).await;
+    if !plan.replace {
+        refuse_replace(&replaces, known)?;
+    }
+    Ok(ReactPlan {
+        replaces,
+        replaces_known: known,
+        ..plan.clone()
+    })
 }
 
 /// 同一条消息同时只许一个回应在「复核 → 交出 → 等应答」之间：两个并发的加回应都先复核、再各自交出，复核就白做了。
-/// 第二个直接按拿不准拒（`reaction_state_unknown`），不排队等。键带上闸的地址：一个后端一道闸，不同后端（含并行的测试）互不相拦
-static IN_FLIGHT: std::sync::Mutex<Vec<(usize, MsgId)>> = std::sync::Mutex::new(Vec::new());
+/// 第二个直接按拿不准拒（`reaction_state_unknown`），不排队等。键带上闸的地址：一个后端一道闸，不同后端（含并行的测试）互不相拦。
+///
+/// 交出后没等到应答就被放弃（[`react_within`] 到点丢掉了这次等待，请求却可能还在 TDLib 里走，codex 032 第 2 轮 #2）：
+/// 这条消息记成「结果未知」，本进程里之后再点它一律按拿不准拒，`replace` 才放行（人已接受可能挤掉）
+static IN_FLIGHT: std::sync::Mutex<Vec<Slot>> = std::sync::Mutex::new(Vec::new());
 
-struct InFlight((usize, MsgId));
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Slot {
+    key: (usize, MsgId),
+    /// 真 = 交出后没等到应答就放弃了
+    abandoned: bool,
+}
+
+struct InFlight {
+    key: (usize, MsgId),
+    /// 已交出、还没等到应答：这时被丢掉就算「结果未知」
+    armed: bool,
+}
+
+fn slots() -> std::sync::MutexGuard<'static, Vec<Slot>> {
+    IN_FLIGHT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 impl InFlight {
-    fn take(gate: &gate::Gate, id: MsgId) -> Result<Self, CoreError> {
-        let id = (std::ptr::from_ref(gate) as usize, id);
-        let mut v = IN_FLIGHT
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if v.contains(&id) {
+    fn take(gate: &gate::Gate, id: MsgId, replace: bool) -> Result<Self, CoreError> {
+        let key = (std::ptr::from_ref(gate) as usize, id);
+        let mut v = slots();
+        let busy = v.iter().any(|s| s.key == key && (!s.abandoned || !replace));
+        if busy {
             return Err(CoreError::InvalidSend {
                 why: InvalidSendWhy::ReactionStateUnknown,
             });
         }
-        v.push(id);
-        Ok(Self(id))
+        v.push(Slot {
+            key,
+            abandoned: false,
+        });
+        Ok(Self { key, armed: false })
     }
 }
 
 impl Drop for InFlight {
     fn drop(&mut self) {
-        let mut v = IN_FLIGHT
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        v.retain(|x| *x != self.0);
+        let mut v = slots();
+        v.retain(|s| s.key != self.key);
+        if self.armed {
+            v.push(Slot {
+                key: self.key,
+                abandoned: true,
+            });
+        }
     }
 }
 
@@ -323,15 +361,18 @@ pub async fn react<B: Backend>(
     token: ConfirmToken,
 ) -> Result<ConfirmMode, CoreError> {
     let mode = b.gate().verify(token, plan)?;
-    let _one = InFlight::take(b.gate(), plan.message)?;
-    recheck(b, plan).await?;
+    let mut one = InFlight::take(b.gate(), plan.message, plan.replace)?;
+    let plan = &recheck(b, plan).await?;
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::React {
             request: &plan.request,
         },
     };
-    match crate::send_limits::submit(b, sealed).await {
+    one.armed = true;
+    let answer = crate::send_limits::submit(b, sealed).await;
+    one.armed = false;
+    match answer {
         Ok(Answer::Done) => {
             b.gate()
                 .after_outcome(mode, plan, 0, None, Outcome::Succeeded, None);

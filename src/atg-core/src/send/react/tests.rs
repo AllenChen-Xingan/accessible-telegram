@@ -74,6 +74,12 @@ fn rig(tag: &str, test_dc: bool) -> Rig {
     block_on(b.start(&profile)).unwrap();
     b.wait_auth(Duration::from_secs(5), &|s| s == AuthStep::Ready)
         .unwrap();
+    // 补发完了（交出前复核要看当前连接线）
+    b.push_net("connectionStateReady");
+    b.wait_net(Duration::from_secs(5), &|n| {
+        *n == crate::status::NetState::Ready
+    })
+    .unwrap();
     Rig {
         b,
         _stream: stream,

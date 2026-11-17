@@ -22,7 +22,8 @@
   - 未修 P2（不在本线）：`src/atg-cli/README.md:21` Touch ID 旧说法，已报大总管
   - 拆 `send/react/tests/replace.rs`（行数线）
   - 修后验证：test 486 过 0 败；clippy 0（tdlib-api 与 atg-cli/tdlib）
-  - codex 032：隐私扫描拦 9 条 `token: ConfirmToken` 误报（同 023），等人放行 --force-secrets；脚本 `_tmp/reviews-032/run-1.sh`
+  - codex 032：第 1 轮 P1×1 P2×2 已修（eb38f0a）；第 2 轮（三点范围 name react-9-3dot，停止线重数）P1×2 P2×3：4 条已修，#4 统计入树大总管定 A → #128
+  - 下一步：名额（排 fix → msg1 → 我）→ test + clippy → codex 第 3 轮
 
 交代：MAIN `_tmp/20261113-b18/msg2.md`。顺序 #9 → #10 → #12 → #13 → #11 → #7，一个 issue 一个 PR。
 
