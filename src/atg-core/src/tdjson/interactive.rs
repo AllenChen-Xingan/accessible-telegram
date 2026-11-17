@@ -150,6 +150,7 @@ fn reply_action(t: &Value) -> ButtonAction {
         "keyboardButtonTypeRequestPoll" => ButtonAction::RequestPoll,
         "keyboardButtonTypeRequestUsers" => ButtonAction::RequestUsers,
         "keyboardButtonTypeRequestChat" => ButtonAction::RequestChat,
+        "keyboardButtonTypeRequestManagedBot" => ButtonAction::RequestManagedBot,
         "keyboardButtonTypeWebApp" => ButtonAction::WebApp,
         other => ButtonAction::Unknown {
             td_type: other.to_owned(),

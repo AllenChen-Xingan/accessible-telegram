@@ -131,6 +131,8 @@ pub enum ButtonAction {
     RequestUsers,
     /// 键盘按钮：选一个会话发给机器人
     RequestChat,
+    /// 键盘按钮：新建一个由这个机器人代管的机器人（`keyboardButtonTypeRequestManagedBot`，`td_api.tl:4212`）
+    RequestManagedBot,
     Unknown {
         td_type: String,
     },

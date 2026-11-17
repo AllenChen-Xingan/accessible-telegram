@@ -104,16 +104,11 @@ pub(super) fn poll_detail(f: &PollFacts<'_>) -> String {
         parts.push("可以多选".to_owned());
     }
     if f.quiz {
-        // 已结束就不说「投了不能改」（同普通投票）
-        parts.push(
-            if f.closed {
-                "测验，有正确答案"
-            } else {
-                "测验，有正确答案，投了不能改"
-            }
-            .to_owned(),
-        );
-    } else if !f.closed {
+        parts.push("测验，有正确答案".to_owned());
+    }
+    // 能不能改只看 `allows_revoting`，测验也一样（TDLib `PollManager.cpp`：改票只看 `has_revoting_disabled_`，
+    // 不看是不是测验，#13 自审第 4 轮）；已结束就不说
+    if !f.closed {
         parts.push(
             if f.revotable {
                 "投了能改"
@@ -178,6 +173,7 @@ fn action(a: &ButtonAction) -> String {
         ButtonAction::RequestPoll => "新建投票".to_owned(),
         ButtonAction::RequestUsers => "选用户发给机器人".to_owned(),
         ButtonAction::RequestChat => "选会话发给机器人".to_owned(),
+        ButtonAction::RequestManagedBot => "新建一个由这个机器人代管的机器人".to_owned(),
         ButtonAction::Unknown { .. } => "不认识的按钮".to_owned(),
     }
 }

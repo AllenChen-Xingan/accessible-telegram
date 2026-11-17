@@ -292,7 +292,7 @@ pub enum Attachment {
         multiple: bool,
         /// 投了还能改（`allows_revoting`）
         revotable: bool,
-        /// 测验：有正确答案，投了不能改
+        /// 测验：有正确答案（投了能不能改同普通投票，看 `revotable`）
         quiz: bool,
         closed: bool,
         /// 我为什么不能投；`None` = 能投
