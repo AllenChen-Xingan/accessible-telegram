@@ -106,7 +106,12 @@ pub enum Command {
     Mute(Rest),
     /// 给所有人删除自己发的消息：先列出要删哪几条（kind:"plan"），然后立即删除，不再询问
     Delete(DeleteArgs),
-    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），确认后逐条等结果。确认方式同 send
+    /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan，和 send 一样直接点、不确认。
+    /// 测试服务器上只许收藏夹
+    React(ReactArgs),
+    /// 看谁点了这条消息的回应，一行一个（kind:"reactor"）
+    Reactions(ReactionsArgs),
+    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
     Show(Rest),
@@ -234,7 +239,42 @@ pub struct LinksArgs {
     pub reveal: bool,
 }
 
-/// 一条消息：会话 + 消息 id（`download`、`play`、`transcribe` 共用）
+/// `react` 的参数
+#[derive(Args)]
+pub struct ReactArgs {
+    #[command(flatten)]
+    pub msg: MsgRef,
+    /// 一个 emoji，如 👍（v0 只收 emoji；自定义表情、付费星星不做）
+    #[arg(value_name = "EMOJI")]
+    pub emoji: String,
+    /// 去掉自己点过的这个回应
+    #[arg(long)]
+    pub remove: bool,
+    /// 这条上你已点了别的回应时照样点：每条能点几个有上限（非 Telegram Premium 会员 1 个），超了 Telegram 会去掉你最早点的那个
+    #[arg(long, conflicts_with = "remove")]
+    pub replace: bool,
+    /// 只输出要点什么，不点
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `reactions` 的参数
+#[derive(Args)]
+pub struct ReactionsArgs {
+    #[command(flatten)]
+    pub msg: MsgRef,
+    /// 只看这一个 emoji 的
+    #[arg(long, value_name = "EMOJI")]
+    pub emoji: Option<String>,
+    /// 一页最多几个（1–100）
+    #[arg(short = 'n', long = "limit", default_value_t = 50)]
+    pub limit: u32,
+    /// 接着上一页（上一页结尾行的 next_cursor）
+    #[arg(long, value_name = "C")]
+    pub cursor: Option<String>,
+}
+
+/// 一条消息：会话 + 消息 id（`download`、`play`、`transcribe`、`react`、`reactions` 共用）
 #[derive(Args)]
 pub struct MsgRef {
     /// 会话 id，或 saved（自己的收藏夹）
@@ -462,6 +502,8 @@ impl Command {
             Command::Open(_) => "open",
             Command::Mute(_) => "mute",
             Command::Delete(_) => "delete",
+            Command::React(_) => "react",
+            Command::Reactions(_) => "reactions",
             Command::Resend(_) => "resend",
             Command::Show(_) => "show",
             Command::Search(_) => "search",

@@ -530,7 +530,7 @@ pub fn delete(
 
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
 #[cfg(feature = "tdlib")]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::td::TdBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -540,7 +540,7 @@ type L2Body<'a> = dyn FnMut(
 
 /// 不编 TDLib 时只为通过类型检查（`l2_run` 在那种构建里直接报 `not_implemented`，用不到它）
 #[cfg(not(feature = "tdlib"))]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::fake::FakeBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -548,9 +548,9 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`、`pending cancel`、`delete`，以及同一外壳的 `pending` 列表）的直跑外壳：选档案 → 起真实后端 →
-/// 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
-fn l2_run(
+/// 发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`，以及同一外壳的 `pending` 列表、`reactions`）的
+/// 直跑外壳：选档案 → 起真实后端 → 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
+pub(crate) fn l2_run(
     g: &Global,
     format: crate::args::Format,
     command: &'static str,

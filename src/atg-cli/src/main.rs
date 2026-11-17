@@ -39,6 +39,9 @@ mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod play;
+// 表情回应的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod react;
 // 待发消息与发送的流程只有真实后端与单测调
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod pending;
@@ -121,8 +124,10 @@ fn main() -> ExitCode {
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Send(a) => run_send(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
+        Command::React(a) => react::run(&cli.global, format, &a, started),
+        Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),
         Command::Pending(a) => run_pending(&cli.global, format, a, started),
-        Command::Delete(a) => run_delete(&cli.global, format, a, started),
+        Command::Delete(a) => delete::run(&cli.global, format, a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),
         Command::Play(a) => play::run(&cli.global, format, &a, started),
@@ -458,23 +463,6 @@ fn run_pending(
         return ExitCode::from(code);
     }
     ExitCode::from(session::pending(g, format, command, &params, started))
-}
-
-/// `delete`：给所有人删除自己发的消息。档案被占就转给执行方（闸在执行方）
-fn run_delete(g: &args::Global, format: Format, a: args::DeleteArgs, started: Instant) -> ExitCode {
-    if let Some(f) = no_redact(g, "delete") {
-        return fail_with(format, &f);
-    }
-    let params = json!(delete::DeleteParams {
-        chat: a.chat,
-        ids: a.ids,
-        dry_run: a.dry_run,
-        tz: g.tz.clone(),
-    });
-    if let Some(code) = forward::try_forward(g, format, "delete", &params) {
-        return ExitCode::from(code);
-    }
-    ExitCode::from(session::delete(g, format, &params, started))
 }
 
 /// `links`：一行一个链接（`kind:"link"`）+ 一行 `result`。不标已读。档案被占就转给执行方

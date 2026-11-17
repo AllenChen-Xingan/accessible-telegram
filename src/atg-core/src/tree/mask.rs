@@ -37,6 +37,8 @@ fn mask_doc(d: &mut Doc) {
         | Doc::Status(_)
         | Doc::Playback(_)
         | Doc::Transcription(_)
+        // 只有表情与名字，没有可藏的正文
+        | Doc::Reactor(_)
         | Doc::Unknown(_) => {}
     }
 }

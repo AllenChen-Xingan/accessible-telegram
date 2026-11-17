@@ -41,6 +41,29 @@ pub struct DeleteParams {
 pub(crate) const DELETE_UNKNOWN_ZH: &str =
     "删除已交出，但还不知道删没删掉；不要直接重做，先去会话里看最近的消息（history）";
 
+/// `delete` 入口：档案被占就转给执行方（闸在执行方），否则直跑
+pub fn run(
+    g: &crate::args::Global,
+    format: Format,
+    a: crate::args::DeleteArgs,
+    started: Instant,
+) -> std::process::ExitCode {
+    // plan 行带正文，打码还没做：同 send，加 --redact 先拒
+    if let Some(f) = crate::no_redact(g, "delete") {
+        return out::fail_with(format, &f);
+    }
+    let params = json!(DeleteParams {
+        chat: a.chat,
+        ids: a.ids,
+        dry_run: a.dry_run,
+        tz: g.tz.clone(),
+    });
+    if let Some(code) = crate::forward::try_forward(g, format, "delete", &params) {
+        return std::process::ExitCode::from(code);
+    }
+    std::process::ExitCode::from(crate::session::delete(g, format, &params, started))
+}
+
 /// 在已起好的后端上删除（直跑与执行方共用）
 pub fn execute_delete<B: Backend>(
     b: &B,

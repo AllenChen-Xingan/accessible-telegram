@@ -26,7 +26,7 @@
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等）；`delete` 准备与交出前复查时本地判定不能给所有人删 | `why`（只在 `delete`：`saved` 收藏夹里的 · `not_own` 不是自己发的 · `not_sent` 还没发出（待发、失败） · `not_revocable` TDLib 说不能给所有人删） | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
-| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`、`pending cancel`、`delete`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
+| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
 | `profile_busy` | 同一个本地库已被另一个进程占用，且这条命令没法经本机接口转过去（见 `config-privacy.md`「一库一进程」「本机接口」）。说明按场景换：占着的是一次性命令 →「稍后重试，或先开着 atg-cli serve」；占着的是常驻执行方而命令不转（登录、登出）→「请先停掉它再跑」；又起一个 `serve` →「已经有常驻进程在服务」 | `holder`：能查到就写是 CLI 还是 GUI | 否（不自动重试；要不要稍后再跑由调用方按说明定） |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
@@ -38,7 +38,7 @@
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。
 
-`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；`pending cancel` 准备、交出前复查与 CLI 取待发清单时的 `not_pending`（没有可撤销的：会话里没有待发的，或那条已发出、失败、不是自己发的，或交出前正文和确认时不一样了）· `not_text`（待发的里有带附件的，给不出全文确认，不撤）· `too_many`（会话里待发的超过 100 条，不截断、不分批，整批不撤）；`delete` 交出前复查时的 `changed`（那条在列出计划之后、交出之前被编辑过，整批不删）。
+`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；`pending cancel` 准备、交出前复查与 CLI 取待发清单时的 `not_pending`（没有可撤销的：会话里没有待发的，或那条已发出、失败、不是自己发的，或交出前正文和确认时不一样了）· `not_text`（待发的里有带附件的，给不出全文确认，不撤）· `too_many`（会话里待发的超过 100 条，不截断、不分批，整批不撤）；`delete` 交出前复查时的 `changed`（那条在列出计划之后、交出之前被编辑过，整批不删）；表情回应的 `reaction_invalid`（不是一个 emoji）· `reaction_not_chosen`（要去掉的回应我没点过；也可能只是 emoji 写法不同，或群里本机缓存还没跟上）· `reaction_would_replace`（这条上我已点了别的回应，再点可能把它挤掉）· `reaction_state_unknown`（拿不准我已点了哪些，再点可能挤掉原来的）；后两种（`reaction_would_replace`、`reaction_state_unknown`）CLI 在错误行补 `hint_zh`，`react --replace` 放行。
 
 **CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对；另：执行方上同时挂着的 `watch` 已到上限 8 个时也借用它，说明写「已到上限」，`config-privacy.md` 第一节第 2 小节「流式订阅」）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 
@@ -186,6 +186,9 @@
 - 2026-11-16 #59 3c 自审：`helper_env_invalid` 加「不是绝对路径」；`helper_unsafe` 写修法；`transcript_stale` 注明可重试的例外
 - 2026-11-14 #59 3c（手下 media；arch 定 2026-11-14）：加 `stt_unavailable`（退出码 11，「本机缺能力」一档）及其 `what`；`internal.what` 登记 `stt_timeout`、`stt_helper_failed`、`transcript_stale`
 - 2026-11-16 #109（msg1）：`send_outcome_unknown` 也指 `pending cancel` 交出到点没回
+- 2026-11-14 #9 表情回应（手下 msg2）：`invalid_input.why` 加 `reaction_invalid`、`reaction_not_chosen`
+- 2026-11-14 #9 自审第 1 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_would_replace`
+- 2026-11-14 #9 自审第 3 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_state_unknown`
 - 2026-11-16 issue #113（人定）：`send_refused.reason` 去掉 `not_interactive`、`auth_failed`、`too_long_to_confirm`（Touch ID 删除）
 - 2026-11-17 #8 A（msg1）：`forbidden` 在 `delete` 带 `why`；`invalid_input.why` 加 `changed`；`send_outcome_unknown` 也指 `delete` 交出到点没回
 - 2026-11-17 #8 A 自审（msg1）：还没发出的（待发、失败）自己拦 `forbidden why:not_sent`（TDLib 对它们说能给所有人删）；`changed` 措辞改为「列出计划之后、交出之前」；成功即本机已删、服务器在后台补做

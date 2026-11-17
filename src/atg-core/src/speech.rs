@@ -23,6 +23,8 @@ use crate::tree::*;
 
 mod content;
 mod playback;
+pub mod reaction;
+use reaction::reactions;
 mod status;
 mod transcription;
 use content::dur;
@@ -76,6 +78,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::Alert(a) => alert(a, cx),
         Doc::Status(s) => status::brief(s.status).to_owned(),
         Doc::Playback(p) => playback::brief(p),
+        Doc::Reactor(r) => reaction::reactor(r, cx),
         Doc::Transcription(t) => transcription::brief(t, cx.reveal),
         Doc::Unknown(_) => UNSUPPORTED.to_owned(),
     }
@@ -178,6 +181,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
         }
         Doc::Service(sv) => date(sv.date, cx),
         Doc::Tombstone(t) => t.date.map(|d| date(d, cx)).unwrap_or_default(),
+        Doc::Reactor(r) => date(r.date, cx),
         Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
             String::new()
         }
@@ -193,9 +197,10 @@ pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::Message(m) => content::full(m, cx.reveal),
         Doc::Service(sv) => service(sv, cx.reveal).0,
         Doc::Tombstone(t) => format!("{}{REVOKED}", tomb_who(t)),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Reactor(_) => {
             brief(doc, cx)
         }
+        Doc::Unknown(_) => brief(doc, cx),
         Doc::Transcription(_) => brief(doc, cx),
     }
 }
@@ -324,26 +329,6 @@ fn origin_name(o: &Origin) -> String {
         Origin::Chat { title, .. } | Origin::Channel { title, .. } => name_or(title, UNTITLED),
         Origin::Unknown { .. } => "未知来源".to_owned(),
     }
-}
-
-/// 「回应：3 个👍、1 个❤️，我点了👍」
-fn reactions(list: &[Reaction]) -> String {
-    let label = |r: &Reaction| match &r.kind {
-        ReactionKind::Emoji { emoji } => emoji.clone(),
-        ReactionKind::CustomEmoji { .. } => "自定义表情".to_owned(),
-        ReactionKind::Paid => "星星".to_owned(),
-        ReactionKind::Unknown { .. } => "暂不支持的回应".to_owned(),
-    };
-    let all: Vec<String> = list
-        .iter()
-        .map(|r| format!("{} 个{}", r.count, label(r)))
-        .collect();
-    let mine: Vec<String> = list.iter().filter(|r| r.chosen).map(label).collect();
-    let mut s = format!("回应：{}", all.join("、"));
-    if !mine.is_empty() {
-        s.push_str(&format!("，我点了{}", mine.join("、")));
-    }
-    s
 }
 
 /// 话题名：只有论坛话题读（回复串、私信话题、收藏夹分组不读）；名字没到读「未知话题」

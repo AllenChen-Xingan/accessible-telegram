@@ -43,14 +43,14 @@ mod real {
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
+    use crate::model::{AddedReactions, FailedInfo, MessageCaps};
     use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
     use crate::model::{ChatTarget, Me};
-    use crate::model::{FailedInfo, MessageCaps};
     use crate::secret::{self, Secret};
-    use crate::send::{Answer, Sealed, SealedKind};
+    use crate::send::{Answer, Sealed};
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
-    use crate::tree::FileRef;
+    use crate::tree::{FileRef, ReactionKind};
     use serde_json::json;
     use std::future::Future;
     use std::path::PathBuf;
@@ -59,6 +59,10 @@ mod real {
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
     use tdlib_rs::{enums, functions, types};
+
+    // 交出口（发送、重发、表情回应）与「谁点了回应」：见这两个子模块（从本文件拆出，#60 行数线）
+    mod reactions;
+    mod submit;
 
     /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
     static INSTANCE: AtomicBool = AtomicBool::new(false);
@@ -727,56 +731,17 @@ mod real {
         }
 
         async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
-            let id = self.client_id().ok_or_else(Self::not_started)?;
-            match req.into_kind() {
-                SealedKind::Message { request, preview } => {
-                    let a = requests::message(request, preview)?;
-                    let kind = if preview { "preview" } else { "send" };
-                    logline::info("send_submit", &[Field::Name("kind", kind)]);
-                    let enums::Message::Message(m) = self
-                        .detached(
-                            functions::send_message(
-                                a.chat,
-                                a.topic,
-                                a.reply,
-                                Some(a.options),
-                                a.content,
-                                id,
-                            ),
-                            move |m| requests::sent(m, preview),
-                        )
-                        .await?;
-                    Self::map_message(m)
-                        .map(Answer::Message)
-                        .ok_or(CoreError::Internal {
-                            what: "td_message_reserialize_failed",
-                        })
-                }
-                SealedKind::Resend { request } => {
-                    let (chat, ids, quote, paid) = requests::resend(request)?;
-                    logline::info("send_submit", &[Field::Name("kind", "resend")]);
-                    let enums::Messages::Messages(ms) = self
-                        .detached(
-                            functions::resend_messages(chat, ids, quote, paid, id),
-                            requests::resent,
-                        )
-                        .await?;
-                    Ok(Answer::Resent(
-                        ms.messages
-                            .into_iter()
-                            .map(|m| m.and_then(Self::map_message))
-                            .collect(),
-                    ))
-                }
-                SealedKind::Delete { request } => {
-                    let (chat, ids, revoke) = requests::delete(request)?;
-                    logline::info("send_submit", &[Field::Name("kind", "delete")]);
-                    let none = |_: &()| vec![];
-                    self.detached(functions::delete_messages(chat, ids, revoke, id), none)
-                        .await?;
-                    Ok(Answer::Deleted)
-                }
-            }
+            self.submit_sealed(req).await
+        }
+
+        async fn added_reactions(
+            &self,
+            id: MsgId,
+            kind: Option<&ReactionKind>,
+            offset: &str,
+            limit: u32,
+        ) -> Result<AddedReactions, CoreError> {
+            self.added_reactions_impl(id, kind, offset, limit).await
         }
 
         fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

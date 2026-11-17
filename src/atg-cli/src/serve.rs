@@ -221,12 +221,12 @@ fn status_line<B: Backend>(b: &B, format: Format, own: &mut dyn Sink) {
 }
 
 /// 处理一个请求要用的东西
-struct Ctx<'a, B: Backend> {
-    b: &'a B,
+pub(crate) struct Ctx<'a, B: Backend> {
+    pub(crate) b: &'a B,
     kind: atg_core::config::ServerKind,
     limits: Limits,
-    stream: &'a mut EventStream,
-    feed: &'a mut Feed,
+    pub(crate) stream: &'a mut EventStream,
+    pub(crate) feed: &'a mut Feed,
 }
 
 /// 读请求 → 执行 → 写回 `exit` 帧；在自己的标准错误记一句（不记参数）。没读到请求（探一下就断、超时）回 `false`
@@ -374,29 +374,6 @@ fn join_watch<B: Backend>(ctx: Ctx<'_, B>, mut conn: Conn, req: &Request, own: &
 /// 订阅者表满了（上限 [`crate::watch::MAX_SUBSCRIBERS`]）
 const WATCH_FULL_ZH: &str = "执行方上同时挂着的 watch 已到上限，先停掉一个再订阅";
 
-/// 订阅者的出口：本机接口的连接
-struct ConnOut {
-    conn: Conn,
-}
-
-impl LineOut for ConnOut {
-    fn line(&mut self, line: &str) -> bool {
-        self.conn
-            .send(&Frame::Out {
-                line: line.to_owned(),
-            })
-            .is_ok()
-    }
-
-    fn gone(&self) -> bool {
-        atg_core::ipc::peer_closed(self.conn.stream())
-    }
-
-    fn finish(&mut self, code: u8) {
-        let _ = self.conn.send(&Frame::Exit { code });
-    }
-}
-
 /// 按命令名派发；返回（记日志用的命令名，退出码）
 fn execute<B: Backend>(
     ctx: Ctx<'_, B>,
@@ -455,6 +432,7 @@ fn execute<B: Backend>(
         c @ ("send" | "resend" | "pending" | "pending_cancel" | "delete") => l2::execute(
             ctx.b, ctx.stream, ctx.feed, c, fa.params, sink, format, started,
         ),
+        "react" | "reactions" => crate::react::serve(ctx, &req.command, fa, sink, started),
         "links" => {
             let code = match serde_json::from_value::<LinksArgs>(fa.params) {
                 Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
@@ -524,33 +502,9 @@ impl Prompter for NoSecrets {
     }
 }
 
-/// 写进连接的出口。对方走了（写失败）就不再写，命令照常做完
-struct ConnSink<'a> {
-    conn: &'a mut Conn,
-    broken: bool,
-}
-
-impl ConnSink<'_> {
-    fn send(&mut self, f: &Frame) {
-        if !self.broken && self.conn.send(f).is_err() {
-            self.broken = true;
-        }
-    }
-}
-
-impl Sink for ConnSink<'_> {
-    fn out(&mut self, line: &str) {
-        self.send(&Frame::Out {
-            line: line.to_owned(),
-        });
-    }
-
-    fn err(&mut self, line: &str) {
-        self.send(&Frame::Err {
-            line: line.to_owned(),
-        });
-    }
-}
+// 写进本机接口连接的两种出口：见 [`conn`]（从本文件拆出，#60 行数线）
+mod conn;
+use conn::{ConnOut, ConnSink};
 
 mod l2;
 #[cfg(test)]

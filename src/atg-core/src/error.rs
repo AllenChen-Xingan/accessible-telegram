@@ -103,6 +103,14 @@ pub enum InvalidSendWhy {
     NeedsOther,
     /// 重发要付星（付费发送不做）
     Paid,
+    /// 表情回应给的不是一个 emoji（空、太长、全是 ASCII、带空白或除 U+FE0F / U+200D 外看不见的字符；#9）
+    ReactionInvalid,
+    /// 要去掉的回应我没点过（#9）
+    ReactionNotChosen,
+    /// 加上这个回应可能把我原先点的别的回应挤掉（每条能点几个有上限），没给 `--replace`（#9）
+    ReactionWouldReplace,
+    /// 拿不准这条上我已点了哪些回应（没等到同步完，或私聊、加密聊天以外的会话里服务器没给全名单），加上可能把它挤掉（#9）
+    ReactionStateUnknown,
     /// 要撤销的那条不是自己的待发消息（已发出、失败了、或本来就不是自己发的）
     NotPending,
     /// 要撤销的待发消息里有不是纯文字的（带附件）：正文给不了人确认、也绑不进凭据，不撤（codex 029 #3）
@@ -380,6 +388,16 @@ impl CoreError {
                 }
                 InvalidSendWhy::Paid => {
                     "这条重发要付 Telegram Stars（Telegram 的付费星星），本应用不做付费发送"
+                }
+                InvalidSendWhy::ReactionInvalid => "表情回应请给一个 emoji，如 👍",
+                InvalidSendWhy::ReactionNotChosen => {
+                    "这条消息上你没点过这个回应；emoji 写法可能不同（如 ❤ 与 ❤️），照消息详情里显示的抄"
+                }
+                InvalidSendWhy::ReactionWouldReplace => {
+                    "这条消息上你已点了别的回应，再点可能把它挤掉；确要换请明确说要替换"
+                }
+                InvalidSendWhy::ReactionStateUnknown => {
+                    "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
                 }
             },
             Self::DeleteRefused { why } => match why {

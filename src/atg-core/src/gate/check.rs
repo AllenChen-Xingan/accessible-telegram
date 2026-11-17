@@ -173,6 +173,7 @@ impl Gate {
             kind: plan.kind(),
             result: Outcome::Submitted,
             error: None,
+            reaction: plan.log_target(),
         };
         append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
             CoreError::Internal {
@@ -231,6 +232,7 @@ impl Gate {
             kind: plan.kind(),
             result: outcome,
             error: error.map(CoreError::code),
+            reaction: plan.log_target(),
         };
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).is_err() {
             logline::warn("direct_log_write_failed", &[]);
@@ -291,6 +293,25 @@ struct DirectLogLine {
     result: Outcome,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<&'static str>,
+    /// 表情回应动在哪条消息上、按最坏情况可能挤掉几个原先的回应（[`Gated::log_target`]；拿不准记 `null`）
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "reaction_fields"
+    )]
+    reaction: Option<(i64, Option<usize>)>,
+}
+
+fn reaction_fields<S: serde::Serializer>(
+    t: &Option<(i64, Option<usize>)>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut m = s.serialize_map(Some(2))?;
+    if let Some((id, n)) = t {
+        m.serialize_entry("message_id", id)?;
+        m.serialize_entry("may_replace", n)?;
+    }
+    m.end()
 }
 
 /// 追加一行；文件头一行已超过 30 天时先把过期的整理掉（整体重写）
