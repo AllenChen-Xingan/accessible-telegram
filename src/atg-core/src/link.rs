@@ -119,12 +119,14 @@ impl Shared {
         }
     }
 
-    /// 推一个事件（序号在锁里编）。发送失败的，先把原因交给发送限制（受限 / 限流当场落盘）
+    /// 推一个事件（序号在锁里编）。发送失败的，先把原因交给发送限制（受限 / 限流当场落盘）；交出的成败再销账
+    /// （交出未完成标记盖到这里，#88）
     pub fn event(&self, event: CoreEvent) {
-        if let CoreEvent::SendFailed { error, .. } = &event
-            && let Some(limits) = self.send_limits.get()
-        {
-            limits.note(error);
+        if let Some(limits) = self.send_limits.get() {
+            if let CoreEvent::SendFailed { error, .. } = &event {
+                limits.note(error);
+            }
+            limits.observe(&event);
         }
         Self::emit(&mut lock(&self.state), event);
     }

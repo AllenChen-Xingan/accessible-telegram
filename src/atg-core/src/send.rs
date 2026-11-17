@@ -43,7 +43,7 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 mod outcome;
-mod resending;
+pub(crate) mod resending;
 mod text;
 
 pub use outcome::{Waited, finish, wait};
@@ -88,6 +88,10 @@ impl<'a> Sealed<'a> {
     /// 后端的交出口拆开用
     pub(crate) fn into_kind(self) -> SealedKind<'a> {
         self.kind
+    }
+    /// 只是预览（`only_preview`，不发）
+    pub(crate) fn is_preview(&self) -> bool {
+        matches!(self.kind, SealedKind::Message { preview: true, .. })
     }
     /// `deleteMessages`：只由 [`crate::delete`] 在闸验过凭据之后造
     pub(crate) fn delete(request: &'a Value) -> Self {

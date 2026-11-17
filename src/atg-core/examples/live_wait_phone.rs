@@ -24,7 +24,7 @@
 use atg_core::backend::{Backend, SHUTDOWN_TIMEOUT};
 use atg_core::config::{self, Profile, ServerKind};
 use atg_core::error::Holder;
-use atg_core::gate::{self, Gate};
+use atg_core::gate::Gate;
 use atg_core::keystore::Keychain;
 use atg_core::link::block_on;
 use atg_core::status::AuthStep;

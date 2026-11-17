@@ -1078,6 +1078,7 @@ impl Backend for FakeBackend {
                 p.mark_clean();
                 *l = None;
             }
+            self.gate().limits().closed();
             Ok(())
         } else if self.shared.is_faulted() {
             Err(CoreError::Disconnected)

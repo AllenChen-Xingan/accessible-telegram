@@ -455,24 +455,18 @@ pub fn pending(
     params: &serde_json::Value,
     started: std::time::Instant,
 ) -> u8 {
-    l2_run(
-        g,
-        format,
-        command,
-        started,
-        &mut |b, stream, feed, sink| {
-            crate::pending::execute(
-                b,
-                stream,
-                feed,
-                command,
-                params.clone(),
-                sink,
-                format,
-                started,
-            )
-        },
-    )
+    l2_run(g, format, command, started, &mut |b, stream, feed, sink| {
+        crate::pending::execute(
+            b,
+            stream,
+            feed,
+            command,
+            params.clone(),
+            sink,
+            format,
+            started,
+        )
+    })
 }
 
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码

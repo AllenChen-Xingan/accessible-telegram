@@ -225,6 +225,46 @@ fn saved_backend() -> FakeBackend {
 }
 
 #[test]
+fn cancel_submit_timeout_is_outcome_unknown() {
+    // #109：撤销交出后到点没回——删除可能已经交出，报结果未知（退出码 10、不可重试），不是能重跑的普通 network
+    let b = saved_backend();
+    b.fail_next(
+        "delete",
+        atg_core::error::CoreError::Internal {
+            what: FakeBackend::HANG,
+        },
+    );
+    let p = profile();
+    let (code, cap) = history::with_backend(&b, &p, Instant::now(), |b, st, fe| {
+        let mut cap = Cap::default();
+        let params = CancelParams {
+            chat: "saved".into(),
+            dry_run: false,
+        };
+        let code = execute_cancel_within(
+            b,
+            st,
+            fe,
+            &params,
+            &mut cap,
+            Format::Json,
+            Instant::now(),
+            std::time::Duration::from_millis(300),
+        );
+        Ok((code, cap))
+    })
+    .unwrap_or_else(|_| panic!("起不来"));
+    assert_eq!(code, 10);
+    let last = line(&cap, cap.out.len() - 1);
+    assert_eq!(last["kind"], "error");
+    assert_eq!(last["data"]["code"], "send_outcome_unknown");
+    assert_eq!(last["data"]["why"], "timeout");
+    assert_eq!(last["data"]["chat_id"], ME);
+    assert_eq!(last["data"]["retryable"], false);
+    assert_eq!(last["data"]["message_zh"], CANCEL_UNKNOWN_ZH);
+}
+
+#[test]
 fn cancel_saved_on_test_server() {
     let b = saved_backend();
     let (code, cap) = cancel_run(&b, "saved", false);

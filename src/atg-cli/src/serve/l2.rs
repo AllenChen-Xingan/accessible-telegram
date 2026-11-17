@@ -31,14 +31,18 @@ pub(super) fn execute<B: Backend>(
         "send" => {
             let code = match serde_json::from_value::<crate::send::SendParams>(params) {
                 Err(_) => fail_with_to(sink, format, &bad),
-                Ok(p) => crate::send::execute_send(b, stream, feed, &p, sink, format, started, timeout),
+                Ok(p) => {
+                    crate::send::execute_send(b, stream, feed, &p, sink, format, started, timeout)
+                }
             };
             ("send", code)
         }
         "resend" => {
             let code = match serde_json::from_value::<crate::send::ResendParams>(params) {
                 Err(_) => fail_with_to(sink, format, &bad),
-                Ok(p) => crate::send::execute_resend(b, stream, feed, &p, sink, format, started, timeout),
+                Ok(p) => {
+                    crate::send::execute_resend(b, stream, feed, &p, sink, format, started, timeout)
+                }
             };
             ("resend", code)
         }

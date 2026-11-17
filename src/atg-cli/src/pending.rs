@@ -24,8 +24,10 @@ use crate::history;
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
 use atg_core::delete::{self, DeletePlan};
-use atg_core::gate::Gated;
+use atg_core::error::{CoreError, UnknownWhy};
+use atg_core::gate::Outcome;
 use atg_core::link::EventStream;
+use atg_core::link::block_on_timeout;
 use atg_core::model::{MsgId, SendingState};
 use atg_core::project;
 use atg_core::send::{SendOrigin, Waited};
@@ -212,7 +214,22 @@ pub fn execute_cancel<B: Backend>(
     format: Format,
     started: Instant,
 ) -> u8 {
-    match run_cancel(b, stream, feed, p, sink, format, started) {
+    execute_cancel_within(b, stream, feed, p, sink, format, started, QUERY_TIMEOUT)
+}
+
+/// 同 [`execute_cancel`]，交出的期限由调用方给（单测用短的）
+#[allow(clippy::too_many_arguments)]
+fn execute_cancel_within<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    p: &CancelParams,
+    sink: &mut dyn Sink,
+    format: Format,
+    started: Instant,
+    submit_timeout: std::time::Duration,
+) -> u8 {
+    match run_cancel(b, stream, feed, p, sink, format, started, submit_timeout) {
         Ok(code) => code,
         // L2 的错误一律 `retryable:false`（同 `send`）
         Err(Fail::Core(e)) => crate::send::l2_fail(sink, format, &e, json!({})),
@@ -220,6 +237,7 @@ pub fn execute_cancel<B: Backend>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_cancel<B: Backend>(
     b: &B,
     stream: &mut EventStream,
@@ -228,6 +246,7 @@ fn run_cancel<B: Backend>(
     sink: &mut dyn Sink,
     format: Format,
     started: Instant,
+    submit_timeout: std::time::Duration,
 ) -> Result<u8, Fail> {
     let chat =
         history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
@@ -268,7 +287,12 @@ fn run_cancel<B: Backend>(
         return Ok(0);
     }
     let token = b.gate().issue(&plan, false).map_err(Fail::Core)?;
-    let mode = bounded(b, delete::cancel(b, &plan, token), QUERY_TIMEOUT).map_err(Fail::Core)?;
+    // 交出（验凭据 → 复查 → 交给 TDLib）到点没回：删除可能已经交出，撤没撤下未知——不是能重跑的普通 `network`
+    // （#109，同 `send` 交出超时报 `send_outcome_unknown`），留痕记「未知」
+    let mode = match block_on_timeout(delete::cancel(b, &plan, token), submit_timeout) {
+        Some(r) => r.map_err(Fail::Core)?,
+        None => return Ok(cancel_unknown(b, &plan, sink, format)),
+    };
     let temps: Vec<MsgId> = plan
         .items()
         .iter()
@@ -379,6 +403,25 @@ fn note_soft(event: &atg_core::model::CoreEvent, soft: &mut Vec<MsgId>) {
             message_id,
         }));
     }
+}
+
+/// 撤销的「结果未知」说明（`send_outcome_unknown` 的通用说明讲的是发送，不贴撤销）
+pub(crate) const CANCEL_UNKNOWN_ZH: &str = "撤销已交出，但还不知道撤没撤下；不要直接重做，先跑 pending 看这个会话里还有没有待发的，或去会话里看最近的消息";
+
+/// 撤销交出到点没回（#109）：内核已故障报 `disconnected` 这一种来由，否则 `timeout`；退出码 10、不可重试
+fn cancel_unknown<B: Backend>(b: &B, plan: &DeletePlan, sink: &mut dyn Sink, format: Format) -> u8 {
+    let why = match crate::deadlines::stalled(b) {
+        CoreError::Disconnected => UnknownWhy::Disconnected,
+        _ => UnknownWhy::Timeout,
+    };
+    b.gate()
+        .after_outcome(plan.mode(), plan, 0, None, Outcome::Unknown, None);
+    let e = CoreError::SendOutcomeUnknown {
+        chat_id: Some(plan.target().id),
+        temp_message_id: 0,
+        why,
+    };
+    crate::send::l2_fail(sink, format, &e, json!({ "message_zh": CANCEL_UNKNOWN_ZH }))
 }
 
 fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &DeletePlan) {

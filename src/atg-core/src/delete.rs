@@ -167,7 +167,7 @@ async fn load_pending<B: Backend>(
             });
         }
         // 带附件的给不出全文：人确认不了、凭据也绑不住它的说明文字（复查看不出变化），整批不撤（codex 029 #3）
-        let text = send::confirmable_text(&m).ok_or(CoreError::InvalidSend {
+        let text = send::resending::confirmable_text(&m).ok_or(CoreError::InvalidSend {
             why: InvalidSendWhy::NotText,
         })?;
         items.push(DeleteItem {

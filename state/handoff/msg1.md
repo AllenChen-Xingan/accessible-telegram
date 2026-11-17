@@ -2,7 +2,11 @@
 
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
-- **做到哪**：大总管提交 WIP 53088ce 并 merge origin/main；12 个冲突已解（无标记），Touch ID 残留已改直发，**未编译**，已申请名额。之前：已报到。工作区未提交改动 = codex 029 第 2 轮两条 P2 的修复（清缓存误报撤销成功 → `unknown`/`gone`；待发不占删旧配额），**未编译**
+- **做到哪**：合并已提交 bbe2f20（大总管）。排队等编译名额（第二位）。#88：红测试已写 `src/atg-core/tests/send_limits.rs` 末尾两条（`late_limit_with_a_full_disk_still_stops_the_next_process` 现应红；`accepted_send_left_open_at_a_clean_close_leaves_no_manual_work` 现应绿、守 Q1=b）；单测三条（新 API `hold` / `await_outcome` / `outcome` / `closed`）暂放 scratchpad `88-unit-tests.rs`，红跑之后再放回 `send_limits.rs`。大总管定：#8 直发；`actions.md:294` 是历史记录不改；Q1 先按 b
+- **第二次名额结果（b20）**：#57 收尾 + #109 + #88 全部验证：build 过；全量 515 过 0 败 5 忽略（#88 红测试已转绿）；开 TDLib 特性 488 过 0 败；clippy -D warnings 两种都净；tdlib 编译过；`--tighten` 后行数检查 0 报错；rustfmt 过（顺带格式化了合并时改的 `serve/l2.rs`、`session.rs`）。提交一笔，信息见 `_tmp/msg1/commits-b20.md`，交大总管提交。下一步：codex 029 第 3 轮（脚本交大总管）→ #8
+- **#88 已实现**：`send_limits.rs` 加 `hold` / `await_outcome` / `outcome` / `observe` / `closed`，标记盖到「在途交出 = 0 且待回成败为空且无未写入限制」；`early` 集让成败先于应答到、或登记两次都不卡；`link::Shared::event` 先 note 再 observe；`td.rs::detached` 线程自领守卫、应答成功当场登记 id（`td/requests.rs::sent` / `resent`）；td / fake 正常关闭调 `closed`（Q1=b）；单测 3 条放回 `send_limits.rs`；契约 config-privacy 同步。红测试第一次跑：`late_limit_with_a_full_disk_still_stops_the_next_process` 红（下一个进程放行），符合预期
+- 第一次名额结果（b20）：build 过、clippy 净（tdlib 特性下 main 的 `examples/live_wait_phone.rs:27` 多余 `self` 报错，已报大总管）、tdlib 编译过、全量 512 过 0 败；`td.rs` 解析挪进 `td/requests.rs`（847→832）
+- **#109（并入 #57，大总管 2026-11-16）**：`pending cancel` 交出到点没回 → `send_outcome_unknown`（`timeout` / 故障时 `disconnected`，退出码 10，专用说明 `CANCEL_UNKNOWN_ZH`，留痕记未知）；`execute_cancel_within` 让单测给短期限；测试 `cancel_submit_timeout_is_outcome_unknown`；契约 cli / errors 同步。未编译
 - **合 main 预计冲突**：core `send.rs`（main 拆成子模块，分支改了约 100 行）、`confirm_box.rs`（main 删、分支改：修改/删除冲突）；还有 fake / td / store/mod / error / lib、CLI send / serve / session / args / main / forward / deadlines、契约 actions / cli / errors / config-privacy、reviews/README、文件行数基线
 - **Touch ID 删除波及我的代码**：pending 撤销确认框文字（confirm_box）、`delete.rs` 与其测试里的 HumanAuth / 确认文字、`serve/l2.rs`、`pending.rs`、`exp_real.rs`、CLI session / send 里的 Authenticator 接线 → 全改成直发
 - **下一步**：合完 → 去掉确认、编译测试（领名额）→ codex 029 第 3 轮 → #88
