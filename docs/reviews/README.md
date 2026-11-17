@@ -49,7 +49,7 @@
 | 050 | 2026-11-17 | #60 R7 第二刀：拆 `speech.rs`，系统消息进 `speech/service.rs`，全文渲染与正文附件读法并进 `speech/content.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1 轮 P2×1（交接页进度写的是中间版本）属实已改；第 2 轮零发现，收敛 → `050_r7-speech-codex.md` |
 | 051 | 2026-11-17 | #60 R7 第三刀：拆 `store/mod.rs`，改状态的私有方法挪进 `store/write.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（交接页计数笔误）已改 → `051_r7-store-codex.md` |
 | 033 | 2026-11-17 | #10 转发 `forward`（直发；含闸支持一份计划多个防重复指纹，一级评审；codex · diff 类） | 自审 6 轮（第 5、6 轮无 P0/P1）；codex 第 1 轮 P1×1（`MSG_ID` 吞后置选项）P2×3，属实 4，已改 3、1 条并入 #128；第 2 轮仅 P2×2（代跑断开逐条列、worst_hit 漏看较早的未知），已改；第 3 轮零发现；第 2、3 轮无 P0/P1，收敛，无剩余 P2 → `033_forward-10-codex.md` |
-| 034 | 2026-11-17 | #12 发文件 / 图片 `send-file`（直发；闸只加留痕字段 `file{kind,size}`，一级评审；codex · diff 类） | 自审 2 轮（都无 P0/P1）；codex 第 1 轮仅 P2×3（中间文件夹换链接、改扩展名绕过防重复、进度查询越过时限）、第 2 轮仅 P2×2（按文件发没关类型识别、进度查询挡住结果事件），全属实已改；第 1、2 轮无 P0/P1；合 main 后待第 3 轮确认 → `034_send-file-12-codex.md` |
+| 034 | 2026-11-17 | #12 发文件 / 图片 `send-file`（直发；闸只加留痕字段 `file{kind,size}`，一级评审；codex · diff 类） | 自审 2 轮（都无 P0/P1）；codex 第 1 轮仅 P2×3（中间文件夹换链接、改扩展名绕过防重复、进度查询越过时限）、第 2 轮仅 P2×2（按文件发没关类型识别、进度查询挡住结果事件），全属实已改；第 1、2 轮无 P0/P1，收敛；合 main 后三点范围第 3 轮确认，仅 P2×2（悬空链接探存在性、10 分钟没算交出段）→ issue → `034_send-file-12-codex.md` |
 | 052 | 2026-11-17 | #60 R7 第四刀：拆 `tests/reducer.rs`，改成 `tests/reducer/` 下 9 个文件、按主题分（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；77 = 77 → `052_r7-tests-reducer-codex.md` |
 | 053 | 2026-11-17 | #60 R7 第五刀：拆 cli `history.rs`，links 进 `history/links.rs`、读法与渲染进 `history/render.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1、2 轮各 P2×1（010、交接页里导出个数与行数写错），都属实已改；两轮无 P0/P1，收敛 → `053_r7-history-codex.md` |
 | 054 | 2026-11-17 | #60 R7 第六刀：拆 cli `watch.rs`，出口与订阅者进 `watch/hub.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `054_r7-watch-codex.md` |

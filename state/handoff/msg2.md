@@ -197,3 +197,4 @@
 - 合 main 注意：#156（tdjson.rs `pub mod file;`）、#157 fe8d1ec（gate/tests.rs 我加的 `mod file_log;` 挨着它换的 temp_dir）可能冲突；合后申请名额编译验证
 - codex 034 第 1 轮：P2×3 全属实已改（句柄路径再判许可、意图摘要不装媒体结构、等进度用绝对截止）；679 过；记录 docs/reviews/034_send-file-12-codex.md
 - codex 034 第 2 轮：P2×2 属实已改（关类型识别、查询限时 + 判未知前看事件）；大总管已合 main 9434d39；680 过；下一步第 3 轮 → PR（说明放 _tmp/20261116-b20/，两节：闸逐行、基线放宽）
+- codex 034 第 3 轮（三点范围，确认轮）：无 P0/P1，P2×2 → issue；PR 说明 MAIN _tmp/20261116-b20/pr-12-send-file.md；下一步大总管提交记录、开 PR；真机只发收藏夹等排
