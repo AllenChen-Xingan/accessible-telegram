@@ -76,6 +76,7 @@
 pub mod auth;
 pub mod backend;
 pub mod config;
+pub mod delete;
 pub mod error;
 pub mod fake;
 pub mod gate;

@@ -20,6 +20,7 @@
 use crate::model::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod query;
 mod table;
 mod ticket;
 mod transcripts;
@@ -34,7 +35,7 @@ const MAX_ORPHANS: usize = 4096;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreConfig {
     /// 非当前会话最多留多少条活消息（拍板 006 甲1）。超出的从最旧的删起；
-    /// 会话的最后一条、墓碑、换 id 的链不算在内、不删。当前打开的会话不限。
+    /// 会话的最后一条、待发的、墓碑、换 id 的链不算在内、不删。当前打开的会话不限。
     pub keep_per_chat: usize,
 }
 
@@ -401,43 +402,6 @@ impl Store {
         self.window.as_ref().is_some_and(|w| w.stale)
     }
 
-    /// 消息现在的 id：换过 id 的旧 id 给最终的新 id（回复、置顶里引用的可能还是旧 id）
-    pub fn current_id(&self, id: MsgId) -> MsgId {
-        self.table.current(id)
-    }
-
-    /// 消息是否已知受限（不论它还在不在缓存里、有没有被撤回）
-    pub fn is_restricted(&self, id: MsgId) -> bool {
-        self.table.is_restricted(id)
-    }
-
-    /// 某个列表当前的会话顺序：按 (order, 会话 id) 从大到小；order 为 0 的不在列表里
-    pub fn chat_list(&self, list: &ChatList) -> Vec<ChatId> {
-        let mut v: Vec<(i64, ChatId)> = self
-            .chats
-            .values()
-            .filter_map(|c| {
-                c.positions
-                    .iter()
-                    .find(|p| &p.list == list && p.order != 0)
-                    .map(|p| (p.order, c.id))
-            })
-            .collect();
-        v.sort_unstable_by(|a, b| b.cmp(a));
-        v.into_iter().map(|(_, id)| id).collect()
-    }
-
-    /// 主列表里 `after` 之后第一个有未读的会话；到底不回绕（A3）。`after` 不在列表里时从头找
-    pub fn next_unread_chat(&self, after: Option<ChatId>) -> Option<ChatId> {
-        let list = self.chat_list(&ChatList::Main);
-        let start = after
-            .and_then(|a| list.iter().position(|&c| c == a))
-            .map_or(0, |i| i + 1);
-        list.into_iter()
-            .skip(start)
-            .find(|id| self.chats.get(id).is_some_and(|c| c.unread_count > 0))
-    }
-
     // ───── 更新 ─────
 
     fn update(&mut self, seq: u64, event: CoreEvent) {
@@ -629,14 +593,18 @@ impl Store {
         let Some(ids) = self.by_chat.get(&chat_id) else {
             return;
         };
-        if ids.len() <= keep {
+        // 超额只按能删的算：待发的不占配额，否则一堆待发会把随后的普通消息挤掉（codex 029 第 2 轮 #2）
+        let excess = ids
+            .iter()
+            .filter(|&&m| self.table.prunable(chat_id, m, None))
+            .count();
+        let Some(excess) = excess.checked_sub(keep).filter(|&e| e > 0) else {
             return;
-        }
-        let excess = ids.len() - keep;
+        };
         let victims: Vec<i64> = ids
             .iter()
             .copied()
-            .filter(|&m| Some(m) != last)
+            .filter(|&m| self.table.prunable(chat_id, m, last))
             .take(excess)
             .collect();
         if victims.is_empty() {

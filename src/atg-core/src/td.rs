@@ -21,6 +21,9 @@ pub use real::{TdBackend, TdConfig, tdlib_version};
 
 #[cfg(feature = "tdlib-api")]
 mod boot;
+// 交出口的请求 JSON → tdlib-rs 参数
+#[cfg(feature = "tdlib-api")]
+mod requests;
 // 纯类型：不开特性时只有单测用它
 #[cfg(any(feature = "tdlib-api", test))]
 #[cfg_attr(not(feature = "tdlib-api"), allow(dead_code))]
@@ -28,8 +31,8 @@ mod lifecycle;
 
 #[cfg(feature = "tdlib-api")]
 mod real {
-    use super::boot;
     use super::lifecycle::{self, Claim, Run};
+    use super::{boot, requests};
     use crate::auth::{self, AuthPrompt};
     use crate::backend::{
         Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
@@ -171,13 +174,18 @@ mod real {
 
         /// 发送类的交出：交给 TDLib、等应答、出错就登记进发送限制，整段放在自己的线程里。调用方等不及（发送的
         /// 30 秒上限）丢掉等待时，这条线程照样等到应答、照样登记晚到的受限 / 限流（codex 016 第 6 轮 #1）
+        /// `accepted`：应答里交出成功、成败还要等的消息（预览、删除给空），线程里当场登记（#88：调用方丢掉等待后
+        /// 没人替它登记）
         fn detached<T: Send + 'static>(
             &self,
             fut: impl Future<Output = Result<T, types::Error>> + Send + 'static,
+            accepted: impl FnOnce(&T) -> Vec<MsgId> + Send + 'static,
         ) -> impl Future<Output = Result<T, CoreError>> {
             let (tx, rx) = futures_channel::oneshot::channel();
             let shared = self.shared.clone();
             let limits = self.cfg.gate.limits();
+            // 这条线程自己的守卫：调用方先放（丢掉等待），交出未完成标记也盖到应答登记完（#88）
+            let hold = limits.hold();
             let spawned = std::thread::Builder::new()
                 .name("atg-send-submit".into())
                 .spawn(move || {
@@ -186,10 +194,14 @@ mod real {
                         Ok(Err(e)) => Err(map_error_on(&shared, &e)),
                         Err(e) => Err(e),
                     };
-                    if let Err(e) = &r {
-                        limits.note(e);
-                        logline::info("send_failed", &[Field::Name("code", e.code())]);
+                    match &r {
+                        Err(e) => {
+                            limits.note(e);
+                            logline::info("send_failed", &[Field::Name("code", e.code())]);
+                        }
+                        Ok(v) => limits.await_outcome(&accepted(v)),
                     }
+                    drop(hold);
                     let _ = tx.send(r);
                 });
             async move {
@@ -718,37 +730,21 @@ mod real {
             let id = self.client_id().ok_or_else(Self::not_started)?;
             match req.into_kind() {
                 SealedKind::Message { request, preview } => {
-                    // 交给 TDLib 的就是摘要算过的那份 JSON：逐段反序列化成 tdlib-rs 的类型，不另组一份
-                    let bad = || CoreError::Internal {
-                        what: "send_request_shape",
-                    };
-                    let part = |k: &str| request[k].clone();
-                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                    let topic: Option<enums::MessageTopic> =
-                        serde_json::from_value(part("topic_id")).map_err(|_| bad())?;
-                    let reply: Option<enums::InputMessageReplyTo> =
-                        serde_json::from_value(part("reply_to")).map_err(|_| bad())?;
-                    let mut options: types::MessageSendOptions =
-                        serde_json::from_value(part("options")).map_err(|_| bad())?;
-                    options.only_preview = preview;
-                    let content: enums::InputMessageContent =
-                        serde_json::from_value(part("input_message_content")).map_err(|_| bad())?;
-                    logline::info(
-                        "send_submit",
-                        &[Field::Name(
-                            "kind",
-                            if preview { "preview" } else { "send" },
-                        )],
-                    );
+                    let a = requests::message(request, preview)?;
+                    let kind = if preview { "preview" } else { "send" };
+                    logline::info("send_submit", &[Field::Name("kind", kind)]);
                     let enums::Message::Message(m) = self
-                        .detached(functions::send_message(
-                            chat,
-                            topic,
-                            reply,
-                            Some(options),
-                            content,
-                            id,
-                        ))
+                        .detached(
+                            functions::send_message(
+                                a.chat,
+                                a.topic,
+                                a.reply,
+                                Some(a.options),
+                                a.content,
+                                id,
+                            ),
+                            move |m| requests::sent(m, preview),
+                        )
                         .await?;
                     Self::map_message(m)
                         .map(Answer::Message)
@@ -757,21 +753,13 @@ mod real {
                         })
                 }
                 SealedKind::Resend { request } => {
-                    // 同发文字：交出去的就是摘要算过的那份，逐字段取，不另组
-                    let bad = || CoreError::Internal {
-                        what: "send_request_shape",
-                    };
-                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                    let ids: Vec<i64> = serde_json::from_value(request["message_ids"].clone())
-                        .map_err(|_| bad())?;
-                    let quote: Option<types::InputTextQuote> =
-                        serde_json::from_value(request["quote"].clone()).map_err(|_| bad())?;
-                    let paid = request["paid_message_star_count"]
-                        .as_i64()
-                        .ok_or_else(bad)?;
+                    let (chat, ids, quote, paid) = requests::resend(request)?;
                     logline::info("send_submit", &[Field::Name("kind", "resend")]);
                     let enums::Messages::Messages(ms) = self
-                        .detached(functions::resend_messages(chat, ids, quote, paid, id))
+                        .detached(
+                            functions::resend_messages(chat, ids, quote, paid, id),
+                            requests::resent,
+                        )
                         .await?;
                     Ok(Answer::Resent(
                         ms.messages
@@ -779,6 +767,14 @@ mod real {
                             .map(|m| m.and_then(Self::map_message))
                             .collect(),
                     ))
+                }
+                SealedKind::Delete { request } => {
+                    let (chat, ids, revoke) = requests::delete(request)?;
+                    logline::info("send_submit", &[Field::Name("kind", "delete")]);
+                    let none = |_: &()| vec![];
+                    self.detached(functions::delete_messages(chat, ids, revoke, id), none)
+                        .await?;
+                    Ok(Answer::Deleted)
                 }
             }
         }
@@ -813,7 +809,9 @@ mod real {
                     if let Some(h) = r.receiver.take() {
                         let _ = h.join();
                     }
-                    // 正常关闭：放掉档案锁（同一进程里可以再开这个档案）；重复关不再动标记
+                    // 收线程已停：放锁之前收尾交出未完成标记（#88）；再放掉档案锁（同一进程里可以再开）；重复关不再动标记
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    self.cfg.gate.limits().closed(left);
                     lifecycle::release(&mut r.lock, || r.profile.mark_clean());
                 }
                 logline::info("td_closed", &[]);
