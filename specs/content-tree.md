@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、全文、转写 `speech/content.rs` · 系统消息 `speech/service.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
