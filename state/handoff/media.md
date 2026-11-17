@@ -11,7 +11,13 @@
 - 合 main 预计冲突（`git merge-tree` 试算）：`docs/reviews/README.md`、`scripts/file-size-baseline.json`、`specs/contracts/{actions,cli,errors}.md`、`src/atg-cli/src/watch.rs`。自动合并：args/main/send/serve/session/watch/tests、error.rs、config-privacy.md
 - 未提交的 `error.rs`、`fake.rs` 与 main 也改了同文件（不同段）：合前需先把 WIP 提交，否则 git merge 拒绝
 - Touch ID 删除对我的影响：我新写的 transcribe 代码不用被删的东西；本分支改过的 send.rs（`send::remember` 抽出）、session.rs、serve.rs、args.rs 与 main 删确认的段落相邻，合后要编译核对
-- 状态：已报到，等大总管合 main
+- 大总管已提交 WIP 0b038d9 并 merge origin/main；我解了 6 处冲突（未 add、未 commit）：README/actions/cli/errors 两边条目都留、按日期排；watch.rs 留 main 的 `mod end`，`close_chat` 不要（已由 `lease::close` 取代）；基线 --tighten（watch 837、speech 825，notify.rs 已不超线）；watch/tests.rs 合后 601 行，删掉第 2 行空行回到 600。check-file-size 0 报错
+- 确认逻辑残留：我改过的 send/session/serve/args 对 main 的差异里没有任何确认、td_backend_with（transcribe 用 `td_backend()`）。仅剩 main 自己的 `src/atg-cli/README.md:21` 还写着 Touch ID（不是我的线，报大总管）
+- 合并已由大总管提交 829d0eb；名额排第二（fix 之后）。README.md:21 不归我
+- 静态通读 voice/transcribe.rs、transcribe.rs：引用的 API（stt::locate、Hub::leases、Feed::drain/pump_mut、store 凭据与裁决、Transcription::hidden）都在；SttError 是 Copy
+- 名额到手后的测试计划（一次领、连着跑）：① `cargo build --workspace` + `-p atg-cli --features tdlib` ② `cargo test --workspace`（重点 atg-audio stt/locate 5 条、voice/tests/transcribe 7 条、transcribe/tests 5 条、watch/tests/hub、serve/tests/lifecycle、atg-core privacy/coverage）③ clippy 三遍（默认、tdlib-api、atg-cli/tdlib）④ fmt --check、check-no-debug、check-file-size ⑤ 真辅助程序 ignored 测试一遍（`stt/tests/real.rs`，不出声、不弹窗）
+- 名额跑完（2026-11-16）：build（全工作区 + atg-cli tdlib）过；test 第一次编译错 1 处（transcribe/tests.rs 少引 `Outcome`，已补）→ 517 过 0 败 5 ignored；clippy 三遍过；fmt 改了 error.rs 一处排版；check-no-debug、check-file-size 过；stt-helper build.sh 编出 `_build/20261116-161819/atg-stt`，atg-audio ignored 5 条过（含真辅助程序 4 条，静音、未弹窗）。名额已还
+- 下一步：atg-review（target：origin/main...HEAD 的 3c 改动）→ codex 039
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 

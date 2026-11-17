@@ -349,8 +349,12 @@ impl CoreError {
                 "helper_not_found" => {
                     "找不到本机转写程序 atg-stt：开发时先跑 src/atg-audio/stt-helper/build.sh；不在仓库里运行时设环境变量 ATG_STT_HELPER 指向它"
                 }
-                "helper_env_invalid" => "环境变量 ATG_STT_HELPER 指的不是能执行的文件，请改正或去掉它",
-                "helper_not_runnable" => "找到的 atg-stt 不是能执行的文件，请重跑 src/atg-audio/stt-helper/build.sh",
+                "helper_env_invalid" => {
+                    "环境变量 ATG_STT_HELPER 指的不是能执行的文件，请改正或去掉它"
+                }
+                "helper_not_runnable" => {
+                    "找到的 atg-stt 不是能执行的文件，请重跑 src/atg-audio/stt-helper/build.sh"
+                }
                 "helper_unsafe" => {
                     "atg-stt 不属于你，或别人能改它，为安全不执行：确认是自己编的后 chmod 755 它"
                 }

@@ -1,7 +1,7 @@
 //! `transcribe` 外壳：节点一行 + 结尾行的形状、18+ 遮挡、语种选择。内容全是编的
 use super::*;
 use atg_core::model::MsgId;
-use atg_core::tree::{Transcript, TranscriptSegment, TranscriptSource};
+use atg_core::tree::{Outcome, Transcript, TranscriptSegment, TranscriptSource};
 use serde_json::Value;
 
 #[derive(Default)]
