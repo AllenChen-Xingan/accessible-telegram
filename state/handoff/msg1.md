@@ -35,7 +35,9 @@
   - core：`edit.rs`（`EditPlan`、`prepare_edit`、`edit_text`；复查比原文 + 整份内容 + 编辑时间）；`InvalidSendWhy::{EditNotText(not_text), Unchanged}`；共享文件（大总管准）：`send.rs` 加 `SealedKind::Edit` + `Sealed::edit`、应答复用 `Answer::Message`；`td/requests.rs::edit`；`td/real/submit.rs` 一臂；`fake/submit.rs` 一臂 + `fake/edit.rs`；`fake/call.rs` 加 `Call::Edit`；测试 `edit/tests.rs` 10 条
   - CLI：`edit.rs`（plan / 回显改后那条 / result；交出 10 秒到点报未知）；`send.rs` 的 `check_len` / `read_text_file` / `echo` 改 `pub(crate)` 共用；args / main / session / forward / serve / serve/l2 / tests/cli.rs 接线；测试 `edit/tests.rs` 6 条
   - 契约：actions（两行 + `EditPlan` + 第 4 小节第 7 条清单补 `edit_message_text`——**这条清单改了，PR 属一级评审，人本人看**）· cli · errors · config-privacy
-  - 下一步：编译测试 → atg-review → codex 031 → 真账号只在收藏夹改一条自己发的「atg 实验 编辑 N」
+  - 自审 atg-review（按 `2309789..1fca933`）：P2×1（链接预览按默认重新生成）+ P3×3 开 #147，P3×9 改在 `bde20a0`
+  - **codex 031 收敛（2026-11-17）**：第 1 轮 P2×2（实测失败仍通过、交出报错留痕不记 id）改在 `c28d1d1`（`send::submit_failed_for`，大总管准）；第 2 轮起换身份 `edit-8b-r`（target `2309789..HEAD`），第 2、3 轮通过。复验 635 / 636 过、clippy 两种净
+  - 下一步：提交评审记录 → 真账号只在收藏夹跑 `edit/exp_real.rs`（「atg 实验 编辑 N」三轮）→ PR（契约第 4 小节第 7 条清单改了，**一级评审、人本人看**）
 
 ## #8 进度（新工作副本 `atg-wt/msg1-8`，分支 `feat/8-edit-delete`，从 main 030f91b）
 - **A 删除（2026-11-17）代码 + 契约已写，未编译，等名额**。大总管定：只删自己发的（报 `forbidden why:not_own`，待人看）；一行 `plan`、`items` 逐条列；文字格式先在 CLI 拼句（#132 补「含 delete」）；受限 / 限流也拦删除（照现状）
