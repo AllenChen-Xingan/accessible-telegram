@@ -54,7 +54,7 @@
 | `T01`–`T10`（两位数） | 核心任务 | `specs/tasks.md` |
 | `exp003` | 实验 | `docs/experiments/exp003-*/README.md` |
 | `守则 5` | 架构守则 | `specs/architecture-rules.md` |
-| `L0` · `L1` · `L1 外部` · `L2` | 对外等级（L2 = 要过发送闸和确认） | `specs/contracts/actions.md` 第一节第 2 小节 |
+| `L0` · `L1` · `L1 外部` · `L2` | 对外等级（L2 = 要过发送闸；闸开 `direct_mode` 凭据、不弹框，#113。要人当场确认的只剩 L1 外部的打开链接 / 附件） | `specs/contracts/actions.md` 第一节第 2 小节 |
 
 ### 源码路径的写法
 
@@ -83,7 +83,7 @@
 - **prepaint**：GPUI 每帧画之前的一步，无障碍节点在这一步进树
 - **key 窗口**：当前接收键盘输入的窗口
 - **地标**：VoiceOver 能直接跳过去的区块（主要、导航……）
-- **直发模式**：发消息免确认的启动参数（`atg-cli --unsafe-direct-send`，001 拍板 11）；和「直发公告」无关
+- **直发**：发送、删除（给所有人）、重发等一切 L2 动作不弹确认框、直接交出——这是唯一方式（人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节）。`--unsafe-direct-send` 已无作用、GUI 不认它。和「直发公告」无关
 - **gpui-kit**（原名 gpui-component）：第三方的 GPUI 组件库；**gpui-pre**：它依赖的、crates.io 上的 GPUI 每周快照。B19-10 定了不用
 - **Zed `ui` crate**：Zed 自己的组件库（GPL-3.0），本项目的组件底座
 - **fork / rev**：在自己 GitHub 账号下复制一份上游仓（fork）；rev = 锁定的那个 commit
@@ -106,10 +106,10 @@
 | `TreeDump` | 真窗口树导出：激活、两层、两处焦点、规范化 | `--dump-tree` | **自写**（exp001 / exp003 的做法） | `001` 第二节第 3 小节 |
 | 无头观察器 | 测试期在 `TestAppContext` 里读回每个元素的角色、名称（不开窗口、不靠 AccessKit 激活） | 单测 | 先推上游（B19-11），不收就照 gpui-kit `observe.rs` 的思路重写。它和 P6（让测试平台能激活无障碍）是两条可选的路：P6 合了，观察器就不必要 | `findings-components.md` 第二节第 3 小节 |
 | `FocusManager` | Tab 顺序 + 按 `focus.md` 的规则表落焦点；对话框焦点陷阱与关闭后还原 | 全局一个 | **自写**（照 gpui-kit 焦点陷阱的思路重写，B19-11） | `001` 第二节第 4 小节 |
-| `Composer` | 多行输入框：TextRun + 选区、组字时回车不发、回车走发送闸 | 每个会话 | **自写，照 Zed 主干 `Z:settings_ui/src/components/input_field.rs` 写**（`Role::TextInput` + TextRun + 选区 + 获焦期间冻结 `aria_value`；它绑 Editor，不能直接依赖）；写好尽量提交上游 | `001` 第二节第 5 小节 |
+| `Composer` | 多行输入框：TextRun + 选区、组字时回车不发、回车走发送闸（读一遍计划、直接发，不弹框） | 每个会话 | **自写，照 Zed 主干 `Z:settings_ui/src/components/input_field.rs` 写**（`Role::TextInput` + TextRun + 选区 + 获焦期间冻结 `aria_value`；它绑 Editor，不能直接依赖）；写好尽量提交上游 | `001` 第二节第 5 小节 |
 | 登录表单各框 | 单行输入（手机号、验证码）、密码 | M3.2 | 同 `Composer` 的做法，角色 `TextInput` / `PasswordInput` | T01 |
 | `KeyMonitor` | AppKit 层按键监视器，先判有没有标记文本（组字中一律放行，`keymap.md` 规矩 8）。Shift+Tab **任何时候都截**（全局键，输入框里也要能退出去）；方向、Esc、Home / End、PageUp / PageDown 在不收文字的视图获焦时截；**收文字的视图里只截按键表在该视图明文绑了的那几个**（搜索框的 ↓、Esc，输入框的 Esc），其余留给输入法和光标。Tab 带字符、不先给输入法，可能不用截（⏳ 实测复核，`keymap.md` 第二节 `bypass_ime`） | 全局一个 | **自写**；上游修好（P8）就撤 | `001` 第二节第 1 小节「绕过输入法」 |
-| `ConfirmDialog` | 发送确认：AlertDialog，打开即读「发给谁、发什么」，焦点落在取消；正式服务器要 Touch ID | M4.2、M4.6、M5 | **自写**：对话框角色、模态、焦点陷阱（Zed `ui` 缺；B19-10） | `002` M4.2 |
+| `ConfirmDialog` | 确认框：**只用于打开链接 / 附件**（L1 外部，契约要求当场确认）。AlertDialog，打开即读正文，焦点落在取消。发送、删除、重发**不弹框**（人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节），改由 `Announcer` 在交出时读一遍计划（`announce.md` 来源 `send_plan`） | M3.5、M3.7 | **自写**：对话框角色、模态、焦点陷阱（Zed `ui` 缺；B19-10） | `actions.md` `open_link` / `open_file` |
 | `ReadingView` | 只读多行文本，按字 / 词 / 行读，Esc 回原处 | M3.5 | 同 `Composer` 的做法（只读） | `002` M3.5 |
 | 按钮、开关、菜单、右键菜单、标签页 | — | 各处 | **Zed `ui`**，rev 与 GPUI、补丁同一个（B19-10），记在根 `Cargo.toml` 的 git 依赖里（正本），`upstream-patches.md` 的 rev 列与它比对。按钮基类默认 `Role::Button`；右键菜单用 active descendant、`aria_keyshortcuts` 从按键表反查（`findings-components.md` 第二节第 4 小节） | — |
 

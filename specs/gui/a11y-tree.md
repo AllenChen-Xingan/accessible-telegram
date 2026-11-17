@@ -41,7 +41,7 @@
 | 状态栏 | `status` | `status` | 常驻用户状态（`errors.md` 第一节第 4 小节「常驻」） |
 | 播报节点 | `live:<序号>` | `live:42` | 同一句重播要换节点（exp001 结论 3），序号单调增 |
 | 阅读视图 | `reading:<chat_id>:<message_id>` | `reading:101:1001` | |
-| 对话框及其按钮 | `dialog-<种类>`，种类：`confirm-send` · `confirm-delete` · `confirm-resend` · `confirm-open-link` · `confirm-open-file` · `error`；按钮 `confirm-ok` · `confirm-cancel` | `dialog-confirm-send` | 同一时刻只开一个对话框，所以按钮不必带对话框名（冒号后只许数字） |
+| 对话框及其按钮 | `dialog-<种类>`，种类：`confirm-open-link` · `confirm-open-file` · `error`（发送、删除、重发不弹框，#113）；按钮 `confirm-ok` · `confirm-cancel` | `dialog-confirm-open-link` | 同一时刻只开一个对话框，所以按钮不必带对话框名（冒号后只许数字） |
 | 登录页各框 | `login-phone` · `login-code` · `login-password` · `login-email` · `login-email-code` | | 对应 `actions.md` 的 `auth_submit_*` |
 | 帮助页 | `help` · `help-key:<序号>` | `help-key:3` | 由按键表生成 |
 | 链接列表 / 链接项 | `links:<chat_id>:<message_id>` · `link:<chat_id>:<message_id>:<序号>` | `link:101:1001:2` | `l` 打开（`keymap.md` `list_links`） |
@@ -76,7 +76,7 @@
 | 状态栏 | `Status`（AXGroup / AXApplicationStatus；VO 读法未实测） | `speech` 读 `Doc::Status` | — | — | — | T10 |
 | 播报节点 | `Status`，不可见，经 `parent_node().set_live()` 设 Live | 要播的那句（来自 `speech`）；**名称和值设同一句**（`announce.md` 第四节：AccessKit 0.27 改了触发字段） | — | Live：Polite / Assertive | — | exp001；`announce.md` |
 | 阅读视图 | ⏳ `Document` 或只读 `MultilineTextInput`。⚠️ 若选只读输入框，`keymap.md` 的 `list_focused` 谓词里的 `!TextInput` 要改成「可编辑的输入框」，否则阅读视图里的 `l`、Esc 失效 | `speech::full` | — | 焦点 | Esc 回原处 | M3.5 |
-| 确认框 | `AlertDialog`（AXWindow / AXDialog；业界附在窗口上的确认用 AXSheet，⏳ 选哪个） | 按种类取 `speech` 的计划读法：发送 `SendPlan`（发给谁、发什么）、删除（删哪几条、给所有人）、重发 `ResendPlan`、打开链接（完整网址）/ 附件（文件名、类型）（`actions.md` 第一节）；打开即读正文（APG alertdialog） | — | 模态（经 `parent_node().set_modal()`） | 确认 / 取消两个 `Button` | M4.2；`actions.md` 第一节第 4 小节 |
+| 确认框 | `AlertDialog`（AXWindow / AXDialog；业界附在窗口上的确认用 AXSheet，⏳ 选哪个） | 只有两种：打开链接（完整网址，域名单独读出）/ 附件（文件名、类型）（`actions.md` `open_link` / `open_file`）；打开即读正文（APG alertdialog）。发送、删除、重发不弹框，计划改由播报读（`announce.md` `send_plan`，#113） | — | 模态（经 `parent_node().set_modal()`） | 确认 / 取消两个 `Button` | M3.5、M3.7；`actions.md` 第一节第 2 小节「L1 外部」 |
 | 登录页各框 | `TextInput`；密码框 `PasswordInput`（AXSecureTextField） | 文案（「手机号」「验证码」……）；出错时提示语 = `CoreError::message_zh` | 出错原因 | 焦点；必填（经 `parent_node().set_required()`）。`invalid` macOS 层不送，出错只靠提示语和播报 | 打字；回车 | T01 |
 
 表注：

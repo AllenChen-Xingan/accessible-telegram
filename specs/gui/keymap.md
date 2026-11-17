@@ -33,7 +33,7 @@
 
 ## 三、界面动作 `GuiAction` v0
 
-对外等级一列的 L0 / L1 / L1 外部 / L2 见 `specs/contracts/actions.md` 第一节第 2 小节（L2 = 要过发送闸和确认）。
+对外等级一列的 L0 / L1 / L1 外部 / L2 见 `specs/contracts/actions.md` 第一节第 2 小节（L2 = 要过发送闸；闸直接开 `direct_mode` 凭据，界面不弹确认框，人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节）。
 
 「类」：**能力** = 要 `atg-core` 做事，必须点名下面一列（`check-gui-sources.py` 比对它在 `specs/contracts/actions.md` / `src/atg-cli/src/args.rs` 里真有）；**界面** = 只动 `UiState`；**入口策略** = core 有这个能力、CLI 刻意不调（003 F1、003 A2，`actions.md` 第一节第 2 小节），不需要按键，由事件触发。
 
@@ -60,13 +60,13 @@
 | `mute_chat` | 能力 | `mute` · `atg-cli mute` | L0 |
 | `focus_composer` · `reply` | 界面 | 只设焦点和回复目标 | — |
 | `insert_newline` | 界面 | 输入框里换行（文本编辑本身，不经 core） | — |
-| `send` | 能力 | `send_text_prepare` + 确认 + `send_text` · `atg-cli send` | L2 |
+| `send` | 能力 | `send_text_prepare` → 读一遍计划（`announce.md` `send_plan`）→ `send_text`，不弹框 · `atg-cli send` | L2 |
 | `resend` | 能力 | `resend_prepare` + `resend` · `atg-cli resend` | L2 |
 | `delete_for_all` | 能力 | `delete_prepare` + `delete` · `atg-cli delete` | L2 |
 | `search_messages` · `search_chats` | 能力 | 打开搜索框（`UiState.search.mode` = 消息 / 会话）并随输入查：`search_messages`（当前会话里）/ `search_chats` · `atg-cli search messages` / `search chats` | L0 |
 | `search_enter_results` · `search_back_to_input` | 界面 | 卡 G17 默认 A：搜索框里 ↓ 把焦点移进结果列表（`NavList`，选中第一项）；结果列表里 Esc 或打可打印字符回到搜索框（字符接着输进去）。**不借用 `focus_next`**（那是 Tab 一圈） | — |
 | `open_search_hit` | 能力 | 消息命中：`chat_open` + `history` 落在那条（003 F2：搜索结果进来落在那条）· `atg-cli history CHAT_ID --after MSG_ID`；会话命中：同 `open_chat` | L0 |
-| `confirm` · `cancel` | 界面 | 确认框的两个按钮；确认本身由 core 的闸开凭据 | — |
+| `confirm` · `cancel` | 界面 | 确认框（只有打开链接 / 附件）的两个按钮；确认后才调 `open_link` / `open_file` | — |
 | `login_submit` · `login_resend_code` | 能力 | `auth_submit_*` · `auth_resend_code` · `atg-cli auth …` | L0 |
 | `show_help` | 界面 | — | — |
 | `copy_text` | 界面 | `tree::text::plain_text`（系统剪贴板只在本机） | — |
@@ -107,7 +107,7 @@
 | `message_list` | `o` | `open_attachment` | 草案（M3.7） |
 | `message_list` | `space` | `play_pause` | 草案（M3.8） |
 | `message_list`（`playing`） | `left` · `right` · `[` · `]` | `seek_back` · `seek_forward` · `speed_down` · `speed_up` | 草案 ⏳ ←→ 不在播放时留给什么 |
-| `message_list` | `cmd-backspace` | `delete_for_all`（之后过确认框） | 草案（M4.6；同访达「移到废纸篓」的键） |
+| `message_list` | `cmd-backspace` | `delete_for_all`（读一遍删哪条、给所有人，直接删，不弹框，#113） | 草案（M4.6；同访达「移到废纸篓」的键） |
 | `message_list` | `shift-r` | `resend`（只对发送失败的那条） | 草案 |
 | `message_list` · `reading` | `escape` | `back` | 草案（M3.5「Esc 回原处」） |
 | `reading` · `message_list` | `l` | `list_links` | 草案（M3.5） |

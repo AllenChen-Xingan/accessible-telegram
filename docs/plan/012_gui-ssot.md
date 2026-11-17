@@ -81,7 +81,7 @@
 | `last_chat`（**跨运行**） | `Option<ChatId>` | 上次退出时选中的会话（`app_started_signed_in` 用）。唯一要落盘的界面状态：放档案目录的 `gui-state.json`，只存 id、不存内容（`specs/contracts/config-privacy.md` 第一节第 1 小节） |
 | `reading` | `Option<MsgId>` | 阅读视图开着哪条（M3.5） |
 | `composer` | 每个会话一份草稿文字 + 回复目标 `Option<MsgId>` | 草稿只在本机内存，不同步（`draft_set` 是第二批，L2 同级把关） |
-| `dialog` | `Option<对话框种类>` | 确认框、错误框；关掉后按焦点规则表回去 |
+| `dialog` | `Option<对话框种类>` | 确认框（只有打开链接 / 附件；发送、删除、重发不弹框，#113）、错误框；关掉后按焦点规则表回去 |
 
 滚动位置**不存**：由选中锚点决定（「先滚再选」，`001` 第二节第 1 小节）；GPUI 列表自己的滚动句柄不算界面状态，是渲染细节。
 

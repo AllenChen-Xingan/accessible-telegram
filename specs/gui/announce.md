@@ -44,6 +44,7 @@
 | `listen_new`（人按 M） | 直发 | — | — | 高（人要听的） | exp004（m = 高优先级直发） |
 | `detail`（人按 D） | 直发 | — | — | 高（人要听的，同 `listen_new`） | B19-6；`keymap.md` `read_detail` |
 | `search_count`（搜索结果数，防抖 400 ms 后） | Live | — | — | 低 | 清单 A19；T08 |
+| `send_plan`（交出 L2 时读一遍计划：发送「发给〈种类 · 名字〉：〈正文〉」，回复时加「回复〈那条的摘要〉」；删除「给所有人删除：〈那条的摘要〉」；重发「重发：〈正文〉」，会去掉回复关系时说出来。文字取 `speech` 对 `SendPlan` / `ResendPlan` 的读法，与 CLI `plan` 行同源） | Live | — | — | 高（人要听的；读完不等，闸照常交出） | 002 M4.2「发送前读一遍」；`actions.md` 第一节第 4 小节；#113。⏳ 正文很长时读全文还是只读前一段，人试听再定 |
 | `send_ok`（「已发送」） | Live | 直发 | — | 低 | T04 |
 | `send_failed`（失败 / 结果未知） | Live | 直发 | 系统通知 | 高（紧急、要人处理；`findings-a11y.md` 第五节第 2 小节） | `actions.md` 事件 `send_failed` / `messages_deleted` |
 | `no_more_unread` | Live | — | — | 低 | 003 A3 |

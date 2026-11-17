@@ -29,10 +29,12 @@
 | `next_unread_jumped` | 会话列表或消息列表里被跳到的会话 / 它的落点 | 到底时说「没有更多未读」，焦点不动 | 003 A3；T09 |
 | `composer_entered`（`i` / `r`） | 输入框 `composer:<chat>`；`r` 时回复目标 = 当时选中的那条 | 不说（输入框名称带「回复 X」） | 草案（T04） |
 | `composer_left`（输入框按 Esc） | 消息列表，选中进输入框之前选中的那条 | 不说；草稿保留 | 草案 |
-| `confirm_opened`（确认框：发送、删除、重发是 L2，过发送闸；打开链接 / 附件是 L1 外部，契约要求当场确认——`specs/contracts/actions.md` 第一节第 2 小节「L1 外部」行与 `open_link` / `open_file` 行：「打开前把完整网址（域名单独读出）给人看并确认」） | 确认框（`AlertDialog`）打开即读正文；键盘焦点落在**取消**（最不具破坏性的按钮）；Tab 在框内循环；压入打开前的元素 | 不说（VoiceOver 读正文） | APG alertdialog（`findings-a11y.md` 第二节第 1 小节）；正式服务器之后还要 Touch ID（001 拍板 9）；种类与正文见 `a11y-tree.md` 第三节「确认框」 |
-| `confirmed`（确认框按了确认） | 按种类：发送 → 回输入框（已清空）；删除 → 消息列表，选中原来那条（它变成撤回占位，001 拍板 7）；重发 → 消息列表，选中原来那条；打开链接 / 附件 → 回打开前的元素（应用随即失去前台，切回来走 `window_reactivated`） | 发送、删除、重发的结果到了再说（`announce.md` `send_ok` / `send_failed`）；打开不说 | T04；M4.6 |
+| `send_submitted`（输入框按回车；L2，过发送闸，闸开 `direct_mode` 凭据，**不弹框**，人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节） | 留在输入框（已清空），回复目标清掉 | 交出时读一遍计划「发给谁、发什么」（`announce.md` `send_plan`）；结果到了再说（`send_ok` / `send_failed`） | 002 M4.2「发送前读一遍」；T04 |
+| `delete_submitted` · `resend_submitted`（`cmd-backspace` / `shift-r`；L2，同上不弹框） | 不动：仍选中原来那条（删除后它变成撤回占位，001 拍板 7） | 交出时读一遍计划（删哪条、给所有人 / 重发哪条、会不会去掉回复关系；`send_plan`）；结果到了再说 | 002 M4.6；`actions.md` 第一节第 5 小节（D1：一切 L2 免确认） |
+| `confirm_opened`（确认框：**只有打开链接 / 附件**，L1 外部，契约要求当场确认——`specs/contracts/actions.md` 第一节第 2 小节「L1 外部」行与 `open_link` / `open_file` 行：「打开前把完整网址（域名单独读出）给人看并确认」） | 确认框（`AlertDialog`）打开即读正文；键盘焦点落在**取消**（最不具破坏性的按钮）；Tab 在框内循环；压入打开前的元素 | 不说（VoiceOver 读正文） | APG alertdialog（`findings-a11y.md` 第二节第 1 小节）；种类与正文见 `a11y-tree.md` 第三节「确认框」 |
+| `confirmed`（确认框按了确认） | 回打开前的元素（应用随即失去前台，切回来走 `window_reactivated`） | 不说 | M3.5、M3.7 |
 | `error_dialog_opened`（只在要人处理的错误时弹，如 `account_limited`；一般错误只播报不弹框，`announce.md` `action_error`） | 错误框正文；焦点在唯一的「好」按钮 | 不说（读正文） | `errors.md` 第一节第 5 小节；清单 A10 |
-| `dialog_closed`（Esc，或按了取消；发送确认框取消也是它） | 回打开对话框之前的那个元素，草稿保留；那个元素没了就去逻辑上的下一处 | 不说 | APG dialog（`findings-a11y.md` 第二节第 1 小节） |
+| `dialog_closed`（Esc，或按了取消） | 回打开对话框之前的那个元素，草稿保留；那个元素没了就去逻辑上的下一处 | 不说 | APG dialog（`findings-a11y.md` 第二节第 1 小节） |
 | `send_failed` | 不动 | 说失败原因（`announce.md` 来源 `send_failed`） | 规矩 1 |
 | `message_sent`（`send_succeeded`） | 不动；若人正选中这条待发消息，锚点跟着换 id（`actions.md` 事件 `send_succeeded`：原地改、稳定键不变） | 说「已发送」（`announce.md` 来源 `send_ok`；树节点待加，012 第八节第 1 条） | 调研 003 发5（`docs/research/003_send-receive-prior-art/README.md` 第一节） |
 | `selected_message_deleted`（被撤回） | 不动：原位留占位，仍选中它 | 不说（VoiceOver 下次读到占位） | 001 拍板 7 |
@@ -79,6 +81,7 @@
 | ✅ | 人停在第 30 条，大群一秒来 20 条，选中仍是第 30 条，标题变成「……，20 条新消息，按 M 收听」 | 规矩 1；新消息数写进名称（001 拍板 3 ⑥） |
 | ❌ | 新消息来了，选中跳到最新一条 | 抢焦点（T05 判据） |
 | ❌ | 往上加载了 50 条更早的，选中还是「第 30 个下标」，实际指到了另一条 | 按下标锚定（规矩 2） |
-| ✅ | 关掉确认框（Esc），焦点回到输入框，草稿还在 | 回到触发处 |
+| ✅ | 关掉打开链接的确认框（Esc），焦点回到链接列表里刚才那项 | 回到触发处 |
+| ❌ | 输入框按回车后弹出「确定发送吗」框 | 发送一律直发，不弹框（#113） |
 | ❌ | 关掉确认框后焦点落到窗口（VoiceOver 读「无障碍 Telegram，窗口」） | 焦点丢了，人要重新找 |
 | ❌ | 选中一条屏幕外的项，但没先滚过去 | GPUI 不给没渲染的节点报焦点，退回整窗（`docs/research/001_stack/findings-gpui.md` 第 2 条） |
