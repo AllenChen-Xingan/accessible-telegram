@@ -23,3 +23,5 @@
 | 018 | 2026-11-13 | #4 下载与播放的代码（atg-audio、download / play；codex · 三轮，逐文件审） | 提出 8（P1×2、P2×6）：全部属实；代码全改，剩 1 条 P2 的测试缺口开 issue；第 2、3 轮无 P0/P1，收敛 → `018_pr4-voice-code-codex.md` |
 | 024 | 2026-11-13 | #59 转写底座（atg-audio 的 stt 模块与 Swift 辅助程序；codex · 逐文件审） | 第 1 轮 P1×3 P2×1、第 2 轮 P1×1 P2×2、第 3 轮 P1×1 P2×2、第 4 轮 P1×1 P2×2：全部属实，已改；第 5 轮 P1×1（同一处，人定丙：已改，边界调度竞态此后算 P2）；第 6、7 轮无 P0/P1，满足停止线，剩 P2×1 开 issue → `024_stt-base-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 042 | 2026-11-14 | 无障碍最佳实践与先例调研（findings-a11y、sources ## ga11y；codex · 三轮） | 提出 12（P1×1、P2×11）：全部属实、全部已改，无驳回；第 2、3 轮无 P0/P1，满足停止线；第 3 轮 3 条 P2 直接改、未再复核 → `042_findings-a11y-codex.md` |
+| 043 | 2026-11-14 | GPUI 应用架构与组件先例调研（findings-components、quill-index、exp010；codex · 六轮） | 提出 17（P1×8、P2×9）：属实 15、部分属实 1、驳回 1（settings_ui 挂接，摘录截断所致，第 2 轮 codex 接受）；全部已改；第 5、6 轮无 P0/P1，满足停止线 → `043_gui-components-codex.md` |
