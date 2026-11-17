@@ -300,3 +300,4 @@
   - 「不换」的几处各加一行注释：`ipc.rs`、`serve/tests.rs`、`tests/send_limits.rs`、`atg-audio` 的 `stt/locate/tests.rs`；testkit 头注释的进度清单已更新
   - rustfmt 单文件检查都过；`#[test]` 数每个文件前后相等。下一步：领名额编译 → 请大总管提交检查点 → 自审 → codex 055
 - 自审 1 轮（按 `8a98ab3...HEAD`）：P0/P1/P2 零，P3 已改：①`ipc.rs` 不换的理由写错了（写的是路径会变长，其实是要 0o700 的目录并在测试里断言），已改；`serve/tests.rs` 的理由写准（套接字在 `profiles/main/` 下，离 103 字节上限近）。②testkit 头注释解释 R3a / R3b，「在途线」改成白话。③`tests/config.rs` 那处改用文件里已经导入的 `temp_dir`。④cli `chats` 的 `profile` 和 voice、watch 同形状，也改成 `testkit::profile`，删掉只剩一处调用的 `temp_root` 和没用的 `PathBuf` 导入。③④动了测试代码，要复编
+- ✅ codex 055 两轮零发现，收敛，记录在 `docs/reviews/055_r3a-testkit-2-codex.md`，索引已加。等大总管提交、开 PR
