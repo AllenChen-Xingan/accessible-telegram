@@ -46,3 +46,4 @@
 | 049 | 2026-11-17 | #60 R7 第一刀：拆 `tree/text.rs`，遍历部分挪进 `tree/text/walk.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（记录里的行数是旧数）已改 → `049_r7-tree-text-codex.md` |
 | 050 | 2026-11-17 | #60 R7 第二刀：拆 `speech.rs`，系统消息进 `speech/service.rs`，全文渲染与正文附件读法并进 `speech/content.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1 轮 P2×1（交接页进度写的是中间版本）属实已改；第 2 轮零发现，收敛 → `050_r7-speech-codex.md` |
 | 051 | 2026-11-17 | #60 R7 第三刀：拆 `store/mod.rs`，改状态的私有方法挪进 `store/write.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（交接页计数笔误）已改 → `051_r7-store-codex.md` |
+| 054 | 2026-11-17 | #60 R7 第六刀：拆 cli `watch.rs`，出口与订阅者进 `watch/hub.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `054_r7-watch-codex.md` |
