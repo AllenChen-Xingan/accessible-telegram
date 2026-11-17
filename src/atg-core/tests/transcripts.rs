@@ -308,7 +308,7 @@ fn resent_old_and_new_are_separate() {
     );
 }
 
-/// 重发应答晚于新那条的换 id 才到（`tests/reducer.rs` 的 `resent_vs_send_succeeded_any_order` 支持这个先后）：
+/// 重发应答晚于新那条的换 id 才到（`tests/reducer/send.rs` 的 `resent_vs_send_succeeded_any_order` 支持这个先后）：
 /// 其间提交的转写，重发应答到了之后照样查得到
 #[test]
 fn resent_after_send_succeeded_keeps_it() {
