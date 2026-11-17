@@ -407,4 +407,7 @@
   - 其中一条：删掉 `config` 的 `self` 导入后，`TdConfig` 有两条文档链接 `config::default_*` 会断，已改写成 `crate::config::…`
   - 另 3 条不改：`real.rs:40`「见这两个子模块」是原文带过来的（只挪不改，不动）；`td/real/` 下 `*_impl`、`submit_sealed` 和 `do_*` 两套命名并存，因为 `submit.rs` 不许动，等 #13 合并后另开 issue 统一；010 和交接页的说明已补
 - 自审修正 7bf60cb；大总管合了 origin/main（#162 fake 已在 main 36d2cea）。冲突：基线解成空（大总管）；010 的 fake 行取 main 的、td 行取本分支的，R7 行和第五节末尾写「基线已清空」；交接页两节都留（arch 解）
-- 下一步：编译验证（领名额），再起 codex 060。范围按大总管定用 `origin/main...HEAD`（分叉点 36d2cea，只含 td 这一刀），name `r7td`
+- ✅ c41e790 上全量检查全过（领名额跑，已还）：test 713 过 0 败 5 忽略，file-size 超线 0，基线已空
+- ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
+  - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
