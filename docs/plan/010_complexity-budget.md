@@ -37,7 +37,7 @@
 | `atg-core/src/gate.rs` | 1202 | 449 | ✅ R1a：`gate.rs` 留作模块根（常量、凭据、摘要、人的确认、`Outcome`、防重复记录 `GuardStore`）· `gate/check.rs`（闸本体 `Gate` 与直发留痕）· `gate/display.rs`（确认框里看不见的字符转义）· `gate/tests.rs`；每个 ≤ 450 行 |
 | `atg-core/src/notify.rs` | 1247 | 618 | ✅ R2a（`refactor/r2a-move-tests`）：根剩 578；有效通知设置（`Layer`、`Effective`、`effective`）挪成 `notify/settings.rs`；测试成 `notify/tests.rs`（夹具）+ `notify/tests/{messages,sync,typing}.rs`。只挪不改 |
 | `atg-cli/src/login.rs` | 1077 | 685 | 测试挪出即 392 |
-| `atg-core/src/tree/text.rs` | 671 | 0 | 测试已由 #76 挪到 `tree/text/tests.rs`。还要做的：建树（`build`，240–510）留下；查询（`links`、`links_marked`、`link_hidden`、`contains_spoiler`、`plain_text`，511–）成 `tree/query.rs` |
+| `atg-core/src/tree/text.rs` | 671 | 0 | ✅ R7 第一刀（`refactor/r7-tree-text`）：根剩 506（建树）；遍历（`LinkRef`、`links`、`links_marked`、`link_hidden`、`contains_spoiler`、`plain_text`）挪成 `tree/text/walk.rs`（原计划 `tree/query.rs`，改放 text 底下：`pub use` 原样导出，调用方 `tree::text::links` 等一行不改）。只挪不改，另有 2 处文档链接 `super::mask` 因文件深一层改成 `crate::tree::mask`。测试已由 #76 挪到 `tree/text/tests.rs` |
 | `atg-core/src/speech.rs` | 855 | 0 | 测试已由 #76 挪到 `speech/tests.rs`。还要做的：`speech.rs` 留作模块根（brief / detail / full 入口）· `speech/service.rs`（系统消息，约 490–571）· `speech/content.rs`（正文与附件，约 572–）· 常量表一处 |
 | `atg-cli/src/send.rs` | 971 | 416 | 测试已由 fix 线（#63/#73/#78/#79 那个 PR）挪成 `send/tests.rs`（剩 566），原计划的 R1b 取消；`saved` 解析、输出一行、计划句子各归 R4、R5、R6 |
 | `atg-cli/src/chats.rs` | 853 | 468 | ✅ R2a（`refactor/r2a-move-tests`）：测试挪成 `chats/tests.rs`，根剩 377。只挪不改 |

@@ -9,7 +9,6 @@
     "src/atg-core/src/store/mod.rs": 926,
     "src/atg-core/src/td.rs": 797,
     "src/atg-core/src/tdjson.rs": 836,
-    "src/atg-core/src/tree/text.rs": 671,
     "src/atg-core/tests/reducer.rs": 2102
   }
 }
