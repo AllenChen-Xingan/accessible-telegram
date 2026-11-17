@@ -49,14 +49,14 @@
     - **一连一请求**：发起方连上，发**一行** JSON 请求 `{"v":0,"origin":"cli","command":"<子命令>","args":{"format":"json|text","params":{…}}}`，`params` 是发起方按同一份参数定义**解析好**的子命令参数（用法错误在发起方本地报，与直跑一样；执行方按同一个检查入口再查一遍，因为 `params` 绕过了参数解析库）。**影响输出的全局选项**由发起方填进 `params` 的同名字段带过去：现在只有 `history`、`watch` 的 `tz`（读法时区，`--tz`）：只有读消息的读法报钟点；`chats` 的会话项不读时间、`links` 不出读法，所以不用带。以后加命令照这条判断：输出随哪个全局选项变，就把它带过去。请求里的 `v` 是本协议的版本号（v0 即 `0`），**与输出外壳的 `v` 无关**。执行方先看 `v`，对不上回 `internal{what:"ipc_version_mismatch"}`；请求不是 JSON 或形状不对回 `internal{what:"ipc_bad_request"}`（这两种还不知道要哪种格式，一律 JSON 行）。再按 `command` 派发：不认的命令回 `not_implemented`（给 `send` 等以后的命令留位）；登录、登出这组回 `usage`。只连上就断（发起方探一下执行方在不在）不算请求
     - **三种应答帧**，一帧一行：`{"t":"out","line":"…"}`（发起方原样写标准输出）· `{"t":"err","line":"…"}`（原样写标准错误）· 最后恰好一帧 `{"t":"exit","code":N}`（发起方以它退出）
     - **哪些时间字段由执行方生成**：`at`（每行输出时刻）· `result.data.elapsed_ms`（从执行方收到请求起算）· `chats` 的 `first_chat_ms`（执行方进程启动到这个列表第一次有会话；主列表、归档从启动起就在记）。除此之外与直跑逐字节一致（同一段渲染代码；快照测试把这三个字段抹平后比）
-    - 连上了但没等到 `exit` 帧就断，或两帧之间 150 秒没动静（`send` 出完 `plan` 后要等结果最多 30 秒）：发起方补一行 `error(disconnected)`，退出码 4（`errors.md`）；**发送类（`send`、`resend`、`pending cancel`）**补的是 `error(send_outcome_unknown)`（`why:"disconnected"`，退出码 10）——执行方可能已交出，不能叫人重跑
+    - 连上了但没等到 `exit` 帧就断，或两帧之间 150 秒没动静（`send` 出完 `plan` 后要等结果最多 30 秒）：发起方补一行 `error(disconnected)`，退出码 4（`errors.md`）；**发送类（`send`、`resend`、`react`、`pending cancel`、`delete`）**补的是 `error(send_outcome_unknown)`（`why:"disconnected"`，退出码 10）——执行方可能已交出，不能叫人重跑
     - **流式订阅**（`watch`；大总管授权 2026-10-26）：请求照旧一行（`command:"watch"`，`params` 里 `chat`、`reveal`、`tz`），帧不加种类、协议不升版本，只是连接一直开着：执行方先回 `status`，之后每个事件一帧 `out`。
       - 执行方不让它占住「一个处理完才接下一个」的请求循环：连接挂进订阅者表（**最多 8 个**，超了回 `usage`：容量满了不算参数错，但第一阶段没有更贴切的码，说明里讲清「已到上限」），之后不论是空闲时喂事件、还是处理别的请求（`chats`、`history`）途中喂，每喂一条都按各订阅者**自己的** `notify` 状态渲染、写给它。写失败、写超时（60 秒），或看到对端已关，就摘掉它（被摘的发起方看到断开，报 `error(disconnected)`、退出码 4）。写是阻塞的：一个读得慢的订阅者最多拖住执行方 60 秒，别的订阅者和请求跟着等（v0 接受）
       - 中途接入：执行方先把流里已到的事件喂完，再看**它自己喂到的**事件里补发是否已结束（见过 `sync_done`、之后连接线没再离开 `ready`）——不看后端此刻的连接线（收线程先改连接线，补发来的事件可能还排在流里没喂）。已结束的，`status` 之后立刻补一行 `sync_done`，之后的都算新消息；还没结束的，等它自己那条（之前补发完过、这次是重连补发的，补发结束时照样汇总它接入后看到的，`cli.md` 第一节第 5 小节「重连汇总」）。`seq` 沿用执行方的：补的这行 `sync_done` 的序号等于执行方最后喂过的那条事件的序号（这个订阅者没见过那条），之后的事件从它加一起连续；起点不是 1
       - `--chat`：执行方替订阅者 `chat_open`，摘掉时 `chat_close`；同一会话几个订阅者按引用计数，只开一次、最后一个走了才关；这份计数与同一进程里别的使用者（如转写）共用（`atg-cli/src/lease.rs`），别人还占着时订阅者全走了也不关。**`chat_open` 只为订阅，不调 `viewMessages`、不标已读**
       - 结束：发起方 Ctrl+C → 发起方关掉连接、在本地写结尾行 `result`（`reason:"interrupted"`，带本地数的 `events`、`alerts`），退出码 0（同直跑）；执行方停（Ctrl+C / SIGTERM）→ 给每个订阅者写 `result`（`interrupted`）+ `exit 0`；执行方故障 → `error(disconnected)` + `exit 4`
       - 发起方转 `watch` 时**不用** 150 秒帧超时（事件可能很久才来一个），只靠断开认出执行方退出
-    - 现在能转的：`chats`、`history`、`links`、`watch`（流式）、`auth state`（只读、不带秘密）；`pending`（列表，只读）；`reactions`（只读）；`send`、`resend`、`pending cancel`、`react`（闸在执行方，凭据由执行方开；`--text-file` 在发起方读成文字再带过去，执行方不读发起方给的路径）。`login`、`logout` 与 `auth` 其余分步不转
+    - 现在能转的：`chats`、`history`、`links`、`watch`（流式）、`auth state`（只读、不带秘密）；`pending`（列表，只读）；`reactions`（只读）；`send`、`resend`、`pending cancel`、`react`、`delete`（闸在执行方，凭据由执行方开；`--text-file` 在发起方读成文字再带过去，执行方不读发起方给的路径）。`login`、`logout` 与 `auth` 其余分步不转
   - 第一阶段 GUI 只当执行方：GUI 启动时档案已被 CLI 占着，报 `profile_busy`（说清是哪个 CLI 进程），请人先关掉它
 
 ### 3. 本地库加密（人已定：加密，密钥放钥匙串）
@@ -208,3 +208,4 @@ TDLib 只加密数据库，附件以明文落盘（第一节第 3 小节）。
 - 2026-11-14 #9 表情回应（手下 msg2）：能转的命令加 `reactions`、`react`；`direct-send.log` 也记表情回应
 - 2026-11-16 #9 合 main 后（手下 msg2）：表情回应的留痕行另带 `reaction`（哪条消息、按最坏情况可能挤掉几个，拿不准为 `null`）；原拟的 `confirm` 字段随 Touch ID 删除不加
 - 2026-11-17 #83（手下 fix，属技术细节，大总管定 2026-11-16）：直发留痕写明批量重发按条记、带旧 id
+- 2026-11-17 #8 A（msg1）：能转的加 `delete`，归发送类（转发断开补 `send_outcome_unknown`）

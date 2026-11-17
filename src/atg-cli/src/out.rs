@@ -80,7 +80,10 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::Network { .. } | E::Disconnected => 4,
         E::RateLimited { .. } | E::AccountLimited { .. } => 5,
         E::NotFound { .. } => 6,
-        E::Forbidden { .. } | E::InvalidInput { .. } | E::InvalidSend { .. } => 7,
+        E::Forbidden { .. }
+        | E::DeleteRefused { .. }
+        | E::InvalidInput { .. }
+        | E::InvalidSend { .. } => 7,
         E::SendRefused { .. } | E::Cancelled => 8,
         E::ProfileBusy { .. } | E::DbKeyInvalid { .. } => 9,
         E::SendOutcomeUnknown { .. } => 10,
@@ -129,6 +132,7 @@ pub fn core_error_data(e: &CoreError) -> Value {
             json!({ "chat_id": chat_id, "temp_message_id": temp_message_id, "why": to_value(why) })
         }
         CoreError::InvalidSend { why } => json!({ "why": to_value(why) }),
+        CoreError::DeleteRefused { why } => json!({ "why": to_value(why) }),
         CoreError::Unknown { td } => json!({ "td_code": td.code }),
         _ => json!({}),
     };

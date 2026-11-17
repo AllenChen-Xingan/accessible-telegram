@@ -187,3 +187,6 @@ fn token_for_another_plan_is_refused() {
     );
     assert!(deletes(&b).is_empty());
 }
+
+// ───────────── 给所有人删除（#8，M2.7）：测试在 `tests/revoke.rs` ─────────────
+mod revoke;
