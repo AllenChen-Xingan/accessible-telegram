@@ -268,3 +268,72 @@ fn error_after_handing_over_is_unknown_and_still_blocks_rerun() {
     let e = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap_err();
     assert_eq!(refused_reason(e), SendRefusedReason::DuplicateRecent);
 }
+
+/// 交出前就到点（卡在交出前的预览复核里，#80）：没交出 → 报 `network`、不算直发、不登记防重复，重跑照发
+#[test]
+fn timing_out_before_handing_over_is_network_and_rerun_is_not_blocked() {
+    let mut r = rig("pre-hang", false);
+    let plan = block_on(prepare_text(
+        &r.b,
+        FRIEND,
+        &draft("好的", None),
+        SendOrigin::Cli,
+    ))
+    .unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    // 下一次交出口请求是交出前的预览复核：让它一直不应答
+    r.b.fail_next(
+        "submit",
+        CoreError::Internal {
+            what: FakeBackend::HANG,
+        },
+    );
+    let e = send_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .unwrap_err();
+    assert_eq!(e.code(), "network");
+    assert_eq!(r.b.gate().direct_sent(), 0);
+    assert!(r.b.submitted().is_empty());
+    assert!(send_once(&mut r, FRIEND, &draft("好的", None), false).is_ok());
+}
+
+/// 交出之后才到点（交出请求本身没回音，#80 的另一半）：照旧结果未知、拦重跑
+#[test]
+fn timing_out_after_handing_over_stays_unknown() {
+    let mut r = rig("post-hang", false);
+    r.b.script_sends(vec![FakeSend::Reject(CoreError::Internal {
+        what: FakeBackend::HANG,
+    })]);
+    let plan = block_on(prepare_text(
+        &r.b,
+        FRIEND,
+        &draft("好的", None),
+        SendOrigin::Cli,
+    ))
+    .unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    let e = send_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .unwrap_err();
+    assert!(matches!(
+        e,
+        CoreError::SendOutcomeUnknown {
+            why: UnknownWhy::Timeout,
+            ..
+        }
+    ));
+    let e = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap_err();
+    assert_eq!(refused_reason(e), SendRefusedReason::DuplicateRecent);
+}

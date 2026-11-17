@@ -100,6 +100,8 @@ pub struct ConfirmToken {
     nonce: u64,
     issued: Instant,
     mode: ConfirmMode,
+    /// 开凭据时带了 `--again`：交出前的查重放行这一次（#77）
+    again: bool,
 }
 
 impl ConfirmMode {
@@ -154,6 +156,10 @@ pub trait Gated: Sealed {
     /// 留痕里另记的 `reaction`：动在哪条消息上、按最坏情况可能挤掉我原先点的几个回应（`None` = 拿不准）。只有表情回应有；只记 id 与个数
     fn log_target(&self) -> Option<(i64, Option<usize>)> {
         None
+    }
+    /// 一次请求动好几条时（批量重发），各条的旧 id：留痕按条记，每条一行、带 `old_id`（#83）。单条的计划是空表
+    fn log_items(&self) -> Vec<i64> {
+        Vec::new()
     }
 }
 
@@ -210,6 +216,14 @@ pub enum Outcome {
 
 // ───────────────────────── 防重复记录 ─────────────────────────
 
+/// 什么算命中：同会话同指纹、上次不是「明确失败」，取最近一条。开凭据时的早拒与交出前的认领共用这一份判定（#77）
+fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&'a GuardEntry> {
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
+        .max_by_key(|e| e.at)
+}
+
 /// 一条防重复记录：时间、会话、指纹、状态。**不记内容、不记名字**
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardEntry {
@@ -260,12 +274,31 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
-        Ok(Self::live(now, self.load()?)
-            .into_iter()
-            .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
-            .max_by_key(|e| e.at))
+        Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
+    }
+
+    /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。
+    /// 命中返回 `Ok(Err(那条))`，什么都不写。调用方攥着闸的锁调（进程内不交错；跨进程有档案锁）
+    pub fn claim(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fp: &str,
+        again: bool,
+    ) -> std::io::Result<Result<(), GuardEntry>> {
+        let mut entries = Self::live(now, self.load()?);
+        if !again && let Some(hit) = latest_hit(&entries, chat, fp) {
+            return Ok(Err(hit.clone()));
+        }
+        entries.push(GuardEntry {
+            at: now,
+            chat_id: chat,
+            fp: fp.to_owned(),
+            state: Outcome::Submitted,
+        });
+        self.save(&entries).map(Ok)
     }
 
     pub fn record(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
