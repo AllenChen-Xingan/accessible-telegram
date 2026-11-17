@@ -48,12 +48,12 @@ mod resending;
 mod text;
 
 pub use outcome::{Waited, finish, wait};
+pub use react::react_plan_json;
 pub use resending::{
     Fed, ResendItem, ResendOutcome, ResendPlan, ResendReply, prepare_resend, resend,
     resend_and_wait, resend_plan_json,
 };
 pub use text::{Draft, TextPlan, check_kept, plan_json, prepare_text, send_and_wait, send_text};
-pub use react::react_plan_json;
 // `td.rs` 的测试（tdlib-api 特性）与本模块测试用
 #[cfg(test)]
 pub(crate) use text::text_request;

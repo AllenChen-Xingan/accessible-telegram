@@ -14,7 +14,9 @@
   - CLI：session.rs 去掉 banner/l0_run，`reactions` 也走 l2_run；react 文案改「直接点」
   - 契约：actions / cli / errors / config-privacy / content-tree 冲突合并 + 去 unconfirmed / B18-2 说法；行数基线合并（check-file-size 0 报错）
   - ⚠️ 要大总管同意：`send/text.rs` 两处、`send/resending.rs` 一处 match 加 `| Answer::Done`（不加编译不过）
-  - 未编译，等名额
+  - 合并提交 b2d0e85（大总管）；三行 `| Answer::Done` 经准加上
+  - 验证（2026-11-16）：check 过；test 483 过 0 败；clippy -D warnings 0（tdlib-api 与 --features atg-cli/tdlib）
+  - 下一步：atg-review 第 5 轮 → codex 032
 
 交代：MAIN `_tmp/20261113-b18/msg2.md`。顺序 #9 → #10 → #12 → #13 → #11 → #7，一个 issue 一个 PR。
 

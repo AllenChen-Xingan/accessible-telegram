@@ -48,7 +48,7 @@ mod real {
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
     use crate::tree::{FileRef, ReactionKind};
-    use serde_json::{Value, json};
+    use serde_json::json;
     use std::future::Future;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};

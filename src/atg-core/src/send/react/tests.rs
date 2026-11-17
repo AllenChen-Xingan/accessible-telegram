@@ -499,9 +499,14 @@ fn basic_group_asks_the_server_who_reacted() {
     // 自审第 4 轮 P1：普通群的回应变化 TDLib 也不一定推（只有私聊、加密聊天推），本机缓存不能信，要问服务器
     let r = rig("bg", false);
     const BG: i64 = -777;
-    r.b.set_chat(BG, vec![json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": BG, "title": "读书会",
+    r.b.set_chat(
+        BG,
+        vec![
+            json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": BG, "title": "读书会",
         "type": {"@type": "chatTypeBasicGroup", "basic_group_id": 777},
-        "positions": [], "notification_settings": {}}})]);
+        "positions": [], "notification_settings": {}}}),
+        ],
+    );
     let mine = json!({"@type": "addedReaction", "type": {"@type": "reactionTypeEmoji", "emoji": "❤️"},
         "sender_id": {"@type": "messageSenderUser", "user_id": ME}, "is_outgoing": true, "date": 1_792_755_100});
     r.b.set_history(BG, vec![msg(BG, 5, json!({"_added": [mine]}))]);

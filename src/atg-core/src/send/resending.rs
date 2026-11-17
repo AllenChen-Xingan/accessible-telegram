@@ -264,7 +264,7 @@ pub async fn resend<B: Backend>(
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
             .collect()),
-        Ok(Answer::Message(_)) => Err(CoreError::Internal {
+        Ok(Answer::Message(_) | Answer::Done) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
