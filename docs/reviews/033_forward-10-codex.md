@@ -1,8 +1,9 @@
 # 评审 033 · #10 转发（`forward`，直发；含闸支持多指纹）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`origin/main...HEAD`（三点；main 已合进分支，含 #140 #143）。重点写在 `_tmp/reviews-033/focus.md`（不入库）。
-> **最新一轮：第 2 轮（2026-11-17）· 总评「修改」· 无 P0/P1，待第 3 轮确认**。
+> **最新一轮：第 3 轮（2026-11-17）· 总评「通过」· 第 2、3 轮连续无 P0/P1，收敛**。
 > 之前：多视角自审 6 轮（atg-review）。第 1、2 轮各有 P1（交出后个别 null 的说法、回序列化失败压成 None；防重复按整批指纹、换子集能绕过 → 人定方案 A，闸支持多指纹，合 #143 后做）；第 3、4 轮无 P0/P1；改闸后重数，第 5、6 轮无 P0/P1，收敛。机器验收：`cargo test -p atg-core -p atg-cli` 618 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib --all-targets`）0。
+> 累计（第 1–3 轮）：提出 6 条（P1×1、P2×5），全部属实；已改 5 条，1 条并入 #128；另报存量 1 条（`resend` 的 `MSG_ID` 吞后置选项 → #153）。
 > 隐私扫描：密钥类命中 8 条，全是参数类型标注 `token: ConfirmToken`（人定 2026-11-16 长期放行这一类），大总管逐条核实后准加 `--force-secrets`。
 > 闸的改动（`Gated::intents`、`GuardStore::claim_all` / `settle_all` / `hit_any`、`worst_hit`、`after_item` 按条改指纹）与「只有闸能发」清单加 `forward_messages` 属一级评审，人本人看。
 
@@ -57,3 +58,19 @@
 ### 是否再审
 
 要再审：第 3 轮确认（连续第 2 轮）。
+
+## 第 3 轮（2026-11-17）· 总评「通过」
+
+原文：`_tmp/reviews-033/forward-10-codex-3.md`（不入库）。隐私扫描密钥类 14 条，全是 `token: ConfirmToken` 及记录里引用它的句子，大总管逐条核过准加 `--force-secrets`。
+上一轮处理的验证：codex 抽查确认 #1（代跑断开时 `gone_extra` 逐条列 `unknown`、带来源会话）、#2（`worst_hit` 看全部匹配记录，有测试）已修。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 2、3 轮连续无 P0/P1）· 留作 issue 的 P2：无
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：6 条
+- 无法核实：1 条（只读，未编译）
+
+### 是否再审
+
+不再审：连续两轮无 P0/P1，收敛。机器验收（第 2 轮改动后）：`cargo test -p atg-core -p atg-cli` 622 过 0 败；clippy -D warnings 两种 0；两处 bug 修复（`MSG_ID` 吞后置选项、`worst_hit` 漏看较早的未知）都核过先红后绿。

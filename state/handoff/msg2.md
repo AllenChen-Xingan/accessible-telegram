@@ -135,3 +135,4 @@
 - 2026-11-17 大总管：论坛群不带话题落进 General（不拒、计划行写明）进待定清单，默认照现在走；人要统一成拒再改。#10 代码与契约已写完，等 #8 合进 main、合给我后补 MessageCaps.can_forward 三处再编译
 - 2026-11-17 fix 的 codex 048 改了 --again 接法：fix 的 PR 进 main、合给我后，`send/forward.rs` 的 `forward()` 改用 `verify_again` / `before_submit_again`（原 verify / before_submit 变成不带 again 的包装）。回归靠 core 的 `same_batch_twice_is_held_unless_again` 与 CLI 的 `same_batch_again_is_held_then_released`：没改对它们会红
 - 2026-11-17 自审第 2 轮 P1（防重复按整批指纹，换子集能把结果未知的那条再转一遍）：大总管选 A——闸支持一张计划多个指纹（Gated::intents 默认 vec![intent]，check.rs 查重复与收尾逐个），forward 每条一个指纹。**等 #143 进 main、合给我后再动闸**；A 落地后整个 #10 PR 属一级评审，PR 描述单列「闸的改动」「只有闸能发清单（加 forward_messages）」两节
+- 2026-11-17 #10 收敛：自审 6 轮（改闸后第 5、6 轮无 P0/P1）；codex 033 三轮（第 2、3 轮无 P0/P1），记录 `docs/reviews/033_forward-10-codex.md`；test 622 过、clippy 两种 0。下一步：大总管开 PR（闸改动 + 「只有闸能发」清单属一级评审，PR 描述单列两节），之后接 #12 发文件 / 图片（codex 034）
