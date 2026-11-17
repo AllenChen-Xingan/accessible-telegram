@@ -20,7 +20,7 @@ use atg_core::backend::Backend;
 use atg_core::config::ServerKind;
 use atg_core::error::CoreError;
 use atg_core::secret::Secret;
-use atg_core::status::AuthStep;
+use atg_core::status::{AuthStep, CoreState};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -90,6 +90,11 @@ fn wait_line<B: Backend>(
                 return Err(Fail::Interrupted);
             }
             return Ok(s);
+        }
+        // 本项目内核（`CoreState`，TDLib 收线程的监督）已故障：`wait` 收授权线时一进去就空手回来（不睡），
+        // 循环会一直空转到期限才报；这里看到故障就立刻报断开（#100）
+        if b.status().lines.core == CoreState::Faulted {
+            return Err(Fail::Core(CoreError::Disconnected));
         }
     }
 }

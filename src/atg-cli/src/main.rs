@@ -30,6 +30,9 @@ mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod history;
+// 会话租约只有执行方与直跑的 `watch` 用；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod lease;
 mod login;
 mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
@@ -46,6 +49,7 @@ mod serve;
 mod session;
 mod signals;
 mod speech;
+mod transcribe;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
@@ -120,6 +124,7 @@ fn main() -> ExitCode {
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),
         Command::Play(a) => play::run(&cli.global, format, &a, started),
+        Command::Transcribe(a) => transcribe::run(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
         Command::Watch(a) => run_watch(&cli.global, format, &a, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略

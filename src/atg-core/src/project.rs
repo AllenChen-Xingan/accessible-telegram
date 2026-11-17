@@ -80,6 +80,7 @@ pub fn chat_item(store: &Store, chat_id: i64, list: &ChatList) -> Option<ChatIte
             | Doc::Alert(_)
             | Doc::Status(_)
             | Doc::Playback(_)
+            | Doc::Transcription(_)
             | Doc::Unknown(_) => return None,
         }))
     });

@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写 `media.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs` · `transcribe` 的结果 `speech/transcription.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -66,6 +66,7 @@
 | `alert` | 新消息提醒：总数 + 各会话条数 | 本项目 `notify` 策略 |
 | `status` | 用户状态（T10）：内核、授权、连接三条线合成的一个值 | 合成规则归 `specs/contracts/errors.md` 第一节第 3 小节；连接一线来自 `updateConnectionState` `tl:11818` |
 | `playback` | 语音播放状态（`play` 每次状态变化一行，M2.6）：`state`（`playing` / `paused`）· `position_s` · `duration_s` · `speed`；句子由 `speech` 出（AI 草稿，待人实听） | 本项目播放器（`atg-audio`） |
+| `transcription` | `transcribe` 这一次的结果（#59）：`id`（这条语音**现在的** id）· `sensitive` · `outcome`（`{type:"text", lang, source, segments}` 有字 / `{type:"no_speech"}` 没听出内容 / `{type:"hidden"}` 18+ 遮挡没展开，文字不输出）。是「本次结果」，不是转写表里的那份：重转为空时本次是 `no_speech`，消息上的 `transcript` 不动。读法：有字读全文（片段间补「，」），空读「没有听出内容」，遮着读「隐藏内容」（AI 草稿，待人实听） | 本机转写（`atg-audio` 的 `stt`） |
 | `unknown` | 不认识的顶层对象 | 任何别的 |
 
 **以后加**（api 清单「五」）：**未读分隔**（api 升为 M：进会话的落点要用，下一个加）、日期分隔、登录步骤、发送结果、服务通知。分隔不是 TDLib 对象，由投影按 `chat.last_read_inbox_message_id` 和日期插进消息序列，形状预定为 `divider{kind: unread | date, …}`，自己没有消息身份，不进焦点顺序还是进，交 GUI 阶段定。登录步骤与发送结果和 infra 的 CLI 契约（`prompt` / `result`）交界，等那份定了再加。
@@ -155,7 +156,7 @@ Message
 
 ### 7. 正式类型名（给别的规约引用）
 
-Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Unknown` ↔ `unknown`；零件：`MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind`。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
+Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Unknown` ↔ `unknown`；零件：`MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
 
 ## 四、建树规则：「纯文本 + 实体」→ 行内树
 
@@ -240,7 +241,7 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - id：会话、消息、用户 id 都是 int53，用数字；超过 2^53 的 int64（`custom_emoji_id`、`album_id`）写字符串
 - 时间：结构体里存 Unix 秒，JSON 里写 RFC3339 UTC（如 `2026-10-23T11:30:00Z`）；读法按调用方给的时区偏移转本地钟点
 - 空的可选字段不输出（`reply_to`、`forward`、`attachment`、`edited`、`delivery`、空的 `reactions`）
-- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条；18+ 遮挡的语音另把消息的 `transcript` 整个去掉（转写就是那段语音的内容）。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
+- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条；18+ 遮挡的语音另把消息的 `transcript` 整个去掉（转写就是那段语音的内容），`transcription` 的 `outcome` 换成 `{"type":"hidden"}`。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
 - **版本**：外壳和树共用一个 `v`（代码里 `tree::SCHEMA_V`）。
   - **不加一**：新增可选字段、新增节点种类、新增 `td_type` 值；**某种内容从 `other` / `unknown` 升级成专门节点**（如骰子从 `attachment.type = "other", td_type = "messageDice"` 变成 `"dice"`）也不加——使用方本来就得把不认识的 `type` 当未知处理
   - **给取值固定的字段加新取值**（如 `status` 加 `stopping`）也**不加一**（拍板 006 乙10）——使用方遇到不认识的值按「未知」处理、读 `speech.brief` 兜底，与「新增节点种类」同理
@@ -292,3 +293,5 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-11-13 #4 M2.5（手下 media，arch 定 2026-11-13）：附件 `voice` 加 `file: FileRef`（JSON 不输出，`v` 不加一）；`FileRef`、`Expirable` 放 `tree/media.rs`
 - 2026-11-13 #4 M2.6（手下 media，arch 定 2026-11-13：播放状态也先成树）：顶层加 `playback`；`v` 不加一（新增节点种类）
 - 2026-11-13 #59 3b（手下 media）：消息加可选字段 `transcript`（`Transcript`，类型放 `tree/media.rs`）；`v` 不加一。挂在消息上而不是 `voice` 附件里：附件属于存下来的 `content`，转写不是（第二节）
+- 2026-11-14 #59 3c（手下 media；18+ 口径大总管定 2026-11-14）：顶层加 `transcription`（类型放 `tree/media.rs`，读法 `speech/transcription.rs`）；18+ 遮挡没展开时 `outcome` 换成 `hidden`（第八节同一条）；`v` 不加一（新增节点种类）
+- 2026-11-16 #59 3c 自审：第三节第 7 小节正式类型名补 `Playback`、`Transcription` 与零件 `Outcome`、`Transcript`

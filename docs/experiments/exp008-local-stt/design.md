@@ -48,7 +48,7 @@ core 与 audio 互不依赖
      - 为什么改：转写的对象就是那段音频，判它还作不作数就该看「现在的有效内容是不是同一个音频文件」。按序号判有三处误杀——换 id（`rename` 清掉字段序号、记新版本，而本条要求换 id 后接受）、同时标已听（改的是 `content` 里的 `listened`）、历史重拉（整条快照替换、内容没变）
      - **删和迁收成一处**：表按消息现在的 id 存；每次 `apply` 末尾整理一遍，消息不是活的了、或有效内容不再是那个语音文件的就删（撤回、删除、删旧、内容替换、临时内容出现或消失、受限一处判完），换过 id 的把键挪到新 id。删了就是删了：之后有效内容又变回那段语音（临时内容消失），要再转一次。**不按稳定键存**（3b 自审改）：重发让失败那条与新那条一段时间里同时是活消息、共用一个稳定键；重发应答还可能晚于新那条的换 id 才到，事后改掉它的稳定键。代码 `store/transcripts.rs`
    - **先打开会话才收得到更新**（第 8 轮 #1）：超级群、频道只有打开的会话 TDLib 才推实时更新（`actions.md:84`）。所以 `transcribe` 在取这条消息**之前**调 `chat_open`（L0，绝不标已读），提交之后关；用一个守卫对象保证**所有退出路径**（成功、作废、错误、取消）都释放。
-     - **会话开着是共享的**（第 9 轮 #1）：同一进程里 GUI 正在看、`watch` 订阅者、几项转写可能同时要同一个会话开着。统一按 `config-privacy.md` 第一节第 2 小节给订阅者定的**引用计数**（「租约」）：第一个要的人真调 `chat_open`，最后一个放手才真调 `chat_close`；转写拿的是一份租约，放手只减一。**这套计数只写一处**：现在执行方给 `watch` 订阅者的计数在 `serve.rs`（约第 370 行），转写那块把它挪成 `atg-cli` 库里的一个小模块共用（挪之前报 arch，守则第 4 条），GUI 以后也用它，不另写
+     - **会话开着是共享的**（第 9 轮 #1）：同一进程里 GUI 正在看、`watch` 订阅者、几项转写可能同时要同一个会话开着。统一按 `config-privacy.md` 第一节第 2 小节给订阅者定的**引用计数**（「租约」）：第一个要的人真调 `chat_open`，最后一个放手才真调 `chat_close`；转写拿的是一份租约，放手只减一。**这套计数只写一处**：在 `atg-cli/src/lease.rs`（arch 2026-11-14 批：计数内部带锁、守卫拿共享引用，不独占；先单开小 PR 迁过来）：执行方的 `watch` 订阅者、直跑的 `watch --chat`、转写都从它要，GUI 以后也用它，不另写
      - CLI 一次性的 `transcribe` 是这个进程里唯一的使用者，租约退化成「开一次、关一次」
      - 测试：假后端「没打开就不推更新」，断言没开时校验抓不到、开了能抓到；「转写中 GUI 切走会话（放掉自己那份）仍收得到」「两项转写先结束一项不关」「转写结束但 GUI 仍开着不关」；每条退出路径都释放租约
    - **更新的消费顺序**（第 3 轮 #2）：转写期间更新照常排进事件流（收线程不停），但没人喂进 store。所以**提交结果之前，先把事件流里已收到的更新全部按序喂进 store（`feed.drain`），再提交结果事件**——凭据检查看到的就是截至提交那一刻收到的全部更新。后端在提交之后才关（CLI：组合动作在 `with_backend` 的闭包里做完提交）；GUI 常驻同理，提交与喂更新走同一个消费循环。提交之后才到的撤回 / 替换，由 reducer 按「删和迁」那条清掉转写，结果一样
@@ -151,7 +151,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 ### 7. 辅助程序的构建、定位与隐私（arch 定 + 本设计补）
 
 - 源码 `src/atg-audio/stt-helper/main.swift` + 同目录 `build.sh`，编到 `_build/<时间戳>/`（照 `src/tdlib-build` 先例），**不用 build.rs**、不建 `src/atg-stt/`（守则第 10 条）
-- 运行时找：环境变量 `ATG_STT_HELPER` > 可执行文件旁边 > `_build` 最新一份；辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
+- 运行时找（arch 定 2026-11-14，代码 `atg-audio/src/stt/locate.rs`）：环境变量 `ATG_STT_HELPER`（设了就只认它，不是绝对路径或指错 → `stt_unavailable{helper_env_invalid}`，不往下找；裸名执行时会走 PATH，查过的和执行的就不是同一个文件，2026-11-16 自审）> 可执行文件旁边 > 开发时从可执行文件往上找仓库根（要同时有 `src/atg-audio/stt-helper/` 才算，不编译期写死路径）的 `_build` 最新一份。找到的要是普通文件、属主可执行、属于当前用户、组和其他人不可写，否则 `stt_unavailable{helper_unsafe | helper_not_runnable}`、不执行。辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
 - 授权：exp008 在终端和 `.app`（经 LaunchServices 拉起）两种方式下都没弹窗、不需要 Info.plist 用途说明；Apple Development 签名版未测，写代码时顺带验
 - **隐私**：辅助程序的标准输出只有协议行（版本、结果）；**标准错误与错误信息只带码、长度、语种、耗时，绝不带转写文字**；Rust 端不把辅助程序的标准错误原样转出。测试：假辅助程序在标准错误写一句暗号，断言 CLI 的标准错误、错误 JSON 里都没有它
 
@@ -164,8 +164,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 
 **已改**（PR2，2026-11-13）：`cli.md` `play` 一行（`playback` 节点、非终结 `control_rejected`、EOF 与跳到末尾、`--mark-listened` 顺序与阅后即焚 v0 拒绝、`--redact`）；`download` 一行补 `--redact`；`content-tree.md` 顶层加 `playback`
 
-**待改**：
-- PR3：`actions.md:125` `speech_to_text` 改成本机（#59 取代 F4，L0；「不外发」以 Apple 端侧说明为据，**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en]`（一行 `kind:"transcription"` + `result`，`--redact` 报 `not_implemented`）；`errors.md` 码表与 `cli.md` 退出码表加 `stt_unavailable`；`content-tree.md` 加 `Doc::Transcription`（`Transcript` 与消息的 `transcript` 已随 3b 改）
+**已改**（PR3c，2026-11-14）：`actions.md` `speech_to_text` 改成本机（#59 取代 F4，L0；**断网未实测**，待人验证）；`cli.md` 加 `transcribe CHAT_ID MSG_ID [--lang zh|en] [--reveal]` 一行与 `transcription` 行；`errors.md` 码表加 `stt_unavailable`、`cli.md` 退出码表加 11（arch 定 2026-11-14：「本机缺能力 / 环境不满足」一档，同类的码以后也进来）；`content-tree.md` 加 `Doc::Transcription`。18+ 遮挡的语音：`--reveal` 才输出文字，不加时照转、照写表、`outcome` 为 `hidden`（大总管定 2026-11-14）。辅助程序怎么找、找到后怎么验，见第 7 条（arch 定 2026-11-14）
 
 `--redact` 的口径（第 5 轮 #2、第 6 轮 #2、第 8 轮 #3）：`transcribe` 带转写原文；`download` 带本机路径（含用户名，`cli.md` 打码规则不放行文件名与路径）；`play` 每行带 `speech` 读法与说明（`cli.md` 要求打码时也替换）——打码还没做，三条都报 `not_implemented`。测试：三条命令加 `--redact` 两种输出格式都只有一行 `not_implemented`
 

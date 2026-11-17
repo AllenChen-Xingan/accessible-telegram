@@ -38,13 +38,29 @@ impl Secret {
 
 impl Drop for Secret {
     fn drop(&mut self) {
-        for b in self.0.iter_mut() {
-            // volatile：别让编译器把「写完就丢」的清零优化掉
-            // SAFETY: b 是这块 Vec 里有效、对齐的 u8
-            unsafe { std::ptr::write_volatile(b, 0) };
-        }
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        wipe_all(&mut self.0);
     }
+}
+
+/// 清零这几个字节（volatile，编译器不会把「写完就丢」的清零优化掉）。清零的唯一写法：别处都调它
+pub fn wipe(bytes: &mut [u8]) {
+    for b in bytes.iter_mut() {
+        // SAFETY: b 是这块切片里有效、对齐的 u8
+        unsafe { std::ptr::write_volatile(b, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）。
+/// 容量区（len..cap）可能从没写过，不能把长度拉长后当 `&mut [u8]` 借出来（`set_len` 要求那段已初始化，
+/// codex 045 第 1 轮 #1）；按 `MaybeUninit<u8>` 一格格写 0，长度不动
+fn wipe_all(v: &mut Vec<u8>) {
+    wipe(v.as_mut_slice());
+    for b in v.spare_capacity_mut() {
+        // SAFETY: b 是这块分配里有效、对齐的一格；写入 MaybeUninit 不要求它原先已初始化
+        unsafe { std::ptr::write_volatile(b, std::mem::MaybeUninit::new(0)) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 
 impl fmt::Debug for Secret {
@@ -71,4 +87,22 @@ pub fn base64(bytes: &[u8]) -> Secret {
         out.push(if chunk.len() > 2 { idx(0) } else { b'=' });
     }
     Secret(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wipe_all;
+
+    /// 截短后留在容量区的字节也清掉（#40）
+    #[test]
+    fn wipe_all_clears_the_spare_capacity_too() {
+        let mut v = Vec::with_capacity(16);
+        v.extend_from_slice(b"secret");
+        v.truncate(2);
+        wipe_all(&mut v);
+        assert_eq!(v, [0, 0]);
+        // SAFETY: 读的是本 Vec 自己分配的容量区，刚被 wipe_all 写过 0，已初始化
+        let spare = unsafe { std::slice::from_raw_parts(v.as_ptr(), v.capacity()) };
+        assert!(spare.iter().all(|&b| b == 0));
+    }
 }
