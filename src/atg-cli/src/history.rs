@@ -19,6 +19,9 @@
 //! 每条消息按 Store 投影成内容树（名字现查），读法 `speech.brief`；`--detail` 另带 `speech.detail`（日期、回复谁、
 //! 转发自、已编辑、表情回应、话题名、送达状态；句子待人实听），`--full` 另带 `speech.full`（全文）。隐藏内容（剧透、18+）
 //! 三层都只读「隐藏内容」，`--reveal`（= 人按了展开键）才读原文（R1）。
+//!
+//! 文件分工：本文件放类型、参数、起后端和取数；读法与渲染在 `render.rs`，`links` 命令在 `links.rs`。子模块只写
+//! `use super::*`，所以它们要的导入也写在本文件头上（测试同样经 `use super::*` 用到其中几个）。
 
 use crate::args::{Format, HistoryArgs, LinksArgs};
 use crate::chats::{self, Feed};
@@ -39,6 +42,14 @@ use atg_core::tree::text::links_marked;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
+
+mod links;
+mod render;
+pub use links::{LinkList, LinksQuery, collect_links, links_query, render_links};
+pub use render::{render, speech_ctx};
+// 只有测试用（`tests.rs` 经 `use super::*` 拿）；正式路径在 render.rs 里
+#[cfg(test)]
+use render::UNREAD_BELOW;
 
 /// 连着几次没拿到新消息就停（防 TDLib 一直回同一批时死循环）
 pub const MAX_IDLE: u32 = 3;
@@ -469,237 +480,6 @@ fn newer<B: Backend>(
     }
     let more = got.len() > want || stalled;
     Ok((got.into_iter().take(want).collect(), more, stalled))
-}
-
-/// 读法上下文：CLI 没有按键；`--tz` 不给就跟系统时区
-pub fn speech_ctx(tz: Option<&str>, reveal: bool) -> Result<SpeechCtx, Fail> {
-    let (utc_offset, offset_at) = match tz {
-        None => (
-            crate::speech::local_offset_at(crate::speech::now()),
-            Some(crate::speech::local_offset_at as fn(i64) -> i32),
-        ),
-        Some(s) => match crate::speech::parse_tz(s) {
-            Some(o) => (o, None),
-            None => {
-                return Err(Fail::Usage(
-                    "--tz 不对：写成 +08:00、-05:30、+0800、+8、Z 或 UTC",
-                ));
-            }
-        },
-    };
-    Ok(SpeechCtx {
-        utc_offset,
-        offset_at,
-        listen_key: None,
-        expand_key: None,
-        reveal,
-    })
-}
-
-/// 把一页写到 `sink`，返回退出码（直跑与执行方共用这一段，输出才一致）。
-/// JSON：每条一行 `kind:"message"` + 一行 `result`；文字：每条一句（`--full` 读全文，`--detail` 接「详情：」），
-/// 第一条未读前另起一行「以下为未读」（F2），统计写标准错误
-pub fn render(
-    sink: &mut dyn Sink,
-    format: Format,
-    a: &HistoryArgs,
-    cx: &SpeechCtx,
-    page: &Page,
-    started: Instant,
-) -> u8 {
-    let layers = Layers {
-        detail: a.detail,
-        full: a.full,
-    };
-    for d in &page.docs {
-        match format {
-            Format::Json => {
-                let mut line = atg_core::json::value_with(d, cx, layers);
-                if let Some(o) = line.as_object_mut() {
-                    o.insert("at".into(), json!(out::now_rfc3339_ms()));
-                }
-                emit_to(sink, &line);
-            }
-            Format::Text => {
-                if page.first_unread.is_some() && doc_id(d) == page.first_unread {
-                    sink.out(UNREAD_BELOW);
-                }
-                // 文字模式一行一条：名称里的换行换成空格；全文本来就要保留换行，照原样
-                let main = if a.full {
-                    speech::full(d, cx)
-                } else {
-                    speech::brief(d, cx).replace('\n', " ")
-                };
-                let detail = if a.detail {
-                    speech::detail(d, cx)
-                } else {
-                    String::new()
-                };
-                if detail.is_empty() {
-                    sink.out(&main);
-                } else {
-                    sink.out(&format!("{main}。详情：{detail}"));
-                }
-            }
-        }
-    }
-    let oldest = page.ids().next();
-    let newest = page.ids().last();
-    match format {
-        Format::Json => {
-            let mut data = json!({
-                "command": "history",
-                "chat_id": page.chat_id,
-                "count": page.docs.len(),
-                "more": page.more,
-                "more_newer": page.more_newer,
-                "first_unread": page.first_unread,
-                "landing": page.landing,
-                "synced": page.synced,
-                "partial": page.partial,
-                "elapsed_ms": crate::elapsed_ms(started),
-            });
-            if let Some(d) = data.as_object_mut() {
-                if let (true, Some(o)) = (page.more, oldest) {
-                    d.insert("next_cursor".into(), json!(o));
-                }
-                if let (true, Some(n)) = (page.more_newer, newest) {
-                    d.insert("newer_cursor".into(), json!(n));
-                }
-            }
-            emit_to(sink, &envelope("result", data));
-        }
-        Format::Text => {
-            let where_ = match page.landing {
-                "first_unread" if page.first_unread.is_some() => "从第一条未读起",
-                "first_unread" | "latest" => "最新的",
-                "before" => "更早的",
-                _ => "更新的",
-            };
-            let mut s = format!("{where_} {} 条", page.docs.len());
-            if page.more {
-                s.push_str("；往前还有");
-            }
-            if page.more_newer {
-                s.push_str("；往后还有");
-            }
-            if !page.synced {
-                s.push_str("；没等到同步完，未读位置可能是旧的");
-            }
-            if page.partial {
-                s.push_str("；Telegram 还没给全，可以稍后再试");
-            }
-            sink.err(&s);
-        }
-    }
-    0
-}
-
-/// 文字模式里第一条未读上面那一行（F2「以下为未读」）
-pub const UNREAD_BELOW: &str = "以下为未读";
-
-// ───────────────────────── links ─────────────────────────
-
-#[derive(Debug, Clone, Copy)]
-pub struct LinksQuery {
-    pub chat: ChatRef,
-    pub message_id: i64,
-}
-
-/// 一条消息里的链接：（文字，地址，是否在剧透里），按出现顺序
-pub struct LinkList {
-    pub id: MsgId,
-    pub links: Vec<(String, String, bool)>,
-}
-
-pub fn links_query(a: &LinksArgs) -> Result<LinksQuery, Fail> {
-    Ok(LinksQuery {
-        chat: ChatRef::parse(&a.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
-        message_id: a.message,
-    })
-}
-
-/// 在已起好的后端上取这条消息、列出链接（`getMessage`，不标已读）
-pub fn collect_links<B: Backend>(
-    b: &B,
-    stream: &mut EventStream,
-    feed: &mut Feed,
-    q: &LinksQuery,
-) -> Result<LinkList, Fail> {
-    chats::ensure_ready(b)?;
-    let chat_id = resolve(b, stream, feed, q.chat)?;
-    load_chat(b, stream, feed, chat_id)?;
-    let id = MsgId {
-        chat_id,
-        message_id: q.message_id,
-    };
-    let m = bounded(b, b.message_get(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
-    feed.drain(stream);
-    // 有效内容（有临时内容就用它）；受限的存下来时已换成受限节点，里面没有正文，也就没有链接
-    let links = match m.effective() {
-        Body::Content(c) => links_marked(&c.body)
-            .into_iter()
-            .map(|(l, hidden)| (l.text, l.url, hidden))
-            .collect(),
-        Body::Service(_) => vec![],
-    };
-    Ok(LinkList { id, links })
-}
-
-/// 隐藏的链接文字换成这个（地址给 `null`）
-const HIDDEN_LINK: &str = "隐藏内容";
-
-pub fn render_links(
-    sink: &mut dyn Sink,
-    format: Format,
-    reveal: bool,
-    l: &LinkList,
-    started: Instant,
-) -> u8 {
-    for (i, (text, url, hidden)) in l.links.iter().enumerate() {
-        let masked = *hidden && !reveal;
-        let (text, url): (&str, Value) = if masked {
-            (HIDDEN_LINK, Value::Null)
-        } else {
-            (text, json!(url))
-        };
-        let index = i + 1;
-        match format {
-            Format::Json => {
-                let line = envelope(
-                    "link",
-                    json!({ "index": index, "text": text, "url": url, "hidden": hidden }),
-                );
-                emit_to(sink, &line);
-            }
-            Format::Text => match url.as_str() {
-                Some(u) if u == text => sink.out(&format!("链接 {index}，{u}")),
-                Some(u) => sink.out(&format!("链接 {index}，{text}，{u}")),
-                None => sink.out(&format!("链接 {index}，{text}")),
-            },
-        }
-    }
-    match format {
-        Format::Json => emit_to(
-            sink,
-            &envelope(
-                "result",
-                json!({
-                    "command": "links",
-                    "chat_id": l.id.chat_id,
-                    "message_id": l.id.message_id,
-                    "count": l.links.len(),
-                    "elapsed_ms": crate::elapsed_ms(started),
-                }),
-            ),
-        ),
-        Format::Text => sink.err(&if l.links.is_empty() {
-            "这条消息里没有链接".to_owned()
-        } else {
-            format!("共 {} 个链接", l.links.len())
-        }),
-    }
-    0
 }
 
 #[cfg(test)]
