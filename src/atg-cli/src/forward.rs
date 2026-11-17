@@ -6,7 +6,7 @@
 //! 4. 连不上：再探一次锁，已经空了（占着的一次性命令刚退）就改直跑；还占着 → `profile_busy`，不抢锁，
 //!    说明里提示稍后重试或常开 `serve`
 //! 5. 连上了却没等到 `exit` 帧就断了，或两帧之间 [`FRAME_TIMEOUT`] 没动静 → `disconnected`，退出码 4；
-//!    **发送类（`send`、`resend`）例外**：执行方可能已经交出，报 `send_outcome_unknown`（退出码 10，不许重跑）
+//!    **发送类（`send`、`resend`、`pending cancel`）例外**：执行方可能已经交出，报 `send_outcome_unknown`（退出码 10，不许重跑）
 //!
 //! 转哪些命令见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类闸在执行方、断在半路按「结果未知」报；流式的 `watch` 走 [`try_forward_stream`]（不设帧超时，Ctrl+C 在本地出结尾行）。`--unsafe-direct-send` 不随请求过去：直发听执行方的（N1：`docs/plan/005_decisions-b3.md` 表里那一行），
 //! 连上之后在标准错误说一声。档案不存在、种类不对等情况不在这里报，交回直跑的路径照常报。
@@ -39,11 +39,11 @@ pub const EXECUTOR_GONE_ZH: &str = "替你执行的进程中途退出了，结�
 pub const EXECUTOR_SILENT_ZH: &str = "替你执行的进程 150 秒没回话，已放弃；可以重试";
 /// 发送类命令转发途中断了：执行方可能已经交出，不能叫人重试
 pub const EXECUTOR_GONE_SEND_ZH: &str =
-    "替你执行的进程中途断了，消息可能已经发出；不要重发，先去会话里看一眼";
+    "替你执行的进程中途断了，发送或撤销可能已经生效；不要重做，先跑 pending 或去会话里看一眼";
 
 /// 会发东西的命令（断了不能当「可以再跑一次」）
 fn is_l2(command: &str) -> bool {
-    matches!(command, "send" | "resend" | "react")
+    matches!(command, "send" | "resend" | "react" | "pending_cancel")
 }
 
 /// 占着档案的进程没开本机接口（一次性命令）

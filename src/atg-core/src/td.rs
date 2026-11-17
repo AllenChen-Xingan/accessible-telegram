@@ -21,6 +21,9 @@ pub use real::{TdBackend, TdConfig, tdlib_version};
 
 #[cfg(feature = "tdlib-api")]
 mod boot;
+// 交出口的请求 JSON → tdlib-rs 参数
+#[cfg(feature = "tdlib-api")]
+mod requests;
 // 纯类型：不开特性时只有单测用它
 #[cfg(any(feature = "tdlib-api", test))]
 #[cfg_attr(not(feature = "tdlib-api"), allow(dead_code))]
@@ -28,8 +31,8 @@ mod lifecycle;
 
 #[cfg(feature = "tdlib-api")]
 mod real {
-    use super::boot;
     use super::lifecycle::{self, Claim, Run};
+    use super::{boot, requests};
     use crate::auth::{self, AuthPrompt};
     use crate::backend::{
         Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
@@ -175,13 +178,18 @@ mod real {
 
         /// 发送类的交出：交给 TDLib、等应答、出错就登记进发送限制，整段放在自己的线程里。调用方等不及（发送的
         /// 30 秒上限）丢掉等待时，这条线程照样等到应答、照样登记晚到的受限 / 限流（codex 016 第 6 轮 #1）
+        /// `accepted`：应答里交出成功、成败还要等的消息（预览、删除给空），线程里当场登记（#88：调用方丢掉等待后
+        /// 没人替它登记）
         fn detached<T: Send + 'static>(
             &self,
             fut: impl Future<Output = Result<T, types::Error>> + Send + 'static,
+            accepted: impl FnOnce(&T) -> Vec<MsgId> + Send + 'static,
         ) -> impl Future<Output = Result<T, CoreError>> {
             let (tx, rx) = futures_channel::oneshot::channel();
             let shared = self.shared.clone();
             let limits = self.cfg.gate.limits();
+            // 这条线程自己的守卫：调用方先放（丢掉等待），交出未完成标记也盖到应答登记完（#88）
+            let hold = limits.hold();
             let spawned = std::thread::Builder::new()
                 .name("atg-send-submit".into())
                 .spawn(move || {
@@ -190,10 +198,14 @@ mod real {
                         Ok(Err(e)) => Err(map_error_on(&shared, &e)),
                         Err(e) => Err(e),
                     };
-                    if let Err(e) = &r {
-                        limits.note(e);
-                        logline::info("send_failed", &[Field::Name("code", e.code())]);
+                    match &r {
+                        Err(e) => {
+                            limits.note(e);
+                            logline::info("send_failed", &[Field::Name("code", e.code())]);
+                        }
+                        Ok(v) => limits.await_outcome(&accepted(v)),
                     }
+                    drop(hold);
                     let _ = tx.send(r);
                 });
             async move {
@@ -762,7 +774,9 @@ mod real {
                     if let Some(h) = r.receiver.take() {
                         let _ = h.join();
                     }
-                    // 正常关闭：放掉档案锁（同一进程里可以再开这个档案）；重复关不再动标记
+                    // 收线程已停：放锁之前收尾交出未完成标记（#88）；再放掉档案锁（同一进程里可以再开）；重复关不再动标记
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    self.cfg.gate.limits().closed(left);
                     lifecycle::release(&mut r.lock, || r.profile.mark_clean());
                 }
                 logline::info("td_closed", &[]);

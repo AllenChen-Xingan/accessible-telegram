@@ -20,25 +20,25 @@ pub enum Waited {
     Unknown(UnknownWhy),
 }
 
-/// 这条事件说的是不是这几条待发消息之一的下落
-fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
+/// 这条事件说了这几条待发消息里哪些的下落（一次删几条只来一条 `messages_deleted`，所以可能不止一条）
+fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Vec<(MsgId, Waited)> {
     match ev {
         CoreEvent::SendSucceeded { old_id, message } if temps.contains(old_id) => {
-            Some((*old_id, Waited::Succeeded(message.clone())))
+            vec![(*old_id, Waited::Succeeded(message.clone()))]
         }
         CoreEvent::SendFailed {
             old_id,
             message,
             error,
             can_retry,
-        } if temps.contains(old_id) => Some((
+        } if temps.contains(old_id) => vec![(
             *old_id,
             Waited::Failed {
                 message: message.clone(),
                 error: error.clone(),
                 can_retry: *can_retry,
             },
-        )),
+        )],
         // 发3：待发那条被删，TDLib 不来失败。谁会删：人在别的设备上删了它、会话变得不可访问、TDLib 重发前先删旧的。
         // 为什么「被删」反而可能已送达：请求可能早已到了服务器，删除只停本机的等待，服务器的成功应答照样回来
         // （TDLib 1.8.69 `MessagesManager.cpp:27848-27851`）。所以按结果未知报、不许重发——当成失败会让人重发出第二条
@@ -48,9 +48,10 @@ fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
             ..
         } => temps
             .iter()
-            .find(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
-            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted))),
-        _ => None,
+            .filter(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
+            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted)))
+            .collect(),
+        _ => vec![],
     }
 }
 
@@ -79,11 +80,12 @@ pub fn wait(
             }
             Some(Some(batch)) => {
                 for env in batch {
-                    if let Some((id, w)) = verdict(&env.event, temps)
-                        && let Some(i) = temps.iter().position(|t| *t == id)
-                        && got[i].is_none()
-                    {
-                        got[i] = Some(w);
+                    for (id, w) in verdict(&env.event, temps) {
+                        if let Some(i) = temps.iter().position(|t| *t == id)
+                            && got[i].is_none()
+                        {
+                            got[i] = Some(w);
+                        }
                     }
                     on_event(env);
                 }

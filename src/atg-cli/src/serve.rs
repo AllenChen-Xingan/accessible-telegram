@@ -428,38 +428,10 @@ fn execute<B: Backend>(
             };
             ("history", code)
         }
-        "send" => {
-            let code = match serde_json::from_value::<crate::send::SendParams>(fa.params) {
-                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
-                Ok(p) => crate::send::execute_send(
-                    ctx.b,
-                    ctx.stream,
-                    ctx.feed,
-                    &p,
-                    sink,
-                    format,
-                    started,
-                    atg_core::send::RESULT_TIMEOUT,
-                ),
-            };
-            ("send", code)
-        }
-        "resend" => {
-            let code = match serde_json::from_value::<crate::send::ResendParams>(fa.params) {
-                Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
-                Ok(p) => crate::send::execute_resend(
-                    ctx.b,
-                    ctx.stream,
-                    ctx.feed,
-                    &p,
-                    sink,
-                    format,
-                    started,
-                    atg_core::send::RESULT_TIMEOUT,
-                ),
-            };
-            ("resend", code)
-        }
+        // 走发送外壳的（L2 三条 + 只读的 `pending` 列表）：同一个出口（`serve/l2.rs`）
+        c @ ("send" | "resend" | "pending" | "pending_cancel") => l2::execute(
+            ctx.b, ctx.stream, ctx.feed, c, fa.params, sink, format, started,
+        ),
         "react" | "reactions" => crate::react::serve(ctx, &req.command, fa, sink, started),
         "links" => {
             let code = match serde_json::from_value::<LinksArgs>(fa.params) {
@@ -534,5 +506,6 @@ impl Prompter for NoSecrets {
 mod conn;
 use conn::{ConnOut, ConnSink};
 
+mod l2;
 #[cfg(test)]
 mod tests;

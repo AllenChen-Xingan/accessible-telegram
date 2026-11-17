@@ -44,7 +44,7 @@ use std::time::{Duration, Instant};
 
 mod outcome;
 pub mod react;
-mod resending;
+pub(crate) mod resending;
 mod text;
 
 pub use outcome::{Waited, finish, wait};
@@ -91,6 +91,11 @@ impl<'a> Sealed<'a> {
     pub(crate) fn into_kind(self) -> SealedKind<'a> {
         self.kind
     }
+    /// `deleteMessages`：只由 [`crate::delete`] 在闸验过凭据之后造
+    pub(crate) fn delete(request: &'a Value) -> Self {
+        let kind = SealedKind::Delete { request };
+        Self { kind }
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -100,6 +105,8 @@ pub(crate) enum SealedKind<'a> {
     Resend { request: &'a Value },
     /// `addMessageReaction` / `removeMessageReaction`（看请求的 `@type`）：请求 JSON，摘要算过的就是它
     React { request: &'a Value },
+    /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
+    Delete { request: &'a Value },
 }
 
 /// 交出口的应答
@@ -111,6 +118,8 @@ pub enum Answer {
     Resent(Vec<Option<Message>>),
     /// 应答只有 `ok` 的（表情回应）
     Done,
+    /// `deleteMessages`：TDLib 回了 `ok`
+    Deleted,
 }
 
 /// 交出之后拿到的凭条：确认方式 + 临时 id。只能由本模块造出；等到结果后**必须**交给 [`finish`]（它吃掉凭条）
@@ -154,7 +163,7 @@ pub fn target_zh(t: &ChatTarget) -> String {
 
 // ───────────────────────── 交出出了岔子：按「结果未知」记账（发文字、重发共用）─────────────────────────
 
-fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
+pub(crate) fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
     match b.gate().use_test_dc() {
         Some(true) => Ok(ServerKind::Test),
         Some(false) => Ok(ServerKind::Main),
@@ -167,7 +176,7 @@ fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
 /// 交出口回了错：分清「TDLib 明确拒了、没发出」和「请求可能已经交出、只是没等到应答」。
 /// 后一种（连接断了、内核关了、请求中止、应答转不回来）按结果未知记账并报 `send_outcome_unknown`——
 /// 记成失败会让直发防重复放过重跑，对方就收到两条（自审第 1 轮 P1）
-fn submit_failed<B: Backend>(
+pub(crate) fn submit_failed<B: Backend>(
     b: &B,
     mode: ConfirmMode,
     plan: &dyn Gated,
@@ -221,7 +230,7 @@ fn submit_within<B: Backend, T>(
 
 // ───────────────────────── 计划行的目标部分（两种计划行共用）─────────────────────────
 
-fn target_json(t: &ChatTarget) -> Value {
+pub(crate) fn target_json(t: &ChatTarget) -> Value {
     json!({
         "chat_id": t.id,
         "kind": t.kind,

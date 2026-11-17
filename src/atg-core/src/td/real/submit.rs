@@ -1,48 +1,33 @@
-//! 交出口（`Backend::submit`）的真实实现：发文字、重发、表情回应（#9）。交给 TDLib 的就是摘要算过的那份 JSON，
-//! 逐段反序列化成 tdlib-rs 的类型，不另组一份。从 `td` 拆出（#60 行数线）
+//! 交出口（`Backend::submit`）的真实实现：发文字、重发、删除、表情回应（#9）。交给 TDLib 的就是摘要算过的那份 JSON，
+//! 由 `td/requests.rs` 逐段反序列化成 tdlib-rs 的类型，不另组一份。从 `td` 拆出（#60 行数线）。
+//! 每种都经 [`TdBackend::detached`] 交出：交出未完成标记盖到应答登记完（#88）；表情回应没有临时 id，登记空列表
 
-use super::TdBackend;
+use super::{TdBackend, requests};
 use crate::error::CoreError;
 use crate::logline::{self, Field};
 use crate::send::{Answer, Sealed, SealedKind};
-use tdlib_rs::{enums, functions, types};
+use tdlib_rs::{enums, functions};
 
 impl TdBackend {
     pub(super) async fn submit_sealed(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
         let id = self.client_id().ok_or_else(Self::not_started)?;
         match req.into_kind() {
             SealedKind::Message { request, preview } => {
-                // 交给 TDLib 的就是摘要算过的那份 JSON：逐段反序列化成 tdlib-rs 的类型，不另组一份
-                let bad = || CoreError::Internal {
-                    what: "send_request_shape",
-                };
-                let part = |k: &str| request[k].clone();
-                let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                let topic: Option<enums::MessageTopic> =
-                    serde_json::from_value(part("topic_id")).map_err(|_| bad())?;
-                let reply: Option<enums::InputMessageReplyTo> =
-                    serde_json::from_value(part("reply_to")).map_err(|_| bad())?;
-                let mut options: types::MessageSendOptions =
-                    serde_json::from_value(part("options")).map_err(|_| bad())?;
-                options.only_preview = preview;
-                let content: enums::InputMessageContent =
-                    serde_json::from_value(part("input_message_content")).map_err(|_| bad())?;
-                logline::info(
-                    "send_submit",
-                    &[Field::Name(
-                        "kind",
-                        if preview { "preview" } else { "send" },
-                    )],
-                );
+                let a = requests::message(request, preview)?;
+                let kind = if preview { "preview" } else { "send" };
+                logline::info("send_submit", &[Field::Name("kind", kind)]);
                 let enums::Message::Message(m) = self
-                    .detached(functions::send_message(
-                        chat,
-                        topic,
-                        reply,
-                        Some(options),
-                        content,
-                        id,
-                    ))
+                    .detached(
+                        functions::send_message(
+                            a.chat,
+                            a.topic,
+                            a.reply,
+                            Some(a.options),
+                            a.content,
+                            id,
+                        ),
+                        move |m| requests::sent(m, preview),
+                    )
                     .await?;
                 Self::map_message(m)
                     .map(Answer::Message)
@@ -51,21 +36,13 @@ impl TdBackend {
                     })
             }
             SealedKind::Resend { request } => {
-                // 同发文字：交出去的就是摘要算过的那份，逐字段取，不另组
-                let bad = || CoreError::Internal {
-                    what: "send_request_shape",
-                };
-                let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                let ids: Vec<i64> =
-                    serde_json::from_value(request["message_ids"].clone()).map_err(|_| bad())?;
-                let quote: Option<types::InputTextQuote> =
-                    serde_json::from_value(request["quote"].clone()).map_err(|_| bad())?;
-                let paid = request["paid_message_star_count"]
-                    .as_i64()
-                    .ok_or_else(bad)?;
+                let (chat, ids, quote, paid) = requests::resend(request)?;
                 logline::info("send_submit", &[Field::Name("kind", "resend")]);
                 let enums::Messages::Messages(ms) = self
-                    .detached(functions::resend_messages(chat, ids, quote, paid, id))
+                    .detached(
+                        functions::resend_messages(chat, ids, quote, paid, id),
+                        requests::resent,
+                    )
                     .await?;
                 Ok(Answer::Resent(
                     ms.messages
@@ -74,32 +51,32 @@ impl TdBackend {
                         .collect(),
                 ))
             }
+            SealedKind::Delete { request } => {
+                let (chat, ids, revoke) = requests::delete(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "delete")]);
+                let none = |_: &()| vec![];
+                self.detached(functions::delete_messages(chat, ids, revoke, id), none)
+                    .await?;
+                Ok(Answer::Deleted)
+            }
             SealedKind::React { request } => {
-                // 同上：交出去的就是摘要算过的那份
-                let bad = || CoreError::Internal {
-                    what: "send_request_shape",
-                };
-                let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                let msg = request["message_id"].as_i64().ok_or_else(bad)?;
-                let ty: enums::ReactionType =
-                    serde_json::from_value(request["reaction_type"].clone()).map_err(|_| bad())?;
-                let remove = request["@type"] == "removeMessageReaction";
-                logline::info(
-                    "send_submit",
-                    &[Field::Name(
-                        "kind",
-                        if remove { "unreact" } else { "react" },
-                    )],
-                );
-                if remove {
-                    self.detached(functions::remove_message_reaction(chat, msg, ty, id))
-                        .await?;
+                let a = requests::react(request)?;
+                let kind = if a.remove { "unreact" } else { "react" };
+                logline::info("send_submit", &[Field::Name("kind", kind)]);
+                let none = |_: &()| vec![];
+                if a.remove {
+                    self.detached(
+                        functions::remove_message_reaction(a.chat, a.message, a.kind, id),
+                        none,
+                    )
+                    .await?;
                 } else {
-                    let flag = |k: &str| request[k].as_bool().ok_or_else(bad);
-                    let (big, recent) = (flag("is_big")?, flag("update_recent_reactions")?);
-                    self.detached(functions::add_message_reaction(
-                        chat, msg, ty, big, recent, id,
-                    ))
+                    self.detached(
+                        functions::add_message_reaction(
+                            a.chat, a.message, a.kind, a.big, a.recent, id,
+                        ),
+                        none,
+                    )
                     .await?;
                 }
                 Ok(Answer::Done)

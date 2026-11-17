@@ -479,6 +479,28 @@ pub fn resend(
     )
 }
 
+/// `pending` / `pending_cancel` 直跑（撤销是 L2，与发送一样直发）
+pub fn pending(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    params: &serde_json::Value,
+    started: std::time::Instant,
+) -> u8 {
+    l2_run(g, format, command, started, &mut |b, stream, feed, sink| {
+        crate::pending::execute(
+            b,
+            stream,
+            feed,
+            command,
+            params.clone(),
+            sink,
+            format,
+            started,
+        )
+    })
+}
+
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
 #[cfg(feature = "tdlib")]
 pub(crate) type L2Body<'a> = dyn FnMut(
@@ -499,8 +521,8 @@ pub(crate) type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`、`react`）与借它起停的只读命令（`reactions`）的直跑外壳：选档案 → 起真实后端 →
-/// 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
+/// 发送类命令（`send`、`resend`、`react`、`pending cancel`，以及同一外壳的 `pending` 列表、`reactions`）的直跑外壳：
+/// 选档案 → 起真实后端 → 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
 pub(crate) fn l2_run(
     g: &Global,
     format: crate::args::Format,

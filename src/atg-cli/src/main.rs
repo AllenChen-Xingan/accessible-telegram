@@ -41,7 +41,9 @@ mod play;
 // 表情回应的流程只有真实后端与单测调
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod react;
-// 发送的流程只有真实后端与单测调
+// 待发消息与发送的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod pending;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod send;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
@@ -123,6 +125,7 @@ fn main() -> ExitCode {
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
         Command::React(a) => react::run(&cli.global, format, &a, started),
         Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),
+        Command::Pending(a) => run_pending(&cli.global, format, a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),
         Command::Play(a) => play::run(&cli.global, format, &a, started),
@@ -434,6 +437,30 @@ fn run_watch(g: &args::Global, format: Format, a: &args::WatchArgs, started: Ins
         Ok(code) => ExitCode::from(code),
         Err(f) => fail_with(format, &f),
     }
+}
+
+/// `pending` / `pending cancel`：档案被占就转给执行方（列表看执行方进程里的待发；撤销由执行方的闸开凭据）
+fn run_pending(
+    g: &args::Global,
+    format: Format,
+    a: args::PendingArgs,
+    started: Instant,
+) -> ExitCode {
+    if let Some(f) = no_redact(g, "pending") {
+        return fail_with(format, &f);
+    }
+    let tz = g.tz.clone();
+    let (command, params) = match a.sub {
+        None => ("pending", json!(pending::PendingParams { tz })),
+        Some(args::PendingCmd::Cancel { chat, dry_run }) => (
+            "pending_cancel",
+            json!(pending::CancelParams { chat, dry_run }),
+        ),
+    };
+    if let Some(code) = forward::try_forward(g, format, command, &params) {
+        return ExitCode::from(code);
+    }
+    ExitCode::from(session::pending(g, format, command, &params, started))
 }
 
 /// `links`：一行一个链接（`kind:"link"`）+ 一行 `result`。不标已读。档案被占就转给执行方

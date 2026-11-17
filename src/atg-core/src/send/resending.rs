@@ -61,7 +61,7 @@ impl ResendReply {
 }
 
 /// 消息里能给人确认的正文：纯文字消息的全文；带媒体、系统消息给不出全文 → `None`
-fn confirmable_text(m: &crate::model::Message) -> Option<String> {
+pub(crate) fn confirmable_text(m: &crate::model::Message) -> Option<String> {
     match m.effective() {
         crate::model::Body::Content(c) if c.attachment.is_none() => {
             Some(crate::tree::text::plain_text(&c.body))
@@ -263,7 +263,7 @@ pub async fn resend<B: Backend>(
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
             .collect()),
-        Ok(Answer::Message(_) | Answer::Done) => Err(CoreError::Internal {
+        Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),

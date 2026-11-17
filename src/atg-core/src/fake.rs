@@ -279,47 +279,6 @@ impl FakeBackend {
         })
     }
 
-    /// 真发一条之后按剧本推结果（推在应答之前：结果比应答先到，发4）
-    fn play_send(&self, chat: ChatId, temp: i64, request: &Value) {
-        let step = lock(&self.send_script)
-            .pop_front()
-            .unwrap_or(FakeSend::Succeed);
-        match step {
-            FakeSend::Succeed => {
-                let id = self.new_id();
-                let m = self.own_message(chat, id, request, Value::Null);
-                // 发出的那条留在会话里（之后 `message_get` / `failed_info` 找得到）
-                lock(&self.histories)
-                    .entry(chat)
-                    .or_default()
-                    .push(m.clone());
-                self.push(json!({"@type": "updateMessageSendSucceeded", "old_message_id": temp, "message": m}));
-            }
-            FakeSend::Fail {
-                code,
-                message,
-                can_retry,
-            } => {
-                let id = self.new_id();
-                let err = json!({"@type": "error", "code": code, "message": message});
-                let st = json!({"@type": "messageSendingStateFailed", "error": err.clone(),
-                    "can_retry": can_retry, "need_another_sender": false, "need_another_reply_quote": false,
-                    "need_drop_reply": false, "required_paid_message_star_count": 0, "retry_after": 0.0});
-                let m = self.own_message(chat, id, request, st);
-                // 失败的那条留在会话里（重发时要找得到）
-                lock(&self.histories)
-                    .entry(chat)
-                    .or_default()
-                    .push(m.clone());
-                self.push(json!({"@type": "updateMessageSendFailed", "old_message_id": temp, "message": m, "error": err}));
-            }
-            FakeSend::Delete => self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
-                "message_ids": [temp], "is_permanent": true, "from_cache": false})),
-            FakeSend::Silent | FakeSend::Reject(_) => {}
-        }
-        self.settle();
-    }
-
     /// 给一个假账号（`start` 之前设）
     pub fn set_auth(&self, a: FakeAuth) {
         *lock(&self.auth) = Some(a);
@@ -1027,8 +986,9 @@ impl Backend for FakeBackend {
             }
         }
         if self.shared.wait_closed(timeout) {
-            // 正常关闭：拿掉标记、放掉档案锁（同一进程里可以再开这个档案）
+            // 正常关闭：先收尾交出未完成标记（#88，放锁之前），再拿掉标记、放掉档案锁（同一进程里可以再开这个档案）
             if let Some((p, l)) = lock(&self.run).as_mut() {
+                self.gate().limits().closed(timeout);
                 p.mark_clean();
                 *l = None;
             }

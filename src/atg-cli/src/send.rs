@@ -108,7 +108,7 @@ pub fn resend_params(a: &crate::args::ResendArgs, tz: Option<&str>) -> Result<Re
 }
 
 /// `saved` → 自己的收藏夹：问 `me()`（闸判收藏夹用的也是它），不等事件流里 TDLib 登录后推来的 `my_id` 选项
-fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::model::ChatId, Fail> {
+pub(crate) fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::model::ChatId, Fail> {
     match chat {
         ChatRef::Id(id) => Ok(id),
         ChatRef::Saved => bounded(b, b.me(), QUERY_TIMEOUT)
@@ -122,7 +122,7 @@ fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
 }
 
 /// L2 的错误：`retryable` 一律为假；`extra` 平铺进去
-fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra: Value) -> u8 {
+pub(crate) fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra: Value) -> u8 {
     let mut data = out::core_error_data(e);
     data["retryable"] = json!(false);
     if let (Some(d), Value::Object(x)) = (data.as_object_mut(), extra) {
