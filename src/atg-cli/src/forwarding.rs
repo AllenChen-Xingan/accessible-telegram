@@ -166,7 +166,7 @@ fn run_inner<B: Backend>(
         let src = o.source;
         let Some((temp, w)) = o.result else {
             items.push(json!({"message_id": src, "outcome": "not_forwarded"}));
-            // 交出之后才知道转不了：不能借准备时整批拒的说法（那句是「什么都没转」）
+            // 交出之后才知道转不了：不能借准备时整批拒的说法（那句是「什么都没转」）；全都转不了的在下面换回整批那句
             first.get_or_insert(CoreError::InvalidSend {
                 why: atg_core::error::InvalidSendWhy::NotForwarded,
             });
@@ -199,6 +199,12 @@ fn run_inner<B: Backend>(
         }
     }
     let zh = summary_zh(&items);
+    // 一条都没转出（全是 null）：说「什么都没转」，不说「别的各自的结果」（核心已按「失败」收尾，同一批再转不被拦）
+    if items.iter().all(|i| i["outcome"] == "not_forwarded") {
+        first = Some(CoreError::InvalidSend {
+            why: atg_core::error::InvalidSendWhy::NotForwardable,
+        });
+    }
     let Some(e) = unknown.or(first) else {
         finish_line(
             sink,
@@ -265,7 +271,7 @@ fn summary_zh(items: &[serde_json::Value]) -> String {
         .collect();
     if !unsure.is_empty() {
         zh.push_str(&format!(
-            "，结果未知 {} 条（id {}：可能已转出、会自动补发，不要再转）",
+            "，结果未知 {} 条（id {}：可能已转出，网络恢复后 Telegram 会继续送出；这几条不要再转，补转也别列进去）",
             unsure.len(),
             unsure.join("、")
         ));

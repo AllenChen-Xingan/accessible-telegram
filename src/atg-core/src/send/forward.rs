@@ -234,7 +234,10 @@ pub async fn forward<B: Backend>(
     let ids: Vec<i64> = plan.items.iter().map(|i| i.id).collect();
     let now = load_items(b, plan.from.id, &ids)
         .await
-        .map_err(|_| content_mismatch())?;
+        .map_err(|e| match e {
+            CoreError::NotFound { .. } | CoreError::InvalidSend { .. } => content_mismatch(),
+            other => other,
+        })?;
     if now != plan.items {
         return Err(content_mismatch());
     }
@@ -265,9 +268,15 @@ pub async fn forward<B: Backend>(
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
             .collect()),
-        Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
-            what: "forward_answer_shape",
-        }),
+        // 已交出、应答认不出：同条数对不上，按结果未知
+        Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(submit_failed(
+            b,
+            mode,
+            plan,
+            CoreError::Internal {
+                what: "td_message_reserialize_failed",
+            },
+        )),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
     }
 }

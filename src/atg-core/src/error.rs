@@ -410,7 +410,7 @@ impl CoreError {
                 }
                 InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
                 InvalidSendWhy::NotForwarded => {
-                    "有的消息 Telegram 说转不了（见 items 里 not_forwarded 的那几条），其余的已照常转出；不要整批加 --again 重转，那会把转出的再转一遍"
+                    "有的消息 Telegram 交出时说转不了（见 items 里 not_forwarded 的那几条），别的各自的结果也在 items 里；不要整批加 --again 重转，那会把已转出的再转一遍"
                 }
             },
             Self::DeleteRefused { why } => match why {

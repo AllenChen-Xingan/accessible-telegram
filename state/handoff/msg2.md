@@ -134,3 +134,4 @@
 - 「能不能转」照 #8 的 `message_caps` 写（不另起 props.rs、不动 td.rs 的 getMessageProperties）。**#8 合进 main、合给我之后要补**：`model.rs` 的 `MessageCaps` 加 `can_forward`；`td/requests.rs` 的 `caps()` 加 `can_forward: p.can_be_forwarded`；`fake/caps.rs` 的 `Cap` 加 `Forward`、`caps()` 加 `can_forward: on(Cap::Forward)`。在那之前 core 编不过，不领名额
 - 2026-11-17 大总管：论坛群不带话题落进 General（不拒、计划行写明）进待定清单，默认照现在走；人要统一成拒再改。#10 代码与契约已写完，等 #8 合进 main、合给我后补 MessageCaps.can_forward 三处再编译
 - 2026-11-17 fix 的 codex 048 改了 --again 接法：fix 的 PR 进 main、合给我后，`send/forward.rs` 的 `forward()` 改用 `verify_again` / `before_submit_again`（原 verify / before_submit 变成不带 again 的包装）。回归靠 core 的 `same_batch_twice_is_held_unless_again` 与 CLI 的 `same_batch_again_is_held_then_released`：没改对它们会红
+- 2026-11-17 自审第 2 轮 P1（防重复按整批指纹，换子集能把结果未知的那条再转一遍）：大总管选 A——闸支持一张计划多个指纹（Gated::intents 默认 vec![intent]，check.rs 查重复与收尾逐个），forward 每条一个指纹。**等 #143 进 main、合给我后再动闸**；A 落地后整个 #10 PR 属一级评审，PR 描述单列「闸的改动」「只有闸能发清单（加 forward_messages）」两节

@@ -190,3 +190,16 @@ fn partly_not_forwarded_does_not_say_nothing_was_sent() {
     assert!(zh.contains("成功 1 条"), "{zh}");
     assert!(!zh.contains("什么都没转"), "{zh}");
 }
+
+#[test]
+fn all_not_forwarded_says_nothing_was_sent() {
+    let b = backend();
+    let mut m5 = msg(5, "第5条");
+    m5["_forward_null"] = json!(true);
+    b.set_history(FRIEND, vec![m5, msg(7, "第7条")]);
+    let r = run(&b, &[fp(&[5], false, false)]);
+    let end = lines(&r[0].1).pop().unwrap();
+    assert_eq!(end["data"]["why"], "not_forwardable");
+    let zh = end["data"]["message_zh"].as_str().unwrap();
+    assert!(zh.contains("什么都没转"), "{zh}");
+}
