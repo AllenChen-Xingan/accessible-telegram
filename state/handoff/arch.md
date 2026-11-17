@@ -183,7 +183,7 @@
 - **进度（2026-11-17）**：已挪完，未提交。`text.rs` 671 → 506，新 `text/walk.rs` 175（自审后加了头注释一句与分节线）；逐行比对只多 mod / pub use / use / 头注释 / 空行，另有 2 行文档链接 `super::mask` → `crate::tree::mask`；`--tighten` 后基线 9 → 8 个。已申请名额编译，下一步：编译检查 → 自审 → codex 049
 - ✅ 自审 1 轮（P2×2、P3 已改）；codex 049 两轮都是零发现，收敛，记录在 `docs/reviews/049_r7-tree-text-codex.md`，索引已加。等大总管提交、开 PR
 
-## R7 第二刀：拆 `speech.rs`（2026-11-17，只出计划；codex 编号 050；新分支等 #139 合并后从 main 开）
+## R7 第二刀：拆 `speech.rs`（2026-11-17；已做完，PR #141 已合；codex 050 收敛）
 
 - **实查**（origin/main）：`speech.rs` 810 行。测试已经在 `speech/tests.rs`。已有的子模块：`content`（95，头注释写着「`speech.rs` 里其余正文、附件的读法以后照 010 搬进来」）、`playback`、`reaction`、`status`、`transcription`
 - **拆法**（照 010 那一行定的：根留入口、`service.rs`、`content.rs`、常量表一处）：
@@ -215,7 +215,7 @@
 - 自审 1 轮：P0/P1 零；P2×1（010 那行的行数从哪来的没说清）已改；P3 已收尾（010 理由改成真实代价、路线表 R7 加进度、根头注释补上文件分工、本节标题）。010、根头注释、本页这些收尾是工作区改动，还没提交。下一步：codex 051
 - ✅ codex 051 两轮收敛（零发现；抽查到的计数笔误已改），记录在 `docs/reviews/051_r7-store-codex.md`，索引已加。等大总管提交、开 PR
 
-## R7 第四刀：拆 `tests/reducer.rs`（2026-11-17，只出计划；codex 编号 052；分支等计划定了由大总管从 main 开）
+## R7 第四刀：拆 `tests/reducer.rs`（2026-11-17；已做完，PR #146；codex 052 收敛）
 
 - **实查**（origin/main）：`src/atg-core/tests/reducer.rs` 2102 行，77 个 `#[test]`。按主题分节（会话排序、撤回墓碑、按字段合并、版本边界、重复到达、换 id、有效内容与受限、投影、拍板 006、第八 / 九 / 十轮），但「投影」那节后面堆了 1000 多行后来补的回归测试，主题混在一起。造数据的助手已在 `tests/common/mod.rs`；本文件里另有 4 个助手（`pending`、`small`、`restricted_target_and_reply`、`quote_leaks`），被不同主题的测试共用
 - **拆法**：改成 Cargo 认的目录式测试 `tests/reducer/main.rs` 加各主题子模块。测试二进制名还叫 `reducer`，`cargo test --test reducer` 照常用；测试的全名会多一层模块前缀（如 `chats::…`），CI 跑全量不受影响
@@ -241,7 +241,7 @@
 - 自审 1 轮：P0/P1 零；P2 已改：3 个只有一个主题用的助手挪进各自的主题文件（`pending` → `send.rs`；`restricted_target_and_reply`、`quote_leaks` → `restricted.rs`），`main.rs` 只留 `cache`、`restricted` 共用的 `small`；头注释里「第几轮」的来源标注标得不全，去掉了。P3：`StoreConfig` 的导入并进 store 那一行；010 写清 2222 和 2102 两个行数的来历。复跑全套检查：test 618 过 0 败，`--list` 77 = 77，去掉模块前缀后一致。下一步：codex 052
 - ✅ codex 052 两轮零发现，收敛，记录在 `docs/reviews/052_r7-tests-reducer-codex.md`，索引已加。等大总管提交、开 PR
 
-## R7 第五刀：拆 cli `history.rs`（2026-11-17，只出计划；codex 编号 053；分支等计划定了由大总管从 main 开）
+## R7 第五刀：拆 cli `history.rs`（2026-11-17；在 `atg-wt/arch-history` 做，进度以那边的现状页为准；codex 编号 053）
 
 - **实查**（origin/main）：`src/atg-cli/src/history.rs` 706 行，测试已经在 `history/tests.rs`。分节：类型与 `query`（1–135）· 起后端 → 取 → 关（`run`、`run_links`、`with_backend`、`resolve`、`load_chat`，136–223）· history 取数（`collect`、`Fetcher`、`older`、`newer`，224–473）· 读法与渲染（`speech_ctx`、`render`、`UNREAD_BELOW`，474–599）· links（601–703）
 - **拆法**（只挪不改）：
