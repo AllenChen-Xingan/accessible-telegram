@@ -83,7 +83,6 @@ pub mod ipc;
 pub mod json;
 pub mod keystore;
 pub mod link;
-#[cfg(target_os = "macos")]
 pub mod logline;
 pub mod model;
 pub mod notify;
