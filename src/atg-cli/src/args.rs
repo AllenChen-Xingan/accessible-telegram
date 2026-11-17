@@ -104,8 +104,8 @@ pub enum Command {
     Open(Rest),
     /// 静音 / 取消静音
     Mute(Rest),
-    /// 删除消息（给所有人）
-    Delete(Rest),
+    /// 给所有人删除自己发的消息：先输出一行要删哪几条（kind:"plan"），随即交出（直发，不确认）
+    Delete(DeleteArgs),
     /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），确认后逐条等结果。确认方式同 send
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
@@ -317,6 +317,20 @@ pub struct ResendArgs {
     #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
     pub ids: Vec<i64>,
     /// 只输出要重发什么，不重发
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `delete` 的参数
+#[derive(Args)]
+pub struct DeleteArgs {
+    /// 会话 id（收藏夹里的消息不能给所有人删）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要删的消息 id（只能是自己发的；一次最多 100 条）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..=100)]
+    pub ids: Vec<i64>,
+    /// 只输出要删什么，不删
     #[arg(long)]
     pub dry_run: bool,
 }

@@ -97,6 +97,17 @@ pub enum SendingState {
     Failed,
 }
 
+/// 对一条消息能做什么（`getMessageProperties`，一次取齐；TDLib 按会话、身份、时间窗判，本项目不自己算）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MessageCaps {
+    /// `can_be_replied`：能在本会话里回复它
+    pub can_reply: bool,
+    /// `can_be_deleted_for_all_users`：能给会话里所有人删（收藏夹、还在待发的、过了时限的都不行）
+    pub can_delete_for_all: bool,
+    /// `can_be_edited`：能改它的文字
+    pub can_edit: bool,
+}
+
 /// 失败消息的发送状态（`messageSendingStateFailed`，`td_api.tl:3458-3465`）：`resend` 准备时逐项查
 #[derive(Debug, Clone, PartialEq)]
 pub struct FailedInfo {

@@ -31,9 +31,9 @@ use crate::config::Profile;
 use crate::error::CoreError;
 use crate::gate::Gate;
 use crate::link::EventStream;
-use crate::model::FailedInfo;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
+use crate::model::{FailedInfo, MessageCaps};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, Lines, NetState};
@@ -145,8 +145,13 @@ pub trait Backend {
     /// 目标会话的种类、名字、是不是话题群（`getChat`；超级群另查 `getSupergroup.is_forum`）。找不到 → `not_found`
     async fn chat_target(&self, chat: ChatId) -> Result<ChatTarget, CoreError>;
 
-    /// 这条消息能不能在本会话里回复（`getMessageProperties.can_be_replied`）。不在 → `not_found`
-    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError>;
+    /// 对这条消息能做什么（`getMessageProperties`）。不在 → `not_found`
+    async fn message_caps(&self, id: MsgId) -> Result<MessageCaps, CoreError>;
+
+    /// 这条消息能不能在本会话里回复（[`Backend::message_caps`] 的 `can_reply`）
+    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError> {
+        Ok(self.message_caps(id).await?.can_reply)
+    }
 
     /// 这条消息的失败态（`messageSendingStateFailed`）；不是失败的 → `None`。不在 → `not_found`
     async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError>;

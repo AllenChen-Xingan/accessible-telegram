@@ -28,9 +28,9 @@ use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::FailedInfo;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
+use crate::model::{FailedInfo, MessageCaps};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed, SealedKind};
 use crate::status::{AuthStep, CoreState, NetState};
@@ -43,6 +43,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 mod call;
+mod caps;
+pub use caps::Cap;
 mod files;
 mod submit;
 
@@ -135,7 +137,8 @@ pub struct FakeBackend {
     /// 自己的用户 id（`me()`）；没设 → 401
     me_id: Mutex<Option<i64>>,
     forums: Mutex<Vec<ChatId>>,
-    no_reply: Mutex<Vec<MsgId>>,
+    /// 被关掉的能力（[`caps::Cap`]），见 `fake/caps.rs`
+    denied: Mutex<Vec<(MsgId, caps::Cap)>>,
     /// 接下来的几次预览是否「把回复去掉」（按次取，取完照常保留）
     preview_drops: Mutex<VecDeque<bool>>,
     /// 下一次预览时先跑它（测「凭据已验过、复核预览还没回」那一刻发生的事）
@@ -199,7 +202,7 @@ impl FakeBackend {
             gate,
             me_id: Mutex::new(None),
             forums: Mutex::new(Vec::new()),
-            no_reply: Mutex::new(Vec::new()),
+            denied: Mutex::new(Vec::new()),
             preview_drops: Mutex::new(VecDeque::new()),
             preview_hook: Mutex::new(None),
             send_script: Mutex::new(VecDeque::new()),
@@ -219,11 +222,6 @@ impl FakeBackend {
     /// 这个会话是话题群
     pub fn set_forum(&self, chat: ChatId) {
         lock(&self.forums).push(chat);
-    }
-
-    /// 这条消息不能回复
-    pub fn set_no_reply(&self, id: MsgId) {
-        lock(&self.no_reply).push(id);
     }
 
     /// 接下来几次预览是否把回复去掉（TDLib 遇到被回复那条不在 / 不能回复时就这样，发6）
@@ -935,14 +933,10 @@ impl Backend for FakeBackend {
         })
     }
 
-    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError> {
+    async fn message_caps(&self, id: MsgId) -> Result<MessageCaps, CoreError> {
         self.started()?;
-        self.ready_or_401("can_reply").await?;
-        self.find_message(id).ok_or(CoreError::NotFound {
-            what: "message",
-            td: None,
-        })?;
-        Ok(!lock(&self.no_reply).contains(&id))
+        self.ready_or_401("message_caps").await?;
+        self.caps(id)
     }
 
     async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError> {

@@ -109,6 +109,20 @@ pub enum InvalidSendWhy {
     NotText,
     /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
     TooMany,
+    /// 要删的那条在确认之后变了（被编辑过）：删的不再是确认过的内容，整批不删（#8）
+    Changed,
+}
+
+/// 不能给所有人删（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`，#8）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeleteRefusedWhy {
+    /// 收藏夹里的消息 TDLib 不许给所有人删（`MessagesManager.cpp:8346`）
+    Saved,
+    /// 不是自己发的：本应用只删自己的（大总管定 2026-11-17，待人看）
+    NotOwn,
+    /// TDLib 说这条不能给所有人删（还在待发、过了时限、会话不许等）
+    NotRevocable,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -204,6 +218,10 @@ pub enum CoreError {
     InvalidSend {
         why: InvalidSendWhy,
     },
+    /// 机读码 `forbidden`：这条不能给所有人删，带 `why`
+    DeleteRefused {
+        why: DeleteRefusedWhy,
+    },
     Cancelled,
     /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
     /// 不安全、起不来、版本不对，或系统的语言模型没装（#59，design 第三节第 4、6、7 条）。`what` 只放写死的码
@@ -233,7 +251,7 @@ impl CoreError {
             Self::RateLimited { .. } => "rate_limited",
             Self::AccountLimited { .. } => "account_limited",
             Self::NotFound { .. } => "not_found",
-            Self::Forbidden { .. } => "forbidden",
+            Self::Forbidden { .. } | Self::DeleteRefused { .. } => "forbidden",
             Self::InvalidInput { .. } | Self::InvalidSend { .. } => "invalid_input",
             Self::Network { .. } => "network",
             Self::Disconnected => "disconnected",
@@ -276,6 +294,7 @@ impl CoreError {
             | Self::SendRefused { .. }
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
+            | Self::DeleteRefused { .. }
             | Self::Cancelled
             | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
@@ -350,12 +369,22 @@ impl CoreError {
                 InvalidSendWhy::NotPending => {
                     "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
                 }
+                InvalidSendWhy::Changed => {
+                    "要删的消息在确认之后被编辑过，删的不再是看过的内容；什么都没删，请重新发起"
+                }
                 InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
                 InvalidSendWhy::NeedsOther => {
                     "这条要换个身份发（比如以频道名义）或换引用才能重发，本应用暂不支持"
                 }
                 InvalidSendWhy::Paid => {
                     "这条重发要付 Telegram Stars（Telegram 的付费星星），本应用不做付费发送"
+                }
+            },
+            Self::DeleteRefused { why } => match why {
+                DeleteRefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
+                DeleteRefusedWhy::NotOwn => "只能删自己发的消息；什么都没删",
+                DeleteRefusedWhy::NotRevocable => {
+                    "Telegram 说这条不能给所有人删（可能还没发出、已过了能删的时限，或这个会话不许）；什么都没删"
                 }
             },
             Self::Cancelled => "已取消",

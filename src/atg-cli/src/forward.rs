@@ -43,7 +43,7 @@ pub const EXECUTOR_GONE_SEND_ZH: &str =
 
 /// 会发东西的命令（断了不能当「可以再跑一次」）
 fn is_l2(command: &str) -> bool {
-    matches!(command, "send" | "resend" | "pending_cancel")
+    matches!(command, "send" | "resend" | "pending_cancel" | "delete")
 }
 
 /// 占着档案的进程没开本机接口（一次性命令）

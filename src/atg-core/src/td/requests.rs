@@ -2,7 +2,7 @@
 //! 逐字段反序列化，不另组一份；形状不对一律 `internal{send_request_shape}`
 
 use crate::error::CoreError;
-use crate::model::MsgId;
+use crate::model::{MessageCaps, MsgId};
 use serde_json::Value;
 use tdlib_rs::{enums, types};
 
@@ -79,4 +79,13 @@ pub(super) fn sent(m: &enums::Message, preview: bool) -> Vec<MsgId> {
 pub(super) fn resent(ms: &enums::Messages) -> Vec<MsgId> {
     let enums::Messages::Messages(ms) = ms;
     ms.messages.iter().flatten().map(msg_id).collect()
+}
+
+/// `getMessageProperties` 的应答 → 本项目用到的那几项（[`MessageCaps`] 是唯一正本）
+pub(super) fn caps(p: &types::MessageProperties) -> MessageCaps {
+    MessageCaps {
+        can_reply: p.can_be_replied,
+        can_delete_for_all: p.can_be_deleted_for_all_users,
+        can_edit: p.can_be_edited,
+    }
 }

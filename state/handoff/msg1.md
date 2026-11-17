@@ -30,6 +30,13 @@
   - 红测试：A——`SendLimits` 层模拟「调用方守卫先放、晚到受限写盘失败、线程守卫后放」→ 重启后 `check` 应拒（现在会放行）；B——假后端：交出成功 → 堵住限制文件 → 推 SendFailed(受限) → 新进程 `load` 应拒
   - 待定 Q1（见下）
 
+## #8 进度（新工作副本 `atg-wt/msg1-8`，分支 `feat/8-edit-delete`，从 main 030f91b）
+- **A 删除（2026-11-17）代码 + 契约已写，未编译，等名额**。大总管定：只删自己发的（报 `forbidden why:not_own`，待人看）；一行 `plan`、`items` 逐条列；文字格式先在 CLI 拼句（#132 补「含 delete」）；受限 / 限流也拦删除（照现状）
+  - core：`model::MessageCaps`；`Backend::message_caps`（`can_reply` 成默认方法委托它，`send/text.rs` 不动）；td 走 `td/requests.rs::caps`；假后端 `fake/caps.rs`（`Cap`、`deny`，默认照 TDLib：自己发的、已发出、不在收藏夹）；`error::DeleteRefused{why: saved|not_own|not_revocable}`（码 `forbidden`）、`InvalidSendWhy::Changed`；`delete.rs` 加 `Action`、`prepare_delete`、`delete`，与撤销共用 `prepare` / `submit`（种类不对 `internal{delete_action_mismatch}`）；测试 `delete/tests/revoke.rs` 9 条
+  - CLI：`delete.rs`（plan 带每条 `brief`、`--dry-run`、交出 10 秒到点报未知）、args / main / session / forward / serve / serve/l2 接线；测试 `delete/tests.rs` 7 条；`tests/cli.rs` delete 从占位挪到已做；`serve/tests/lifecycle.rs` 占位改用 `show`
+  - 契约：cli / actions / errors / config-privacy
+  - 下一步：编译测试 → atg-review → codex 030 → 真账号只 `delete --dry-run saved …`（验 `forbidden why:saved`，只读）
+
 ## #8 计划（b20，未动代码）
 分两段交付（roadmap 116 行）：先 **A 删除（给所有人，M2.7）**，后 **B 编辑（M5 ①）**；评审 030（删除）、031（编辑）。都是 L2，直发不确认（#113；现行规则以 actions.md 第一节第 5 小节为准，294 行是历史记录不改）。
 - A 删除：
@@ -38,6 +45,14 @@
   - 测试：假后端全流程（成功、收藏夹拒、不能删的拒、交出前变了拒、断线报未知）；真账号只许 `--dry-run` 或收藏夹——收藏夹「给所有人删」TDLib 本就不许，正好验拒绝路径（只读查询，不交出）；成功路径要第二个测试号（N7，测试服务器登录不通 #35）→ 只能假后端，报大总管
 - B 编辑：`edit_text`（`actions.md:124`，`editMessageText`），同一套闸；真账号只在收藏夹试
 - 先问大总管：编辑 / 删除的时间窗（Telegram 48 小时编辑限制等）由 TDLib 的属性判，不自己算——这算技术细节，默认照此
+
+### 复核（2026-11-17，大总管已同意计划；按 01d596c = 新 main b7ff490 + PR #134，只读）
+计划站得住，锚点都还在：`can_reply` 仍是 `backend.rs:149` / `td.rs:703` / `fake.rs:938` / 唯一调用 `send/text.rs:180`；契约 `actions.md` 的 `delete_prepare` / `delete` 两行、`cli.md:37` 的 `delete` 行、roadmap M2.7 都已是直发口径（#115），不用先改契约。补 5 点：
+1. **复用 #57 的骨架**：`delete.rs`（218 行）已有 `DeletePlan`、`prepare_cancel` / `cancel`、`td/requests.rs::delete` 已带 `revoke` 参数、`SealedKind::Delete`、`Answer::Deleted`——A 段是给 `DeletePlan` 加一种动作（`delete`，`revoke=true`），不新建模块；`pending.rs` 的「交出到点 → `send_outcome_unknown`」（#109）同样用到 `delete`
+2. **文字格式结尾句**：新命令的统计 / 读法句一律走树 + `speech`（架构守则第 3 条），不学 `send` / `pending` 现在在 CLI 拼的写法（那是 #132）
+3. **账号受限 / 限流也拦删除**：`send_limits::submit` 对所有交出一视同仁，删除自己的消息也会被「受限」挡住。契约没单说删除——照现状拦（安全侧），记成技术细节；人若要删除不受限制再改。**大总管定 2026-11-17：照现状**
+4. **真账号**：收藏夹给所有人删 TDLib 本就不许（`:8346`），`delete --dry-run saved …` 只验拒绝路径（只读，`delete_prepare` 读出原因拒）；成功路径只有假后端（#35 测试服务器登不上、N7 第二测试号也就没有）
+5. **B 编辑**：契约只占了名字（`actions.md`「第二批留位」`edit_text`），开工前要补 `edit_prepare` / `edit_text` 两行 + `cli.md` 一行 + `errors.md`（可能要「不能编辑」的原因）；Store 已处理 `updateMessageContent` / `updateMessageEdited`（`tdjson.rs:225,233`），编辑后的读法不用新做。编辑在收藏夹能真试（自己的消息可编辑）
 
 ## 要人定的事（b20）
 - **Q1 #88：进程正常退出时还有「交出了、结果没回来」的消息，标记留不留？**
