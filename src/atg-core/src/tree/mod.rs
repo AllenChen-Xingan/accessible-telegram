@@ -18,7 +18,7 @@ pub mod text;
 mod time;
 mod top;
 
-pub use interactive::{Button, ButtonAction, Keyboard, KeyboardKind, PollOption};
+pub use interactive::{Button, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock};
 pub use media::{
     Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
     TranscriptSource, Transcription,
@@ -278,12 +278,15 @@ pub enum Attachment {
     Contact {
         name: String,
     },
-    /// 投票（#13 读全）：选项、票数、我选了哪个，以及匿名 / 多选 / 能否改票 / 测验 / 已结束 / 我能不能投
+    /// 投票（#13 读全）：选项（已按显示顺序排）、票数、我选了哪个，以及能不能看结果 / 匿名 / 多选 / 能否改票 / 测验 /
+    /// 已结束 / 为什么不能投。投票的说明文字（`messagePoll.description`）放在消息正文 `body` 里，同媒体的说明文字
     Poll {
         question: Vec<Span>,
         options: Vec<PollOption>,
         /// 总投票人数
         total: u32,
+        /// 我能看到各项票数（`can_see_results`）：TDLib 只在已结束、我投过、或我是发起人时给票数，否则各项都是 0
+        results_visible: bool,
         anonymous: bool,
         multiple: bool,
         /// 投了还能改（`allows_revoting`）
@@ -291,8 +294,12 @@ pub enum Attachment {
         /// 测验：有正确答案，投了不能改
         quiz: bool,
         closed: bool,
-        /// 我现在能投（没结束、TDLib 没给不许投的原因）
-        can_vote: bool,
+        /// 我为什么不能投；`None` = 能投
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blocked: Option<VoteBlock>,
+        /// 测验的解析（`pollTypeQuiz.explanation`；还没作答时为空）
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        explanation: Vec<Span>,
     },
     Call {
         video: bool,

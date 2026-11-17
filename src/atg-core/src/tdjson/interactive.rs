@@ -3,31 +3,85 @@
 
 use super::message::formatted;
 use super::{arr, b, i, s, ty, u};
-use crate::tree::{Attachment, Button, ButtonAction, Keyboard, KeyboardKind, PollOption};
+use crate::tree::{
+    Attachment, Button, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock,
+};
 use serde_json::Value;
 
-/// `messagePoll.poll`（`td_api.tl:731`）→ 投票附件
+/// `messagePoll.poll`（`td_api.tl:731`）→ 投票附件。选项按 `option_order`（TDLib：「必须按这个顺序显示」）排，
+/// 每项留着 TDLib 的 0 起编号；`option_order` 为空或对不上（缺号、重号、越界）就按原顺序
 pub(super) fn poll(p: &Value) -> Attachment {
+    let quiz = ty(&p["type"]) == "pollTypeQuiz";
+    let correct: Vec<i64> = arr(&p["type"], "correct_option_ids")
+        .iter()
+        .filter_map(Value::as_i64)
+        .collect();
+    let raw: Vec<PollOption> = arr(p, "options")
+        .iter()
+        .enumerate()
+        .map(|(n, o)| PollOption {
+            index: u32::try_from(n).unwrap_or(u32::MAX),
+            text: formatted(&o["text"]),
+            votes: u(o, "voter_count"),
+            percent: u(o, "vote_percentage").min(100),
+            chosen: b(o, "is_chosen"),
+            correct: quiz && correct.contains(&i64::try_from(n).unwrap_or(-1)),
+        })
+        .collect();
+    let closed = b(p, "is_closed");
     Attachment::Poll {
         question: formatted(&p["question"]),
-        options: arr(p, "options")
-            .iter()
-            .map(|o| PollOption {
-                text: formatted(&o["text"]),
-                votes: u(o, "voter_count"),
-                percent: u(o, "vote_percentage").min(100),
-                chosen: b(o, "is_chosen"),
-            })
-            .collect(),
+        options: ordered(raw, arr(p, "option_order")),
         total: u(p, "total_voter_count"),
+        results_visible: b(p, "can_see_results"),
         anonymous: b(p, "is_anonymous"),
         multiple: b(p, "allows_multiple_answers"),
         revotable: b(p, "allows_revoting"),
-        quiz: ty(&p["type"]) == "pollTypeQuiz",
-        closed: b(p, "is_closed"),
-        // 不许投的原因（`vote_restriction_reason`）为空才能投；已结束的也不能
-        can_vote: p["vote_restriction_reason"].is_null() && !b(p, "is_closed"),
+        quiz,
+        closed,
+        blocked: blocked(&p["vote_restriction_reason"], closed),
+        explanation: if quiz {
+            formatted(&p["type"]["explanation"])
+        } else {
+            vec![]
+        },
     }
+}
+
+/// 按 `option_order` 排；它不是 0..n 的一个排列就不动
+fn ordered(raw: Vec<PollOption>, order: &[Value]) -> Vec<PollOption> {
+    let idx: Vec<usize> = order
+        .iter()
+        .filter_map(|v| v.as_u64().and_then(|x| usize::try_from(x).ok()))
+        .collect();
+    let mut seen = vec![false; raw.len()];
+    let valid = idx.len() == raw.len()
+        && idx
+            .iter()
+            .all(|&k| k < raw.len() && !std::mem::replace(&mut seen[k], true));
+    if !valid {
+        return raw;
+    }
+    idx.iter().map(|&k| raw[k].clone()).collect()
+}
+
+/// 为什么不能投；没给原因但已结束的也算「已结束」
+fn blocked(r: &Value, closed: bool) -> Option<VoteBlock> {
+    Some(match ty(r) {
+        "" if closed => VoteBlock::Closed,
+        "" => return None,
+        "pollVoteRestrictionReasonClosed" => VoteBlock::Closed,
+        "pollVoteRestrictionReasonYetUnsent" => VoteBlock::YetUnsent,
+        "pollVoteRestrictionReasonScheduled" => VoteBlock::Scheduled,
+        "pollVoteRestrictionReasonCountryRestricted" => VoteBlock::CountryRestricted {
+            country_code: s(r, "country_code").to_owned(),
+        },
+        "pollVoteRestrictionReasonMembershipRequired" => VoteBlock::MembershipRequired,
+        "pollVoteRestrictionReasonOther" => VoteBlock::Other,
+        other => VoteBlock::Unknown {
+            td_type: other.to_owned(),
+        },
+    })
 }
 
 /// `message.reply_markup`（`td_api.tl:4294-4314`）→ 按钮。没有、收起键盘、强制回复、一个按钮都没有 → `None`

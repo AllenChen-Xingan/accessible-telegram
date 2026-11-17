@@ -1201,6 +1201,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
         ],
         "options": [
           {
+            "index": 0,
             "text": [
               {
                 "type": "text",
@@ -1211,6 +1212,7 @@ expression: "json_pretty(&world(\"basic\").docs())"
             "percent": 50
           },
           {
+            "index": 1,
             "text": [
               {
                 "type": "text",
@@ -1222,18 +1224,18 @@ expression: "json_pretty(&world(\"basic\").docs())"
           }
         ],
         "total": 2,
+        "results_visible": true,
         "anonymous": false,
         "multiple": false,
         "revotable": true,
         "quiz": false,
-        "closed": false,
-        "can_vote": true
+        "closed": false
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：投票，几点出发？2 个选项，19:33"
+    "brief": "周大山：投票，几点出发？19:33"
   }
 }
 {

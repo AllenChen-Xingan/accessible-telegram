@@ -3,32 +3,35 @@ source: src/atg-core/tests/snapshots.rs
 expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\", briefs(&docs),\nlayer(&docs, speech::detail, &cx()), layer(&docs, speech::full, &cx()),\njson_pretty(&docs),)"
 ---
 # brief
-周大山：投票，几点出发？3 个选项，你已投，20:53
-林小雨：投票，山顶海拔多少米？2 个选项，你已投，已结束，20:53
-林小雨：投票，要不要带帐篷？2 个选项，20:53
-匿名驴友：请确认报名，4 个按钮，20:54
-匿名驴友：选一个，2 个键盘按钮，20:54
+周大山：投票，几点出发？周六早上集合，20:53
+林小雨：投票，山顶海拔多少米？20:53
+林小雨：投票，要不要带帐篷？20:53
+匿名驴友：请确认报名，20:54
+匿名驴友：选一个，20:54
 匿名驴友：收起键盘，20:54
 匿名驴友：受限内容，无法查看，20:54
-周大山：投票，集合地点，3 个选项，20:54
+周大山：投票，集合地点，20:54
+匿名驴友：只有你能看到的内容，20:54
 # detail
-2026年10月23日 20:53；公开投票，别人看得到你投了什么，投了能改，可以多选
-2026年10月23日 20:53；匿名投票，测验，投了不能改，已结束
-2026年10月23日 20:53；公开投票，别人看得到你投了什么，投了不能改，你不能投
-2026年10月23日 20:54；按钮：确认（发给机器人）、取消（发给机器人）、活动说明（打开网址 https://example.invalid/hike）、复制集合点（复制文字）
-2026年10月23日 20:54；键盘按钮：报名（发出这句话）、发手机号（发出你的手机号）
+2026年10月23日 20:53；3 个选项，你已投，公开投票，别人看得到你投了什么，可以多选，投了能改
+2026年10月23日 20:53；2 个选项，你已投，匿名投票，测验，有正确答案，投了不能改，已结束
+2026年10月23日 20:53；2 个选项，公开投票，别人看得到你投了什么，投了不能改，要先加入这个会话满一天才能投
+2026年10月23日 20:54；按钮 4 个：确认（通知机器人，聊天里不出现）、取消（通知机器人，聊天里不出现）、活动说明（打开网址 https://example.invalid/hike）、复制集合点（复制文字）
+2026年10月23日 20:54；键盘按钮 2 个：报名（以你的名义发出这句话）、发手机号（把你的手机号发给机器人）
 2026年10月23日 20:54
 2026年10月23日 20:54
-2026年10月23日 20:54；公开投票，别人看得到你投了什么，投了能改，可以多选
+2026年10月23日 20:54；3 个选项，投了才看得到结果，公开投票，别人看得到你投了什么，可以多选，投了能改
+2026年10月23日 20:54
 # full
-投票，几点出发？第 1 项，七点，3 票，60%；第 2 项，八点，2 票，40%，你选的；第 3 项，九点，0 票，0%；共 5 人投票
-投票，山顶海拔多少米？第 1 项，一千，1 票，50%；第 2 项，两千，1 票，50%，你选的；共 2 人投票
+投票，几点出发？第 1 项，七点，3 票，60%；第 2 项，八点，2 票，40%，你选的；第 3 项，九点，0 票，0%；共 5 人投票，周六早上集合
+投票，山顶海拔多少米？第 1 项，一千，1 票，50%，正确答案；第 2 项，两千，1 票，50%，你选的；共 2 人投票；解析：主峰海拔一千米左右
 投票，要不要带帐篷？第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
 请确认报名
 选一个
 收起键盘
 受限内容，无法查看
-投票，集合地点；第 1 项，北门停车场，3 票，60%；第 2 项，山脚，2 票，40%；第 3 项，车站，0 票，0%；共 5 人投票
+投票，集合地点；第 1 项，车站；第 2 项，北门停车场；第 3 项，山脚；共 5 人投票，投了才看得到各项票数
+只有你能看到的内容
 # json
 {
   "v": 1,
@@ -49,7 +52,12 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
       "outgoing": false
     },
     "content": {
-      "body": [],
+      "body": [
+        {
+          "type": "text",
+          "text": "周六早上集合"
+        }
+      ],
       "attachment": {
         "type": "poll",
         "question": [
@@ -60,6 +68,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         ],
         "options": [
           {
+            "index": 0,
             "text": [
               {
                 "type": "text",
@@ -70,6 +79,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
             "percent": 60
           },
           {
+            "index": 1,
             "text": [
               {
                 "type": "text",
@@ -81,6 +91,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
             "chosen": true
           },
           {
+            "index": 2,
             "text": [
               {
                 "type": "text",
@@ -92,18 +103,18 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
           }
         ],
         "total": 5,
+        "results_visible": true,
         "anonymous": false,
         "multiple": true,
         "revotable": true,
         "quiz": false,
-        "closed": false,
-        "can_vote": true
+        "closed": false
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：投票，几点出发？3 个选项，你已投，20:53"
+    "brief": "周大山：投票，几点出发？周六早上集合，20:53"
   }
 }
 {
@@ -136,6 +147,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         ],
         "options": [
           {
+            "index": 0,
             "text": [
               {
                 "type": "text",
@@ -143,9 +155,11 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
               }
             ],
             "votes": 1,
-            "percent": 50
+            "percent": 50,
+            "correct": true
           },
           {
+            "index": 1,
             "text": [
               {
                 "type": "text",
@@ -158,18 +172,27 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
           }
         ],
         "total": 2,
+        "results_visible": true,
         "anonymous": true,
         "multiple": false,
         "revotable": false,
         "quiz": true,
         "closed": true,
-        "can_vote": false
+        "blocked": {
+          "type": "closed"
+        },
+        "explanation": [
+          {
+            "type": "text",
+            "text": "主峰海拔一千米左右"
+          }
+        ]
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "林小雨：投票，山顶海拔多少米？2 个选项，你已投，已结束，20:53"
+    "brief": "林小雨：投票，山顶海拔多少米？20:53"
   }
 }
 {
@@ -202,6 +225,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         ],
         "options": [
           {
+            "index": 0,
             "text": [
               {
                 "type": "text",
@@ -212,6 +236,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
             "percent": 0
           },
           {
+            "index": 1,
             "text": [
               {
                 "type": "text",
@@ -223,18 +248,21 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
           }
         ],
         "total": 0,
+        "results_visible": true,
         "anonymous": false,
         "multiple": false,
         "revotable": false,
         "quiz": false,
         "closed": false,
-        "can_vote": false
+        "blocked": {
+          "type": "membership_required"
+        }
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "林小雨：投票，要不要带帐篷？2 个选项，20:53"
+    "brief": "林小雨：投票，要不要带帐篷？20:53"
   }
 }
 {
@@ -301,7 +329,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
     }
   },
   "speech": {
-    "brief": "匿名驴友：请确认报名，4 个按钮，20:54"
+    "brief": "匿名驴友：请确认报名，20:54"
   }
 }
 {
@@ -352,7 +380,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
     }
   },
   "speech": {
-    "brief": "匿名驴友：选一个，2 个键盘按钮，20:54"
+    "brief": "匿名驴友：选一个，20:54"
   }
 }
 {
@@ -448,26 +476,7 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         ],
         "options": [
           {
-            "text": [
-              {
-                "type": "text",
-                "text": "北门停车场"
-              }
-            ],
-            "votes": 3,
-            "percent": 60
-          },
-          {
-            "text": [
-              {
-                "type": "text",
-                "text": "山脚"
-              }
-            ],
-            "votes": 2,
-            "percent": 40
-          },
-          {
+            "index": 2,
             "text": [
               {
                 "type": "text",
@@ -476,20 +485,74 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
             ],
             "votes": 0,
             "percent": 0
+          },
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "北门停车场"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "山脚"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
           }
         ],
         "total": 5,
+        "results_visible": false,
         "anonymous": false,
         "multiple": true,
         "revotable": true,
         "quiz": false,
-        "closed": false,
-        "can_vote": true
+        "closed": false
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：投票，集合地点，3 个选项，20:54"
+    "brief": "周大山：投票，集合地点，20:54"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4009
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:54:50Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "只有你能看到的内容"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "匿名驴友：只有你能看到的内容，20:54"
   }
 }

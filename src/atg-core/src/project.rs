@@ -157,7 +157,8 @@ fn live(store: &Store, m: &MMessage) -> Doc {
             delivery,
         },
         transcript: store.transcript(m.id).cloned(),
-        buttons: m.buttons.clone(),
+        // 有临时内容时显示的是它（TDLib：「必须代替原内容显示」），原消息的按钮不属于它；临时内容自带的按钮 v0 不读
+        buttons: m.ephemeral.is_none().then(|| m.buttons.clone()).flatten(),
     })
 }
 

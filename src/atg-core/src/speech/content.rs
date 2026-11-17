@@ -55,17 +55,28 @@ pub(super) fn full(m: &Message, reveal: bool) -> String {
 pub(super) fn full_content(c: &Content, reveal: bool) -> String {
     let body = full_spans(&c.body, reveal);
     let label = c.attachment.as_ref().map(|a| {
-        // 投票的全文逐项读出选项与票数（#13）；其余附件同名称
-        if let Attachment::Poll {
+        // 投票的全文逐项读出选项与票数（#13）；其余附件同名称。隐藏内容的说法照下面同一条判定（18+ 遮挡）
+        let (l, spoiler) = if let Attachment::Poll {
             question,
             options,
             total,
+            results_visible,
+            explanation,
             ..
         } = a
         {
-            return super::interactive::poll_full(question, options, *total, reveal);
-        }
-        let (l, spoiler) = attachment(a, reveal);
+            let full = super::interactive::poll_full(
+                question,
+                options,
+                *total,
+                *results_visible,
+                explanation,
+                reveal,
+            );
+            (full, false)
+        } else {
+            attachment(a, reveal)
+        };
         if (spoiler || c.sensitive) && !reveal {
             format!("{l}，{HIDDEN}")
         } else {
@@ -76,7 +87,16 @@ pub(super) fn full_content(c: &Content, reveal: bool) -> String {
         (None, true) => "空消息".to_owned(),
         (None, false) => body,
         (Some(l), true) => l,
-        (Some(l), false) => format!("{l}，{body}"),
+        (Some(l), false) => join(&l, &body),
+    }
+}
+
+/// 「附件说法，正文」：附件说法自己以标点结尾（投票题目「几点出发？」）就不再接逗号，免得念成「？，」
+fn join(label: &str, body: &str) -> String {
+    if label.ends_with(['？', '?', '！', '!', '。', '…', '：', ':', '；']) {
+        format!("{label}{body}")
+    } else {
+        format!("{label}，{body}")
     }
 }
 
@@ -191,8 +211,15 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
     // V13（011 B18-5，#68）：投票题目里的隐藏内容也算进整条的按键提示；与正文走同一条 `spans`
     let poll_hidden = match &c.attachment {
         Some(Attachment::Poll {
-            question, options, ..
-        }) => spans(question, reveal).1 || super::interactive::options_hidden(options, reveal),
+            question,
+            options,
+            explanation,
+            ..
+        }) => {
+            spans(question, reveal).1
+                || spans(explanation, reveal).1
+                || super::interactive::options_hidden(options, reveal)
+        }
         Some(_) | None => false,
     };
     let mut hidden = body_hidden || poll_hidden;
@@ -210,7 +237,7 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
         (None, true) => "空消息".to_owned(),
         (None, false) => body.to_owned(),
         (Some(l), true) => l,
-        (Some(l), false) => format!("{l}，{body}"),
+        (Some(l), false) => join(&l, body),
     };
     (text, hidden)
 }
@@ -251,12 +278,8 @@ fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
         Attachment::Location => "位置".to_owned(),
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
-        Attachment::Poll {
-            question,
-            options,
-            closed,
-            ..
-        } => super::interactive::poll_label(question, options, *closed, reveal),
+        // 名称只读题目（第九节：名称只放谁、说了什么、几点）；选项、票数、性质在详情与全文里
+        Attachment::Poll { question, .. } => labeled("投票", &spans(question, reveal).0),
         Attachment::Call {
             video,
             duration,

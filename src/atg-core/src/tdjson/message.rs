@@ -241,7 +241,11 @@ fn content(c: &Value) -> Content {
                 ),
             }),
         ),
-        "messagePoll" => (vec![], Some(super::interactive::poll(&c["poll"]))),
+        // 投票的说明文字（`description`）当正文，同媒体的说明文字（#13 自审：文字一个字都不丢）
+        "messagePoll" => (
+            formatted(&c["description"]),
+            Some(super::interactive::poll(&c["poll"])),
+        ),
         "messageCall" => (
             vec![],
             Some(Attachment::Call {

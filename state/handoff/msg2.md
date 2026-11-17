@@ -225,3 +225,4 @@
 - 2026-11-17 大总管：读法里题目已以标点结尾就不再加逗号（「投票，几点出发？2 个选项」），补快照
 - 2026-11-17 #13 只读那半写完、验过：投票读全 + 按钮读出（树 `tree/interactive.rs`、映射 `tdjson/interactive.rs`、读法 `speech/interactive.rs`，`model::Message.buttons`，受限清按钮，mask 遮选项剧透）；读法题目以标点结尾不接逗号 / 分号；新夹具 `interactive.json`（含无标点题目一例）；快照：basic brief / detail / full / json、hidden_everywhere 变（逐行看过，全是投票补选项带来的），新 `interactive_layers`；649 过 0 败，clippy 两种 0，fmt / no-debug / file-size 过
 - 没接：`updatePoll`（票数变化）、`updateMessageEdited.reply_markup`（机器人改按钮）——要动 CoreEvent / store / watch，13a / 13b 前报大总管
+- 2026-11-17 #13 只读 自审第 1 轮：P1×3（去重）全修——`results_visible`（看不到结果不读票数）、`option_order` 排序 + `index`、名称撤回守第九节（大总管认可；「名称说有按钮」默认不说，攒清单）；P2 修：说明文字进正文、`blocked` 原因（开放集合）、测验正确答案与解析、全文 18+ 遮挡统一、有临时内容不挂原按钮、按钮说法、已结束不说能改、附件说法以标点结尾不接逗号、契约补 `updateChatReplyMarkup`；P3 小事留着。649 过 0 败，clippy 两种 0；对 main 的快照差异：basic detail / full / json、hidden_everywhere 各一处（投票补字段），名称（brief）与 main 一致；新 interactive_layers

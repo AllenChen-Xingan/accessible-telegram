@@ -2,7 +2,7 @@
 //!
 //! 大总管授权 2026-10-26（R1：隐藏内容默认遮住，展开要人明确要求）：不展开时，JSON 行 `data` 里的剧透子树换成空的
 //! `spoiler` 节点（只留「这里有一段隐藏内容」，不留字），落在剧透里、或文字里套着剧透的链接整个换成空剧透（地址也去掉）。
-//! 管到所有带正文的地方：正文、投票题目与选项、回复引用的那段、置顶系统消息带的内容、会话项的最后一条。
+//! 管到所有带正文的地方：正文、投票题目、选项与测验解析、回复引用的那段、置顶系统消息带的内容、会话项的最后一条。
 //! 18+ 遮挡的媒体本身不进树（只有说明文字，读法照读），不用另遮；它的转写（`Message::transcript`）要遮。
 //!
 //! 规矩同渲染器：每个枚举都用不带通配符的 `match`，加了新节点种类这里编不过。
@@ -86,9 +86,13 @@ fn mask_content(c: &mut Content) {
     // 带正文（行内树）的附件逐个列出：以后加了带正文的种类，这里编不过，逼着决定怎么遮
     match a {
         Attachment::Poll {
-            question, options, ..
+            question,
+            options,
+            explanation,
+            ..
         } => {
             mask_spans(question);
+            mask_spans(explanation);
             for o in options {
                 mask_spans(&mut o.text);
             }

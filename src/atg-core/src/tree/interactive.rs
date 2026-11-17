@@ -4,18 +4,47 @@
 use super::Span;
 use serde::Serialize;
 
-/// 投票的一个选项（`pollOption`，`td_api.tl:475`）
+/// 投票的一个选项（`pollOption`，`td_api.tl:475`）。投票里的选项已按 TDLib 要求的显示顺序（`option_order`）排好
 #[derive(Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(Debug))]
 pub struct PollOption {
+    /// TDLib 的 0 起编号（`options` 数组里的位置；投票 `setPollAnswer` 用它），与显示顺序不一定相同
+    pub index: u32,
     pub text: Vec<Span>,
-    /// 投它的人数（看不到结果时为 0）
+    /// 投它的人数。看不到结果（投票的 `results_visible` 为假）时 TDLib 给 0，不是真没人投
     pub votes: u32,
-    /// 占总票数的百分比（0–100，TDLib 算好的）
+    /// 占总票数的百分比（0–100，TDLib 算好的；看不到结果时同样是 0）
     pub percent: u32,
     /// 我选了它
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub chosen: bool,
+    /// 测验的正确答案（`pollTypeQuiz.correct_option_ids`；还没作答时 TDLib 不给，都为假）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub correct: bool,
+}
+
+/// 我为什么不能投（`pollVoteRestrictionReason*`，`td_api.tl:513-529`）。开放集合，认不出的进 `Unknown`
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum VoteBlock {
+    /// 已结束
+    Closed,
+    /// 投票还没发出去（自己刚发的、还在待发）
+    YetUnsent,
+    /// 定时消息里的投票，发出前不能投
+    Scheduled,
+    /// 所在国家或地区的用户不许投
+    CountryRestricted {
+        country_code: String,
+    },
+    /// 要先加入这个会话满一天才能投
+    MembershipRequired,
+    /// 别的原因
+    Other,
+    Unknown {
+        td_type: String,
+    },
 }
 
 /// 消息上的按钮（`reply_markup`，`td_api.tl:4294-4314`）。只收两种有按钮的：消息下面的（`inline`）与机器人换掉输入框的

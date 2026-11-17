@@ -55,11 +55,7 @@ pub struct SpeechCtx {
 pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => {
-            let (mut body, hidden) = content(&m.content, cx.reveal);
-            // 带按钮：名称末尾说几个（#13；按钮逐个在详情里）
-            if let Some(k) = &m.buttons {
-                body = format!("{body}，{}", interactive::buttons_brief(k));
-            }
+            let (body, hidden) = content(&m.content, cx.reveal);
             let line = then(&expand_hint(&body, hidden, cx), &hm(m.head.date, cx));
             match speaker(
                 &m.head.sender,
@@ -189,18 +185,28 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
             parts.extend(content::transcript_detail(m, cx.reveal));
             // #13：投票的性质、按钮逐个
             if let Some(Attachment::Poll {
+                options,
+                results_visible,
                 anonymous,
                 multiple,
                 revotable,
                 quiz,
                 closed,
-                can_vote,
+                blocked,
                 ..
             }) = &m.content.attachment
             {
-                parts.push(interactive::poll_detail(
-                    *anonymous, *multiple, *revotable, *quiz, *closed, *can_vote,
-                ));
+                parts.push(interactive::poll_detail(&interactive::PollFacts {
+                    options: options.len(),
+                    voted: options.iter().any(|o| o.chosen),
+                    results_visible: *results_visible,
+                    anonymous: *anonymous,
+                    multiple: *multiple,
+                    revotable: *revotable,
+                    quiz: *quiz,
+                    closed: *closed,
+                    blocked: blocked.as_ref(),
+                }));
             }
             if let Some(k) = &m.buttons {
                 parts.push(interactive::buttons_detail(k));
