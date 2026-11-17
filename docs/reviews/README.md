@@ -30,7 +30,7 @@
 | 022 | 2026-11-13 | #63 #73 #78 #79 CLI 等待都有期限、Ctrl+C 能收尾（codex · 两轮） | 第一轮 P2×5、第二轮 P2×4，全部属实；8 条已修，1 条（watch 等授权线时按 Ctrl+C 的结尾行）开 issue；两轮无 P0/P1，收敛 → `022_bounded-waits-63-codex.md` |
 | 018 | 2026-11-13 | #4 下载与播放的代码（atg-audio、download / play；codex · 三轮，逐文件审） | 提出 8（P1×2、P2×6）：全部属实；代码全改，剩 1 条 P2 的测试缺口开 issue；第 2、3 轮无 P0/P1，收敛 → `018_pr4-voice-code-codex.md` |
 | 024 | 2026-11-13 | #59 转写底座（atg-audio 的 stt 模块与 Swift 辅助程序；codex · 逐文件审） | 第 1 轮 P1×3 P2×1、第 2 轮 P1×1 P2×2、第 3 轮 P1×1 P2×2、第 4 轮 P1×1 P2×2：全部属实，已改；第 5 轮 P1×1（同一处，人定丙：已改，边界调度竞态此后算 P2）；第 6、7 轮无 P0/P1，满足停止线，剩 P2×1 开 issue → `024_stt-base-codex.md` |
-| 029 | 2026-11-16 | #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex） | 第 1 轮 P1×3 P2×1、第 2 轮 P2×2、第 3 轮（范围改 `origin/main...HEAD`，停止线重数）P1×2 P2×1、第 4 轮 P1×1，全部属实已修；#109 并入修掉；待第 5 轮 → `029_pending-57-codex.md` |
+| 029 | 2026-11-16 | #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex） | 第 1 轮 P1×3 P2×1、第 2 轮 P2×2、第 3 轮（范围改 `origin/main...HEAD`，停止线重数）P1×2 P2×1、第 4 轮 P1×1，全部属实已修；#109 并入修掉；第 5、6 轮通过，收敛 → `029_pending-57-codex.md` |
 | 027 | 2026-11-14 | #62 #64 #95 第三批：td 起停收尾、用法错误不回显原文、auth 死路统一判、watch 出 status 前 Ctrl+C（codex · 两轮） | 第一轮 P2×2 全部属实已修；第二轮无发现；两轮无 P0/P1，收敛 → `027_batch3-62-64-95-codex.md` |
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
