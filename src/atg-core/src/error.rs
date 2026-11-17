@@ -393,7 +393,9 @@ impl CoreError {
                 InvalidSendWhy::EditNotText => {
                     "这条不是纯文字消息（带附件），本应用暂时只改纯文字消息的正文；什么都没改"
                 }
-                InvalidSendWhy::Unchanged => "新的文字和原来一样，不用改；什么都没改",
+                InvalidSendWhy::Unchanged => {
+                    "新的文字和原来一样，不用改（本应用只改文字，不能只去掉格式）；什么都没改"
+                }
                 InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
                 InvalidSendWhy::NeedsOther => {
                     "这条要换个身份发（比如以频道名义）或换引用才能重发，本应用暂不支持"
@@ -416,7 +418,7 @@ impl CoreError {
                 RefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
                 RefusedWhy::NotOwn => "只能删或改自己发的消息；什么都没动",
                 RefusedWhy::NotSent => {
-                    "这条还没发出：待发的请用 pending cancel 撤销；发送失败的没送到对方，不用给所有人删，也改不了；什么都没动"
+                    "这条还没发出：待发的可等它发出后再删或再改，或用 pending cancel 撤销后重发；发送失败的没送到对方，不用给所有人删，也改不了，可 resend 或重发；什么都没动"
                 }
                 RefusedWhy::NotRevocable => {
                     "Telegram 说这条不能给所有人删（可能过了 Telegram 定的能删时限，或这个会话不许）；什么都没删"

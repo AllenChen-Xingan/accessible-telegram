@@ -38,8 +38,7 @@ pub const EXECUTOR_GONE_ZH: &str = "替你执行的进程中途退出了，结�
 /// 执行方太久没回话（秒数随 [`FRAME_TIMEOUT`]，单测比对）
 pub const EXECUTOR_SILENT_ZH: &str = "替你执行的进程 150 秒没回话，已放弃；可以重试";
 /// 发送类命令转发途中断了：执行方可能已经交出，不能叫人重试
-pub const EXECUTOR_GONE_SEND_ZH: &str =
-    "替你执行的进程中途断了，发送或撤销可能已经生效；不要重做，先跑 pending 或去会话里看一眼";
+pub const EXECUTOR_GONE_SEND_ZH: &str = "替你执行的进程中途断了，发送、撤销、删除或编辑可能已经生效；不要重做，先去会话里看一眼（history），发送的还可以跑 pending 看";
 
 /// 会发东西的命令（断了不能当「可以再跑一次」）
 fn is_l2(command: &str) -> bool {

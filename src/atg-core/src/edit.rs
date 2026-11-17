@@ -5,10 +5,11 @@
 //! 别人帖子的能力不开，待人看）；还没发出的 `not_sent`；带附件的 `invalid_input why:not_text`（说明文字第二批）；
 //! 能不能改（编辑时限一般 48 小时、收藏夹不限时，转发来的不行……，`MessagesManager.cpp:23113-23222`）全听
 //! `getMessageProperties.can_be_edited`，不自己算，不行的 `not_editable`。新文与原文一样 `unchanged`（本地先拦）。
-//! 新文只有纯文字：原文带格式（加粗、文字链接……）的改后会丢，计划里标 `formatting_dropped`（待人看）。
+//! 新文只有纯文字：原文带格式（加粗、文字链接……）的改后会丢，计划里标 `formatting_dropped`（待人看）；链接预览按
+//! 默认重新生成（请求带 `link_preview_options:null`，原消息的预览设置本项目还没读进来，见 `EDIT_NOTE_ZH`；自审 #8 B P2，开 issue）。
 //!
 //! `editMessageText` **等服务器改完才应答**（与 `sendMessage` 先回临时消息不同）：应答到 = 改成，带回改后的那条；
-//! 交出前逐条再查一遍（同准备时的全部条件），原文在列计划之后变了 `invalid_input why:changed`，什么都不改。
+//! 交出前再查一遍（同准备时的全部条件），原文在列计划之后变了 `invalid_input why:changed`，什么都不改。
 //!
 //! 流程：[`prepare_edit`]（L0）→ 闸开凭据 → [`edit_text`]（验凭据 → 复查 → 交出）
 
@@ -21,8 +22,7 @@ use crate::tree::Span;
 use serde_json::{Value, json};
 
 /// 计划行说明
-pub const EDIT_NOTE_ZH: &str =
-    "改的是已发出的消息：对方那边也跟着变，标「已编辑」；改前的文字对方可能已经看到";
+pub const EDIT_NOTE_ZH: &str = "改的是已发出的消息：对方那边也跟着变，标「已编辑」；改前的文字对方可能已经看到。文字里有网址的，链接预览按默认重新生成（原来关掉或调过的预览不保留）";
 
 /// 一份已定稿的编辑：给人看的、交给 TDLib 的都是它（摘要绑请求 + 原文）
 #[derive(Clone)]

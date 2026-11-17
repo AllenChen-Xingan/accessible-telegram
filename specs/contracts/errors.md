@@ -23,7 +23,7 @@
 | `rate_limited` | 限流：TDLib 429 `Too Many Requests: retry after N`，服务器 `FLOOD_WAIT_N`，群慢速模式 `SLOWMODE_WAIT_N` | `retry_after_s` | 是，**等够秒数**才许再发（L2 除外，见第 5 小节） |
 | `account_limited` | 账号被限制的信号：`PEER_FLOOD`（发给陌生人太多）、`PHONE_NUMBER_FLOOD`（登录太多）、码 420 的其余情况 | — | 否；收到后**停掉全部 L2 动作和登录**，直到人处理 |
 | `not_found` | 会话 / 消息 / 用户 / 论坛话题不存在或已删（TDLib 404，或 400 `*_NOT_FOUND` / `*_ID_INVALID`） | `what`（`chat` · `message` · `forum_topic` · `file`（附件文件找不到，`download` / `play`）……） | 否 |
-| `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等）；`delete` / `edit` 准备与交出前复查时本地判定不能删 / 不能改 | `why`（只在 `delete`：`saved` 收藏夹里的 · `not_own` 不是自己发的 · `not_sent` 还没发出（待发、失败） · `not_revocable` TDLib 说不能给所有人删；`edit` 也带 `not_own` / `not_sent`，另有 `not_editable` TDLib 说这条不能改） | 否 |
+| `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等）；`delete` / `edit` 准备与交出前复查时本地判定不能删 / 不能改 | `why`（只在 `delete` / `edit`：`saved` 收藏夹里的（只 `delete`） · `not_own` 不是自己发的 · `not_sent` 还没发出（待发、失败） · `not_revocable` TDLib 说不能给所有人删；`edit` 也带 `not_own` / `not_sent`，另有 `not_editable` TDLib 说这条不能改） | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败 | — | 是，连接恢复后 |
 | `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`、`edit`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；转发中途断开时调用方可以再跑一次 |
@@ -193,3 +193,4 @@
 - 2026-11-17 #8 A（msg1）：`forbidden` 在 `delete` 带 `why`；`invalid_input.why` 加 `changed`；`send_outcome_unknown` 也指 `delete` 交出到点没回
 - 2026-11-17 #8 A 自审（msg1）：还没发出的（待发、失败）自己拦 `forbidden why:not_sent`（TDLib 对它们说能给所有人删）；`changed` 措辞改为「列出计划之后、交出之前」；成功即本机已删、服务器在后台补做
 - 2026-11-17 #8 B（msg1）：`forbidden.why` 加 `not_editable`、`not_own` / `not_sent` 扩到 `edit`；`invalid_input.why` 加 `unchanged`，`not_text` / `changed` 扩到 `edit`；`send_outcome_unknown` 也指 `edit` 交出到点没回
+- 2026-11-17 #8 B 自审（msg1）：链接预览按默认重新生成写进说明（留 issue）；签名 `text: String`、事件名、`forbidden.why` 限定词、转发 `tz` 清单等措辞对齐

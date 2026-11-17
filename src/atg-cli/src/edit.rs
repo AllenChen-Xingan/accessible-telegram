@@ -156,7 +156,7 @@ fn run_on<B: Backend>(
         Some(r) => r.map_err(Fail::Core)?,
         None => return Ok(unknown(b, &plan, sink, format)),
     };
-    // 改后的更新（`message_content` / `message_edited`）先进 Store，再回显（读法同 `history`）
+    // 改后的更新（`message_content_changed` / `message_edited`）先进 Store，再回显（读法同 `history`）
     feed.drain(stream);
     let id = m.id;
     let edit_date = m.edited.map(|t| t.0);

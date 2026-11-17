@@ -375,7 +375,7 @@ pub struct EditArgs {
     /// 改成的文字（只有纯文字；原文带的格式会丢）
     #[arg(long, value_name = "T")]
     pub text: Option<String>,
-    /// 从文件读改成的文字（UTF-8，64 KB 以内）
+    /// 从文件读改成的文字（UTF-8，64 KB 以内；Telegram 一条最多 4096 字，超了交出后被拒）
     #[arg(long, value_name = "PATH")]
     pub text_file: Option<std::path::PathBuf>,
     /// 只输出要怎么改，不改
