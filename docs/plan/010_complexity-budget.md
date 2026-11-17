@@ -29,7 +29,7 @@
 | 文件 | 总行 | 其中测试 | 拆法（按职责，不切 part1/part2） |
 |---|---|---|---|
 | `atg-core/tests/reducer.rs` | 2222 | 全是 | 已按主题分节（排序 · 墓碑 · 按字段合并 · 版本 · 重复 · 换 id · 有效内容 · 投影 · 拍板 006（`docs/plan/006_decisions-b7.md`）· 第八至十轮）：每节一个文件，`tests/reducer/` 下共用「造假数据」一节（并入 R3 testkit） |
-| `atg-cli/src/watch.rs` | 1343 | 470 | `watch.rs` 留作模块根（Watcher 与直跑循环）· `watch/hub.rs`（订阅者 Sub/Hub，执行方用）· `watch/tests.rs`；第 412–873 行要按函数分开处理，**不是整段挪个文件**：约 412–627 行「事件 → 数据」随 R6 改成事件节点 + `json` 渲染后删掉；约 630 行状态行（`status_line`）随 R6 改用状态节点（S9）；约 651–693 行目标解析（`resolve`）随 R4 收进 `target.rs`；约 694–865 行起停与订阅循环（`run`、`watch_loop`、取论坛话题设置）随 R5 成为登记表里的订阅类命令；约 866 行起关会话（`close_chat`）随 R5 归进订阅的清理；读法句子去 `speech` |
+| `atg-cli/src/watch.rs` | 1343 | 470 | ✅ R7 第六刀（`refactor/r7-watch`）：测试早已挪到 `watch/tests.rs` 与 `watch/tests/`，挪之前 main 上 837 行，挪后根剩 518。「出口与订阅者」整节（`LineOut`、`StdoutLines`、`Watcher`、`Sub`、`Hub`）挪成 `watch/hub.rs`（328）。和原计划不同，`Watcher` 也一起挪了：只挪 `Sub`、`Hub` 约 125 行，根还剩约 710 行，仍超线；「事件 → 数据」（约 411–627 行）留在根上，照原计划随 R6 改成事件节点。根上 `pub use` 原样导出 5 个名字（其中 `StdoutLines` 只有开了 tdlib 特性的 `session.rs` 用，单独一行加 `#[cfg_attr(not(feature = "tdlib"), allow(unused_imports))]`），调用方与测试一行不改；只放宽 1 处可见性：`Watcher` 的 `alerts` 字段改成 `pub(super)`（`watch/tests.rs` 直接读它）。只挪不改。**原计划（行号按挪之前的 main，后续各项照旧）**：`watch.rs` 留作模块根（Watcher 与直跑循环）· `watch/hub.rs`（订阅者 Sub/Hub，执行方用）· `watch/tests.rs`；第 412–873 行要按函数分开处理，**不是整段挪个文件**：约 412–627 行「事件 → 数据」随 R6 改成事件节点 + `json` 渲染后删掉；约 630 行状态行（`status_line`）随 R6 改用状态节点（S9）；约 651–693 行目标解析（`resolve`）随 R4 收进 `target.rs`；约 694–865 行起停与订阅循环（`run`、`watch_loop`、取论坛话题设置）随 R5 成为登记表里的订阅类命令；约 866 行起关会话（`close_chat`）随 R5 归进订阅的清理；读法句子去 `speech` |
 | `atg-core/src/send.rs` | 1688 | 633 | ✅ R1a（`refactor/r1a-split-send`）：`send.rs` 留作模块根（常量、来源、凭条 `Submitted`、发文字与重发共用的确认说明句与「交出出岔子按结果未知记账」、计划行的目标部分）· `send/text.rs`（发文字全程 + 它的计划行）· `send/outcome.rs`（等结果、记账）· `send/resending.rs`（重发 + 它的计划行）· 测试 `send/tests.rs`（共用夹具）+ `send/tests/{text,resending}.rs`；每个 ≤ 380 行。只挪不改，公开名字原样导出 |
 | `atg-cli/src/serve.rs` | 1431 | 821 | 测试挪出剩 610（#52 加了 send/resend 两支），还差 10 行：挪测试时把一小段助手一起挪出，或等 R5 删掉 `execute` 各支；测试 821 行按主题分两份 |
 | `atg-cli/src/history.rs` | 1264 | 558 | `links` 那段（603–706）独立成 `links.rs`；起后端那段（138–225）并入 R5；测试挪出 |
@@ -100,7 +100,7 @@ D1、D3、D4、D8 已修（#52 与此前的 main）；其余随第二段相关 P
 
 | 输出 | 现在在哪拼 | 该挂到哪 |
 |---|---|---|
-| 新消息提醒（「新消息，」+ 读法）、正在输入、断网汇总、「同步完成，之后的是新消息」（issue #74） | `atg-cli/src/watch.rs` 常量与 `render_inner`（拼进 `speech.brief` 的那段约在第 207 行起） | 已有的 `Doc::Alert` 扩成「这条为什么提醒 / 汇总几条几个会话 / 正在输入」，数据从 `notify::Judged` 来；句子全进 `speech` |
+| 新消息提醒（「新消息，」+ 读法）、正在输入、断网汇总、「同步完成，之后的是新消息」（issue #74） | `atg-cli/src/watch.rs` 常量与 `watch/hub.rs` 的 `render_inner`（R7 第六刀后挪到那里） | 已有的 `Doc::Alert` 扩成「这条为什么提醒 / 汇总几条几个会话 / 正在输入」，数据从 `notify::Judged` 来；句子全进 `speech` |
 | 链接列表与链接的遮挡 | `history.rs` `render_links` | `Doc::Link`（序号、文字 spans、地址、在不在剧透里），遮挡走 `tree::mask`，读法「链接 N，……」进 `speech` |
 | 每条命令的结尾统计（JSON `result` 的数据 + 文字模式的那句话） | `main.rs` `render_chats`、`history.rs` `render`、`watch.rs` `result_line`，#52 的 send/resend 又各一份 | `Doc::Summary`（每条命令一个变体，只放数据——数字、布尔、游标字符串如 `next_cursor`，**原有字段一个不少**，不放句子）；JSON 照出 `data`，文字由 `speech` 说 |
 | 状态行 | `serve.rs`、`watch.rs` | 扩 `Doc::Status`（S9） |
