@@ -1,5 +1,13 @@
 # 现状页 · msg1
 
+## 已收尾（2026-11-17）
+b20 这条线全部做完：#57 pending / pending cancel、#88、#109（PR #134，已合）；#8 A 段删除（PR #140，已合）；#8 B 段编辑（最新 PR，Closes #8，一级评审待人本人审）。
+- 留下的 issue：#127（#88 余下 P3）、#132（文字格式结尾句改到树上，含 delete / edit）、#138（删除复查同一秒换图认不出）、#147（编辑后链接预览按默认重新生成等）、另一条「三个 L2 动作交出前复查到内容变了的码不统一 + delete 结果未知 temp_message_id 恒 0」
+- 待人看（大总管攒着）：只许删 / 改自己发的；带格式照改标 `formatting_dropped`；频道管理员改别人帖子不开；#88 Q1（正常关闭时还没回来的结果照删标记）
+- 人的收藏夹里留着实测消息：「atg 实验 编辑 1–3 改后」3 条（没有经闸的「只删自己这边」，没清，大总管已转告人）
+- 工作副本：`atg-wt/msg1`（feat/57-pending，已合）、`atg-wt/msg1-8`（feat/8-edit-delete，已合）、`atg-wt/msg1-edit`（feat/8-edit，PR 中），都由大总管处理；三处 `.env.local` 是指向 MAIN 的符号链接
+- 经验：评审一律按提交范围取 diff（共同规矩第 17 条）；codex 的 target 用不会变的写法（如 `<基点>..HEAD`），否则换范围时身份对不上；解冲突挪了代码要先编译再报
+
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
 - **做到哪**：合并已提交 bbe2f20（大总管）。排队等编译名额（第二位）。#88：红测试已写 `src/atg-core/tests/send_limits.rs` 末尾两条（`late_limit_with_a_full_disk_still_stops_the_next_process` 现应红；`accepted_send_left_open_at_a_clean_close_leaves_no_manual_work` 现应绿、守 Q1=b）；单测三条（新 API `hold` / `await_outcome` / `outcome` / `closed`）暂放 scratchpad `88-unit-tests.rs`，红跑之后再放回 `send_limits.rs`。大总管定：#8 直发；`actions.md:294` 是历史记录不改；Q1 先按 b
