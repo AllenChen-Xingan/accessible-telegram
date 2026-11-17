@@ -265,7 +265,9 @@ async fn hand_over<B: Backend>(
             last: None,
         });
     }
-    // 交出前的复核到此为止：这之后到交给 TDLib 之间没有 await
+    // 交出前的复核到此为止。为什么到点只会落在这之前或交出之后：`block_on_timeout` 只在 future 停在 await 时
+    // 才看期限，从这里到交给 TDLib（`before_submit` 的读写文件、`send_limits::submit` 第一次 poll 就同步交出）
+    // 中间没有 await，打断不了。置在 `before_submit` 之前也无妨：它拒了就直接返回错误，不会走到「到点」那一支
     handed.store(true, Ordering::SeqCst);
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
@@ -337,7 +339,8 @@ pub fn resend_and_wait<B: Backend>(
     let mut waited = wait(stream, &temps, timeout, &mut |e| on_fed(Fed::Event(e))).into_iter();
     let mut out = Vec::with_capacity(olds.len());
     for (old, new) in olds.into_iter().zip(news) {
-        // 留痕按条记、带旧 id（#83）；TDLib 说这条不能重发（应答里是 null）的也记一行：没发出
+        // 留痕按条记、带旧 id（#83）；TDLib 说这条不能重发（应答里是 null）的也记一行：没发出。
+        // 标记用 CLI `items` 里同一个词 `not_resent`（只在留痕里，不是 errors.md 的错误码）
         let Some(sub) = new else {
             b.gate().after_item(
                 mode,
@@ -346,7 +349,7 @@ pub fn resend_and_wait<B: Backend>(
                 0,
                 None,
                 Outcome::Failed,
-                Some("not_resendable"),
+                Some("not_resent"),
             );
             out.push(ResendOutcome { old, result: None });
             continue;

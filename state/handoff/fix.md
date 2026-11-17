@@ -11,7 +11,9 @@
 - 现在：待命。下一步：等 #9 #57 合 main → 大总管从新 main 开分支 → 发送闸组 #77 #80 #83（codex 048；`token: ConfirmToken` 隐私扫描误报按 common.md 第 15 条报大总管核准再 --force-secrets）
 - 2026-11-17 换工作副本 atg-wt/fix-gate（分支 fix/77-80-83，从 main 266f5f3）。#109 已由 msg1 在 #134 修掉。按新 main 复核清单已报大总管：#77 不改 verify/before_submit 签名（again 按 digest 记在闸里、每次 verify 覆盖）；#80 照 react_within 口径给 submit_within 加 handed；#83 Gated 加默认 log_items、DirectLogLine 加 old_id（放 reaction 之后，与 msg2 的 from_chat_id 相邻）、加 after_item。等大总管放行
 - 2026-11-17 放行开工。#77 #80 #83 代码 + 测试 + 契约写完（16 文件），未编译；已申请名额。注意：测试与修法同时写，没在修前实测红
-- 下一步：名额 → fmt/clippy/test → atg-review → codex 048 → PR
+- 2026-11-17 复跑 574 过；会红验证：5 红 2 绿（2 绿是交出后到点的回归测试），git diff 与存档补丁 cmp 一致。大总管提交检查点 8dcf473
+- atg-review（3 视角，范围 origin/main...HEAD）：P0/P1 无；P2×7（多为重复）+ P3×9 全改：again 表只记「进防重复 + 带 --again」、不带的删条目；hit/claim 共用 latest_hit；留痕标记改 `not_resent`（与 CLI 同名，注明不是错误码）；handed 注释写清 block_on_timeout 只在 await 看期限；契约 send_text/resend 两行与 cli resend 行补 #80、errors network 行补、30 秒从验凭据算、--again 规则挪到放行条、testing.md:82 留痕行数、变更记录来源统一。未编译
+- 下一步：名额复跑 → 提交 → codex 048 → PR
 - 要人定的事：无
 
 # fix 现状页（批次 b18）

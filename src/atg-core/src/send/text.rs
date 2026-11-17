@@ -285,7 +285,9 @@ async fn hand_over<B: Backend>(
     let mode = b.gate().verify(token, plan)?;
     // 发6②：准备到交出之间最长 60 秒、还等了人确认，被回复那条可能已被删、被挪话题
     preview_check(b, plan).await?;
-    // 置在交出前的复核之后：这之后到交给 TDLib 之间没有 await，到点只会发生在这之前或交出之后
+    // 交出前的复核到此为止。为什么到点只会落在这之前或交出之后：`block_on_timeout` 只在 future 停在 await 时
+    // 才看期限，从这里到交给 TDLib（`before_submit` 的读写文件、`send_limits::submit` 第一次 poll 就同步交出）
+    // 中间没有 await，打断不了。置在 `before_submit` 之前也无妨：它拒了就直接返回错误，不会走到「到点」那一支
     handed.store(true, Ordering::SeqCst);
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {

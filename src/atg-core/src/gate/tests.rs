@@ -496,15 +496,7 @@ fn batch_plans_log_one_line_per_item() {
     let mode = g.verify(t, &p).unwrap();
     g.before_submit(mode, &p).unwrap();
     g.after_item(mode, &p, 11, -21, Some(31), Outcome::Succeeded, None);
-    g.after_item(
-        mode,
-        &p,
-        12,
-        0,
-        None,
-        Outcome::Failed,
-        Some("not_resendable"),
-    );
+    g.after_item(mode, &p, 12, 0, None, Outcome::Failed, Some("not_resent"));
     g.after_item(mode, &p, 13, -23, None, Outcome::Unknown, None);
     let lines = |d: &Path| -> Vec<serde_json::Value> {
         fs::read_to_string(d.join(DIRECT_LOG_FILE))
@@ -521,7 +513,7 @@ fn batch_plans_log_one_line_per_item() {
         assert_eq!(v[i + 3]["old_id"], old);
     }
     assert_eq!(v[3]["final_id"], 31);
-    assert_eq!(v[4]["error"], "not_resendable");
+    assert_eq!(v[4]["error"], "not_resent");
     assert_eq!(v[5]["result"], "unknown");
 
     // 请求整个没等到（没有临时 id）：每条各一行

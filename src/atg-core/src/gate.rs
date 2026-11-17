@@ -216,6 +216,14 @@ pub enum Outcome {
 
 // ───────────────────────── 防重复记录 ─────────────────────────
 
+/// 什么算命中：同会话同指纹、上次不是「明确失败」，取最近一条。开凭据时的早拒与交出前的认领共用这一份判定（#77）
+fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&'a GuardEntry> {
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
+        .max_by_key(|e| e.at)
+}
+
 /// 一条防重复记录：时间、会话、指纹、状态。**不记内容、不记名字**
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardEntry {
@@ -266,12 +274,9 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
-        Ok(Self::live(now, self.load()?)
-            .into_iter()
-            .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
-            .max_by_key(|e| e.at))
+        Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
     }
 
     /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。
@@ -284,12 +289,7 @@ impl GuardStore {
         again: bool,
     ) -> std::io::Result<Result<(), GuardEntry>> {
         let mut entries = Self::live(now, self.load()?);
-        if !again
-            && let Some(hit) = entries
-                .iter()
-                .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
-                .max_by_key(|e| e.at)
-        {
+        if !again && let Some(hit) = latest_hit(&entries, chat, fp) {
             return Ok(Err(hit.clone()));
         }
         entries.push(GuardEntry {

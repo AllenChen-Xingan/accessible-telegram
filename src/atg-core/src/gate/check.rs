@@ -18,8 +18,9 @@ struct Facts {
 pub struct Gate {
     proc: Holder,
     used: Mutex<HashSet<u64>>,
-    /// 验过的凭据带没带 `--again`，按计划摘要记，交出前查重时取（#77）。每次验凭据都覆盖：
-    /// 同一份计划后来又开了一张不带的，不沿用前一张的放行
+    /// 验过、带 `--again` 的进防重复计划，按计划摘要记，交出前查重时取走（#77）。只记这一种：
+    /// 别的计划（不进防重复的、不带 `--again` 的）不写，表里不会积攒走不到交出的条目。
+    /// 同一份计划又验了一张不带的凭据，就把它删掉（后验的为准，不沿用前一张的放行）
     again: Mutex<HashMap<[u8; 32], bool>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
@@ -144,14 +145,18 @@ impl Gate {
         if !lock(&self.used).insert(token.nonce) {
             return Err(refused(SendRefusedReason::TokenReused));
         }
-        {
+        if plan.dedup() && token.mode == ConfirmMode::DirectMode {
             let mut again = lock(&self.again);
-            // 验过却没走到交出（复核被拒、超时……）的会留下；攒多了整个清掉。清掉的只会让那次交出按不带
-            // `--again` 查重：宁可多拦
-            if again.len() >= AGAIN_KEEP {
-                again.clear();
+            if token.again {
+                // 带 `--again` 验过却没走到交出（复核被拒、超时）的会留下；这种很少，攒到上限才整个清掉。
+                // 清掉的只会让那次交出按不带 `--again` 查重：宁可多拦
+                if again.len() >= AGAIN_KEEP {
+                    again.clear();
+                }
+                again.insert(token.digest, true);
+            } else {
+                again.remove(&token.digest);
             }
-            again.insert(token.digest, token.again);
         }
         Ok(token.mode)
     }
@@ -254,7 +259,7 @@ impl Gate {
     }
 
     /// 批量计划里一条的结果（#83）：`old_id` 是它重发前的 id；TDLib 说不能重发的那条记 `failed`、
-    /// `error:"not_resendable"`。只写留痕（批量重发不进防重复）
+    /// `error:"not_resent"`（与 CLI `items` 的 outcome 同名；只在留痕里，不是对外错误码）。只写留痕（批量重发不进防重复）
     #[allow(clippy::too_many_arguments)]
     pub fn after_item(
         &self,
