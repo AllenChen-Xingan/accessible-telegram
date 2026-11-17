@@ -16,9 +16,7 @@ struct Facts {
 
 /// 发送闸。每个后端持有一个；CLI / GUI 经 `Backend::gate` 拿到它开凭据
 pub struct Gate {
-    direct: bool,
     proc: Holder,
-    auth: Box<dyn Authenticator>,
     used: Mutex<HashSet<u64>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
@@ -27,12 +25,10 @@ pub struct Gate {
 }
 
 impl Gate {
-    /// `direct`：本进程是不是以 `--unsafe-direct-send` 启动的（只认启动参数）
-    pub fn new(direct: bool, proc: Holder, auth: Box<dyn Authenticator>) -> Self {
+    /// 正式服务器一律直发（Touch ID 确认已去掉，人定 2026-11-16）
+    pub fn new(proc: Holder) -> Self {
         Self {
-            direct,
             proc,
-            auth,
             used: Mutex::new(HashSet::new()),
             facts: Mutex::new(Facts::default()),
             direct_sent: std::sync::atomic::AtomicU64::new(0),
@@ -43,10 +39,6 @@ impl Gate {
     /// 交给收线程的那份发送限制（后端建好时 `Shared::watch_send_limits`）
     pub fn limits(&self) -> std::sync::Arc<crate::send_limits::SendLimits> {
         self.limits.clone()
-    }
-
-    pub fn direct(&self) -> bool {
-        self.direct
     }
 
     /// 后端起来时：实际的 `use_test_dc`、档案目录、指纹密钥
@@ -93,14 +85,10 @@ impl Gate {
                 Err(refused(SendRefusedReason::TestDcSavedOnly))
             };
         }
-        Ok(if self.direct {
-            ConfirmMode::DirectMode
-        } else {
-            ConfirmMode::HumanAuth
-        })
+        Ok(ConfirmMode::DirectMode)
     }
 
-    /// 开凭据。直发模式先查防重复（`again` 放行这一次）；默认模式弹 Touch ID / 系统密码
+    /// 开凭据。直发先查防重复（`again` 放行这一次）
     pub fn issue(&self, plan: &dyn Gated, again: bool) -> Result<ConfirmToken, CoreError> {
         let mode = self.mode_for(plan.target())?;
         match mode {
@@ -109,14 +97,6 @@ impl Gate {
                 if plan.dedup() && !again {
                     self.check_duplicate(plan)?;
                 }
-            }
-            ConfirmMode::HumanAuth => {
-                if !plan.confirm_fits() {
-                    return Err(refused(SendRefusedReason::TooLongToConfirm));
-                }
-                self.auth
-                    .authenticate(&plan.confirm_text())
-                    .map_err(refused)?;
             }
         }
         let mut nonce = [0u8; 8];

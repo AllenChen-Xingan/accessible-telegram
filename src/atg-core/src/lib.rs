@@ -20,7 +20,7 @@
 //!
 //! 发送（M2.1 / M2.2）：
 //! - [`gate`]：发送闸（确认凭据、三种确认方式、直发防重复与留痕）· [`send`]：发文字、回复、重发的流程 ·
-//!   [`localauth`]：macOS 上的 Touch ID / 系统密码（发送闸的人工确认） · [`send_limits`]：账号受限、限流冷却（落盘，跨进程遵守） · [`confirm_box`]：Touch ID 确认框放不放得下
+//!   [`send_limits`]：账号受限、限流冷却（落盘，跨进程遵守）
 //!
 //! 提示（#53）：[`notify`]：提不提示的判定 v0（新消息、正在输入、重连汇总；`watch` 用）
 //!
@@ -42,7 +42,7 @@
 //! - **TDLib**：Telegram 官方的客户端库（C++，经 tdlib-rs 接进来，只在 [`td`] 里用）。它替我们管网络、加密的本地
 //!   数据库和**待发队列**：交出去的消息存在库里，断网等恢复、进程重启后都会自动接着发——所以「结果未知」的消息
 //!   过很久仍可能发出去。**库钥匙**：这个本地数据库的加密钥匙，32 字节随机数，存在 macOS 钥匙串里（[`keystore`]）
-//! - **直发模式**：以 `--unsafe-direct-send` 启动的这一次运行，发送一律不确认（人定，给 AI 驱动 CLI 用；人已知 AI
+//! - **直发模式**：正式服务器的唯一方式（Touch ID 已删除，人定 2026-11-16，#113），发送一律不确认（人定，给 AI 驱动 CLI 用；人已知 AI
 //!   也能自己加这个参数）。代价是没有人把关，所以另加了防重复拦截与留痕（[`gate`]；`actions.md` 第一节第 5 小节）
 //! - **确认凭据**（`gate::ConfirmToken`）：发送闸在人确认（或测试豁免、直发模式）后开出的一次性凭证，绑目标与请求摘要，
 //!   60 秒有效、只能用一次。与上面的请求凭据是两回事
@@ -76,7 +76,6 @@
 pub mod auth;
 pub mod backend;
 pub mod config;
-pub mod confirm_box;
 pub mod error;
 pub mod fake;
 pub mod gate;
@@ -85,7 +84,6 @@ pub mod json;
 pub mod keystore;
 pub mod link;
 #[cfg(target_os = "macos")]
-pub mod localauth;
 pub mod logline;
 pub mod model;
 pub mod notify;

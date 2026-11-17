@@ -119,41 +119,6 @@ impl Gated for ResendPlan {
     fn kind(&self) -> &'static str {
         "resend"
     }
-    fn confirm_fits(&self) -> bool {
-        // 每条都给得出正文（自审第 6 轮 P1：重发同样要让人看到全文），整段也放得下（第 7 轮：条数多了行数会超）
-        self.items.iter().all(|i| i.text.is_some()) && gate::fits_confirm_box(&self.confirm_text())
-    }
-    fn confirm_text(&self) -> String {
-        let drop = if self.items.iter().any(|i| i.drops_reply) {
-            "，会去掉回复关系"
-        } else {
-            ""
-        };
-        let bodies: Vec<String> = self
-            .items
-            .iter()
-            .map(|i| match &i.text {
-                Some(t) => format!(
-                    "id {} 那条{}，{}",
-                    i.id,
-                    i.reply.zh(self.target.id),
-                    confirm_body(t)
-                ),
-                None => format!(
-                    "id {} 那条{}：不是纯文字，这里看不到内容",
-                    i.id,
-                    i.reply.zh(self.target.id)
-                ),
-            })
-            .collect();
-        format!(
-            "重发到 {}{drop}\n{}，{}\n{}",
-            target_zh(&self.target),
-            origin_zh(self.origin),
-            CONFIRM_QUEUE_ZH,
-            bodies.join("\n"),
-        )
-    }
 }
 
 /// 重发凭据绑的摘要：请求 + 每条重发后的回复关系（去不去掉、回复谁）+ 每条的正文（人确认的就是这些）

@@ -51,6 +51,7 @@ mod transcribe;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
+mod usage;
 // 语音的组合动作只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod voice;
@@ -77,7 +78,7 @@ fn main() -> ExitCode {
 
     let cli = match Cli::try_parse_from(&argv) {
         Ok(cli) => cli,
-        Err(e) => return parse_failed(&e, format_from_raw(&argv)),
+        Err(e) => return parse_failed(&e, &argv),
     };
     // 占位子命令把后面的参数整个收下，放在其后的 `--format` 会被吞进去；骨架阶段从原始参数补认。
     // 各块按契约定好真参数后，占位收参去掉，这行也跟着去掉
@@ -495,15 +496,16 @@ fn tdlib_version() -> Option<String> {
 }
 
 /// 参数解析失败：`--help` 照常给人看；其余按 `usage` 出一行错误，人看的说明走标准错误
-fn parse_failed(e: &clap::Error, format: Format) -> ExitCode {
+fn parse_failed(e: &clap::Error, argv: &[OsString]) -> ExitCode {
     match e.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
             let _ = e.print();
             ExitCode::SUCCESS
         }
         _ => {
-            // clap 的原文可能带用户输入，只进标准错误，不进标准输出
-            eprint!("{}", e.render());
+            // clap 的原文会带用户写的值（验证码、正文……）：标准错误只写不带原文的那段（#64）
+            eprint!("{}", usage::usage_text(e, argv));
+            let format = format_from_raw(argv);
             fail(format, Code::Usage, "参数不对，用 --help 看用法", json!({}))
         }
     }

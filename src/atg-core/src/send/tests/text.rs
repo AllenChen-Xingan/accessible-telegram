@@ -34,11 +34,10 @@ fn only_forum_and_thread_topics_are_sent() {
 }
 
 #[test]
-fn test_dc_saved_sends_without_asking_and_keeps_draft() {
-    let mut r = rig("saved", false, true, Err(SendRefusedReason::AuthFailed));
+fn test_dc_saved_sends_and_keeps_draft() {
+    let mut r = rig("saved", true);
     let w = send_once(&mut r, ME, &draft("测试", None), false).unwrap();
     assert!(matches!(w, Waited::Succeeded(ref m) if m.id.chat_id == ME));
-    assert_eq!(r.asks.load(Ordering::SeqCst), 0);
     // 交给「TDLib」的就是摘要算过的那份：不清草稿、带 sending_id、不是预览
     let sent = r.b.submitted();
     assert_eq!(sent.len(), 1);
@@ -52,27 +51,24 @@ fn test_dc_saved_sends_without_asking_and_keeps_draft() {
 
 #[test]
 fn test_dc_other_chat_is_refused_before_anything_is_sent() {
-    let mut r = rig("other", true, true, Ok(()));
+    let mut r = rig("other", true);
     let e = send_once(&mut r, FRIEND, &draft("测试", None), false).unwrap_err();
     assert_eq!(refused_reason(e), SendRefusedReason::TestDcSavedOnly);
     assert!(r.b.submitted().is_empty());
 }
 
 #[test]
-fn main_server_asks_every_time_and_refusal_sends_nothing() {
-    let mut r = rig("main", false, false, Ok(()));
+fn main_server_sends_without_asking() {
+    // 人定 2026-11-16：Touch ID 整个去掉，正式服务器发收藏夹、发别人都直接交出
+    let mut r = rig("main", false);
     send_once(&mut r, ME, &draft("测试", None), false).unwrap();
-    send_once(&mut r, ME, &draft("测试", None), false).unwrap();
-    assert_eq!(r.asks.load(Ordering::SeqCst), 2);
-    let mut r = rig("main-no", false, false, Err(SendRefusedReason::AuthFailed));
-    let e = send_once(&mut r, ME, &draft("测试", None), false).unwrap_err();
-    assert_eq!(refused_reason(e), SendRefusedReason::AuthFailed);
-    assert!(r.b.submitted().is_empty());
+    send_once(&mut r, FRIEND, &draft("测试", None), false).unwrap();
+    assert_eq!(r.b.submitted().len(), 2);
 }
 
 #[test]
 fn direct_mode_blocks_second_identical_submit() {
-    let mut r = rig("dup", true, false, Err(SendRefusedReason::AuthFailed));
+    let mut r = rig("dup", false);
     send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap();
     let e = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap_err();
     assert_eq!(refused_reason(e), SendRefusedReason::DuplicateRecent);
@@ -81,12 +77,11 @@ fn direct_mode_blocks_second_identical_submit() {
     send_once(&mut r, FRIEND, &draft("好的", None), true).unwrap();
     send_once(&mut r, FRIEND, &draft("好的！", None), false).unwrap();
     assert_eq!(r.b.submitted().len(), 3);
-    assert_eq!(r.asks.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn direct_mode_blocks_rerun_after_unknown_outcome() {
-    let mut r = rig("unknown", true, false, Ok(()));
+    let mut r = rig("unknown", false);
     r.b.script_sends(vec![FakeSend::Silent]);
     let w = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap();
     assert_eq!(w, Waited::Unknown(UnknownWhy::Timeout));
@@ -96,7 +91,7 @@ fn direct_mode_blocks_rerun_after_unknown_outcome() {
 
 #[test]
 fn pending_deleted_is_unknown_not_failure() {
-    let mut r = rig("deleted", false, true, Ok(()));
+    let mut r = rig("deleted", true);
     r.b.script_sends(vec![FakeSend::Delete]);
     let w = send_once(&mut r, ME, &draft("测试", None), false).unwrap();
     assert_eq!(w, Waited::Unknown(UnknownWhy::PendingDeleted));
@@ -104,7 +99,7 @@ fn pending_deleted_is_unknown_not_failure() {
 
 #[test]
 fn failure_reports_reason_and_can_be_resent() {
-    let mut r = rig("fail", false, true, Ok(()));
+    let mut r = rig("fail", true);
     r.b.script_sends(vec![FakeSend::Fail {
         code: 400,
         message: "MESSAGE_TOO_LONG".into(),
@@ -152,7 +147,7 @@ fn failure_reports_reason_and_can_be_resent() {
 #[test]
 fn reply_dropped_by_preview_is_refused_at_prepare_and_at_send() {
     // 准备时预览就去掉了回复
-    let mut r = rig("drop1", false, true, Ok(()));
+    let mut r = rig("drop1", true);
     r.b.script_previews(&[true]);
     let e = block_on(prepare_text(
         &r.b,
@@ -183,7 +178,7 @@ fn reply_dropped_by_preview_is_refused_at_prepare_and_at_send() {
 
 #[test]
 fn forum_needs_reply_and_takes_topic_from_replied_message() {
-    let mut r = rig("forum", true, false, Ok(()));
+    let mut r = rig("forum", false);
     let e = block_on(prepare_text(
         &r.b,
         FORUM,
@@ -215,7 +210,7 @@ fn forum_needs_reply_and_takes_topic_from_replied_message() {
 
 #[test]
 fn reply_not_allowed_and_empty_text_are_invalid() {
-    let r = rig("noreply", false, true, Ok(()));
+    let r = rig("noreply", true);
     r.b.set_no_reply(MsgId {
         chat_id: ME,
         message_id: 5,
@@ -250,7 +245,7 @@ fn reply_not_allowed_and_empty_text_are_invalid() {
 
 #[test]
 fn rejected_submit_is_recorded_as_failed_so_retry_is_not_blocked() {
-    let mut r = rig("reject", true, false, Ok(()));
+    let mut r = rig("reject", false);
     r.b.script_sends(vec![FakeSend::Reject(CoreError::Forbidden { td: None })]);
     let e = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap_err();
     assert_eq!(e.code(), "forbidden");
@@ -260,7 +255,7 @@ fn rejected_submit_is_recorded_as_failed_so_retry_is_not_blocked() {
 #[test]
 fn error_after_handing_over_is_unknown_and_still_blocks_rerun() {
     // 交出途中断了（应答没等到）：不知道发没发出——按结果未知报，防重复照样拦重跑
-    let mut r = rig("lost", true, false, Ok(()));
+    let mut r = rig("lost", false);
     r.b.script_sends(vec![FakeSend::Reject(CoreError::Disconnected)]);
     let e = send_once(&mut r, FRIEND, &draft("好的", None), false).unwrap_err();
     assert!(matches!(

@@ -144,10 +144,9 @@ pub fn job_name(job: Job) -> &'static str {
     }
 }
 
-/// 真实后端（本进程唯一的一个）。`direct`：本进程是不是以 `--unsafe-direct-send` 启动的（只有发送类命令和
-/// `serve` 会传真；别的命令不发东西，闸用不到）
+/// 真实后端（本进程唯一的一个）。闸一律直发（Touch ID 已去掉，人定 2026-11-16）
 #[cfg(feature = "tdlib")]
-pub fn td_backend_with(direct: bool) -> Result<atg_core::td::TdBackend, Fail> {
+pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
     use atg_core::error::Holder;
     use atg_core::keystore::Keychain;
     use atg_core::td::{TdBackend, TdConfig};
@@ -157,19 +156,9 @@ pub fn td_backend_with(direct: bool) -> Result<atg_core::td::TdBackend, Fail> {
         keystore: Box::new(Keychain),
         log_dir,
         holder: Holder::Cli,
-        gate: atg_core::gate::Gate::new(
-            direct,
-            Holder::Cli,
-            atg_core::gate::system_authenticator(),
-        ),
+        gate: atg_core::gate::Gate::new(Holder::Cli),
     })
     .map_err(Fail::Core)
-}
-
-/// 不发东西的命令用的真实后端（闸照常在，但不是直发）
-#[cfg(feature = "tdlib")]
-pub fn td_backend() -> Result<atg_core::td::TdBackend, Fail> {
-    td_backend_with(false)
 }
 
 #[cfg(feature = "tdlib")]
@@ -442,7 +431,7 @@ pub fn drive<B: Backend>(
     r
 }
 
-/// `send` 直跑：选档案、起真实后端（直发与否看本进程的 `--unsafe-direct-send`）、发、关。输出直接写标准输出
+/// `send` 直跑：选档案、起真实后端、发、关。输出直接写标准输出
 pub fn send(
     g: &Global,
     format: crate::args::Format,
@@ -510,7 +499,7 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的 `--unsafe-direct-send`）→
+/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端→
 /// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
 fn l2_run(
     g: &Global,
@@ -545,11 +534,8 @@ fn l2_run(
     #[cfg(feature = "tdlib")]
     {
         let r = open_profile(g).and_then(|profile| {
-            let b = td_backend_with(g.unsafe_direct_send)?;
+            let b = td_backend()?;
             crate::history::with_backend(&b, &profile, started, |b, stream, feed| {
-                if b.gate().direct() {
-                    crate::send::direct_banner(b, &mut Stdio, format);
-                }
                 Ok(body(b, stream, feed, &mut Stdio))
             })
         });

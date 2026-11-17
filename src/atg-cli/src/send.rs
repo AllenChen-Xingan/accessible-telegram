@@ -2,10 +2,10 @@
 //! 动作与闸：`specs/contracts/actions.md` 第一节第 3–5 小节；流程在 `atg_core::send`。
 //!
 //! 输出（直跑与经本机接口转发同一段代码）：
-//! 1. 直发模式直跑时先一行 `status`（`direct_send:true`），标准错误一句醒目提示
+//! 1. （原「直发模式先出 `status` 行与醒目提示」已随 Touch ID 一起去掉：直发是唯一方式，不再需要提示）
 //! 2. 一行 `plan`：目标（种类、名字、id）、全文、回复的那条（id + 简短读法）、最终话题、发起方、确认方式、摘要
 //! 3. `--dry-run` 到此为止（`result` 带 `dry_run:true`）
-//! 4. 闸开凭据：测试服务器 + 收藏夹自动；正式服务器弹 Touch ID / 系统密码；直发模式不问（但查防重复，`--again` 放行）
+//! 4. 闸开凭据：测试服务器 + 收藏夹自动；正式服务器直发不问（但查防重复，`--again` 放行）
 //! 5. 等结果（30 秒）：成功 → 回显发出的那条（读法同 `history`）+ `result`（最终 `message_id`）；失败 → `error`
 //!    （码来自失败原因，带失败那条的新 id、能否 `resend`）；没等到 / 待发那条被删 / 断了 → `send_outcome_unknown`（退出码 10，**不许重发**）
 //!
@@ -19,7 +19,7 @@ use crate::history::{self, ChatRef};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
 use atg_core::error::CoreError;
-use atg_core::gate::{ConfirmMode, Gated};
+use atg_core::gate::ConfirmMode;
 use atg_core::link::EventStream;
 use atg_core::model::Message;
 use atg_core::project;
@@ -142,34 +142,6 @@ fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
     }
 }
 
-/// 要人按 Touch ID / 输系统密码前，在标准错误说一句人话（JSON 计划行里只有 `confirm:"human_auth"`，人看不懂；
-/// 系统框可能被别的窗口挡住，读屏用户也不一定马上找到）
-pub const HUMAN_AUTH_PROMPT_ZH: &str =
-    "atg-cli：请在弹出的系统框里按 Touch ID 或输入系统密码，确认这次发送（60 秒内）";
-
-/// 直发模式直跑时的开场：标准错误一句醒目提示 + 标准输出第一行 `status`（`actions.md` 第一节第 5 小节）
-pub fn direct_banner<B: Backend>(b: &B, sink: &mut dyn Sink, format: Format) {
-    sink.err("⚠️ atg-cli：直发模式已开启——本次运行发送不再确认（--unsafe-direct-send）");
-    let r = b.status();
-    if format == Format::Json {
-        emit_to(
-            sink,
-            &envelope(
-                "status",
-                json!({
-                    "core": r.lines.core,
-                    "auth": r.lines.auth,
-                    "net": r.lines.net,
-                    "user_status": r.status,
-                    "pending_sends": [],
-                    "direct_send": true,
-                    "direct_sent": b.gate().direct_sent(),
-                }),
-            ),
-        );
-    }
-}
-
 /// 一条消息的读法上下文（同 `history`；CLI 没有按键）
 fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
     history::speech_ctx(tz, false)
@@ -217,8 +189,7 @@ fn echo(sink: &mut dyn Sink, format: Format, cx: &SpeechCtx, doc: &Doc) {
 fn confirm_zh(m: ConfirmMode) -> &'static str {
     match m {
         ConfirmMode::TestExempt => "测试服务器发收藏夹，不用确认",
-        ConfirmMode::HumanAuth => "要你按 Touch ID 或输入系统密码确认",
-        ConfirmMode::DirectMode => "直发模式，不确认",
+        ConfirmMode::DirectMode => "直接发，不确认",
     }
 }
 
@@ -291,9 +262,6 @@ fn run_send<B: Backend>(
         return Ok(0);
     }
 
-    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
-        sink.err(HUMAN_AUTH_PROMPT_ZH);
-    }
     let token = b.gate().issue(&plan, p.again).map_err(Fail::Core)?;
     let (mode, temp, waited) =
         send::send_and_wait(b, &plan, token, stream, timeout, &mut |env| feed.apply(env))
@@ -478,9 +446,6 @@ fn run_resend<B: Backend>(
         return Ok(0);
     }
     // 重发不进直发防重复（`Gated::dedup` 为假），`again` 对它不起作用，传什么都一样
-    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
-        sink.err(HUMAN_AUTH_PROMPT_ZH);
-    }
     let token = b.gate().issue(&plan, false).map_err(Fail::Core)?;
     let (mode, outcomes) =
         send::resend_and_wait(b, &plan, token, stream, timeout, &mut |fed| match fed {

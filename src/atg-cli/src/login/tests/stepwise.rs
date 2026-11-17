@@ -235,3 +235,55 @@ fn logout_when_signed_out_asks_nothing() {
     assert_eq!(d["already_signed_out"], true);
     assert!(s.asked.is_empty());
 }
+
+// ───────────── 走不下去的几步（`errors.md`「登录走到不支持的一步时 CLI 怎么报」，#64） ─────────────
+
+#[test]
+fn stepwise_registration_on_main_profile_is_unsupported() {
+    let a = FakeAuth {
+        phone: "+86 138 0000 0000".into(),
+        needs_registration: true,
+        ..account()
+    };
+    let (b, _p) = started("step-reg-main", ServerKind::Main, a);
+    let mut s = Script::new(&["+86 138 0000 0000", CODE]);
+    let (r, _) = step(&b, ServerKind::Main, AuthSub::Phone, None, &mut s);
+    assert!(r.is_ok());
+    let (r, steps) = step(&b, ServerKind::Main, AuthSub::Code, None, &mut s);
+    assert!(matches!(r, Err(Fail::Unsupported(S::WaitRegistration))));
+    assert!(steps.is_empty(), "不另出 auth 行");
+    assert!(!auth_calls(&b).contains(&"register"));
+    // 停在这一步时查状态也照契约报
+    let (r, _) = step(&b, ServerKind::Main, AuthSub::State, None, &mut s);
+    assert!(matches!(r, Err(Fail::Unsupported(S::WaitRegistration))));
+    // 号码输错了：这一步 TDLib 允许换号，`auth phone` 照收
+    let mut s = Script::new(&["+86 138 0000 0000"]);
+    let (r, steps) = step(&b, ServerKind::Main, AuthSub::Phone, None, &mut s);
+    assert!(r.is_ok(), "换号");
+    assert_eq!(steps, [S::WaitCode]);
+}
+
+#[test]
+fn stepwise_other_device_and_unsupported_steps_are_reported() {
+    // `WaitPremiumPurchase`：要先买会员才能登录，本项目不支持（`errors.md` 举的例子）
+    for (td, want) in [
+        (
+            "authorizationStateWaitOtherDeviceConfirmation",
+            S::WaitOtherDevice,
+        ),
+        ("authorizationStateWaitPremiumPurchase", S::Unsupported),
+    ] {
+        let (b, _p) = started("step-dead-end", ServerKind::Test, account());
+        b.push_auth(td);
+        assert!(b.wait_auth(STEP_TIMEOUT, &|s| s == want).is_some(), "{td}");
+        for sub in [AuthSub::State, AuthSub::Code] {
+            let (r, _) = step(&b, ServerKind::Test, sub, None, &mut Script::new(&[CODE]));
+            assert!(
+                matches!(r, Err(Fail::Unsupported(s)) if s == want),
+                "{td} {}",
+                sub.name()
+            );
+        }
+        assert!(!auth_calls(&b).contains(&"code"), "{td}：没交给「TDLib」");
+    }
+}

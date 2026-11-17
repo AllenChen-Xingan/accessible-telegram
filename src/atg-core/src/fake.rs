@@ -26,7 +26,7 @@ use crate::backend::{
 };
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
-use crate::gate::{Gate, NoAuth};
+use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
 use crate::model::FailedInfo;
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
@@ -153,7 +153,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 impl FakeBackend {
     /// 新建并立刻起收线程（测试可以在 `start` 之前就喂更新）
     pub fn new() -> Result<Self, CoreError> {
-        Self::with_gate(Gate::new(false, Holder::Cli, Box::new(NoAuth)))
+        Self::with_gate(Gate::new(Holder::Cli))
     }
 
     /// 带指定的发送闸（直发模式、假认证器）

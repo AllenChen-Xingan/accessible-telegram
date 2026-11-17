@@ -38,7 +38,7 @@
 | `resend CHAT_ID MSG_ID... [--dry-run]` | 重发失败的消息（同一会话里一条或几条，一张凭据）：先输出一行 `plan`（`messages` 逐条：`message_id` · `drops_reply`（会不会去掉回复关系）· `text`（要重发的正文，不是纯文字的为 `null`）· `hidden_chars`），按闸确认后逐条等结果（每条 30 秒内），成功的回显发出的那条（同 `history`）；全部成功以 `result` 结尾。`items` 逐条：`message_id`（要重发的那条）· `outcome`（`succeeded` 带 `new_message_id`；`failed` 带 `new_message_id`、`code`、`can_resend`；`unknown` 带 `temp_message_id`、`why`；`not_resent` = TDLib 说这条不能重发）；有没成功的以 `error` 结尾，`code` 取有结果未知的就取第一条结果未知的（`send_outcome_unknown`，退出码 10——最要紧的是别重发），否则取第一条没成功的（不能重发 `invalid_input` / 失败按原因），同样带 `items`；说明逐项计数（成功 / 失败 / 结果未知几条），点名结果未知的那几条不要再重发。`--dry-run` 只输出 `plan` 加一行 `result`（`dry_run:true`）。要重发的 id 用 `send` 失败那行 `error` 里的 `message_id`（失败后 TDLib 已给它换了新 id）。加 `--redact` 报 `not_implemented` | `resend_prepare` `resend` | T04 |
 | `show CHAT_ID MSG_ID` | 一条消息的全部细节（含被回复的那条），`speech` 带 `detail`。**不标已读** | `message_get` `replied_message_get` | T06 T07 |
 | `search chats QUERY [-n N]` / `search messages QUERY [--chat CHAT_ID] [-n N] [--cursor C]` | 搜索 | `search_*` | T08 |
-| `send CHAT_ID (--text T \| --text-file PATH) [--reply-to MSG_ID] [--dry-run] [--again]` | 先输出一行 `plan`（`target` 种类 / 名字 / id / 是否收藏夹 · 全文 · `reply_to` 与 `reply_brief`（被回复那条的简短读法，同 `history`）· 最终 `topic` · `origin` · `confirm`（`test_exempt` / `human_auth` / `direct_mode`）· `digest`），再按闸要求确认，**等到结果才输出结尾行**：成功 → 回显发出的那条（`kind:"message"`，读法同 `history`）+ `result`（最终 `message_id`、`temp_message_id`、`confirm`；带了回复或话题时另有 `reply_kept`：Telegram 发出后去掉了回复或换了话题就是 `false`）；`send_failed` → `error`，`code` 来自失败原因，另带失败那条的新 `message_id` 与 `can_resend`；30 秒内都没等到，或临时 id 出现在 `messages_deleted` 里（待发消息被删，是否已送达未知），或等的途中连接断了 → `error(send_outcome_unknown)` 带 `temp_message_id` 与 `why`（`timeout` / `pending_deleted` / `disconnected`），退出码 10，**不许重发**，用 `pending` 查。`--dry-run` 只输出 `plan` 加一行 `result`（`dry_run:true`）、不发。`plan` 另带 `hidden_chars`：正文里看不见的字符（零宽、双向控制、标签字符……）有几个，给人看的地方都已转义成 `\u{…}`。**在 `pending` 做好之前**，结果未知时的下一步是去会话里看最近的消息（`history`），确认没发出再决定，不要直接重发。`--again`：直发模式下最近已向同一会话提交过同样内容时被拦（已发出的看 10 分钟、结果未知的看 24 小时）（`send_refused(duplicate_recent)`，说明写清几秒前、什么结果），确要再发一次加它（`actions.md` 第一节第 5 小节）。正式服务器默认模式要人按 Touch ID，整段确认说明（会话名 + 来源 + 正文）放不进确认框就拒 `send_refused(too_long_to_confirm)`，正文实际只能很短（通常几十个字，规则见 `actions.md` 第一节第 4 小节第 4 条）。加 `--redact` 报 `not_implemented`（会输出正文）。正文 64 KB 以内、UTF-8（超了：CLI 本地报 `usage`；经别的入口到了内核报 `invalid_input`，`why:"too_long"`）；`--text` 与 `--text-file` 二选一 | `send_text_prepare` `send_text` | T04 |
+| `send CHAT_ID (--text T \| --text-file PATH) [--reply-to MSG_ID] [--dry-run] [--again]` | 先输出一行 `plan`（`target` 种类 / 名字 / id / 是否收藏夹 · 全文 · `reply_to` 与 `reply_brief`（被回复那条的简短读法，同 `history`）· 最终 `topic` · `origin` · `confirm`（`test_exempt` / `direct_mode`）· `digest`），再按闸要求确认，**等到结果才输出结尾行**：成功 → 回显发出的那条（`kind:"message"`，读法同 `history`）+ `result`（最终 `message_id`、`temp_message_id`、`confirm`；带了回复或话题时另有 `reply_kept`：Telegram 发出后去掉了回复或换了话题就是 `false`）；`send_failed` → `error`，`code` 来自失败原因，另带失败那条的新 `message_id` 与 `can_resend`；30 秒内都没等到，或临时 id 出现在 `messages_deleted` 里（待发消息被删，是否已送达未知），或等的途中连接断了 → `error(send_outcome_unknown)` 带 `temp_message_id` 与 `why`（`timeout` / `pending_deleted` / `disconnected`），退出码 10，**不许重发**，用 `pending` 查。`--dry-run` 只输出 `plan` 加一行 `result`（`dry_run:true`）、不发。`plan` 另带 `hidden_chars`：正文里看不见的字符（零宽、双向控制、标签字符……）有几个，给人看的地方都已转义成 `\u{…}`。**在 `pending` 做好之前**，结果未知时的下一步是去会话里看最近的消息（`history`），确认没发出再决定，不要直接重发。`--again`：直发模式下最近已向同一会话提交过同样内容时被拦（已发出的看 10 分钟、结果未知的看 24 小时）（`send_refused(duplicate_recent)`，说明写清几秒前、什么结果），确要再发一次加它（`actions.md` 第一节第 5 小节）。正式服务器直接发、不确认（Touch ID 已删除，#113）。加 `--redact` 报 `not_implemented`（会输出正文）。正文 64 KB 以内、UTF-8（超了：CLI 本地报 `usage`；经别的入口到了内核报 `invalid_input`，`why:"too_long"`）；`--text` 与 `--text-file` 二选一 | `send_text_prepare` `send_text` | T04 |
 | `watch [--chat CHAT_ID] [--reveal]` | 订阅更新，持续输出事件，Ctrl+C 结束（第 5 小节）。新消息与正在输入带 `notify` v0 的判定；消息的隐藏内容默认遮住（规则同 `history`），`--reveal` 才出原文；`--chat` 可写 `saved`；加 `--redact` 报 `not_implemented`。**不标已读** | `subscribe`；`--chat` 时另有 `chat_get`（先把会话装进 store、确认它在，找不到报 `not_found`）+ 成对的 `chat_open` / `chat_close`；碰到设置还没取到的论坛话题时 `forum_topic_get`（只读） | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音（v0 只认语音；不是语音 → `invalid_input`）。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X`（0.5–2）· `stop`；标准输出每次状态变化一行 `kind:"playback"`（树节点 `playback`：`state` · `position_s` · `duration_s` · `speed`，带 `speech.brief`）。读不懂的命令、倍速越界、非有限数：出一行**非终结的** `kind:"control_rejected"`（`code:"invalid_input"` + `message_zh`），照常播；跳转截到 [0, 时长]，跳到末尾即播完。标准输入 EOF：播着就播完为止，暂停着按 `stop`。播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"` · `marked_listened`），退出码 0；Ctrl+C → `error(interrupted)`、130。默认不标已听；`--mark-listened`：下载、解码、声音出口停着打开都成功后才标、标成功才出声；阅后即焚的语音报 `not_implemented`（L2 确认还没做）；标了之后出声失败 → `internal{what:"audio_output_failed"}`（已标无法撤回）。解码失败 → `internal{what:"audio_decode_failed"}`。加 `--redact` 报 `not_implemented`（每行带读法，打码还没做）。细则 `docs/experiments/exp008-local-stt/design.md` 第三节第 5、5b 条 | `message_get` `file_download` `mark_listened` | T07 |
@@ -57,15 +57,15 @@
 | `--fake SCENARIO` | 用假后端，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（也接受路径），不联网（`testing.md`）。**场景目录以后做**（#18 人定）；现在一律 `not_implemented` |
 | `--format json\|text` | 默认 `json`；`text` 给人看，每行一句读法（`speech.brief`） |
 | `--redact` | 打码输出，用于贴进 issue / 发给别人：**白名单**——只留 `type`、计数、时间、状态、错误码；正文、说明、名字、用户名、手机号、文件名、链接、`speech` 全部换成「类型 + 长度」；id 换成**每次随机加盐**的哈希（同一次输出内一致，跨次不可对照、也无法穷举反推）。日志打码另有脚本，见 `config-privacy.md` |
-| `--unsafe-direct-send` | **直发模式**（001 第七节第 11 条）：本次运行 L2 免确认（范围见 `actions.md` 第一节第 5 小节，D1），到进程退出为止。只认这个参数（不读环境变量、配置文件）；第一行 `status` 带 `direct_send:true`，标准错误打醒目提示；每条直发写 `direct-send.log`。测试档案仍只许发收藏夹。细则只在 `actions.md` 第一节第 5 小节 |
+| `--unsafe-direct-send` | 旧参数，已无作用，帮助里不显示（发送一律直发：`actions.md` 第一节第 5 小节；#113）。留着只为旧脚本不报错；每条直发照常写 `direct-send.log` |
 | `--wait` | 遇到 L0 的限流就等够再继续（默认不等，立刻返回 `rate_limited`，`errors.md` 第一节第 5 小节） |
 | `--tz OFFSET` | 读法里时间按哪个时区读，默认取系统时区。写法：`+08:00`、`-05:30`、`+0800`、`+8`、`Z`、`UTC`（±14 小时内）；不认得 → `usage` |
 
-`send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么确认（Touch ID、测试豁免、直发模式）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
+`send` 的文本不许从标准输入读：标准输入可能是 AI 拼进去的管道，内容由 `--text` / `--text-file` 明确给出。怎么开凭据（测试豁免、直发）由闸定，见 `actions.md` 第一节第 4、5 小节。`history` / `show` 永不标已读。
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。**v0 也不转发 `download`、`play`、`transcribe`**（arch 定 2026-11-13）：档案被占就报 `profile_busy`；以后只转发其中「下载」与 `mark_listened` 这两个后端动作，解码、播放、转写永远在 CLI 本进程（设计 `docs/experiments/exp008-local-stt/design.md` 第一节）。
 
-**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的。
+**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的；起好之后、出 `status` 之前（等授权线，如没登录报 `auth_required`）已按过 Ctrl+C 的，照「按了就正常结束」只出一行 `result`、退 0（#95），想知道为什么停不下来就不按 Ctrl+C 再跑一次看错误。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的定义**（#18 暂定，#53 起由收线程合成成事件，`actions.md` 第一节第 7 小节）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
@@ -121,7 +121,7 @@
 |---|---|---|
 | 0 | 成功 | — |
 | 1 | 内部错误 / 未知 / 子命令还没实现 | `internal` `unknown` `not_implemented` |
-| 2 | 用法错误（参数不对） | `usage` |
+| 2 | 用法错误（参数不对）。标准错误上那段说明只写哪类错、哪个参数、可选值和 `--help` 路径，**不回显用户写的任何值**（验证码、`send --text` 正文都可能写错地方，#64）；所有命令一样 | `usage` |
 | 3 | 要登录 / 登录失败 | `auth_*` |
 | 4 | 网络 / 连接 | `network` `disconnected` |
 | 5 | 限流 / 账号受限 | `rate_limited` `account_limited` |
@@ -136,7 +136,7 @@
 ### 5. 流式（`watch`）
 
 **输出什么**
-- 先输出一行 `status`，然后每个事件一行 `kind:"event"`，带 `seq`
+- 先输出一行 `status`，然后每个事件一行 `kind:"event"`，带 `seq`（唯一例外：出 `status` 之前已按了 Ctrl+C，整段只有一行 `result`，见「最多等多久」）
 - 启动后补发的积压更新照常输出；补完时输出 `sync_done` 事件，读的一方据此区分「历史补发」和「真正的新消息」（「补发」「积压」说的是同一批：离线期间漏掉、刚连上时一下子补送来的更新）
 - `seq` 断了（读的一方发现跳号）：说明有东西没看到，重跑 `chats` / `history` 拿全量
 - 带消息的事件（`new_message`、`message_content_changed` 等内容变化、`chat_last_message_changed`、`send_succeeded` / `send_failed`）：`data` 里有 `chat_id`、`message_id`，`data.message` 是消息节点（内容树，隐藏内容按 `--reveal` 遮），`speech.brief` 是这条的读法
@@ -156,7 +156,7 @@
 - 规则正本在 `src/atg-core/src/notify.rs` 头部。其中的默认值已由人定（2026-10-26：出声窗按会话分开、重连汇总两条改，其余按默认；界面做出来后实听再调），题面与结果在 `state/handoff/watch.md`「要人定的事」（大总管写进 `docs/plan/` 拍板记录后改指那里）
 
 **怎么结束**（结尾行 `result.data`：`command:"watch"` · `reason:"interrupted"` · `events`（写出过的事件行数）· `alerts`（其中要提示的）· `elapsed_ms`）
-- Ctrl+C / SIGTERM：输出 `result` 后以 0 退出——对 `watch` 来说被打断就是正常结束；再按一次立刻以 130 退出、不出结尾行（第一节第 1 小节）
+- Ctrl+C / SIGTERM：输出 `result` 后以 0 退出（出 `status` 之前按的也一样，这时没有 `status` 行）——对 `watch` 来说被打断就是正常结束；再按一次立刻以 130 退出、不出结尾行（第一节第 1 小节）
 - 标准输出的读方走了（管道断了，如 `watch | head`）：不再写，照常收尾（关会话、关后端），以 0 退出，结尾行写不出去
 - 后端故障（内核收更新的那条线程崩了或意外退出）：一行 `error(disconnected)`，退出码 4，不出 `result`
 - 标准输出被读的一方堵住时（直跑）不丢事件、不崩：事件在内核的无界通道里等着
@@ -186,7 +186,7 @@
 | ✅ | `atg-cli chats -n 3` → 3 行 `chat` + 1 行 `result`，退出码 0 |
 | ✅ | 没登录跑 `history` → 1 行 `error`（`auth_required`），退出码 3 |
 | ✅ | `atg-cli --test-dc send saved --text "测试"` → 一行 `plan` → 闸自动豁免 → 等到 `send_succeeded` → `result` 带 `message_id`，退出码 0 |
-| ✅ | `atg-cli send 777 --text "测试"`（正式服务器，含发给自己的收藏夹）→ 一行 `plan` → 弹 Touch ID（写明「来自命令行，可能是 AI」）；AI 按不了，人不按就 `send_refused(auth_failed)`，退出码 8 |
+| ✅ | `atg-cli send 777 --text "测试"`（正式服务器，含发给自己的收藏夹）→ 一行 `plan`（`confirm:"direct_mode"`）→ 直接交出，不弹框（#113） |
 | ✅ | `send` 30 秒没等到结果 → `error(send_outcome_unknown)`，退出码 10；AI 跑 `pending` 查，不重发 |
 | ❌ | 标准输出里混一行「正在连接……」 |
 | ❌ | 出错时只往标准错误打一句话，标准输出什么都没有 |
@@ -240,4 +240,6 @@
 - 2026-11-13 issue #52 自审第 11 轮后（属技术细节）：`send` 写明默认模式下正文只能很短（确认框放不下就拒）；`send` / `resend` 写明加 `--redact` 报 `not_implemented`
 - 2026-11-13 issue #52 codex 016 第 2 轮后（属技术细节）：`resend` 结尾行有结果未知的优先报它，说明逐项计数
 - 2026-11-13 #63 #73 #78（手下 fix，大总管定期限取值 2026-11-13）：加「最多等多久」一段：起后端、登录每步、查询类、`download` 的期限与到点报的码，各命令按 Ctrl+C 的结局；`download` 行指过去
+- 2026-11-14 #64 #95（手下 fix，大总管定 2026-11-13）：退出码 2 写明用法错误的标准错误说明不回显用户写的值、所有命令一样；`watch` 出 `status` 之前已按 Ctrl+C 只出一行 `result`、退 0（「最多等多久」「输出什么」「怎么结束」三处）
 - 2026-11-14 #59 3c（手下 media；arch 定 2026-11-14）：退出码表加 11（本机缺能力 / 环境不满足，`stt_unavailable`）；加 `transcribe` 一行
+- 2026-11-16 issue #113（人定）：Touch ID 删除——`--confirm` 去掉、`confirm` 取值去掉 `human_auth`、`too_long_to_confirm` 不再出现；`--unsafe-direct-send` 隐藏、无作用；直发不再先出 `status` 行与醒目提示
