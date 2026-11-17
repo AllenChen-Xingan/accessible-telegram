@@ -155,6 +155,7 @@ fn live(store: &Store, m: &MMessage) -> Doc {
             reactions: m.reactions.clone(),
             delivery,
         },
+        transcript: store.transcript(m.id).cloned(),
     })
 }
 

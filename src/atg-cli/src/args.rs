@@ -43,8 +43,8 @@ pub struct Global {
     /// 打码输出，用于贴进 issue：只留类型、计数、时间、状态、错误码，名字和正文换成「类型 + 长度」。还没做：会输出名字、正文的命令加了它报 not_implemented（免得以为打了码），别的命令收下不用
     #[arg(long, global = true)]
     pub redact: bool,
-    /// 直发模式：本次运行发消息免确认（细则见 `specs/contracts/actions.md` 第一节第 5 小节）
-    #[arg(long, global = true)]
+    /// 旧参数，已无作用：发送一律直发（Touch ID 已去掉，人定 2026-11-16）。留着只为旧脚本不报错
+    #[arg(long, global = true, hide = true)]
     pub unsafe_direct_send: bool,
     /// 遇到 Telegram 限流（要求过 N 秒再试）就等够再继续，默认立刻报 rate_limited。还没做
     #[arg(long, global = true)]
@@ -105,8 +105,8 @@ pub enum Command {
     Mute(Rest),
     /// 删除消息（给所有人）
     Delete(Rest),
-    /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan；表情回应能自己再去掉，所以不弹确认框
-    /// （只有它这样，发消息照旧要确认）。测试服务器上只许收藏夹
+    /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan，和 send 一样直接点、不确认。
+    /// 测试服务器上只许收藏夹
     React(ReactArgs),
     /// 看谁点了这条消息的回应，一行一个（kind:"reactor"）
     Reactions(ReactionsArgs),
@@ -117,7 +117,7 @@ pub enum Command {
     /// 搜索：`search chats` / `search messages`
     Search(Rest),
     /// 发文字或回复某条。先输出一行要发什么（kind:"plan"：发给谁、全文、回复哪条），再确认：测试服务器发自己的收藏夹
-    /// 不用确认；正式服务器要按 Touch ID 或输入系统密码；以全局选项 --unsafe-direct-send 启动时一律不确认。
+    /// 不用确认；正式服务器直接发、不确认。
     /// 等到成功或失败才结束；30 秒没等到报 send_outcome_unknown（退出码 10）——消息可能已发出，不要重发
     Send(SendArgs),
     /// 订阅更新：一行一个事件，新消息带读法与提不提示的判定；Ctrl+C 结束。不标已读
@@ -306,8 +306,7 @@ pub struct SendArgs {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
-    /// 要发的文字。正式服务器默认要人按 Touch ID 确认，正文连同会话名得放进确认框，只能很短（通常几十个字），
-    /// 放不下就拒（send_refused，reason too_long_to_confirm），拆成几条短的再发
+    /// 要发的文字
     #[arg(long, value_name = "T")]
     pub text: Option<String>,
     /// 从文件读要发的文字（UTF-8，64 KB 以内；Telegram 一条最多 4096 字，超了会被拒，不自动拆条）
@@ -319,7 +318,7 @@ pub struct SendArgs {
     /// 只输出要发什么，不发
     #[arg(long)]
     pub dry_run: bool,
-    /// 用 --unsafe-direct-send（不确认直接发）时，最近向同一会话发过同样的内容会被拦下（已发出的 10 分钟内；结果不明的 24 小时内）；确要再发一次就加它
+    /// 最近向同一会话发过同样的内容会被拦下（已发出的 10 分钟内；结果不明的 24 小时内）；确要再发一次就加它
     #[arg(long)]
     pub again: bool,
 }

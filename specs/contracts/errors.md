@@ -35,7 +35,7 @@
 | `internal` | TDLib 406，或本项目自己的 bug | `what`：写死的说明（如 `not_started`、`profile_kind_mismatch`、`td_406`；本机接口的：`socket_path_too_long` · `socket_path_occupied`（同名的不是套接字）· `socket_in_use`（残留的居然有人在听）· `ipc_io` · `ipc_version_mismatch` · `ipc_bad_request`；档案的：`profile_marker_missing`（档案缺服务器种类标记：没建过，或留着数据却缺标记——后一种拒绝启动；人确认它是正式还是测试档案后，往档案目录的 `server-kind` 写回 `main` 或 `test`，或删掉整个档案重新登录）· `profile_marker_unreadable`（标记内容读不懂，拒绝启动）；发送的：`send_limits_unreadable`（档案目录里的 `account-limited` / `flood-until` 读不准，或留着上一个进程没收尾的 `send-pending`——不知道该不该停，拒发；人确认账号状态、查看或删掉那个文件后恢复）· `send_limits_unwritable`（交出前连 `send-pending` 都写不进，拒发）；读消息的：`me_unknown`（要用收藏夹但 5 秒内没等到 TDLib 推来自己的用户 id）· `td_forum_topic_reserialize_failed`（同下一条，发生在 `watch` 取论坛话题设置时；`watch` 只在标准错误记码、照常继续）· 语音的（#4）：`download_incomplete`（TDLib 回来了却没下完，不交半截文件）· `audio_decode_failed`（文件解不开）· `audio_output_failed`（声音出口打不开或播放中失效；`play` 的这条另带 `marked_listened`）· `audio_unsupported`（非 macOS，没有实现）· `td_message_reserialize_failed`（内部转换失败，与输入无关，属本项目的 bug：TDLib 的 Rust 绑定 tdlib-rs 先把应答解析成结构体，本项目再把它转回 TDLib JSON、交给唯一一份映射。`history`、`links` 遇到都整条命令报这个错，不悄悄丢那一条——丢了会让一页缺一条，只剩它时还会被当成「到头了」；没见过真发生）），不放运行时的值 | 否 |
 | `unknown` | 认不出来的 TDLib 错误 | `td_code` | 否 |
 
-`send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `too_long_to_confirm`（正文太长、Touch ID 确认框放不下全文：人看不到全文就不让按；说明只叫拆成几条短的，不提直发模式——那等于教发起方自己绕过人的确认）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（经 SSH 运行、本机没设登录密码）。
+`send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。
 
 `invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；表情回应的 `reaction_invalid`（不是一个 emoji）· `reaction_not_chosen`（要去掉的回应我没点过；也可能只是 emoji 写法不同）· `reaction_would_replace`（这条上我已点了别的回应，再点可能把它挤掉）· `reaction_state_unknown`（拿不准我已点了哪些，再点可能挤掉原来的）；这两种 CLI 在错误行补 `hint_zh`，`react --replace` 放行。
 
@@ -81,7 +81,7 @@
 
 `unsupported` 收容本项目第一阶段不支持的授权步骤（如 `authorizationStateWaitPremiumPurchase`，`td_api.tl:217`），不崩，告诉人「这一步本应用暂不支持，请先在官方客户端完成」。
 
-**登录走到不支持的一步时 CLI 怎么报**：`login` / `auth *` 遇到 `unsupported`、`wait_other_device`（扫码确认）、或**正式档案**上的 `wait_registration`，以 `auth_wrong_state` 结尾，`expected` 写那一步，`message_zh` 换成上面那句，退出码 3。注意 `auth_wrong_state.expected` 一律是**现在所在**的那一步，不是调用方本想交的那一步。
+**登录走到不支持的一步时 CLI 怎么报**：`login` / `auth *` 遇到 `unsupported`、`wait_other_device`（扫码确认）、或**正式档案**上的 `wait_registration`，以 `auth_wrong_state` 结尾，`expected` 写那一步，`message_zh` 换成上面那句，退出码 3。注意 `auth_wrong_state.expected` 一律是**现在所在**的那一步，不是调用方本想交的那一步。`auth state` 停在这几步时同样这么报（#64）；这一步本来就收的输入照常交——正式档案等注册时 TDLib 允许换号（`actions.md` `auth_submit_phone`），`auth phone` 照收。
 
 **合成规则**（一个纯函数 `fn user_status(core, auth, net) -> UserStatus`，归本契约；`UserStatus` 这个数据类型定义在 `atg-core::tree`，JSON 形如 `{"type":"status","status":"offline"}`，见 `specs/content-tree.md`），优先级从高到低：
 
@@ -180,6 +180,8 @@
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：`internal.what` 登记 `send_limits_unreadable`；受限 / 限流只从交出口与收线程两处登记，交出前最后复查一次
 - 2026-11-13 issue #52 codex 016 第 6 轮后（属技术细节）：`internal.what` 登记 `send_limits_unwritable`，`send_limits_unreadable` 加「上一个进程没收尾」；交出应答的限制登记不受调用方等待期限影响（td 后端在独立线程里等应答）
 - 2026-11-13 issue #61（大总管授权 2026-11-13，属技术细节）：`internal.what` 登记 `profile_marker_missing`、`profile_marker_unreadable` 及人怎么恢复
+- 2026-11-14 issue #64（手下 fix，大总管定 2026-11-13 照契约字面）：写明 `auth state` 停在不支持的步骤也报 `auth_wrong_state`；正式档案等注册时 `auth phone` 换号照收
 - 2026-11-14 #9 表情回应（手下 msg2）：`invalid_input.why` 加 `reaction_invalid`、`reaction_not_chosen`
 - 2026-11-14 #9 自审第 1 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_would_replace`
 - 2026-11-14 #9 自审第 3 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_state_unknown`
+- 2026-11-16 issue #113（人定）：`send_refused.reason` 去掉 `not_interactive`、`auth_failed`、`too_long_to_confirm`（Touch ID 删除）

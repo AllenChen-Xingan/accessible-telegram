@@ -7,6 +7,14 @@
 - 合 main：22 个文件两边都改；`gate.rs`、`send.rs` 两边各自拆过子模块（main #103 拆成 gate/check·display·tests、send/outcome·resending·text·tests；我拆成 gate/log·visible、send/json·react），冲突最重；serve.rs、fake.rs、td.rs、四份契约次之
 - Touch ID 删除影响：`ConfirmMode::unconfirmed`、`needs_confirm`、`NEEDS_CONFIRM`、`mode_for(target, confirm)`、留痕 `confirm` 字段整套作废——直发是唯一方式，react 直接走直发留痕；要人定的 B 选项作废，只剩 A / C
 - 下一步：等大总管合 main → 删 unconfirmed 那套 → 修第 4 轮 P1 → 测试 → 自审 → codex 032
+- 2026-11-16 合 main 冲突已解（大总管 WIP 93f626f + merge，未提交）：
+  - core：send.rs、gate.rs 取 main 版再加 react 钩子（`SealedKind::React`、`Answer::Done`、`pub mod react`、`Gated::log_target` 默认 None）；`gate/check.rs` 只在 DirectLogLine 加 `target` 字段（大总管定不挪）；删 `gate/log.rs`、`gate/visible.rs`（用 main 的 display.rs）、`send/json.rs`（`react_plan_json` 挪进 react.rs）
+  - unconfirmed 整套删；react 开 direct_mode、不进防重复
+  - 第 4 轮 P1 按 A（人定）：只有私聊、加密聊天信本机，普通群也问服务器；计划加 `replaces_known`，留痕 `replaced` 拿不准记 null；补测试 `basic_group_asks_the_server_who_reacted`、`unknown_state_with_replace_logs_null`
+  - CLI：session.rs 去掉 banner/l0_run，`reactions` 也走 l2_run；react 文案改「直接点」
+  - 契约：actions / cli / errors / config-privacy / content-tree 冲突合并 + 去 unconfirmed / B18-2 说法；行数基线合并（check-file-size 0 报错）
+  - ⚠️ 要大总管同意：`send/text.rs` 两处、`send/resending.rs` 一处 match 加 `| Answer::Done`（不加编译不过）
+  - 未编译，等名额
 
 交代：MAIN `_tmp/20261113-b18/msg2.md`。顺序 #9 → #10 → #12 → #13 → #11 → #7，一个 issue 一个 PR。
 

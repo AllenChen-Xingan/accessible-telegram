@@ -25,10 +25,6 @@ pub enum SendRefusedReason {
     TokenExpired,
     /// 凭据已经用过
     TokenReused,
-    /// 弹不出 Touch ID / 系统密码框（如经 SSH 运行）
-    NotInteractive,
-    /// Touch ID / 系统密码没过
-    AuthFailed,
     /// 测试服务器上只许发收藏夹。规约另有「第二个自己的测试号私聊」例外（`actions.md` 第一节第 4 小节第 2 条，N7），
     /// **还没做**（落在 M2.7 删除那块）；现在只放行收藏夹
     TestDcSavedOnly,
@@ -43,9 +39,6 @@ pub enum SendRefusedReason {
     ReplyDropped,
     /// TDLib 的预览把消息放进了别的话题
     TopicChanged,
-    /// 正文太长，Touch ID 确认框放不下全文（人看不到全文就不让按；拆成几条短的再发。提示里不提直发模式：
-    /// 那等于教发起方（多半是 AI）自己绕过人的确认，自审第 11 轮）
-    TooLongToConfirm,
 }
 
 /// 直发防重复拦下时，上一次是什么时候、什么结果
@@ -316,14 +309,7 @@ impl CoreError {
                     "被回复的那条找不到或不能回复，Telegram 会把它当普通消息发出，已拦下没发"
                 }
                 SendRefusedReason::TopicChanged => "这条会落到别的话题里，已拦下没发",
-                SendRefusedReason::TooLongToConfirm => {
-                    "内容太长，确认框放不下全文（连同会话名要放进确认框，通常只有几十个字），没有发；请拆成几条短的再发"
-                }
                 SendRefusedReason::TestDcSavedOnly => "测试服务器上只许发自己的收藏夹",
-                SendRefusedReason::AuthFailed => "没有通过 Touch ID 或系统密码，没有发",
-                SendRefusedReason::NotInteractive => {
-                    "这里弹不出 Touch ID 或系统密码框（比如经 SSH），没有发"
-                }
                 SendRefusedReason::AccountLimited => {
                     "账号被 Telegram 限制，发送已全部停止；人处理好之后删掉本地档案目录里的 account-limited 文件才恢复"
                 }

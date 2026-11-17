@@ -3,7 +3,7 @@
 //! 大总管授权 2026-10-26（R1：隐藏内容默认遮住，展开要人明确要求）：不展开时，JSON 行 `data` 里的剧透子树换成空的
 //! `spoiler` 节点（只留「这里有一段隐藏内容」，不留字），落在剧透里、或文字里套着剧透的链接整个换成空剧透（地址也去掉）。
 //! 管到所有带正文的地方：正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条。
-//! 18+ 遮挡的媒体本身不进树（只有说明文字，读法照读），不用另遮。
+//! 18+ 遮挡的媒体本身不进树（只有说明文字，读法照读），不用另遮；它的转写（`Message::transcript`）要遮。
 //!
 //! 规矩同渲染器：每个枚举都用不带通配符的 `match`，加了新节点种类这里编不过。
 #![deny(clippy::wildcard_enum_match_arm)]
@@ -39,6 +39,10 @@ fn mask_doc(d: &mut Doc) {
 
 fn mask_message(m: &mut Message) {
     mask_content(&mut m.content);
+    // 18+ 遮挡的语音：转写就是那段语音的内容，遮着时不输出（读法同样不读，`speech/media.rs`）
+    if m.content.sensitive {
+        m.transcript = None;
+    }
     match &mut m.head.reply_to {
         Some(ReplyTo::Message { quote, .. }) => {
             if let Some(q) = quote {

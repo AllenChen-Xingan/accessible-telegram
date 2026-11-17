@@ -1,9 +1,9 @@
 //! 假后端：数据全是编的，不碰真实账号与本机档案目录。
 use super::*;
 use atg_core::config::{Profile, ServerKind};
-use atg_core::error::{Holder, SendRefusedReason};
+use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend};
-use atg_core::gate::{Authenticator, Gate};
+use atg_core::gate::Gate;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Default)]
@@ -18,19 +18,11 @@ impl Sink for Cap {
     fn err(&mut self, _: &str) {}
 }
 
-/// 弹框一律拒：表情回应不该走到它（B18-2）
-struct Deny;
-impl Authenticator for Deny {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        Err(SendRefusedReason::AuthFailed)
-    }
-}
-
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 
 fn backend() -> FakeBackend {
-    let b = FakeBackend::with_gate(Gate::new(false, Holder::Cli, Box::new(Deny))).unwrap();
+    let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: "+15550001234".into(),
         logged_in: true,
@@ -105,7 +97,7 @@ fn run(b: &FakeBackend, ps: &[ReactParams], list: Option<&ReactionsParams>) -> V
 }
 
 #[test]
-fn react_on_main_does_not_ask_and_reports() {
+fn react_on_main_sends_directly_and_reports() {
     let b = backend();
     let r = run(&b, &[react_p("👍", false, false)], None);
     let (code, cap) = &r[0];
@@ -113,11 +105,11 @@ fn react_on_main_does_not_ask_and_reports() {
     let ls = lines(cap);
     assert_eq!(ls[0]["kind"], "plan");
     assert_eq!(ls[0]["data"]["action"], "react");
-    assert_eq!(ls[0]["data"]["confirm"], "unconfirmed");
+    assert_eq!(ls[0]["data"]["confirm"], "direct_mode");
     assert_eq!(ls[0]["data"]["reaction"]["emoji"], "👍");
     let end = ls.last().unwrap();
     assert_eq!(end["kind"], "result");
-    assert_eq!(end["data"]["confirm"], "unconfirmed");
+    assert_eq!(end["data"]["confirm"], "direct_mode");
     assert_eq!(end["data"]["removed"], false);
     assert_eq!(b.submitted().len(), 1);
 }

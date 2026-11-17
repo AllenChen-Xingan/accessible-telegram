@@ -60,7 +60,7 @@ fn main() -> ExitCode {
         log_dir,
         holder: Holder::Cli,
         // 不发东西：闸照常在，但不是直发
-        gate: Gate::new(false, Holder::Cli, gate::system_authenticator()),
+        gate: Gate::new(Holder::Cli),
     }) {
         Ok(b) => b,
         Err(e) => {

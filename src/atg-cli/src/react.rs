@@ -1,6 +1,6 @@
 //! `react` / `reactions`：给一条消息加 / 去掉表情回应，看谁点了回应（#9；契约 `specs/contracts/cli.md`）。
 //!
-//! - `react CHAT_ID MSG_ID EMOJI [--remove | --replace] [--dry-run]`：一行 `plan` → 闸开凭据（**不确认**，B18-2；测试服务器
+//! - `react CHAT_ID MSG_ID EMOJI [--remove | --replace] [--dry-run]`：一行 `plan` → 闸开凭据（和 `send` 一样直发、不确认；测试服务器
 //!   只许收藏夹）→ 交出 → 一行 `result`。L2：不自动重试；没等到应答按 `send_outcome_unknown` 报（回应可能已点上）
 //! - `reactions CHAT_ID MSG_ID [--emoji E] [-n N] [--cursor C]`：L0 只读，一行一个 `kind:"reactor"`（树节点
 //!   `Doc::Reactor`，读法「张三，👍，19:33」）+ 一行 `result`
@@ -203,10 +203,11 @@ fn run_react<B: Backend>(
 /// 「给 私聊 · 张三 · 777 里 id 5 那条加上回应 👍（可能挤掉你原先点的 ❤️）」
 fn said(plan: &ReactPlan) -> String {
     let swapped: Vec<String> = plan.replaces().iter().map(react::emoji_of).collect();
-    let swapped = if swapped.is_empty() {
-        String::new()
-    } else {
-        format!("（可能挤掉你原先点的 {}）", swapped.join("、"))
+    let swapped = match (swapped.is_empty(), plan.replaces_known()) {
+        (true, true) => String::new(),
+        (true, false) => "（你原先点了哪些拿不准，可能挤掉）".to_owned(),
+        (false, true) => format!("（可能挤掉你原先点的 {}）", swapped.join("、")),
+        (false, false) => format!("（可能挤掉你原先点的 {} 等）", swapped.join("、")),
     };
     format!(
         "给 {} 里 id {} 那条{}回应 {}{swapped}",
@@ -376,8 +377,8 @@ pub fn run_list(
     if let Some(code) = crate::forward::try_forward(g, format, "reactions", &params) {
         return ExitCode::from(code);
     }
-    // 只读：不过闸、不留痕、不出直发的开场提示
-    let code = crate::session::l0_run(
+    // 只读：不过闸、不留痕；借发送类命令的起停外壳
+    let code = crate::session::l2_run(
         g,
         format,
         "reactions",
@@ -406,10 +407,6 @@ pub(crate) fn serve<B: Backend>(
         let code = match serde_json::from_value::<ReactParams>(fa.params) {
             Err(_) => out::fail_with_to(sink, format, &bad),
             Ok(p) => {
-                // 执行方以直发启动：发起方要和直跑一样先看到醒目提示与 status 行
-                if ctx.b.gate().direct() {
-                    crate::send::direct_banner(ctx.b, sink, format);
-                }
                 let t = send::RESULT_TIMEOUT;
                 execute_react(ctx.b, ctx.stream, ctx.feed, &p, sink, format, started, t)
             }

@@ -5,31 +5,21 @@ use crate::backend::Backend;
 use crate::config::{Profile, ServerKind};
 use crate::error::{Holder, SendRefusedReason};
 use crate::fake::{FakeAuth, FakeBackend, FakeSend};
-use crate::gate::{Authenticator, DIRECT_LOG_FILE, GUARD_FILE, Gate};
+use crate::gate::{DIRECT_LOG_FILE, GUARD_FILE, Gate};
 use crate::link::{EventStream, block_on};
 use crate::send::react_plan_json;
 use crate::status::AuthStep;
 use crate::tree::{Doc, Sender, Time};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 const THUMB: &str = "👍";
 
-struct Auth(Arc<AtomicU32>);
-impl Authenticator for Auth {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
-
 struct Rig {
     b: FakeBackend,
     _stream: EventStream,
-    asks: Arc<AtomicU32>,
     dir: PathBuf,
 }
 
@@ -49,10 +39,9 @@ fn msg(chat: i64, id: i64, extra: Value) -> Value {
     m
 }
 
-fn rig(tag: &str, direct: bool, test_dc: bool) -> Rig {
+fn rig(tag: &str, test_dc: bool) -> Rig {
     static N: AtomicU32 = AtomicU32::new(0);
-    let asks = Arc::new(AtomicU32::new(0));
-    let gate = Gate::new(direct, Holder::Cli, Box::new(Auth(asks.clone())));
+    let gate = Gate::new(Holder::Cli);
     let b = FakeBackend::with_gate(gate).unwrap();
     b.set_auth(FakeAuth {
         phone: if test_dc {
@@ -88,7 +77,6 @@ fn rig(tag: &str, direct: bool, test_dc: bool) -> Rig {
     Rig {
         b,
         _stream: stream,
-        asks,
         dir: profile.dir().to_path_buf(),
     }
 }
@@ -203,9 +191,8 @@ fn emoji_shape_check() {
 
 #[test]
 fn test_dc_saved_reacts_without_asking() {
-    let r = rig("tdc", false, true);
+    let r = rig("tdc", true);
     assert_eq!(once(&r, ME, THUMB, false).unwrap(), ConfirmMode::TestExempt);
-    assert_eq!(r.asks.load(Ordering::SeqCst), 0);
     assert_eq!(chosen(&r, ME), vec![(THUMB.to_owned(), 1, true)]);
     let sub = r.b.submitted();
     assert_eq!(sub.len(), 1);
@@ -227,7 +214,7 @@ fn test_dc_saved_reacts_without_asking() {
 
 #[test]
 fn test_dc_other_chat_is_refused() {
-    let r = rig("tdc-other", false, true);
+    let r = rig("tdc-other", true);
     let e = block_on(prepare_react(
         &r.b,
         id(FRIEND),
@@ -246,49 +233,33 @@ fn test_dc_other_chat_is_refused() {
 }
 
 #[test]
-fn main_default_mode_does_not_ask_but_logs() {
-    // B18-2：正式服务器、默认模式，也不弹 Touch ID；照样写 direct-send.log，不进防重复、不算直发条数
-    let r = rig("main", false, false);
+fn main_server_reacts_directly_and_logs() {
+    // 正式服务器：和发文字一样直发（#113 去掉 Touch ID）；照样写 direct-send.log，不进防重复
+    let r = rig("main", false);
     assert_eq!(
         once(&r, FRIEND, THUMB, false).unwrap(),
-        ConfirmMode::Unconfirmed
+        ConfirmMode::DirectMode
     );
-    assert_eq!(r.asks.load(Ordering::SeqCst), 0);
     let log = log_lines(&r);
     assert_eq!(log.len(), 2, "{log:?}");
     for (l, want) in log.iter().zip(["submitted", "succeeded"]) {
         assert_eq!(l["target"]["message_id"], 5);
         assert_eq!(l["target"]["replaced"], 0);
         assert_eq!(l["kind"], "react");
-        assert_eq!(l["confirm"], "unconfirmed");
         assert_eq!(l["result"], want);
         assert_eq!(l["chat_id"], FRIEND);
         // 不记 emoji 本身
         assert!(!l.to_string().contains(THUMB));
     }
     assert!(!r.dir.join(GUARD_FILE).exists());
-    assert_eq!(r.b.gate().direct_sent(), 0);
     // 同一个回应再点一次不拦（不进防重复）
     once(&r, FRIEND, THUMB, true).unwrap();
     assert_eq!(log_lines(&r)[3]["kind"], "unreact");
 }
 
 #[test]
-fn direct_mode_reacts_and_logs_as_direct() {
-    let r = rig("direct", true, false);
-    assert_eq!(
-        once(&r, FRIEND, THUMB, false).unwrap(),
-        ConfirmMode::DirectMode
-    );
-    assert_eq!(r.asks.load(Ordering::SeqCst), 0);
-    let log = log_lines(&r);
-    assert_eq!(log[1]["confirm"], "direct_mode");
-    assert_eq!(log[1]["result"], "succeeded");
-}
-
-#[test]
 fn token_is_bound_to_the_plan() {
-    let r = rig("bind", false, false);
+    let r = rig("bind", false);
     let add = block_on(prepare_react(
         &r.b,
         id(FRIEND),
@@ -317,7 +288,7 @@ fn token_is_bound_to_the_plan() {
 
 #[test]
 fn rejected_submit_is_logged_as_failed() {
-    let r = rig("reject", false, false);
+    let r = rig("reject", false);
     r.b.script_sends(vec![FakeSend::Reject(CoreError::InvalidInput { td: None })]);
     let e = once(&r, FRIEND, THUMB, false).unwrap_err();
     assert_eq!(e.code(), "invalid_input");
@@ -329,7 +300,7 @@ fn rejected_submit_is_logged_as_failed() {
 
 #[test]
 fn added_reactions_lists_and_pages() {
-    let r = rig("who", false, false);
+    let r = rig("who", false);
     let other = json!({"@type": "addedReaction", "type": {"@type": "reactionTypeEmoji", "emoji": "❤️"},
         "sender_id": {"@type": "messageSenderUser", "user_id": FRIEND}, "is_outgoing": false, "date": 1_792_755_100});
     r.b.set_history(FRIEND, vec![msg(FRIEND, 5, json!({"_added": [other]}))]);
@@ -420,7 +391,7 @@ fn reactor_speech() {
 #[test]
 fn adding_over_my_other_reaction_needs_replace() {
     // TDLib 按上限把我原先点的回应挤掉（非会员 1 个）：不确认就没人看得到，所以默认拒，--replace 才放行
-    let r = rig("replace", false, false);
+    let r = rig("replace", false);
     once(&r, FRIEND, "❤️", false).unwrap();
     let e = once(&r, FRIEND, THUMB, false).unwrap_err();
     assert!(matches!(
@@ -444,7 +415,7 @@ fn adding_over_my_other_reaction_needs_replace() {
     assert_eq!(plan.replaces(), std::slice::from_ref(&heart));
     assert_eq!(react_plan_json(&plan)["replaces"][0]["emoji"], "❤️");
     once_with(&r, FRIEND, THUMB, false, true).unwrap();
-    // 测试服务器之外才留痕：这里是正式服务器默认模式，留痕记下挤掉了 1 个
+    // 正式服务器才留痕：留痕记下挤掉了 1 个
     assert_eq!(log_lines(&r).last().unwrap()["target"]["replaced"], 1);
     assert_eq!(chosen(&r, FRIEND), vec![(THUMB.to_owned(), 1, true)]);
     // 同一个回应再加一次不算挤掉别的
@@ -462,7 +433,7 @@ fn adding_over_my_other_reaction_needs_replace() {
 #[test]
 fn unsynced_state_is_not_trusted() {
     // 没等到补发结束：本机库里「我点了哪些」可能是旧的（人刚在手机上点了），不带 --replace 就拒
-    let r = rig("unsynced", false, false);
+    let r = rig("unsynced", false);
     let mut a = ask(THUMB, false, false);
     a.synced = false;
     let e = block_on(prepare_react(&r.b, id(FRIEND), a, SendOrigin::Cli)).unwrap_err();
@@ -481,7 +452,7 @@ fn unsynced_state_is_not_trusted() {
 #[test]
 fn supergroup_asks_the_server_who_reacted() {
     // 超级群没打开时回应变化不一定推来：本机缓存里没有我点的 ❤️，服务器名单里有 → 仍按会挤掉拒
-    let r = rig("sg", false, false);
+    let r = rig("sg", false);
     const SG: i64 = -100_777;
     r.b.set_chat(SG, vec![json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": SG, "title": "周末爬山群",
         "type": {"@type": "chatTypeSupergroup", "supergroup_id": 777, "is_channel": false},
@@ -521,4 +492,46 @@ fn supergroup_asks_the_server_who_reacted() {
         ))
         .is_ok()
     );
+}
+
+#[test]
+fn basic_group_asks_the_server_who_reacted() {
+    // 自审第 4 轮 P1：普通群的回应变化 TDLib 也不一定推（只有私聊、加密聊天推），本机缓存不能信，要问服务器
+    let r = rig("bg", false);
+    const BG: i64 = -777;
+    r.b.set_chat(BG, vec![json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": BG, "title": "读书会",
+        "type": {"@type": "chatTypeBasicGroup", "basic_group_id": 777},
+        "positions": [], "notification_settings": {}}})]);
+    let mine = json!({"@type": "addedReaction", "type": {"@type": "reactionTypeEmoji", "emoji": "❤️"},
+        "sender_id": {"@type": "messageSenderUser", "user_id": ME}, "is_outgoing": true, "date": 1_792_755_100});
+    r.b.set_history(BG, vec![msg(BG, 5, json!({"_added": [mine]}))]);
+    let e = block_on(prepare_react(
+        &r.b,
+        id(BG),
+        ask(THUMB, false, false),
+        SendOrigin::Cli,
+    ))
+    .unwrap_err();
+    assert!(matches!(
+        e,
+        CoreError::InvalidSend {
+            why: InvalidSendWhy::ReactionWouldReplace
+        }
+    ));
+}
+
+#[test]
+fn unknown_state_with_replace_logs_null() {
+    // 拿不准我点过哪些还用 --replace 放行：留痕的 replaced 记 null，和「确知 0 个」分开
+    let r = rig("null", false);
+    let mut a = ask(THUMB, false, true);
+    a.synced = false;
+    let plan = block_on(prepare_react(&r.b, id(FRIEND), a, SendOrigin::Cli)).unwrap();
+    assert!(!plan.replaces_known());
+    assert_eq!(react_plan_json(&plan)["replaces_known"], false);
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    react_within(&r.b, &plan, token, Duration::from_secs(2)).unwrap();
+    let last = log_lines(&r).pop().unwrap();
+    assert!(last["target"]["replaced"].is_null(), "{last}");
+    assert_eq!(last["target"]["message_id"], 5);
 }

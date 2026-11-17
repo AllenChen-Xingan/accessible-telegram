@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（节点类型 `mod.rs` · 媒体与播放 `media.rs` · 表情回应 `reaction.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（播放 `speech/playback.rs` · 表情回应 `speech/reaction.rs`） · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -88,14 +88,16 @@ Message
 ├── content
 │   ├── body: [Span]          ← 文本消息的正文，或媒体的说明文字
 │   └── attachment?: Attachment
-└── tail
-    ├── edited?: 时间
-    ├── reactions: [{kind: emoji | custom_emoji | paid | unknown, count, chosen}]
-    └── delivery?: pending | failed | sent | read   ← 只有自己发的才有
+├── tail
+│   ├── edited?: 时间
+│   ├── reactions: [{kind: emoji | custom_emoji | paid | unknown, count, chosen}]
+│   └── delivery?: pending | failed | sent | read   ← 只有自己发的才有
+└── transcript?: {lang, source: local, segments: [{text, start_s, end_s}]}   ← 语音的转写（投影时填）
 ```
 
 - 名字是 `Option`：查不到就是空，读法给兜底说法（「未知发送人」），**树里不写兜底文字**
 - `sender.deleted`：发送人是已注销账号（`userTypeDeleted`，投影时填，读法读「已注销的账号」，V14）；`head.in_channel`：消息在频道里（投影按会话种类填；读法据此分开「频道自己发的」和群里的「匿名管理员」，V10、V11）。两项为假时不输出（新增可选字段，`v` 不加一）
+- `transcript`：语音的转写（#59）。**不是消息本身的内容**（TDLib 不知道它，不进存下来的 `content`）：存在 store 的转写表里，投影时填；只在内存、不落盘。只对「同一个音频文件」作数——有效内容不再是那个语音文件（撤回、删除、内容替换、临时内容、受限）就没有。存原始片段，补标点只在读法里做；`source` 先只有 `local`（本机端侧模型），以后接 Telegram 的识别结果也落这里。18+ 遮挡的语音没展开时整个字段不输出（不像剧透那样留空节点占位），读法全文不读、详情不说「已转文字」（第八节「隐藏内容默认遮住」）。没有时不输出（新增可选字段，`v` 不加一）
 - **建树前先选有效内容**：消息带临时内容（`ephemeral_content`，`tl:3547`、`:3594`「必须代替原内容显示」）就用它，否则用 `content`；更新 `updateMessageEphemeralContent`（`tl:11223`）归 reducer
 - **受限内容**（`restriction_info`，`tl:2738`、`:3591`「必须执行」）：原因非空 → 原内容**不进树**，附件换成 `restricted{reason}`、正文为空；只有「敏感」标记 → 照常建，`content.sensitive = true`，读法标「隐藏」
 - `reply_to.target.chat_id` 可能是别的会话、也可能是 0（TDLib：被回复的那条在未知会话）；被回复那条不在 store 里时，发送人先用 TDLib 附带的 `origin` 兜底（api 提醒 2）
@@ -239,7 +241,7 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - id：会话、消息、用户 id 都是 int53，用数字；超过 2^53 的 int64（`custom_emoji_id`、`album_id`）写字符串
 - 时间：结构体里存 Unix 秒，JSON 里写 RFC3339 UTC（如 `2026-10-23T11:30:00Z`）；读法按调用方给的时区偏移转本地钟点
 - 空的可选字段不输出（`reply_to`、`forward`、`attachment`、`edited`、`delivery`、空的 `reactions`）
-- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
+- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条；18+ 遮挡的语音另把消息的 `transcript` 整个去掉（转写就是那段语音的内容）。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
 - **版本**：外壳和树共用一个 `v`（代码里 `tree::SCHEMA_V`）。
   - **不加一**：新增可选字段、新增节点种类、新增 `td_type` 值；**某种内容从 `other` / `unknown` 升级成专门节点**（如骰子从 `attachment.type = "other", td_type = "messageDice"` 变成 `"dice"`）也不加——使用方本来就得把不认识的 `type` 当未知处理
   - **给取值固定的字段加新取值**（如 `status` 加 `stopping`）也**不加一**（拍板 006 乙10）——使用方遇到不认识的值按「未知」处理、读 `speech.brief` 兜底，与「新增节点种类」同理
@@ -291,5 +293,6 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-10-26 issue #21 第三、四轮自审后（大总管授权 2026-10-26，属技术细节）：文首代码清单加 `mask.rs`；第八节写明 `data` 的遮挡只在输出 JSON 时做、读法另遮、原文只在内存
 - 2026-11-13 #4 M2.5（手下 media，arch 定 2026-11-13）：附件 `voice` 加 `file: FileRef`（JSON 不输出，`v` 不加一）；`FileRef`、`Expirable` 放 `tree/media.rs`
 - 2026-11-13 #4 M2.6（手下 media，arch 定 2026-11-13：播放状态也先成树）：顶层加 `playback`；`v` 不加一（新增节点种类）
+- 2026-11-13 #59 3b（手下 media）：消息加可选字段 `transcript`（`Transcript`，类型放 `tree/media.rs`）；`v` 不加一。挂在消息上而不是 `voice` 附件里：附件属于存下来的 `content`，转写不是（第二节）
 - 2026-11-14 #9 表情回应（手下 msg2；同 M2.6 `playback` 的做法：要读出来的都先成树）：顶层加 `reactor`；`v` 不加一（新增节点种类）；`Reaction` / `ReactionKind` / `Reactor` 放 `tree/reaction.rs`
 - 2026-11-14 #9 自审第 1 轮后（手下 msg2）：文首代码清单、第三节第 7 小节类型名补 `reaction.rs` / `Playback` / `Reactor` / `Reaction` / `ReactionKind`；第九节加 `reactor` 的句式
