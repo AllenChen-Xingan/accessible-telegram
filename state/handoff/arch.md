@@ -223,3 +223,4 @@
 - 检查：7 条全过；fmt、两种 clippy、`test --workspace`（633 过 0 败 5 忽略）、no-debug 全过；改注释后复跑 fmt、默认 clippy、`test -p atg-cli`（233 过）
 - 下一步：请大总管提交检查点 → 自审（按提交范围）→ codex 056
 - 自审 1 轮（按 `8a98ab3...HEAD`）：P0/P1 零。P2 两条：①测试头注释写「会变成真重发」和实测不符，已改成「报用法错误，按契约的写法用不了只看计划」；②这个分支的交接页带进了别的线的内容，改成只在 8a98ab3 那份后面加本节。P3：`args.rs` 的注释说明了 `allow_hyphen_values` 是什么、为什么会话 id 要开；测试头注释写明 delete、send 那几条各防什么；**新增一条结构测试** `no_variadic_positional_swallows_options`：遍历全部子命令，能收多个值的位置参数都不许开 `allow_hyphen_values`（只放过占位 `Rest` 的 `args`），以后哪个命令再犯同样的错都会红。复编与变异检验已做（2026-11-17）：8 条全过；把 resend 那行临时加回 `allow_hyphen_values`，红 4 条（resend 3 条，加上结构测试报 `["atg-cli resend ids"]`），复原后全套过（fmt、两种 clippy、`test --workspace` 634 过、no-debug）。codex 056 第 1 轮零发现
+- ✅ codex 056 两轮零发现，收敛，记录在 `docs/reviews/056_153-args-hyphen-codex.md`，索引已加。等大总管提交、开 PR（Closes #153）
