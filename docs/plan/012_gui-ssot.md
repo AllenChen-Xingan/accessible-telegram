@@ -81,6 +81,8 @@
 | `last_chat`（**跨运行**） | `Option<ChatId>` | 上次退出时选中的会话（`app_started_signed_in` 用）。唯一要落盘的界面状态：放档案目录的 `gui-state.json`，只存 id、不存内容（`specs/contracts/config-privacy.md` 第一节第 1 小节） |
 | `reading` | `Option<MsgId>` | 阅读视图开着哪条（M3.5） |
 | `composer` | 每个会话一份草稿文字 + 回复目标 `Option<MsgId>` | 草稿只在本机内存，不同步（`draft_set` 是第二批，L2 同级把关） |
+| `in_flight` | 每个会话 × 每种 L2 动作（发送 / 删除 / 重发）一个 bool | 按下到 core 调用返回之间为真：同一动作的键被吃掉；发送在途时另把输入框设只读（删除、重发在途不锁输入框）（`focus.md` `send_submitted`）
+| `send_again_armed` | 每个会话一个 bool | 上次发送返回 `duplicate_recent` 且报的上次结果是「已发出」、之后草稿与回复目标未改、键盘焦点未离开输入框时为真；任一条件破了置假（`keymap.md` `send_again`） |
 | `dialog` | `Option<对话框种类>` | 确认框（只有打开链接 / 附件；发送、删除、重发不弹框，#113）、错误框；关掉后按焦点规则表回去 |
 
 滚动位置**不存**：由选中锚点决定（「先滚再选」，`001` 第二节第 1 小节）；GPUI 列表自己的滚动句柄不算界面状态，是渲染细节。
@@ -148,7 +150,7 @@ GPUI 里有两个「id」，别混：
 
 ## 六、待人定
 
-题面、选项、代价、建议、默认的正本是 `docs/research/004_gui/decision.md`（卡 G1–卡 G17；本文不留副本）。本文其余各节提到的 G 号都指那里。
+题面、选项、代价、建议、默认的正本是 `docs/research/004_gui/decision.md`（卡 G1–卡 G18；本文不留副本）。本文其余各节提到的 G 号都指那里。
 
 ---
 
@@ -176,6 +178,9 @@ GPUI 里有两个「id」，别混：
 5. `docs/plan/001_arch-stack.md` 第四节第 2 小节「只编 `atg-core` 和 `atg-cli` 时不用拉 GPUI」：照卡 G2 改说法
 6. `atg-core::notify`：「停手后再说」用的朗读时长估算（选中项字数 × 180 ms + 1 秒，exp004 模式 5、001 拍板 3 ⑤）现在没有正本，`notify` 只收 `set_user_idle(bool)`（`src/atg-core/src/notify.rs:329`）。建议放进 `notify`（纯函数、时钟可注入），界面只报按键和选中项（`specs/gui/announce.md` 第一节）
 7. `atg-core::notify::Config`：加「新消息播报详略」字段（汇总 / 只计数 / 关，B19-8；`specs/gui/announce.md` 第五节）
+8. `specs/contracts/actions.md` 第一节第 5 小节：闸对同一会话的「查重复指纹」与「写已提交」要串行、一步做完，否则 CLI 并发、GUI 与 CLI 同时发可能两条都过（即 issue #77「直发防重复查重与登记分两步、可竞态」，fix 线已排；GUI 自己的连按已由在途态挡住）
+9. `specs/contracts/actions.md` 第一节第 2 小节「确认时写明『若网络中断，恢复后仍会发出』」：没有确认步骤了，GUI 改成不逐句念、写进帮助页（`specs/gui/announce.md` `send_plan`）；契约这句要随 #115 改成「发送时 / 帮助里说明」（已报大总管，2026-11-16）
+10. `specs/contracts/actions.md` 第一节第 4 小节第 4 条「确认时给人看什么」含会话 id：GUI 读计划按卡 G18 人选不念编号（B20-6，`specs/gui/announce.md` `send_plan`）；契约要写明「界面朗读可省 id，树节点 / CLI 照给」（已报大总管，2026-11-16）
 
 ---
 

@@ -84,7 +84,8 @@
 - **key 窗口**：当前接收键盘输入的窗口
 - **地标**：VoiceOver 能直接跳过去的区块（主要、导航……）
 - **直接发送（`direct_mode`）**：发送、删除（给所有人）、重发等一切 L2 动作不弹确认框、直接交出——这是唯一方式（人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节）。`--unsafe-direct-send` 已无作用、GUI 不认它。契约 `actions.md` 第一节第 5 小节「启动时提示」（GUI 标题加「直发模式」、启动播报）与 002 M4.6「过确认」随直发成唯一方式已不适用，待 #115 改正本；GUI 规约先不做，以 #115 改后的契约为准。**规约里单说「直发」只指「直发公告」那条播报路线**，不指这个
-- **发送闸 · 凭据 · 交出**：一切 L2 动作只能经 `atg-core` 的发送闸；闸给每次动作开一张一次性凭据（绑「发给谁 + 发什么」的摘要，防「读的是 A、发出去的是 B」），正式服务器开 `direct_mode`，测试服务器只对收藏夹开 `test_exempt`、别的会话拒；「交出」= 验过凭据后把请求交给 TDLib（`actions.md` 第一节第 4 小节）。凭据不是确认，人不用按任何东西
+- **发送闸 · 凭据 · 交出**：一切 L2 动作只能经 `atg-core` 的发送闸；闸给每次动作开一张一次性凭据（绑「发给谁 + 发什么」的摘要，防「读的是 A、发出去的是 B」），正式服务器开 `direct_mode`，测试服务器只对收藏夹（及 005 N7 的第二测试号私聊）开 `test_exempt`、别的会话拒；「交出」= 请求交给 TDLib（定义见 `actions.md` 第一节第 4 小节与 `send_text` 行）。凭据不是确认，人不用按任何东西。界面怎么按调用的三种返回走，见 `focus.md` `send_submitted`
+- **发送留痕**：契约要求的 `direct-send.log`（每条直接发送一行，不记内容）与 `send-guard.json`（重复提交记录）；写不进去就拒发。和 GUI 调试日志、「直发公告」都无关
 - **撤回占位**：消息被删（不论谁删）后原位留下的一条「已撤回」项，选中不丢（001 拍板 7）
 - **gpui-kit**（原名 gpui-component）：第三方的 GPUI 组件库；**gpui-pre**：它依赖的、crates.io 上的 GPUI 每周快照。B19-10 定了不用
 - **Zed `ui` crate**：Zed 自己的组件库（GPL-3.0），本项目的组件底座
@@ -111,7 +112,7 @@
 | `Composer` | 多行输入框：TextRun + 选区、组字时回车不发、回车走发送闸（读一遍计划、直接发，不弹框） | 每个会话 | **自写，照 Zed 主干 `Z:settings_ui/src/components/input_field.rs` 写**（`Role::TextInput` + TextRun + 选区 + 获焦期间冻结 `aria_value`；它绑 Editor，不能直接依赖）；写好尽量提交上游 | `001` 第二节第 5 小节 |
 | 登录表单各框 | 单行输入（手机号、验证码）、密码 | M3.2 | 同 `Composer` 的做法，角色 `TextInput` / `PasswordInput` | T01 |
 | `KeyMonitor` | AppKit 层按键监视器，先判有没有标记文本（组字中一律放行，`keymap.md` 规矩 8）。Shift+Tab **任何时候都截**（全局键，输入框里也要能退出去）；方向、Esc、Home / End、PageUp / PageDown 在不收文字的视图获焦时截；**收文字的视图里只截按键表在该视图明文绑了的那几个**（搜索框的 ↓、Esc，输入框的 Esc），其余留给输入法和光标。Tab 带字符、不先给输入法，可能不用截（⏳ 实测复核，`keymap.md` 第二节 `bypass_ime`） | 全局一个 | **自写**；上游修好（P8）就撤 | `001` 第二节第 1 小节「绕过输入法」 |
-| `ConfirmDialog` | 确认框：**只用于打开链接 / 附件**（L1 外部，契约要求当场确认）。AlertDialog，打开即读正文，焦点落在取消。发送、删除、重发**不弹框**（人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节），改由 `Announcer` 在交出时读一遍计划（`announce.md` 来源 `send_plan`） | M3.5、M3.7 | **自写**：对话框角色、模态、焦点陷阱（Zed `ui` 缺；B19-10） | `actions.md` `open_link` / `open_file` |
+| `ConfirmDialog` | 确认框：**只用于打开链接 / 附件**（L1 外部，契约要求当场确认）。AlertDialog，打开即读正文，焦点落在取消。发送、删除、重发**不弹框**（人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节），改由 `Announcer` 在调用返回成功时读一遍计划（`announce.md` 来源 `send_plan`） | M3.5、M3.7 | **自写**：对话框角色、模态、焦点陷阱（Zed `ui` 缺；B19-10） | `actions.md` `open_link` / `open_file` |
 | `ReadingView` | 只读多行文本，按字 / 词 / 行读，Esc 回原处 | M3.5 | 同 `Composer` 的做法（只读） | `002` M3.5 |
 | 按钮、开关、菜单、右键菜单、标签页 | — | 各处 | **Zed `ui`**，rev 与 GPUI、补丁同一个（B19-10），记在根 `Cargo.toml` 的 git 依赖里（正本），`upstream-patches.md` 的 rev 列与它比对。按钮基类默认 `Role::Button`；右键菜单用 active descendant、`aria_keyshortcuts` 从按键表反查（`findings-components.md` 第二节第 4 小节） | — |
 

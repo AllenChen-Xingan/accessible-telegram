@@ -4,7 +4,7 @@
 
 - **手上**：`_tmp/20261116-b20/gssot.md`（MAIN）——① 按 Touch ID 删除改 GUI 规约（specs/gui/**、012、decision.md：确认步骤 → 发送前读一遍、直接发、不弹框）；② 把待人拍板的卡（G9 G11 G15 G16 G17）整理成能直接问人的样子
 - **做到哪**：大总管已提交 304e9ae 并合 main（53d4f8c）。① Touch ID 删除已改完（7 个文件：README、keymap、a11y-tree、focus、announce、checklist、012；新增播报来源 `send_plan`、焦点触发 `send_submitted` / `delete_submitted` / `resend_submitted`；确认框只剩打开链接 / 附件）② 五张卡已整理成「问人」一段（decision.md 第一节；G11 新增一问：删除不弹框后改 Cmd+Shift+Delete）
-- **下一步**：atg-review 第 2 轮 → 清 P0/P1 → codex 040（范围 `53d4f8c` 起）→ 报大总管提交；G18 待问
+- **下一步**：自审到连续两轮无 P0/P1 → codex 040（范围 `53d4f8c` 起）→ 报大总管提交；`send_again` 键（Cmd+回车）待下次问人
 - **不动**：.42cog/intent.md 改动、docs/plan/013、exp009（ggpui）、exp010（gcomp）、docs/reviews/042/043、别人的现状页
 - **要人定的事**：`docs/research/004_gui/decision.md` 第一节 G9 G11 G15 G16 G17（已报大总管去问）
 - **报给大总管的规约冲突（别人的文件，只报不改）**：`actions.md` 第一节第 5 小节仍写「GUI 窗口标题前加『直发模式』，启动时播报『直发模式已开启，发送不再确认』」——直发成唯一方式后这句没意义，GUI 规约没照写；`002_roadmap.md` M4.6 仍写「过确认（同 M4.2）」，GUI 规约按 D1 / #113 写成不弹框
@@ -18,7 +18,13 @@
 - 2026-11-16 · 大总管：冲突 ③a ③b 并进 issue #115（codex 线改，不归我）；五张卡大总管去问人
 - 2026-11-16 · atg-review 第 1 轮：P1×2（同一件：契约第 5 小节 GUI 启动提示规约没交代）、P2×9、P3×8。修：README 写明该条与 M4.6「过确认」待 #115、GUI 先不做；术语「直发」改「直接发送（direct_mode）」，单说「直发」只指直发公告；补术语 发送闸 / 凭据 / 交出 / 撤回占位；send_plan 时机写清（读与发同时、不等读完）；focus 删键名副本、M4.6 出处注明；清单修订表恢复两条旧行、追加新行；F8 / A18 覆盖删除、重发；keymap resend / delete 行写法统一；L2 术语补 test_exempt；G11 措辞与 B19-3/4 出处。新开卡 G18（读一遍：边念边发还是念完再发、长文、念不念编号）
 - 2026-11-16 · 人拍板（大总管转）：G9 A · G11 B · G15 B · G17 A；G16 未问按默认。落：decision.md 各卡标「人选」、013 加 B20-1～B20-4；keymap 删除改 `cmd-shift-backspace`、草案行照用；a11y-tree 消息项 `role_description`「消息」、导出格式加 `roledesc`、清单 S30
-- 2026-11-16 · atg-review 第 2 轮已起（wf_7b0c1fc8-ac3，范围 `git diff 53d4f8c`）
+- 2026-11-16 · atg-review 第 2 轮（wf_7b0c1fc8-ac3）：P1×1——闸当场拒发（`duplicate_recent` 等）时草稿被清、无播报、无放行键。修：`focus.md` 闸收下才清空，新触发 `send_refused_now`（草稿与回复目标保留）；`announce.md` 新来源 `send_refused`，`send_plan` 改为收下时才播；`keymap.md` 新动作 `send_again` + 输入框 `cmd-enter`（AI 草案，对应 `send --again`）；清单 A18 补夹具。P2/P3 顺手修：「删除直发」改「直接发送」、roledesc 只在应用设了时写、013 体例（原话待大总管补、G16 编 B20-5）、decision 文件头两套归档规矩写明、012 卡号 G1–G18、backspace = Mac 的 Delete 键、send_plan 一处写全 G18 默认、出处排序、K14 人选、keymap 逐行重复标注去掉、T04 去 F7
+- 2026-11-16 · atg-review 第 3 轮（wf_748ec976-be7）：P1×2——① `cmd-enter`「放行」两义、`send_again` 有效条件没写；② 按回车到闸收下之间没有在途锁，连按回车可能发两条。修：focus `send_submitted` 加在途态（回车 / Cmd+回车 吃掉）与「收下」定义；`send_refused_now` 覆盖发送、删除、重发与全部错误码；keymap `send_again` 有效条件（只这一次、草稿未改、未离开输入框，失效即不截）、resend / delete 行时机统一；A18 夹具按正式服务器 direct_mode、加连按两次断言；README test_exempt 补 N7；覆盖表 S30→T03、F7→T06；013 B20-5 写明不是人定
+- 2026-11-16 · **报大总管（契约 / atg-core，不归我；记 012 第八节第 8 条）**：契约没要求闸对同一会话「查重复指纹」与「写已提交」串行、原子；GUI 侧在途态兜住了界面连按，但 CLI 并发、GUI 与 CLI 同时发仍可能两条都过
+- 2026-11-16 · atg-review 第 4 轮（wf_0c8daf86-76a）：P1×2（同根）——「收下」定义含 TDLib 应答，交出后断网 / 超时会被当成拒发、草稿保留、`send_again` 可放行 → 发两条。修：分界改为**交出**（交给 TDLib 那一刻，不论 direct_mode / test_exempt）；交出前错 → `send_refused_now`，交出后一切结局 → `send_failed` / 结果未知、草稿不回来、`send_again` 不生效；在途态输入框只读、优先于 `send_again`；UiState 加 `in_flight`、`send_again_armed`；012 第八节加第 8 条（core 交出时通知界面）、第 9 条（闸串行化）；「留痕」一词改「调试日志」以别于直发留痕；A18 补正反两面与交出后失败；G18 ① B 代价补「要重写交出分界」
+- 2026-11-16 · atg-review 第 5 轮（wf_889c6709-ab7）：P1×2——① 「交出时刻」与契约 30 秒（含等交出应答）对不上，复核卡住时在途态无出口；② TDLib 对 sendMessage 当场回错误时草稿已被清、无失败项可重发 → 丢字。修：**界面分界改按 core 调用的三种返回**——拿到待发消息（清空、读计划）/ 返回错误（`send_refused_now`，含 TDLib 当场错误，草稿保留）/ 30 秒结果未知（新触发 `send_unknown_now`，草稿保留、`send_again` 不武装、提示先别重发）；不再需要 core 交出时通知（删 012 第八节原第 8 条）；`send_again` 只在上次结果「已发出」时武装；`in_flight` 改会话 × 动作、只有发送锁输入框；树导出加 `readonly`、输入框清空例外于值冻结；清单 A18 拆出 A27、A28；README「发送留痕」术语、交出只给指针；012 第八节第 9 条登记「断网恢复后仍会发出」偏离契约
+- 2026-11-16 · atg-review 第 6 轮已起（wf_9826b9f6-bf7；起时 G18 未定，结论按新内容核）
+- 2026-11-16 · 大总管：已提交 588a6d7；G18 人选 ① 边念边发 ② 念开头加字数 ③ 不念编号；013 写「人在大总管给的选择题里选 X」；契约缺口即 issue #77；`send_again` 攒着下次问人。落：decision.md G18 标人选；013 原话行全填、加 **B20-6**（大总管说 B20-5，但 B20-5 已给 G16，故用 B20-6，已报）；announce `send_plan` 不念编号、超 60 字念前 60 字加「共 N 字」（60 是 AI 数，⏳ 试听）；012 第八节第 8 条引 #77、加第 10 条（契约第 4 小节含 id，GUI 朗读省 id）
 - 2026-11-16 · 重写 decision.md 第一节：五张卡各一段「问人」+ 选项 · 代价 · 建议 · 默认；细目与出处挪到节末；修掉 G11 旧文里与 G17 矛盾的「焦点留在搜索框，↑↓ 移高亮」
 
 ---

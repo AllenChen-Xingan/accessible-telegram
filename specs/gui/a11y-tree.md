@@ -18,7 +18,7 @@
 9. **获焦不能有副作用。** 「键盘焦点跟随 VO 光标」开着时，VO 路过就把焦点拉过去（`findings-a11y.md` 第三节第 6 小节）：选中或获焦时不标已读、不自动播放、不开会话；这些只在人按键时做
 10. **不用 `.cached(..)` 包任何视图**：缓存画出的视图不推无障碍节点，焦点退回整窗（上游 issue #66690；`findings-gpui.md` 第 4 节）。上游修好（`upstream-patches.md` P11）之前一律禁用，`check-gui-state.py` 扫
 11. **消息项里只放普通 div 和文字**，不嵌编辑器、markdown 这类会在 prepaint 里请求自动滚动的元素；滚动：逐项 ↑↓ 用 `ListState::scroll_to_reveal_item` + overdraw；跳跃（PageUp / PageDown、Home / End、落到第一条未读、从通知或搜索跳到某条）用 `scroll_to(ListOffset)`；两者都不经 `request_autoscroll`。只用前者的话跳到没量过的项根本不滚：exp009 跳跃序列错 8/9、8/9、7/9，换 `scroll_to(ListOffset)` 0/9（`findings-gpui.md` 第 4 节）。否则碰上 `list` 同帧重做 prepaint、无障碍节点推两遍（调试构建 panic、发布构建丢节点；上游 PR #65740，`upstream-patches.md` P5）
-12. **输入框、阅读视图要有 TextRun 子节点和选区**，VoiceOver 才读得出光标位置、能逐字读（Zed 设置页 `settings_ui/src/components/input_field.rs` 的做法；`findings-gpui.md` 第 5 节）；获焦期间值冻结在获焦那一刻，失焦再同步（读屏在获焦控件的值每变一次就整段重读）
+12. **输入框、阅读视图要有 TextRun 子节点和选区**，VoiceOver 才读得出光标位置、能逐字读（Zed 设置页 `settings_ui/src/components/input_field.rs` 的做法；`findings-gpui.md` 第 5 节）；获焦期间值冻结在获焦那一刻，失焦再同步（读屏在获焦控件的值每变一次就整段重读）。例外：发送成功清空输入框时立即同步为空（那一刻要读的是 `send_plan`，空值不会重读出内容）
 
 ## 二、稳定标识（`.accessibility_id(..)` → macOS AXIdentifier）
 
@@ -67,7 +67,7 @@
 | 日期分隔 | `Heading`（VO+Cmd+H 能按日期跳；清单 S14） | `speech` 的日期读法（树节点待加，`content-tree.md` 第三节第 1 小节「以后加」已列） | — | — | — | 清单 S14 |
 | 第一条未读的消息项 | 同消息项 | `speech::brief`，名称前加「未读：」（树节点或投影字段待加，012 第八节第 1 条） | 同消息项 | 同消息项 | 同消息项 | 003 F2；B19-7 |
 | 未读分隔线 | 不可聚焦的装饰（不进 ↑↓ 顺序、不是 Tab 站） | — | — | — | — | B19-7 |
-| 输入框 | `MultilineTextInput`（AXTextArea） | 文案「输入消息」；回复态加 `speech` 的「回复 X」 | — | 焦点；值 = 草稿 | 直接打字；回车 = 发送 | 001 第二节第 5 小节；T04 |
+| 输入框 | `MultilineTextInput`（AXTextArea） | 文案「输入消息」；回复态加 `speech` 的「回复 X」 | — | 焦点；值 = 草稿；发送在途时只读（`read_only`，macOS 层导出 `readonly`，agent 靠它知道还没返回） | 直接打字；回车 = 发送 | 001 第二节第 5 小节；T04；`focus.md` `send_submitted` |
 | 发送按钮 | `Button`（AXButton） | 文案「发送」 | — | 禁用（输入为空时；经 `parent_node().set_disabled()`） | AX Press | exp003b-v2 |
 | 搜索框 | `SearchInput`（AXTextField + AXSearchField） | 文案「搜索消息」/「搜索会话」（不写「搜索框」） | — | 焦点；值 | 打字；↓ 进结果列表；Esc 关 | T08；清单 K14 |
 | 搜索结果 | `List` + `ListItem`（同 `NavList`，卡 G17 人选 A） | 列表名「搜索结果」+ 结果数（`speech`）；消息项 = `speech::brief`，会话项 = `speech::chat_brief` | — | 同 `NavList` | 回车打开；Esc 回搜索框 | M4.5 |
@@ -104,7 +104,7 @@
 **macOS 层**（`<场景>.macos.txt`），每行：
 
 ```
-<AXRole>[/<AXSubrole>] [roledesc="<AXRoleDescription>"] <AXIdentifier> "<AXTitle 或 AXDescription>" [value="<AXValue>"] [help="<AXHelp>"] [placeholder="…"] [AXSelected] [AXFocused] [focusable] [disabled] [required] [modal] [actions=Press,ScrollToVisible…] [linked=<标识>…]
+<AXRole>[/<AXSubrole>] [roledesc="<AXRoleDescription>"] <AXIdentifier> "<AXTitle 或 AXDescription>" [value="<AXValue>"] [help="<AXHelp>"] [placeholder="…"] [AXSelected] [AXFocused] [focusable] [disabled] [required] [modal] [readonly] [actions=Press,ScrollToVisible…] [linked=<标识>…]
 ```
 
 名称一格：有 AXTitle 取 AXTitle，否则 AXDescription，后面标来源 `(t)` / `(d)`。文本类元素另加 `sel=<起>-<止>` · `caret=<行>`（X3）。
@@ -113,7 +113,7 @@
 
 另出一份**通知记录** `<场景>.notify.txt`：一行一条 `<序号> <通知名> <目标标识>`（Created / UIElementDestroyed / TitleChanged / ValueChanged / FocusedUIElementChanged / AnnouncementRequested〔带优先级，不带文字〕/ TextInputMarkingSession*），给 S21、A20、A21、A16 判。转子（S17）不在任何一份导出里，等 P15 实验定格式。
 
-只写有的。清单里按 macOS 层判的条目各查哪一项：子角色 S9 · `roledesc` S30 · 值 S7 · `focusable` F10 · `actions` X1、S16、AG7 · `disabled` AG4 · 焦点两行 F4–F6、F17、S28 · `sel` / `caret` X3、K19 · 通知记录 S21、A16、A20、A21。**frame 不进快照**（每次都变，规范化要去掉）：X2 在导出那一刻对着布局现场比，比完只在快照末尾记一行 `# frame-check ok` 或列出超差的标识
+只写有的；`roledesc` 只在应用自己设了 `role_description` 时写（系统默认的「组」「按钮」不写，免得每行都多一项）。清单里按 macOS 层判的条目各查哪一项：子角色 S9 · `roledesc` S30 · `readonly` A28 · 值 S7 · `focusable` F10 · `actions` X1、S16、AG7 · `disabled` AG4 · 焦点两行 F4–F6、F17、S28 · `sel` / `caret` X3、K19 · 通知记录 S21、A16、A20、A21。**frame 不进快照**（每次都变，规范化要去掉）：X2 在导出那一刻对着布局现场比，比完只在快照末尾记一行 `# frame-check ok` 或列出超差的标识
 
 **两层共同**：
 

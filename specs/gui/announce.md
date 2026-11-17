@@ -44,9 +44,10 @@
 | `listen_new`（人按 M） | 直发 | — | — | 高（人要听的） | exp004（m = 高优先级直发） |
 | `detail`（人按 D） | 直发 | — | — | 高（人要听的，同 `listen_new`） | B19-6；`keymap.md` `read_detail` |
 | `search_count`（搜索结果数，防抖 400 ms 后） | Live | — | — | 低 | 清单 A19；T08 |
-| `send_plan`（交出 L2 时读一遍计划：发送「发给〈种类 · 名字 · 编号〉：〈正文〉」（编号见卡 G18），回复时加「回复〈那条的摘要〉」；删除「给所有人删除：〈那条的摘要〉」；重发「重发：〈正文〉」，会去掉回复关系时说出来。数据取 `speech` 对 `SendPlan` / `ResendPlan` 的读法，与 CLI `plan` 行同一份计划；会话编号念不念见卡 G18（默认念，照契约第一节第 4 小节）；发起方在界面上必是「界面」、不念；「断网恢复后仍会发出」不逐句念，写进帮助页（AI 定，可推翻）） | Live | — | — | 高（人要听的） | 002 M4.2；`actions.md` 第一节第 4 小节；#113。**时机**：按键当下就交给 TDLib，读与发同时开始、不等读完（「直接发，不等人」；卡 G18 默认 A）；长正文读全文还是前一段也见卡 G18 |
+| `send_plan`（L2 调用返回成功（发送是拿到待发消息）时读一遍计划（见 `focus.md` `send_submitted`）：发送「发给〈种类 · 名字〉：〈正文〉」（不念会话编号；防改名冒充收藏夹靠「种类」：真收藏夹念「收藏夹」，冒充的念「私聊 · 收藏夹」），回复时加「回复〈那条的摘要〉」；删除「给所有人删除：〈那条的摘要〉」；重发「重发：〈正文〉」，原消息被删时 TDLib 会自动去掉回复关系（契约 `need_drop_reply`），这时说「会去掉回复关系」。数据取 `speech` 对 `SendPlan` / `ResendPlan` 的读法，与 CLI `plan` 行同一份计划。闸当场拒发时不播本句，改播 `send_refused`） | Live | — | — | 高（人要听的） | 002 M4.2；`actions.md` 第一节第 4 小节；#113。**时机**：返回成功时请求已在 TDLib 手里，念的同时消息已在发出，不等念完。**长正文**：正文超过 60 字只念前 60 字（就近在句末标点处截）再说「共 N 字」；60 是 AI 起的数，⏳ 人试听后调。以上三条是卡 G18 人选（B20-6）。另两项 AI 定、可推翻：「发起方」（契约里指界面 / 命令行，命令行可能是 AI）在界面上必是「界面」，不念；「断网恢复后仍会发出」（L2 交出后在 TDLib 里排队，契约第一节第 2 小节要求「确认时写明」）不逐句念，写进帮助页——偏离契约，已记 `docs/plan/012_gui-ssot.md` 第八节第 9 条 |
+| `send_refused`（播报来源名；覆盖 `focus.md` `send_refused_now` 的全部错误码：发送、删除、重发的调用返回错误、什么都没发出。文字取 `CoreError::message_zh`；错误码是 `duplicate_recent` 时带「几秒前、什么结果」；上次结果是「已发出」时再说「再按〈`send_again` 的键〉仍要发」（键名从按键表取），上次是「未知 / 已提交」时改说「上次那条可能已经发出，先别重发」、不提示按键） | Live | — | — | 高（要人处理；发送时草稿还在） | `actions.md` 第一节第 5 小节「重复提交拦截」；`focus.md` `send_refused_now` |
 | `send_ok`（「已发送」） | Live | 直发 | — | 低 | T04 |
-| `send_failed`（失败 / 结果未知） | Live | 直发 | 系统通知 | 高（紧急、要人处理；`findings-a11y.md` 第五节第 2 小节） | `actions.md` 事件 `send_failed` / `messages_deleted` |
+| `send_failed`（失败 / 结果未知；含 `focus.md` `send_unknown_now`：「结果未知，可能已经发出，先别重发」） | Live | 直发 | 系统通知 | 高（紧急、要人处理；`findings-a11y.md` 第五节第 2 小节） | `actions.md` 事件 `send_failed` / `messages_deleted` |
 | `no_more_unread` | Live | — | — | 低 | 003 A3 |
 | `nothing_here`（按 `l` / `o` 但这条没有链接 / 附件） | Live | — | — | 低 | `focus.md` `links_opened` · `attachment_missing` |
 | `chat_removed`（选中的会话没了） | Live | 直发 | — | 低 | `focus.md` `selected_chat_removed` |

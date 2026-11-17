@@ -59,28 +59,38 @@
 
 ## 2026-11-16（批次 b20）
 
-> 人在对话里定、由大总管转述（原话在大总管记录里）；「落到哪」由 gssot 写。题面：`docs/research/004_gui/decision.md` 第一节。
+> 人在大总管给的选择题里勾选（没有另说原话），由大总管转述给手下 gssot（负责 GUI 规约的手下会话）；「落到哪」由 gssot 写。B20-5 不是人定的。题面：`docs/research/004_gui/decision.md` 第一节。
 
 ### B20-1 借鉴 Quill：照表（G9）
 
+- 原话：人在大总管给的选择题里选 A
 - 人选：A——借 12 条、不借 6 条（细目表在 decision.md 第一节末）
 - 落到哪：表里各行「落到本项目哪」一列已在规约里；无新改动
 
 ### B20-2 具体按键：照草案，删除改 Cmd+Shift+Delete（G11）
 
+- 原话：人在大总管给的选择题里选 B
 - 人选：B
-- 落到哪：`specs/gui/keymap.md` 第五节 `delete_for_all` 改 `cmd-shift-backspace`，其余「草案」行照用
+- 落到哪：`specs/gui/keymap.md` 第五节 `delete_for_all` 改 `cmd-shift-backspace`（即 Mac 上印 Delete 的键加 Cmd+Shift），其余「草案」行照用
 
 ### B20-3 消息项读「消息」不读「组」（G15）
 
+- 原话：人在大总管给的选择题里选 B
 - 人选：B——直接换，不做两种试听
 - 落到哪：`specs/gui/a11y-tree.md` 消息项设 `role_description`「消息」；导出格式加 `roledesc`；清单 S30
 
 ### B20-4 搜索结果：↓ 进结果列表（G17）
 
+- 原话：人在大总管给的选择题里选 A
 - 人选：A
 - 落到哪：规约原已按 A 写（`keymap.md` 搜索几行、`focus.md` `search_results_entered`、清单 K14、S28）
 
-### G16 没问
+### B20-5 外部移焦点不拦（G16，没问）
 
-- 按默认 A：外部移焦点照常移、只记日志，真碰到焦点乱跳再问
+- **这条不是人定的**：没问，按卡上的默认 A——外部移焦点照常移、只记日志，真碰到焦点乱跳再问
+- 落到哪：无改动（`specs/gui/focus.md` 第三节原已按 A 写，含日志格式）
+
+### B20-6 「发送前读一遍」：边念边发、长消息念开头加字数、不念编号（G18）
+
+- 原话：人在大总管给的选择题里选 ① A、② B、③ A
+- 落到哪：`specs/gui/announce.md` `send_plan`（念「发给〈种类 · 名字〉」，正文超长只念开头加「共 N 字」）；不念编号与契约第一节第 4 小节不一致，记 `docs/plan/012_gui-ssot.md` 第八节第 10 条待改契约
