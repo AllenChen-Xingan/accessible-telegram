@@ -1,9 +1,8 @@
-//! `watch` 的出口与订阅者：一行一行写出去的出口（`LineOut`）、把事件渲染成行的 `Watcher`、同一份事件流分给多个订阅者的 `Hub`。
-//! 事件怎么变成 JSON 在模块根 `watch.rs`。
+//! `watch` 的出口与订阅者：一行一行写出去的出口（`LineOut`）、把事件渲染成一行的 `Watcher`（套信封、加读法与提示）、
+//! 同一份事件流分给多个订阅者的 `Hub`。每种事件的数据（`event_data`）在模块根 `watch.rs`。
+//! 词：直跑 = `atg-cli watch` 直接写标准输出；执行方 = `serve` 那边，经本机接口的连接写给读方；租约 = 替订阅者开着的会话。
 
 use super::*;
-
-// ───────────────────────── 出口与订阅者 ─────────────────────────
 
 /// 一个订阅者的出口：直跑是标准输出，执行方那边是本机接口的连接
 pub trait LineOut {
@@ -306,7 +305,7 @@ impl Hub {
     }
 
     /// 只给最后挂上的那个写错误、摘掉它（`watch` 接入途中出错，如 `--chat` 找不到）；回退出码。
-    /// 只在 [`Hub::open_chat`] 之前调（还没占租约，开失败的已退掉）：不用放；`fail_unless_stopped` 同理
+    /// 只在 [`Hub::open_chat`] 之前调（还没占租约，开失败的已退掉）：不用放；`super::fail_unless_stopped`（模块根 `watch.rs`）同理
     pub fn fail_last(&mut self, f: &Fail) -> u8 {
         let Some(mut s) = self.subs.pop() else {
             return 1;
