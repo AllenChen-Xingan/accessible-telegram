@@ -8,7 +8,9 @@
 - ✅ codex 046 第 3 轮通过，满足停止线。抽查「不符」1 条（记录说覆盖了强转发，实际没测）：补了一条测试，变异检验能变红，自测 84 条全过；046 和评审索引都已更新（未提交）
 - ✅ #108 第 3 轮已由大总管提交（beceaa1）。r3（#110）在 0757bb0 上全量检查全绿：fmt、两种 clippy、test 490 过 0 败 5 忽略、no-debug、sources、size。结果已填进 #110 的描述草稿，名额已归还
 - ✅ #110 已合进 main（0538ffd）。大总管把它合进 r1 后，我解了两处冲突（评审索引、本页），两边内容都保留
-- **下一步**：领名额在 r1 跑全套（testkit 那条应转绿）→ 大总管开 #108 的 PR → 写 R3a 第二刀计划（15 处换成 testkit）报大总管，确认没有在途线在改那些文件后再动手
+- ✅ r1 在 0375fd6 上全绿（test 490 过 0 败 5 忽略，check-sources 六条含 testkit 全过，自测 84 条）。大总管已开 #108 的 PR #129（Closes #108），等人合并
+- ✅ R3a 第二刀计划已写（见本页末节），大总管认可，但**暂缓**：那些测试文件都有在途线在改（msg1：send/tests 和 send_limits/tests.rs；fix #126：tests/config.rs；cli 的 send/login/watch 测试 msg1、msg2、fix、media 都碰过）
+- **下一步（待命）**：等 #126、#125、#57、#9 合进 main。之后大总管从那时的 main 新开分支（不再用 r1），我按新 main 重核计划里的行号，再开工。注意 send_limits 的测试已挪进 `send_limits/tests.rs`，计划表里那一行到时改路径
 - **要人定**：无
 
 - **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是确认凭据参数的类型标注，不是密钥）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
@@ -144,3 +146,39 @@
 4. R4（目标解析收一，会动 history/watch/send）是改逻辑不是挪，等 R3、R7 前几刀做完再单独设计
 
 **第 1 刀和第 2 刀能不能并行**：文件不重叠，可以。但重活名额全机只有一个，所以按顺序做
+
+## R3a 第二刀计划（2026-11-16，按 0375fd6 实查，没动代码）
+
+目标：剩下的临时目录助手都换成 `testkit::temp_dir` / `profile`（单元测试写 `crate::testkit`，集成测试和 cli 写 `atg_core::testkit`）。只动测试，产品代码不碰。实查 12 个文件、14 处：12 处要换（下表 11 行，`tests/cli.rs` 一行占两处），2 处不换（见表下）。之前写的「15 处」是把已换完的 `tests/config.rs` 主助手也算进去了，作废：
+
+| 处 | 现在 | 换成 | 注意 |
+|---|---|---|---|
+| core `gate/tests.rs:89` `temp_dir` | 进程号 + 计数器，建 | `crate::testkit::temp_dir` | 删本地助手和 AtomicU32 |
+| core `send/tests.rs:92` | 进程号 + 计数器，不建，`Profile::create(…)` | `crate::testkit::temp_dir` + 原样的 `Profile::create` | 档案名、kind 保持不变 |
+| core `send_limits.rs:246`（行内） | 只有进程号（同一个 tag 用两次会撞），建 | `crate::testkit::temp_dir` | |
+| core `tests/send_limits.rs:35` | 只有进程号，`Profile::create(…,"p",Test)` | `atg_core::testkit::temp_dir` + 原样 create | 档案名 `"p"` 不变 |
+| core `tests/config.rs:248` `atg-test-phone` | 只有进程号，建 | `atg_core::testkit::temp_dir` | testkit 头注释点名的那一处 |
+| cli `chats/tests.rs:12` `temp_root` | 进程号 + 线程号，**不建** | `temp_dir` | ⚠️ testkit 会建目录：先查调用方有没有依赖「目录不存在」 |
+| cli `login/tests.rs:61` `temp_root` | 同上，**不建** | `temp_dir` | ⚠️ 同上（登录测试可能在查「档案目录不存在」） |
+| cli `send/tests.rs:55` | 计数器，`Profile::create(…,"p",kind)` | `temp_dir` + 原样 create | |
+| cli `voice/tests.rs:19` | 进程号 + 线程号，`"main"`、Main | `atg_core::testkit::profile(tag, Main)` | |
+| cli `watch/tests.rs:23` | 同上 | `atg_core::testkit::profile(tag, Main)` | 600 行 → 590 左右，离开线 |
+| cli `tests/cli.rs:344`、`:433` | 只有进程号，建 | `atg_core::testkit::temp_dir` | |
+
+**不换（写明原因，留在原地）**
+- core `ipc.rs:357` `short_dir`、cli `serve/tests.rs:34` `profile`：里面要建套接字，路径最多 103 字节，所以故意用了短前缀（`atgipc-`、`atgs-`）。ipc 还用 `ensure_private_dir`（0700）。换成 testkit 会变长、改权限。处理：两处各加一行注释「不用 testkit：套接字路径上限」。testkit 头注释的进度清单改成「已全部换完，例外 2 处」
+
+**验收**：fmt、两种 clippy、`test --workspace`；`#[test]` 前后数量相等；`git grep 'std::env::temp_dir()' -- src` 只剩 testkit、ipc、serve 和 tdlib-rs 例子；`check-file-size --tighten`（watch/tests 不再卡线）；多视角自审 + codex（diff 类，三点范围）
+
+**分 PR**：一个 PR，碰 12 个文件但只有一个实体（测试夹具），每处改动 3–10 行
+**开工前要确认**：以上 12 个文件现在有没有在途线在改（msg1 动 td.rs，可能还碰 send 的测试？）
+
+## R7 第一刀：拆 `tree/text.rs`（2026-11-17，工作副本 `atg-wt/arch-r7`，分支 `refactor/r7-tree-text`，从 main 266f5f3；codex 编号 049）
+
+- 实查：671 行，测试已经在 `text/tests.rs`（393）里，文件尾只剩 `mod tests;`
+- 拆法（纯挪）：第 500–668 行是「遍历建好的行内树」的部分，挪到新文件 `tree/text/walk.rs`（实际 175 行，含分节线）。内容：`LinkRef`、`links`、`links_marked`、`walk_marked`、`link_hidden`、`contains_spoiler`、`collect_links`、`plain_text`、`append_plain`。根 `text.rs` 留「实体 → 树」的建树部分（实际 506 行），加 `mod walk; pub use walk::{…}`，6 个公开名字照原样导出，外部 11 处调用一行不改
+- 只多这些：`mod` / `pub use` / `use` 行；文档链接 `[`super::mask`]` 因为文件深了一层，要改成 `crate::tree::mask`（只影响 rustdoc，代码不变）
+- 测试一行不动（`use super::*` 经 `pub use` 照样拿得到 `links`、`plain_text`、`LinkRef`）
+- 验收：fmt、两种 clippy、`test --workspace`；按行做多重集比对（只多 mod / use / 文档链接）；公开名字前后一致；`--tighten` 把基线里的 `tree/text.rs` 删掉；自审 + codex 049（diff 类，三点范围）
+- **进度（2026-11-17）**：已挪完，未提交。`text.rs` 671 → 506，新 `text/walk.rs` 175（自审后加了头注释一句与分节线）；逐行比对只多 mod / pub use / use / 头注释 / 空行，另有 2 行文档链接 `super::mask` → `crate::tree::mask`；`--tighten` 后基线 9 → 8 个。已申请名额编译，下一步：编译检查 → 自审 → codex 049
+- ✅ 自审 1 轮（P2×2、P3 已改）；codex 049 两轮都是零发现，收敛，记录在 `docs/reviews/049_r7-tree-text-codex.md`，索引已加。等大总管提交、开 PR
