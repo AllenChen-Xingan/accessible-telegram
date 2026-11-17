@@ -1,4 +1,4 @@
-//! 发文件的本机一侧（#12）：哪些文件许发（人定 1）、大小上限（人定 2）、交出的快照副本、按图片还是按文件发（人定 3）。
+//! 发文件的本机一侧（#12）：哪些文件许发、大小上限、交出的快照副本、按图片还是按文件发（都是人定 2026-11-17，题面与选项见 `state/handoff/msg2.md` #12 节）。
 //! 都不碰 TDLib，单测直接在临时目录里跑。
 
 use crate::error::{CoreError, InvalidSendWhy};
@@ -8,10 +8,10 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-/// 文件最大多少字节（人定 2：50 MB）
+/// 文件最大多少字节（人定 2026-11-17：50 MB）
 pub const FILE_MAX_BYTES: u64 = 50 * 1024 * 1024;
 
-/// 只许发这三个文件夹里的（人定 1，按解析符号链接后的真实路径判）
+/// 只许发这三个文件夹里的（人定 2026-11-17，按解析符号链接后的真实路径判）
 pub const ALLOWED_DIRS: [&str; 3] = ["Downloads", "Desktop", "Documents"];
 
 /// 按图片发的上限（TDLib `inputMessagePhoto`，`td_api.tl:6429`）：≤ 10 MB、宽 + 高 ≤ 10000、长宽比 ≤ 20
@@ -22,7 +22,7 @@ const PHOTO_MAX_RATIO: u64 = 20;
 /// 快照留多久：结果未知的那份留给 TDLib 下次启动续发时读，过了这么久就清（`config-privacy.md` `outbox/`）
 pub const OUTBOX_KEEP_S: u64 = 24 * 3600;
 
-/// 许发的路径要对照的几处：家目录（三个许可文件夹在它下面）、一律不许的目录（本应用的数据根、档案、TDLib 库），
+/// 许发的路径要对照的几处：家目录（三个许可文件夹在它下面）、一律不许的目录（本应用的数据根与档案目录；TDLib 的库 `db/` 在档案目录里），
 /// 快照放哪（档案目录下的 `outbox/`）
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
@@ -53,38 +53,95 @@ fn bad(why: InvalidSendWhy) -> CoreError {
     CoreError::InvalidSend { why }
 }
 
-/// 许不许发：解析符号链接后的真实路径要是普通文件、落在三个许可文件夹之一里、不在一律不许的目录里，
-/// 且许可文件夹以下的每一段名字都不像密钥。返回真实路径
-pub(super) fn allowed_path(p: &Path, roots: &FileRoots) -> Result<PathBuf, CoreError> {
-    let real = fs::canonicalize(p).map_err(|_| bad(InvalidSendWhy::NotAFile))?;
-    let meta = fs::metadata(&real).map_err(|_| bad(InvalidSendWhy::NotAFile))?;
-    if !meta.is_file() {
-        return Err(bad(InvalidSendWhy::NotAFile));
-    }
-    let not_allowed = || bad(InvalidSendWhy::FileNotAllowed);
-    // 数据根、档案、TDLib 库：即使有人把它们挪进（或链进）许可的文件夹也不许
+/// 许发、已打开的文件：判许可时与打开的是同一个文件实体，之后只从这个句柄读（不再按路径打开）
+#[cfg_attr(test, derive(Debug))]
+pub(super) struct Allowed {
+    pub name: String,
+    pub file: fs::File,
+}
+
+/// 只看路径的那部分规则：在三个许可文件夹之一里、不在一律不许的目录里、许可文件夹以下每一级名字都不像密钥
+fn path_ok(real: &Path, roots: &FileRoots) -> bool {
+    // 数据根、档案（TDLib 的库 `db/` 与下载的 `files/` 都在里面）：即使挪进（或链进）许可的文件夹也不许
     if roots
         .forbidden
         .iter()
         .any(|f| real.starts_with(fs::canonicalize(f).unwrap_or_else(|_| f.clone())))
     {
-        return Err(not_allowed());
+        return false;
     }
-    let rel = ALLOWED_DIRS
+    let Some(rel) = ALLOWED_DIRS
         .iter()
         .filter_map(|d| fs::canonicalize(roots.home.join(d)).ok())
         .find_map(|root| real.strip_prefix(&root).ok().map(Path::to_path_buf))
-        .ok_or_else(not_allowed)?;
-    if rel
-        .components()
-        .any(|c| secret_name(&c.as_os_str().to_string_lossy()))
-    {
-        return Err(not_allowed());
-    }
-    Ok(real)
+    else {
+        return false;
+    };
+    !rel.as_os_str().is_empty()
+        && !rel
+            .components()
+            .any(|c| secret_name(&c.as_os_str().to_string_lossy()))
 }
 
-/// 像密钥、凭据或 Telegram 本地库的名字（不分大小写；文件名与它所在的各级文件夹名都查）
+/// 许不许发（人定 2026-11-17「哪些文件能发」）并打开它：
+/// 1. 解析符号链接后的真实路径过 [`path_ok`]。解析不了（不存在）的看它所在文件夹的真实路径：在许可文件夹里才说
+///    `not_a_file`，否则一律 `file_not_allowed`——不让人借这条命令探别处有什么文件
+/// 2. 按真实路径打开、**不跟随符号链接**（判完到打开之间最后一段被换成链接就打不开），打开的那个文件要和判许可时
+///    看到的是同一个（设备号 + inode），且只有一个名字（硬链接数为 1：硬链接能让许可文件夹里的名字指向 `~/.ssh` 里的
+///    私钥，真实路径看不出来）；否则 `file_not_allowed`
+/// 3. 普通文件（否则 `not_a_file`）、≤ 50 MB（否则 `file_too_large`）
+pub(super) fn allowed(p: &Path, roots: &FileRoots) -> Result<Allowed, CoreError> {
+    use std::os::unix::fs::MetadataExt;
+    let not_allowed = || bad(InvalidSendWhy::FileNotAllowed);
+    let Ok(real) = fs::canonicalize(p) else {
+        let inside = p
+            .parent()
+            .and_then(|d| {
+                fs::canonicalize(if d.as_os_str().is_empty() {
+                    Path::new(".")
+                } else {
+                    d
+                })
+                .ok()
+            })
+            .zip(p.file_name())
+            .is_some_and(|(d, n)| path_ok(&d.join(n), roots));
+        return Err(if inside {
+            bad(InvalidSendWhy::NotAFile)
+        } else {
+            not_allowed()
+        });
+    };
+    if !path_ok(&real, roots) {
+        return Err(not_allowed());
+    }
+    let seen = fs::metadata(&real).map_err(|_| bad(InvalidSendWhy::NotAFile))?;
+    if !seen.is_file() {
+        return Err(bad(InvalidSendWhy::NotAFile));
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&real)
+        .map_err(|_| not_allowed())?;
+    let meta = file.metadata().map_err(|_| bad(InvalidSendWhy::NotAFile))?;
+    if meta.dev() != seen.dev() || meta.ino() != seen.ino() || meta.nlink() != 1 {
+        return Err(not_allowed());
+    }
+    if !meta.is_file() {
+        return Err(bad(InvalidSendWhy::NotAFile));
+    }
+    if meta.len() > FILE_MAX_BYTES {
+        return Err(bad(InvalidSendWhy::FileTooLarge));
+    }
+    let name = real
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or(bad(InvalidSendWhy::NotAFile))?;
+    Ok(Allowed { name, file })
+}
+
+/// 像密钥、凭据或 Telegram 本地库的名字（不分大小写；文件名与它所在的各级文件夹名都查）。这份名单是正本，契约只举例、指向这里
 pub(super) fn secret_name(name: &str) -> bool {
     const PREFIX: [&str; 6] = [
         ".env",
@@ -105,15 +162,7 @@ pub(super) fn secret_name(name: &str) -> bool {
         ".binlog",
         ".kdbx",
     ];
-    const EXACT: [&str; 7] = [
-        ".netrc",
-        ".pgpass",
-        ".ssh",
-        ".gnupg",
-        "tdata",
-        "tdlib_db",
-        "td.binlog",
-    ];
+    const EXACT: [&str; 6] = [".netrc", ".pgpass", ".ssh", ".gnupg", "tdata", "tdlib_db"];
     let n = name.to_lowercase();
     PREFIX.iter().any(|p| n.starts_with(p))
         || SUFFIX.iter().any(|s| n.ends_with(s))
@@ -131,9 +180,9 @@ pub(super) struct Snapshot {
     pub sha256: [u8; 32],
 }
 
-/// 复制一份快照（目录 0700、文件 0600），边复制边算 SHA-256；读到超过上限就停、删掉、报 `file_too_large`。
-/// 顺手清掉放了超过 [`OUTBOX_KEEP_S`] 的旧快照
-pub(super) fn snapshot(real: &Path, outbox: &Path) -> Result<Snapshot, CoreError> {
+/// 复制一份快照（目录 0700、文件 0600），从已打开的句柄读、边复制边算 SHA-256；读到超过上限就停、删掉、报
+/// `file_too_large`（打开后文件还在长）。顺手清掉放了超过 [`OUTBOX_KEEP_S`] 的旧快照
+pub(super) fn snapshot(src: Allowed, outbox: &Path) -> Result<Snapshot, CoreError> {
     let io = |_| CoreError::Internal {
         what: "outbox_write",
     };
@@ -143,24 +192,11 @@ pub(super) fn snapshot(real: &Path, outbox: &Path) -> Result<Snapshot, CoreError
         .create(outbox)
         .map_err(io)?;
     sweep(outbox, OUTBOX_KEEP_S);
-    let name = real
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .ok_or(bad(InvalidSendWhy::NotAFile))?;
-    let mut src = fs::File::open(real).map_err(|_| bad(InvalidSendWhy::NotAFile))?;
-    // 打开之后再看一次：判许可与打开之间文件可能被换成别的
-    let meta = src.metadata().map_err(|_| bad(InvalidSendWhy::NotAFile))?;
-    if !meta.is_file() {
-        return Err(bad(InvalidSendWhy::NotAFile));
-    }
-    if meta.len() > FILE_MAX_BYTES {
-        return Err(bad(InvalidSendWhy::FileTooLarge));
-    }
+    let Allowed { name, mut file } = src;
     let dir = outbox.join(random_hex()?);
     fs::DirBuilder::new().mode(0o700).create(&dir).map_err(io)?;
     let path = dir.join(&name);
-    let r = copy_hashed(&mut src, &path);
-    match r {
+    match copy_hashed(&mut file, &path) {
         Ok((size, sha256)) => Ok(Snapshot {
             dir,
             path,
@@ -246,7 +282,7 @@ fn random_hex() -> Result<String, CoreError> {
     Ok(crate::gate::hex(&b))
 }
 
-/// 按图片发还是按文件发（人定 3：看扩展名，按图片发不了的自动退回按文件发）
+/// 按图片发还是按文件发（人定 2026-11-17：看扩展名，按图片发不了的自动退回按文件发）
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(Debug))]
 pub enum SendAs {

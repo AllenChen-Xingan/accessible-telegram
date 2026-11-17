@@ -443,13 +443,15 @@ impl CoreError {
                     "有的消息 Telegram 说转不了（结尾说明点了是哪几条），别的各有结果；不要整批加 --again 重转，那会把已转出的再转一遍"
                 }
                 InvalidSendWhy::FileNotAllowed => {
-                    "这个文件不许发：只许发「下载」「桌面」「文稿」三个文件夹里的，文件名像密钥（如 .env、id_rsa、.pem）的也不许；什么都没发"
+                    "这个文件不许发：只许发「下载」「桌面」「文稿」三个文件夹里的，文件名像密钥（如 .env、id_rsa、.pem）的、有别的硬链接的也不许；什么都没发"
                 }
                 InvalidSendWhy::FileTooLarge => "文件超过 50 MB，本应用不发；什么都没发",
                 InvalidSendWhy::NotAFile => {
                     "找不到这个文件，或它不是普通文件（比如是文件夹），或读不了；什么都没发"
                 }
-                InvalidSendWhy::CaptionTooLong => "说明文字超过 1024 个字符；什么都没发",
+                InvalidSendWhy::CaptionTooLong => {
+                    "说明文字太长：最多 1024 个 UTF-16 码元（多数汉字算 1 个，emoji 常算 2 个）；什么都没发"
+                }
             },
             Self::ActionRefused { why } => match why {
                 RefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",

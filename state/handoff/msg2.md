@@ -187,3 +187,7 @@
 - 契约：actions（表、第 5、6 小节、留痕）、cli（`send-file` 行）、errors（4 个 why、profile_busy 场景）、config-privacy（`outbox/`、留痕、不代跑）
 - 与计划不同处：读不出图片宽高的退回按文件发（`photo_unreadable`），不按图片发 0×0；v0 不出上传进度行
 - 下一步：等名额 → test + clippy 两种 → 自审 → codex 034 → 真机只发收藏夹
+- 2026-11-17 提交：72aaa84 基线放宽、dace3f8 #12 第一版（大总管提交）
+- 自审第 1 轮（384da95...HEAD）：P0/P1 无；P2×4 P3×11 全修。先红后绿（edges.rs 4 条红：硬链接、外部路径先报不许、本机检查先于查会话、失败能重发留快照）。改法：`local::allowed` 打开时 O_NOFOLLOW + dev/ino 比对 + nlink==1，之后只从句柄读；失败 can_retry 留快照；契约补结果未知下一步、24 小时与收藏夹例外、进度怎么算、photo_fallback 含义、sha256_8 核对法、UTF-16 码元；黑名单正本在代码
+- 验证：676 过 0 败；clippy 两种 0；fmt / no-debug / file-size 过
+- 下一步：大总管提交检查点 → 自审第 2 轮

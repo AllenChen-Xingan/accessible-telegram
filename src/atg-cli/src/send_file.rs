@@ -35,10 +35,10 @@ pub struct SendFileArgs {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
-    /// 要发的文件：只许「下载」「桌面」「文稿」里的，50 MB 以内。jpg / jpeg / png / webp 按图片发（会被压缩），其余按文件发
+    /// 要发的文件：只许「下载」「桌面」「文稿」里的（有别的硬链接的不许），50 MB 以内。jpg / jpeg / png / webp 按图片发（会被压缩），其余按文件发
     #[arg(value_name = "PATH")]
     pub path: PathBuf,
-    /// 说明文字（1024 字以内）
+    /// 说明文字（1024 个 UTF-16 码元以内：多数汉字算 1 个，emoji 常算 2 个）
     #[arg(long, value_name = "T")]
     pub caption: Option<String>,
     /// 从文件读说明文字（UTF-8）
@@ -50,7 +50,8 @@ pub struct SendFileArgs {
     /// 只输出要发什么，不发
     #[arg(long)]
     pub dry_run: bool,
-    /// 最近向同一会话发过同一个文件（同样的说明）会被拦下；确要再发一次就加它
+    /// 最近向同一会话发过同一个文件会被拦下（按内容认，换路径、改名也算同一个；说明或回复不同的不算）：已发出的 10 分钟内，
+    /// 结果不明的 24 小时内。确要再发一次就加它
     #[arg(long)]
     pub again: bool,
 }

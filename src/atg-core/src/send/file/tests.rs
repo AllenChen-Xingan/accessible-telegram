@@ -10,6 +10,9 @@ use crate::link::block_on;
 use crate::status::AuthStep;
 use std::path::{Path, PathBuf};
 
+/// 自审第 1 轮补的边界
+mod edges;
+
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 

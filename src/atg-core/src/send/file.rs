@@ -1,13 +1,13 @@
 //! 发文件 / 图片（#12，契约 `actions.md` `send_file_prepare` / `send_file`）：准备（[`prepare_file`]）→ 交出 → 等结果
 //! （[`send_file_and_wait`]）。骨架同发文字（`send/text.rs`），多三件事：
-//! 1. **许发哪些文件**（人定 1）：只许「下载」「桌面」「文稿」里的（按解析符号链接后的真实路径），文件名像密钥的、
-//!    本应用数据目录里的一律不许 → `file_not_allowed`；超 50 MB → `file_too_large`（人定 2）。见 `file/local.rs`
+//! 1. **许发哪些文件**（人定 2026-11-17）：只许「下载」「桌面」「文稿」里的（按解析符号链接后的真实路径），文件名像密钥的、
+//!    本应用数据目录里的一律不许 → `file_not_allowed`；超 50 MB → `file_too_large`（人定 2026-11-17）。见 `file/local.rs`
 //! 2. **交出的是快照**：准备时复制一份到档案目录 `outbox/<随机>/<原名>` 并算 SHA-256，摘要绑它；交出前重算，变了拒
 //!    （`content_mismatch`）。原文件在确认后被换、被改都不影响发出去的内容。快照在等到成功 / 失败后删；结果未知的留着
 //!    （TDLib 下次启动续发要读它），过 24 小时清
-//! 3. **上传要等得久**（人定 4）：有进度就接着等；连续 60 秒没进度按结果未知；总共最多 10 分钟（[`wait_upload`]）
+//! 3. **上传要等得久**（人定 2026-11-17）：有进度就接着等；连续 60 秒没进度按结果未知；总共最多 10 分钟（[`wait_upload`]）
 //!
-//! 按图片还是按文件发（人定 3）：`jpg` `jpeg` `png` `webp` 按图片（会被压缩），按图片发不了的（超 10 MB、太大、太窄、
+//! 按图片还是按文件发（人定 2026-11-17）：`jpg` `jpeg` `png` `webp` 按图片（会被压缩），按图片发不了的（超 10 MB、太大、太窄、
 //! 读不出宽高）退回按文件发、计划行写明；其余按文件发。
 //! 防重复：进；指纹 = 目标 + 文件 SHA-256 + 说明 + 回复（**不含路径**：同一文件换个地方再发也拦）。
 //! 留痕：内容类型与字节数（[`Gated::log_file`]），不记路径、文件名、说明文字。
@@ -23,9 +23,9 @@ pub use local::{ALLOWED_DIRS, FILE_MAX_BYTES, FileRoots, OUTBOX_KEEP_S, SendAs};
 /// 说明文字最多几个字符（UTF-16 码元，Telegram 的算法；普通号的 `message_caption_length_max`）
 pub const CAPTION_MAX: usize = 1024;
 
-/// 连续多久没有上传进度就按结果未知（人定 4）
+/// 连续多久没有上传进度就按结果未知（人定 2026-11-17）
 pub const UPLOAD_IDLE: Duration = Duration::from_secs(60);
-/// 交出后最多等多久（人定 4）
+/// 交出后最多等多久（人定 2026-11-17）
 pub const UPLOAD_CAP: Duration = Duration::from_secs(600);
 
 /// 要发什么文件
@@ -214,6 +214,8 @@ pub async fn prepare_file<B: Backend>(
             why: InvalidSendWhy::CaptionTooLong,
         });
     }
+    // 只看本机就能拒的先拒（路径、大小）：会话不存在、网络不通时也先报文件的问题
+    let file = local::allowed(&src.path, roots)?;
     let me = b.me().await?;
     let mut target = b.chat_target(chat).await?;
     target.saved = target.id == me.saved_chat_id;
@@ -241,8 +243,7 @@ pub async fn prepare_file<B: Backend>(
         });
     }
     let sending_id = super::text::random_sending_id()?;
-    let real = local::allowed_path(&src.path, roots)?;
-    let snap = local::snapshot(&real, &roots.outbox)?;
+    let snap = local::snapshot(file, &roots.outbox)?;
     // 从这里起出错要删快照：先装进计划，交给 Drop
     let send_as = local::send_as(&snap);
     let request = file_request(
@@ -352,7 +353,15 @@ pub fn send_file_and_wait<B: Backend>(
     };
     let (mode, temp) = (sub.mode, sub.temp);
     let w = wait_upload(b, stream, temp, idle, cap, on_event);
-    if matches!(w, Waited::Unknown(_)) {
+    // 结果未知（TDLib 续发要读）、失败但能重发（`resend` 要读）：快照留着
+    if matches!(
+        w,
+        Waited::Unknown(_)
+            | Waited::Failed {
+                can_retry: true,
+                ..
+            }
+    ) {
         plan.keep_snapshot();
     }
     finish(b, plan, sub, &w);
