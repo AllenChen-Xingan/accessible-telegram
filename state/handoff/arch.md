@@ -183,7 +183,7 @@
 - **进度（2026-11-17）**：已挪完，未提交。`text.rs` 671 → 506，新 `text/walk.rs` 175（自审后加了头注释一句与分节线）；逐行比对只多 mod / pub use / use / 头注释 / 空行，另有 2 行文档链接 `super::mask` → `crate::tree::mask`；`--tighten` 后基线 9 → 8 个。已申请名额编译，下一步：编译检查 → 自审 → codex 049
 - ✅ 自审 1 轮（P2×2、P3 已改）；codex 049 两轮都是零发现，收敛，记录在 `docs/reviews/049_r7-tree-text-codex.md`，索引已加。等大总管提交、开 PR
 
-## R7 第二刀：拆 `speech.rs`（2026-11-17，只出计划；codex 编号 050；新分支等 #139 合并后从 main 开）
+## R7 第二刀：拆 `speech.rs`（2026-11-17；已做完，PR #141 已合；codex 050 收敛）
 
 - **实查**（origin/main）：`speech.rs` 810 行。测试已经在 `speech/tests.rs`。已有的子模块：`content`（95，头注释写着「`speech.rs` 里其余正文、附件的读法以后照 010 搬进来」）、`playback`、`reaction`、`status`、`transcription`
 - **拆法**（照 010 那一行定的：根留入口、`service.rs`、`content.rs`、常量表一处）：
@@ -214,3 +214,59 @@
 - **进度（2026-11-17，工作副本 `atg-wt/arch-store`，分支 `refactor/r7-store`，从 266f5f3 开）**：按方案 A 挪完，大总管已提交检查点 5d531fb（代码与基线）。行号重核过，和计划一致。`store/mod.rs` 926 → 410（自审后根头注释加了一行），新 `store/write.rs` 524。逐行比对：只多 `mod write;`、头注释、`use super::*`、`impl Store {` 与结尾 `}`，以及 4 个 `pub(super)`；根上的 std 导入还在用。全套检查：fmt、两种 clippy、test 600 过 0 败、no-debug、doc 都过。`--tighten` 9 → 8（这个分支上没有 #139、#141，三个 PR 后合的会在基线文件里有小冲突）。010 表格已回写，写明原计划的 patch.rs 和按输入再分为什么不做。下一步：自审 → codex 051
 - 自审 1 轮：P0/P1 零；P2×1（010 那行的行数从哪来的没说清）已改；P3 已收尾（010 理由改成真实代价、路线表 R7 加进度、根头注释补上文件分工、本节标题）。010、根头注释、本页这些收尾是工作区改动，还没提交。下一步：codex 051
 - ✅ codex 051 两轮收敛（零发现；抽查到的计数笔误已改），记录在 `docs/reviews/051_r7-store-codex.md`，索引已加。等大总管提交、开 PR
+
+## R7 第四刀：拆 `tests/reducer.rs`（2026-11-17；已做完，PR #146；codex 052 收敛）
+
+- **实查**（origin/main）：`src/atg-core/tests/reducer.rs` 2102 行，77 个 `#[test]`。按主题分节（会话排序、撤回墓碑、按字段合并、版本边界、重复到达、换 id、有效内容与受限、投影、拍板 006、第八 / 九 / 十轮），但「投影」那节后面堆了 1000 多行后来补的回归测试，主题混在一起。造数据的助手已在 `tests/common/mod.rs`；本文件里另有 4 个助手（`pending`、`small`、`restricted_target_and_reply`、`quote_leaks`），被不同主题的测试共用
+- **拆法**：改成 Cargo 认的目录式测试 `tests/reducer/main.rs` 加各主题子模块。测试二进制名还叫 `reducer`，`cargo test --test reducer` 照常用；测试的全名会多一层模块前缀（如 `chats::…`），CI 跑全量不受影响
+  - `main.rs`（约 40 行）：头注释、原来的 `use`、`#[path = "../common/mod.rs"] mod common;`（目录式之后 `mod common` 默认会去找 `tests/reducer/common.rs`，所以要指一下路径）、各主题的 `mod`、4 个共用助手，以及原来夹在中间的 `use atg_core::store::StoreConfig;`
+  - 子模块开头都写 `use super::*;`
+  - 按主题分（行数为估算，含函数间空行）：
+
+| 文件 | 测试数 | 约行数 | 放什么 |
+|---|---|---|---|
+| `chats.rs` | 7 | 165 | 会话排序、位置、草稿、置顶、提及计数、重复的 ChatAdded |
+| `tombstones.rs` | 9 | 205 | 撤回墓碑：留墓碑、不复活、重拉与重开后保留（含第十轮） |
+| `fields.rs` | 10 | 340 | 按字段合并、孤儿补丁、已读 / 已听、临时内容不被 opened 动 |
+| `history.rs` | 16 | 325 | 版本边界与请求代次、重复到达、晚到的历史应答 |
+| `send.rs` | 15 | 490 | 发送成功换 id、重发、撤销待发、旧 id 不复活（`pending` 的用户全在这） |
+| `restricted.rs` | 9 | 205 | 有效内容、受限内容、引用清除（含第八、九轮） |
+| `cache.rs` | 4 | 150 | 拍板 006：缓存上限与删旧 |
+| `projection.rs` | 7 | 170 | 投影：名字回填、回复发送人、送达、静音继承、纯函数 |
+
+- **只挪不改**：每个测试连同它的文档注释整块挪，测试体一个字不改。多出来的只有 `mod` / `use` / `#[path]` / 各文件头注释。77 = 77 个 `#[test]`；测试名清单前后一致（`cargo test --test reducer -- --list` 去掉模块前缀后比对）
+- **顺带要改的引用**：`scripts/file-size-baseline.json` 去掉这一行；`tests/common/mod.rs` 头注释「现在只有 `reducer.rs` 用」改成 `reducer/`；`tests/transcripts.rs:311` 注释里的 `tests/reducer.rs` 改成 `tests/reducer/send.rs`；010 表格回写
+- **验收**：fmt、两种 clippy、`test --workspace`；`#[test]` 数前后相等；测试名清单比对；按行做多重集比对；自审 + codex 052（diff 类）
+- **进度（2026-11-17，工作副本 `atg-wt/arch-reducer`，分支 `refactor/r7-tests-reducer`，从 2309789 开）**：已挪完，没提交。`tests/reducer.rs` 删除，换成 `tests/reducer/{main 58, chats 165, tombstones 207, fields 340, history 327, send 488, restricted 207, cache 149, projection 173}`。逐行比对：去掉的只有 12 行旧分节线；多出来的只有头注释、`use super::*`、`mod`、`#[path]`、一条新分节线、空行。按源码静态比对，测试名 77 = 77、一致；编译后还要用 `--list` 再比一次。顺带改了两处注释：`tests/common/mod.rs`（原来写「只有 reducer.rs 用」，实际 pending、transcripts 也在用，一并写准）、`tests/transcripts.rs:311` 改成新路径。`--tighten` 7 → 6（这个分支上没有 #144，后合的那个基线文件有小冲突）。010 表格已回写。下一步：等名额编译 → 自审 → codex 052
+- 自审 1 轮：P0/P1 零；P2 已改：3 个只有一个主题用的助手挪进各自的主题文件（`pending` → `send.rs`；`restricted_target_and_reply`、`quote_leaks` → `restricted.rs`），`main.rs` 只留 `cache`、`restricted` 共用的 `small`；头注释里「第几轮」的来源标注标得不全，去掉了。P3：`StoreConfig` 的导入并进 store 那一行；010 写清 2222 和 2102 两个行数的来历。复跑全套检查：test 618 过 0 败，`--list` 77 = 77，去掉模块前缀后一致。下一步：codex 052
+- ✅ codex 052 两轮零发现，收敛，记录在 `docs/reviews/052_r7-tests-reducer-codex.md`，索引已加。等大总管提交、开 PR
+
+## R7 第五刀：拆 cli `history.rs`（2026-11-17；已挪完，工作副本 `atg-wt/arch-history`；codex 编号 053）
+
+- **实查**（origin/main）：`src/atg-cli/src/history.rs` 706 行，测试已经在 `history/tests.rs`。分节：类型与 `query`（1–135）· 起后端 → 取 → 关（`run`、`run_links`、`with_backend`、`resolve`、`load_chat`，136–223）· history 取数（`collect`、`Fetcher`、`older`、`newer`，224–473）· 读法与渲染（`speech_ctx`、`render`、`UNREAD_BELOW`，474–599）· links（601–703）
+- **拆法**（只挪不改）：
+  1. links 那一节（`LinksQuery`、`LinkList`、`links_query`、`collect_links`、`HIDDEN_LINK`、`render_links`，约 103 行）→ 新文件 `history/links.rs`
+  2. 读法与渲染（`speech_ctx`、`render`、`UNREAD_BELOW`，约 126 行）→ 新文件 `history/render.rs`
+  3. 根留类型、`query`、起后端那几个函数、取数（约 485 行）
+  - 只挪 links 一节不够：706 − 103 ≈ 603，还在线上，所以渲染也挪
+- **为了编得过、路径不变**：根上 `mod links; mod render;`，加 `pub use links::{LinkList, LinksQuery, collect_links, links_query, render_links}; pub use render::{render, speech_ctx};`。外面的 `history::speech_ctx`（17 处）、`history::render`、`history::links_query` 这些调用一行不改；测试经 `use super::*` 照样拿得到。`render` 这个名字既是模块也是函数，一个在类型命名空间、一个在值命名空间，不冲突（计划时写的是把 `UNREAD_BELOW` 也 `pub use`，实际改成了 `#[cfg(test)] use render::UNREAD_BELOW;`：它只有测试用，对外导出会让正式构建报「没用的导入」）
+  - 子模块开头 `use super::*;`，再补各自用到的 `use`；根上只给挪走部分用的导入（如 `links_marked`）跟着挪走，编译器会报哪些没用了
+  - `doc_id`（根上私有）被 `render` 用，子模块看得到父模块的私有项，不用改可见性
+- **验收**：fmt、两种 clippy、`test --workspace`（`history/tests.rs` 和快照兜底，快照一条不能变）；按行做多重集比对；`--tighten`；自审 + codex 053（diff 类）
+- **进度（2026-11-17，工作副本 `atg-wt/arch-history`，分支 `refactor/r7-history`，从 2309789 开）**：已挪完，没提交。`history.rs` 706 → 486（自审后根头注释加了文件分工；`UNREAD_BELOW` 只有测试用，单独一行 `#[cfg(test)] use`），新 `history/links.rs` 107、`history/render.rs` 131。逐行比对：多出来的只有 `mod`、`pub use`、两个子模块的头注释和 `use super::*`、空行。rustfmt 单文件检查通过。`--tighten` 7 → 6（这个分支上没有 #144、#146，后合的那个基线文件有小冲突）。010 表格已回写。下一步：领名额编译 → 自审 → codex 053
+- 自审 1 轮：P0/P1 零。P2 两条：①本节和第四刀的标题还写着「只出计划」，已改。②计划里说「只给挪走部分用的导入跟着挪走」，实际没挪，**改为故意保留，理由**：`history/tests.rs` 经 `use super::*` 用到根上的 `Format`、`SpeechCtx`，挪走就得改测试，违背只挪不改；而且子模块经 `use super::*` 用到的导入算作已用，编译器不会报。这和 `send/`、`gate/` 子模块只写 `use super::*` 的先例一致。P3 已收尾：根头注释补上文件分工；`render.rs` 头注释说明读法上下文里装了什么；010 那一行写清 8 个名字（后来定稿为 7 个公开导出 + 1 个只在测试时导入的 `UNREAD_BELOW`）（`HIDDEN_LINK` 是私有的、不算在内），并说明 R7 的范围顺带扩到了 cli 的 `history.rs`；路线表 R7 的范围补上 cli `history.rs`。名词：「7 → 6」是基线里超 600 行的文件个数；#144 是拆 `store/mod.rs` 的 PR，#146 是拆 `tests/reducer.rs` 的 PR，三个 PR 都在基线文件里删一行，后合的那个由大总管合 main 时交给我解（各删各的行）
+- codex 053 第 1 轮：P2×1 属实：010 写「8 个公开名字」，实际公开导出 7 个（`UNREAD_BELOW` 改成只在测试时导入以后，就不算对外导出了）；`render.rs` 写成 130，实际 131。010 和本页都已改。这些是工作区改动，请大总管提交检查点后再起第 2 轮
+
+- codex 053 第 2 轮：P2×1 属实：本节计划段还写着 `pub use render::{UNREAD_BELOW, …}` 和「8 个公开名字」，已改成定稿的写法。连续两轮无 P0/P1，按停止线收敛，没有留作 issue 的 P2
+
+## R7 第六刀：拆 cli `watch.rs`（2026-11-17，只出计划；codex 编号 054；分支等计划定了由大总管从 main 开）
+
+- **实查**（origin/main）：`src/atg-cli/src/watch.rs` 837 行。测试已经在 `watch/tests.rs` 和 `watch/tests/{ctrl_c,hub,topics}.rs`；已有子模块 `end`、`topics`。分节：常量、`now_ms`、`query`（1–86）· 出口与订阅者（`LineOut`、`StdoutLines`、`Watcher`、`Sub`、`Hub`，87–410，约 324 行）· 事件 → JSON（`event_name`、`event_data` 等，411–627，约 217 行）· `status_line`、`resolve`、`run`、`watch_loop` 等（629–830）
+- **拆法（建议，只挪一节）**：「出口与订阅者」整节 → 新文件 `watch/hub.rs`；根剩约 513 行，超线文件减一个
+  - 只挪「事件 → JSON」不够：837 − 217 ≈ 620，还在线上
+  - 两节都挪也行（根约 300 行），但「事件 → JSON」里 `event_name` 只有测试用，要另加一行 `#[cfg(test)] use`，`event_data` 要改成 `pub(super)`；收益不大，先不做
+- **为了编得过、路径不变**：
+  - 根上 `mod hub; pub use hub::{Hub, LineOut, StdoutLines, Sub, Watcher};`。外面的 `crate::watch::{LineOut, Sub, Watcher}`（serve）、`watch::Hub`、`watch::StdoutLines` 一行不改；`end.rs` 的 `use super::{LineOut, Watcher}` 照样能用
+  - `hub.rs` 开头 `use super::*;`：它调用的 `event_data`（根上私有）、常量和导入都从根上拿，不用改可见性
+  - **要放宽 1 处可见性**：`watch/tests.rs` 第 358 行直接读 `Watcher` 的私有字段 `alerts`。挪进 `hub.rs` 以后，测试就看不到它了，所以 `alerts` 改成 `pub(super)`（只对 `watch` 模块和它下面的测试可见，对外不变）。别的私有字段、私有方法只在这一节里用
+- **验收**：fmt、两种 clippy、`test --workspace`（watch 的测试和快照兜底，快照一条不能变）；逐行比对（只多 mod / pub use / 头注释 / use super::* / 1 个 pub(super)）；`--tighten`；自审 + codex 054（按提交范围取 diff，规矩第 17 条）
