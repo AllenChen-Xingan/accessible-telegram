@@ -301,3 +301,12 @@
   - rustfmt 单文件检查都过；`#[test]` 数每个文件前后相等。下一步：领名额编译 → 请大总管提交检查点 → 自审 → codex 055
 - 自审 1 轮（按 `8a98ab3...HEAD`）：P0/P1/P2 零，P3 已改：①`ipc.rs` 不换的理由写错了（写的是路径会变长，其实是要 0o700 的目录并在测试里断言），已改；`serve/tests.rs` 的理由写准（套接字在 `profiles/main/` 下，离 103 字节上限近）。②testkit 头注释解释 R3a / R3b，「在途线」改成白话。③`tests/config.rs` 那处改用文件里已经导入的 `temp_dir`。④cli `chats` 的 `profile` 和 voice、watch 同形状，也改成 `testkit::profile`，删掉只剩一处调用的 `temp_root` 和没用的 `PathBuf` 导入。③④动了测试代码，要复编
 - ✅ codex 055 两轮零发现，收敛，记录在 `docs/reviews/055_r3a-testkit-2-codex.md`，索引已加。等大总管提交、开 PR
+
+## 待命（2026-11-17）
+
+- 已开 PR，等人合并：#139 R7 tree/text（已合）· #141 speech（已合）· #144 store（已合）· #146 tests/reducer · #148 history · #150 watch · #152 R3a 第二刀 · #129（#108 testkit 检查）
+- 等着做：
+  - 几个 PR 合 main 的冲突，大总管一次性交来（基线、评审索引、交接页、010）
+  - R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`：等 #149（#8 编辑）、#10 合并后再排
+  - R3a 余下 4 处：core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`，等在途线合并
+- 要人定的事：无
