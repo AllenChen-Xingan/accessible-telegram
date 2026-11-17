@@ -28,7 +28,7 @@
 
 | 文件 | 总行 | 其中测试 | 拆法（按职责，不切 part1/part2） |
 |---|---|---|---|
-| `atg-core/tests/reducer.rs` | 2222 | 全是 | 已按主题分节（排序 · 墓碑 · 按字段合并 · 版本 · 重复 · 换 id · 有效内容 · 投影 · 拍板 006（`docs/plan/006_decisions-b7.md`）· 第八至十轮）：每节一个文件，`tests/reducer/` 下共用「造假数据」一节（并入 R3 testkit） |
+| `atg-core/tests/reducer.rs` | 2222 | 全是 | ✅ R7 第四刀（`refactor/r7-tests-reducer`）：2222 是写计划时量的，挪之前 main 上是 2102 行、77 个测试。改成目录式测试 `tests/reducer/main.rs`（约 30 行：导入、`#[path]` 指回 `tests/common/mod.rs`、`cache` 和 `restricted` 共用的助手 `small`；只有一个主题用的助手跟着放进那个主题文件）加 8 个主题文件：`chats`（7 个测试）、`tombstones`（9）、`fields`（10）、`history`（16）、`send`（15）、`restricted`（9）、`cache`（4）、`projection`（7），最大的 `send.rs` 约 500 行。原来「投影」一节后面堆的回归测试按主题归位；测试体一字不改，77 = 77，测试名去掉模块前缀后一致。原来的分节线不再需要，各文件改用头注释说明主题。造假数据的助手仍在 `tests/common/mod.rs`（R3 testkit 另做） |
 | `atg-cli/src/watch.rs` | 1343 | 470 | `watch.rs` 留作模块根（Watcher 与直跑循环）· `watch/hub.rs`（订阅者 Sub/Hub，执行方用）· `watch/tests.rs`；第 412–873 行要按函数分开处理，**不是整段挪个文件**：约 412–627 行「事件 → 数据」随 R6 改成事件节点 + `json` 渲染后删掉；约 630 行状态行（`status_line`）随 R6 改用状态节点（S9）；约 651–693 行目标解析（`resolve`）随 R4 收进 `target.rs`；约 694–865 行起停与订阅循环（`run`、`watch_loop`、取论坛话题设置）随 R5 成为登记表里的订阅类命令；约 866 行起关会话（`close_chat`）随 R5 归进订阅的清理；读法句子去 `speech` |
 | `atg-core/src/send.rs` | 1688 | 633 | ✅ R1a（`refactor/r1a-split-send`）：`send.rs` 留作模块根（常量、来源、凭条 `Submitted`、发文字与重发共用的确认说明句与「交出出岔子按结果未知记账」、计划行的目标部分）· `send/text.rs`（发文字全程 + 它的计划行）· `send/outcome.rs`（等结果、记账）· `send/resending.rs`（重发 + 它的计划行）· 测试 `send/tests.rs`（共用夹具）+ `send/tests/{text,resending}.rs`；每个 ≤ 380 行。只挪不改，公开名字原样导出 |
 | `atg-cli/src/serve.rs` | 1431 | 821 | 测试挪出剩 610（#52 加了 send/resend 两支），还差 10 行：挪测试时把一小段助手一起挪出，或等 R5 删掉 `execute` 各支；测试 821 行按主题分两份 |
