@@ -459,8 +459,7 @@ fn redact_refused_until_done() {
 /// `--fake`（场景目录未做）报 not_implemented。正文不进标准错误以外的地方
 #[test]
 fn send_usage_paths() {
-    let dir = std::env::temp_dir().join(format!("atg-cli-send-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = atg_core::testkit::temp_dir("cli-send");
     let big = dir.join("big.txt");
     std::fs::write(&big, vec![b'a'; 70 * 1024]).unwrap();
     let bin = dir.join("bin.txt");

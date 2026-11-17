@@ -21,7 +21,7 @@
 //! `send`、`react`、`pending`、`voice`（含 `voice/tests/transcribe.rs`）、`watch` 的测试。
 //! 第三刀（2026-11-17）换了 core `gate/tests.rs`、`delete/tests.rs`、`edit/tests.rs`、`send/forward/tests.rs`，cli
 //! `delete/tests.rs`、`edit/tests.rs`、`forwarding/tests.rs`、`tests/cli.rs` 的 speech 一处。
-//! 还没换：cli `tests/cli.rs` 的 `send_usage_paths`（#12 发文件正在改那附近，等它合并后再换）。
+//! #12 合并后（2026-11-17，随 R7 拆 `fake.rs`）换了 cli `tests/cli.rs` 的 `send_usage_paths` 和 `send_file/tests.rs`；R3a 换完。
 //! 故意不换：core `ipc.rs` 的测试（要 0o700 的目录并断言它）；cli `serve/tests.rs`（套接字路径离 103 字节上限近）；core
 //! `tests/send_limits.rs`（同一个 tag 要再算出同一个路径，模拟下一个进程）；`atg-audio`（不依赖 atg-core）。各处都有注释写明原因。
 //! R3b 还没做。

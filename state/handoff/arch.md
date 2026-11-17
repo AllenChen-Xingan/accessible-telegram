@@ -361,3 +361,16 @@
 - codex 058（384da95...HEAD）：两轮零发现，收敛。记录 `docs/reviews/058_r3a-testkit-3-codex.md`
 - PR 说明草稿：`_tmp/20261116-b20/r3a3-pr-arch.md` → PR #157，等人合并（合 main 时交接页冲突已解：两节都留，tdjson 在前）
 - 之后待命：R7 的 `fake.rs`、`td.rs` 等 #12 合进 main；`tests/cli.rs` 的 `send_usage_paths` 也等 #12
+
+## R7 第八刀：拆 core `fake.rs`（2026-11-17，工作副本 `atg-wt/arch-fake`，分支 `refactor/r7-fake`，从 main f5ca5b2 起）
+
+大总管批的切法：#12（#161）合进 main 后开这刀；`submit.rs` 一字不动（msg2 的 #13 投票和按钮之后会改它）；`send_usage_paths` 并进来，PR 说明单列一节。
+
+- `fake.rs` 1021 → 548，从基线删掉。新拆三个：
+  - `fake/script.rs`（156）：测试用的设置方法，纯挪
+  - `fake/login.rs`（211）：`FakeAuth`、`set_auth`、登录私有助手、8 个 `do_auth_*` / `do_logout`、`same`。没叫 `auth.rs`，因为会和根上的 `use crate::auth` 撞名
+  - `fake/read.rs`（217）：`do_chats_load`、`do_chat_get/open/close`、`do_forum_topic_get`、`do_history`、`do_message_get`
+- 根上 trait 方法一行转给 `do_*`，签名不变；挪动由脚本 `_tmp/20261117-r7fake/split.py` 按行号切，函数体逐字照搬
+- 测试临时目录：cli `tests/cli.rs` 的 `send_usage_paths`，以及 #12 新带进来的 cli `send_file/tests.rs` 的 `env`，都换成了 testkit。R3a 换完
+- 文档：010 的 fake 行、R3 行、R7 行改了，第 164 行也更新了；`testkit.rs` 头注释的进度清单也改了
+- ✅ 全量检查全绿（领名额跑，跑完已还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources。待提交检查点，再审（atg-review → codex 059，范围 `f5ca5b2...HEAD`）
