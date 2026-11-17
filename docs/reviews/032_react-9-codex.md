@@ -1,7 +1,7 @@
 # 评审 032 · #9 表情回应（`react` / `reactions`，合 main 后直发）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`origin/main`（= 分叉点 719d5d1，评审时 main 没前进，两点与三点等价）对工作区的 diff；新文件 `src/atg-core/src/send/react/tests/replace.rs` 未跟踪，作依据附上。重点写在 `_tmp/reviews-032/focus.md`（不入库）。
-> **最新一轮：第 2 轮（2026-11-16）· 总评「修改」· 待第 3 轮**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
+> **最新一轮：第 3 轮（2026-11-17）· 总评「修改」· 待第 4 轮**（#2 按人定威胁模型降为 P2、开 issue）（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
 > 累计：提出 8 条（P1×3、P2×5），属实 6 条、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
 > 之前：多视角自审 5 轮（atg-review；第 4 轮 P1「普通群信缓存」按人定 A 修；第 5 轮 P0/P1 零）。机器验收：`cargo test -p atg-core -p atg-cli` 486 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib`）0。
 > 隐私扫描：密钥类命中 9 条，全是参数类型标注 `token: ConfirmToken`（同 023）；人定 2026-11-16 长期放行这一类，大总管逐条核实后准加 `--force-secrets`。chat-content 只提示 11 条，都是测试夹具里编的 TDLib JSON。
@@ -62,3 +62,26 @@
 ### 是否再审
 
 要再审：本轮有 P1，改完开第 3 轮。
+
+## 第 3 轮（2026-11-17）· 总评「修改」
+
+范围同第 2 轮（三点，name `react-9-3dot`，检查点 ec2a075）。原文：`_tmp/reviews-032/react-9-3dot-codex-2.md`（不入库）。effort medium，77 秒（`result: P0×0 P1×2 P2×1 P3×0`）。
+上一轮处理的验证：codex 抽查确认 `send` 行已改为直发、统计入树已记为留 R6（#128）。
+本轮 P0/P1：2 条（#2 按人定降为 P2）· 停止线：未满足 · 留作 issue 的 P2：#2 → #131
+⚠️ 同一类（「挤掉原回应」防线的并发 / 时序）第三次出 P1，已报大总管定威胁模型。
+
+- **P1｜src/atg-core/src/send/react.rs:315 「放弃」槽位会被提前清掉**（第 3 轮 #1）
+  - 核实：属实。① 槽位只按消息为键，带 `replace` 的后一次收尾 `retain` 掉了同消息全部槽位，包括前一次的「放弃」；② 交出口报连接断了时 `armed` 已先清零，按结果未知报的这次没留成「放弃」。第 2 轮的测试还把错误行为固化了（抽查属实）。
+  - 处理：槽位带序号，收尾只动自己那一个；`armed` 等结果确定才清，`submit_failed` 回 `send_outcome_unknown` 的留成「放弃」。改测试 `abandoned_submit_keeps_message_locked`，补 `disconnected_submit_keeps_message_locked`。
+- **P1｜src/atg-core/src/send/react.rs:252 查 ready 早于异步读取**（第 3 轮 #2）
+  - 核实：属实（时间窗是两次读取之间，毫秒级）。
+  - 处理：**降为 P2，不修，开 issue**。人定 A（2026-11-17，大总管转达）：同一进程内只有靠构造时序才出现的竞态（读取期间断线重连、同条消息并发交出等）最高算 P2，开 issue，不进停止线；确定性路径（旧计划、断线后提交、超时记账）照 P1。正修（连接线世代计数）记在 #131。
+- **P2｜src/atg-core/src/send/react.rs:395 到点那一行仍记准备时的数**（第 3 轮 #3）
+  - 核实：属实。
+  - 处理：`react_within` 不再借 `submit_within`，自己管超时：复核后的计划交出前放进共享槽，到点时已交出就按它记「结果未知」（拿不准为 `null`）、报 `send_outcome_unknown`；还没交出报 `network`。到点路径没有测试（假后端的表情回应交出不会卡住），记在这里。
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：6 条
+- 无法核实：无

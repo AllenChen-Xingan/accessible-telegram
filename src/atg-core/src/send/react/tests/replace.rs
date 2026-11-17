@@ -346,6 +346,27 @@ fn abandoned_submit_keeps_message_locked() {
     assert!(super::super::InFlight::take(r.b.gate(), id(FRIEND), false).is_err());
     let again = super::super::InFlight::take(r.b.gate(), id(FRIEND), true).unwrap();
     drop(again);
-    // 正常收尾（没放弃）之后就解开
-    assert!(super::super::InFlight::take(r.b.gate(), id(FRIEND), false).is_ok());
+    // codex 032 第 3 轮 #1：带 replace 的那次收尾不能顺手删掉前一次的「放弃」——不带 replace 照样拒
+    assert!(super::super::InFlight::take(r.b.gate(), id(FRIEND), false).is_err());
+}
+
+#[test]
+fn disconnected_submit_keeps_message_locked() {
+    // 交出口报连接断了 → 按结果未知报，请求可能已交出：这条之后不带 replace 一律按拿不准拒
+    let r = rig("disc", false);
+    r.b.script_sends(vec![FakeSend::Reject(CoreError::Disconnected)]);
+    let e = once(&r, FRIEND, THUMB, false).unwrap_err();
+    assert_eq!(e.code(), "send_outcome_unknown");
+    let e = once(&r, FRIEND, "❤️", false).unwrap_err();
+    assert!(matches!(
+        e,
+        CoreError::InvalidSend {
+            why: InvalidSendWhy::ReactionStateUnknown
+        }
+    ));
+    // 明确被拒（没交出）的不锁
+    let r = rig("reject-unlocked", false);
+    r.b.script_sends(vec![FakeSend::Reject(CoreError::InvalidInput { td: None })]);
+    once(&r, FRIEND, THUMB, false).unwrap_err();
+    once(&r, FRIEND, THUMB, false).unwrap();
 }

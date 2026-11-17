@@ -11,9 +11,7 @@
 //!
 //! v0 只收 emoji（`reactionTypeEmoji`）；自定义表情、付费星星（要花钱）不做。
 
-use super::{
-    Answer, Sealed, SealedKind, SendOrigin, server_of, submit_failed, submit_within, target_json,
-};
+use super::{Answer, Sealed, SealedKind, SendOrigin, server_of, submit_failed, target_json};
 use crate::backend::Backend;
 use crate::error::{CoreError, InvalidSendWhy};
 use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
@@ -268,20 +266,23 @@ async fn recheck<B: Backend>(b: &B, plan: &ReactPlan) -> Result<ReactPlan, CoreE
 /// 同一条消息同时只许一个回应在「复核 → 交出 → 等应答」之间：两个并发的加回应都先复核、再各自交出，复核就白做了。
 /// 第二个直接按拿不准拒（`reaction_state_unknown`），不排队等。键带上闸的地址：一个后端一道闸，不同后端（含并行的测试）互不相拦。
 ///
-/// 交出后没等到应答就被放弃（[`react_within`] 到点丢掉了这次等待，请求却可能还在 TDLib 里走，codex 032 第 2 轮 #2）：
-/// 这条消息记成「结果未知」，本进程里之后再点它一律按拿不准拒，`replace` 才放行（人已接受可能挤掉）
+/// 交出后没等到应答（[`react_within`] 到点丢掉了这次等待，或交出口报连接断了、按结果未知记账），请求却可能还在 TDLib
+/// 里走（codex 032 第 2 轮 #2、第 3 轮 #1）：这次的槽位记成「放弃」**一直留着**（本进程内不清），之后再点这条一律按拿不准拒，
+/// `replace` 才放行（人已接受可能挤掉）。每个槽位带序号，收尾只删自己那一个，别人的「放弃」不会被顺手删掉
 static IN_FLIGHT: std::sync::Mutex<Vec<Slot>> = std::sync::Mutex::new(Vec::new());
+static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Slot {
     key: (usize, MsgId),
+    serial: u64,
     /// 真 = 交出后没等到应答就放弃了
     abandoned: bool,
 }
 
 struct InFlight {
-    key: (usize, MsgId),
-    /// 已交出、还没等到应答：这时被丢掉就算「结果未知」
+    serial: u64,
+    /// 已交出、还没确定结束：这时被丢掉就算「放弃」
     armed: bool,
 }
 
@@ -301,23 +302,25 @@ impl InFlight {
                 why: InvalidSendWhy::ReactionStateUnknown,
             });
         }
+        let serial = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         v.push(Slot {
             key,
+            serial,
             abandoned: false,
         });
-        Ok(Self { key, armed: false })
+        Ok(Self {
+            serial,
+            armed: false,
+        })
     }
 }
 
 impl Drop for InFlight {
     fn drop(&mut self) {
         let mut v = slots();
-        v.retain(|s| s.key != self.key);
-        if self.armed {
-            v.push(Slot {
-                key: self.key,
-                abandoned: true,
-            });
+        match v.iter_mut().find(|s| s.serial == self.serial) {
+            Some(s) if self.armed => s.abandoned = true,
+            _ => v.retain(|s| s.serial != self.serial),
         }
     }
 }
@@ -360,9 +363,22 @@ pub async fn react<B: Backend>(
     plan: &ReactPlan,
     token: ConfirmToken,
 ) -> Result<ConfirmMode, CoreError> {
+    react_inner(b, plan, token, &std::sync::Mutex::new(None)).await
+}
+
+/// `sent`：交出前放进复核后的计划，[`react_within`] 到点时拿它记账（没放就是还没交出）
+async fn react_inner<B: Backend>(
+    b: &B,
+    plan: &ReactPlan,
+    token: ConfirmToken,
+    sent: &std::sync::Mutex<Option<ReactPlan>>,
+) -> Result<ConfirmMode, CoreError> {
     let mode = b.gate().verify(token, plan)?;
     let mut one = InFlight::take(b.gate(), plan.message, plan.replace)?;
     let plan = &recheck(b, plan).await?;
+    *sent
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(plan.clone());
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::React {
@@ -371,28 +387,55 @@ pub async fn react<B: Backend>(
     };
     one.armed = true;
     let answer = crate::send_limits::submit(b, sealed).await;
-    one.armed = false;
     match answer {
         Ok(Answer::Done) => {
+            one.armed = false;
             b.gate()
                 .after_outcome(mode, plan, 0, None, Outcome::Succeeded, None);
             Ok(mode)
         }
-        Ok(Answer::Message(_) | Answer::Resent(_)) => Err(CoreError::Internal {
-            what: "react_answer_shape",
-        }),
-        Err(e) => Err(submit_failed(b, mode, plan, e)),
+        Ok(Answer::Message(_) | Answer::Resent(_)) => {
+            one.armed = false;
+            Err(CoreError::Internal {
+                what: "react_answer_shape",
+            })
+        }
+        Err(e) => {
+            let e = submit_failed(b, mode, plan, e);
+            // 按结果未知报的（连接断了、内核关了……）请求可能已经交出：槽位留成「放弃」
+            one.armed = matches!(e, CoreError::SendOutcomeUnknown { .. });
+            Err(e)
+        }
     }
 }
 
-/// [`react`] 连同应答最多等 `timeout`；到点按结果未知记账、报 `send_outcome_unknown`（回应可能已经点上）
+/// [`react`] 连同应答最多等 `timeout`。到点时：已交出 → 按交出时复核后的计划记「结果未知」、报 `send_outcome_unknown`
+/// （回应可能已经点上；codex 032 第 3 轮 #3）；还没交出（卡在验凭据后的复核里）→ 报 `network`，可以重试
 pub fn react_within<B: Backend>(
     b: &B,
     plan: &ReactPlan,
     token: ConfirmToken,
     timeout: Duration,
 ) -> Result<ConfirmMode, CoreError> {
-    submit_within(b, plan, plan.mode, timeout, react(b, plan, token))
+    let sent = std::sync::Mutex::new(None);
+    if let Some(r) = crate::link::block_on_timeout(react_inner(b, plan, token, &sent), timeout) {
+        return r;
+    }
+    let sent = sent
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match sent {
+        Some(fresh) => {
+            b.gate()
+                .after_outcome(plan.mode, &fresh, 0, None, Outcome::Unknown, None);
+            Err(CoreError::SendOutcomeUnknown {
+                chat_id: Some(plan.target.id),
+                temp_message_id: 0,
+                why: crate::error::UnknownWhy::Timeout,
+            })
+        }
+        None => Err(CoreError::Network { td: None }),
+    }
 }
 
 /// 计划行（`kind:"plan"` 的 `data`，`actions.md` 第一节第 6 小节 `ReactPlan`）
