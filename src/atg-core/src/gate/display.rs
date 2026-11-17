@@ -29,7 +29,7 @@ fn hides(c: char) -> bool {
 /// `DerivedCoreProperties.txt`），外加格式类（Cf）与行 / 段分隔符（Zl / Zp）里不在其中的那几个。
 /// 包括零宽字符、双向控制、软连字符、蒙古文变体选择符、变体选择符（含补充平面）、标签字符（U+E0000–E007F，
 /// 能藏一整段只有程序读得出的文字）。宁可多转（emoji 的 U+FE0F、U+200D 也会显示成 `\u{…}`），不可漏
-/// （自审第 3 轮 P1：人按 Touch ID 时看到的必须就是要发出去的全文）
+/// （自审第 3 轮 P1：`plan` 里给人看的必须就是要发出去的全文）
 fn invisible(c: char) -> bool {
     matches!(
         u32::from(c),

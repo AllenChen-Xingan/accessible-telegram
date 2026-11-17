@@ -67,8 +67,6 @@ pub const RESULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 确认时说给人的「网络中断也会发」（`actions.md` 第一节第 2 小节）
 pub const QUEUE_NOTE_ZH: &str = "若网络中断，恢复后仍会发出";
-/// 同一个意思的短说法，给 Touch ID 弹框（VoiceOver 会读，要短）
-pub const CONFIRM_QUEUE_ZH: &str = "网络断了也会在恢复后发出";
 
 pub use crate::model::ChatTarget;
 
@@ -128,29 +126,7 @@ impl Submitted {
     }
 }
 
-// ───────────────────────── 确认框里的说明句（发文字、重发共用）─────────────────────────
-
-/// 弹框里的「内容」：先说全文几字几行，再给正文——换行显示成 ⏎、看不见的字符转义，压成一段。防的是用一串空行
-/// 把真正要发的话挤出可见区（自审第 4 轮 P1）。放不放得下由闸按整段说明把关（`gate::fits_confirm_box`，放不下就拒 `too_long_to_confirm`，不做「只显示前段、
-/// 全文见终端」——发起 `send` 的终端多半是 AI 的输出，人看不到），这里不截
-pub fn confirm_body(text: &str) -> String {
-    let chars = text.chars().count();
-    let lines = text.lines().count().max(1);
-    // 这里的「行」是原文的换行行数，不是确认框里折出来的视觉行（那个由 `gate::fits_confirm_box` 数）
-    format!("共 {chars} 字 {lines} 行：\n{}", flatten(text))
-}
-
-/// 压成一段给人看：看不见的字符转义、换行显示成 ⏎
-fn flatten(text: &str) -> String {
-    gate::confirm_visible(text).replace('\n', "⏎")
-}
-
-fn origin_zh(o: SendOrigin) -> &'static str {
-    match o {
-        SendOrigin::Cli => "来自命令行，可能是 AI",
-        SendOrigin::Gui => "来自界面",
-    }
-}
+// ───────────────────────── 给人看的会话说法 ─────────────────────────
 
 /// 「私聊 · 名字 · id 777」（名字转义控制字符）
 pub fn target_zh(t: &ChatTarget) -> String {
@@ -167,7 +143,7 @@ pub fn target_zh(t: &ChatTarget) -> String {
             ChatKind::Unknown { .. } => "会话",
         }
     };
-    format!("{kind} · {} · id {}", gate::confirm_visible(&t.title), t.id)
+    format!("{kind} · {} · id {}", gate::visible(&t.title), t.id)
 }
 
 // ───────────────────────── 交出出了岔子：按「结果未知」记账（发文字、重发共用）─────────────────────────

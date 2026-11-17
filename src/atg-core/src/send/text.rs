@@ -62,20 +62,6 @@ impl Gated for TextPlan {
     fn kind(&self) -> &'static str {
         "text"
     }
-    fn confirm_text(&self) -> String {
-        // VoiceOver 会读这段：发给谁放最前，句子短；正文放最后（太长被截也只截正文，且已明说）。措辞待人实听
-        let reply = self
-            .reply_to
-            .map(|r| format!("，回复 id {} 那条", r.message_id))
-            .unwrap_or_default();
-        format!(
-            "发给 {}{reply}\n{}，{}\n{}",
-            target_zh(&self.target),
-            origin_zh(self.origin),
-            CONFIRM_QUEUE_ZH,
-            confirm_body(&self.text),
-        )
-    }
 }
 
 /// 要发什么
