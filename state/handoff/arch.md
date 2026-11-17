@@ -341,4 +341,7 @@
 - 已过（2026-11-17，大总管给名额）：fmt、`clippy --workspace --all-targets -D warnings`、`clippy -p atg-core --features tdlib-api --all-targets -D warnings`、`cargo test --workspace` 680 过、0 败、5 忽略，check-no-debug、check-sources、check-file-size；改过的 8 个测试文件 `#[test]` 数前后相等（core gate 23、delete 7、edit 11、send/forward 17；cli delete 7、`tests/cli.rs` 21、edit 6、forwarding 10）
 - 检查点 d776ea1（大总管提交）
 - atg-review 第 1 轮（384da95...d776ea1）：P0/P1/P2 零；P3×8 已改（gate 本地助手补注释说明为什么留、010 R3 行回写第二刀第三刀、交接页补行为差别与几处说明）
-- 待：大总管提交 → codex 058
+- 检查点 c0e5152（大总管提交）
+- codex 058（384da95...HEAD）：两轮零发现，收敛。记录 `docs/reviews/058_r3a-testkit-3-codex.md`
+- PR 说明草稿：`_tmp/20261116-b20/r3a3-pr-arch.md`。待：大总管提交本笔（058 记录、索引一行、交接页）→ 推送、开 PR
+- 之后待命：R7 的 `fake.rs`、`td.rs` 等 #12 合进 main；`tests/cli.rs` 的 `send_usage_paths` 也等 #12
