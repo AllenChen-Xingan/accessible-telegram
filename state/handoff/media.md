@@ -32,6 +32,9 @@
   - 复现计划（要名额）：把测试里的 50ms 改 0 应几乎必挂、改 300ms 应必过，确认推断；再按甲修、连跑 20 次
   - 待大总管定：修在 #106 分支（4-media-lease，serve.rs 迁移与这条测试都来自它）还是本分支
   - **更正（2026-11-16）**：#106 分支早已由 06803cb 修过（执行方记「watch 离开（现有 N 个）」、测试按事件等、去掉探针与 sleep）；本分支叠在旧 #106（a5b4786）上，没有 06803cb 等 4 个提交。建议不改代码，由大总管把 origin/feat/59-lease 合进本分支（预计 serve.rs、lifecycle.rs 冲突，取 #106 版），合后领名额复验并连跑 20 次。已报大总管，等回复
+  - 大总管合 origin/feat/59-lease 进本分支（9ce7840，serve.rs 冲突我解）。复验（名额，已还）：test 520 过 0 败、clippy 三遍、fmt、门槛过；two_watches 单跑 20/20、整套 20 次未再挂 → #121 已修
+  - 新见偶发（非 3c，main 原有）：`serve_replaces_stale_socket_and_refuses_busy_profile`「关掉后锁放了」整套 20 次挂 1 次；建议另开 issue，已报大总管
+- 下一步：等大总管推送 #125、定要不要我查新偶发
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 

@@ -499,8 +499,8 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端→
-/// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
+/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端 → 跑 `body` → 关后端
+/// （一律直发，不出开场提示与 `status` 行，#113）
 fn l2_run(
     g: &Global,
     format: crate::args::Format,
