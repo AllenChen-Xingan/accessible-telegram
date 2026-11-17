@@ -33,7 +33,7 @@
 
 ## 三、界面动作 `GuiAction` v0
 
-对外等级一列的 L0 / L1 / L1 外部 / L2 见 `specs/contracts/actions.md` 第一节第 2 小节（L2 = 要过发送闸；闸直接开 `direct_mode` 凭据，界面不弹确认框，人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节）。
+对外等级一列的 L0 / L1 / L1 外部 / L2 见 `specs/contracts/actions.md` 第一节第 2 小节（L2 = 要过发送闸；闸直接开 `direct_mode`（测试服务器收藏夹为 `test_exempt`）凭据，界面不弹确认框，人定 2026-11-16 删除 Touch ID，#113；`actions.md` 第一节第 5 小节）。
 
 「类」：**能力** = 要 `atg-core` 做事，必须点名下面一列（`check-gui-sources.py` 比对它在 `specs/contracts/actions.md` / `src/atg-cli/src/args.rs` 里真有）；**界面** = 只动 `UiState`；**入口策略** = core 有这个能力、CLI 刻意不调（003 F1、003 A2，`actions.md` 第一节第 2 小节），不需要按键，由事件触发。
 
@@ -61,10 +61,10 @@
 | `focus_composer` · `reply` | 界面 | 只设焦点和回复目标 | — |
 | `insert_newline` | 界面 | 输入框里换行（文本编辑本身，不经 core） | — |
 | `send` | 能力 | `send_text_prepare` → 读一遍计划（`announce.md` `send_plan`）→ `send_text`，不弹框 · `atg-cli send` | L2 |
-| `resend` | 能力 | `resend_prepare` + `resend` · `atg-cli resend` | L2 |
-| `delete_for_all` | 能力 | `delete_prepare` + `delete` · `atg-cli delete` | L2 |
+| `resend` | 能力 | `resend_prepare` → 读一遍计划（`send_plan`）→ `resend`，不弹框 · `atg-cli resend` | L2 |
+| `delete_for_all` | 能力 | `delete_prepare` → 读一遍计划（`send_plan`）→ `delete`，不弹框 · `atg-cli delete` | L2 |
 | `search_messages` · `search_chats` | 能力 | 打开搜索框（`UiState.search.mode` = 消息 / 会话）并随输入查：`search_messages`（当前会话里）/ `search_chats` · `atg-cli search messages` / `search chats` | L0 |
-| `search_enter_results` · `search_back_to_input` | 界面 | 卡 G17 默认 A：搜索框里 ↓ 把焦点移进结果列表（`NavList`，选中第一项）；结果列表里 Esc 或打可打印字符回到搜索框（字符接着输进去）。**不借用 `focus_next`**（那是 Tab 一圈） | — |
+| `search_enter_results` · `search_back_to_input` | 界面 | 卡 G17 人选 A：搜索框里 ↓ 把焦点移进结果列表（`NavList`，选中第一项）；结果列表里 Esc 或打可打印字符回到搜索框（字符接着输进去）。**不借用 `focus_next`**（那是 Tab 一圈） | — |
 | `open_search_hit` | 能力 | 消息命中：`chat_open` + `history` 落在那条（003 F2：搜索结果进来落在那条）· `atg-cli history CHAT_ID --after MSG_ID`；会话命中：同 `open_chat` | L0 |
 | `confirm` · `cancel` | 界面 | 确认框（只有打开链接 / 附件）的两个按钮；确认后才调 `open_link` / `open_file` | — |
 | `login_submit` · `login_resend_code` | 能力 | `auth_submit_*` · `auth_resend_code` · `atg-cli auth …` | L0 |
@@ -87,6 +87,8 @@
 
 ## 五、初版条目
 
+> 标「草案」的行经卡 G11 人选 B（2026-11-16）照用，只改了删除键（`cmd-shift-backspace`）；实用后要改再开卡。
+
 本表只写 `view` · `keys` · `action` · `source`，其余字段按下面的规则推出，生成器照推、单测照核；推出来不对的行在「出处」里写明覆盖值：`when` = `global` → `always`；`composer` / `search` / `login` 视图里的键 → `text_only`；`dialog` 视图里的键 → `always`（对话框不是列表，焦点在按钮上）；其余（列表、阅读视图）→ `list_focused`。**生成的谓词 = 视图自己的上下文（如 `Dialog`、`MessageList`）与 `when` 条件相与**，所以 `always` 只表示「这个视图里任何焦点都生效」，不越出视图。`bypass_ime` **按单个键推**（一行里几个键可以不同，生成器逐键存）：不带 Cmd 的无字符键（方向、Esc、Home / End、PageUp / PageDown、Shift+Tab）→ 真；带 Cmd 的（如 `cmd-up`）和带字符的（Tab、回车、字母）→ 假。`help` = 文案表里与动作同名的那条。`state` 写在视图格的括号里（如「`message_list`（`playing`）」）。
 
 | 视图 | 键 | 动作 | 出处 |
@@ -95,7 +97,7 @@
 | 列表类（`chat_list` `message_list` `search_results` `link_list` `help`） | `up` · `down` · `home` · `end` · `pageup` · `pagedown` · `cmd-up` · `cmd-down` | `list_*`（`cmd-up` = `home`、`cmd-down` = `end`） | 已测：exp003 1137 步、exp003b-v2 |
 | `chat_list` | `enter` | `open_chat` | 草案 |
 | `chat_list` · `message_list` | `n` | `next_unread_chat`（T09；到底时说「没有更多未读」，003 A3） | 草案（B19-4 首选单键） |
-| global | `cmd-shift-u` | `next_unread_chat`（任何焦点下，含输入框） | 草案 ⏳ 卡 G11。原草案 Slack 的 `alt-shift-down` 撤掉：Opt+Shift+↓ 是按段扩选（规矩 9、清单 K9）。也不用 `cmd-j`：Slack 的 Cmd-J 是「本会话第一条未读」（`findings-a11y.md` 第四节表），照 Slack 留给下一行；Cocoa 应用「编辑 › 查找 › 跳到所选内容」的 Cmd-J 是菜单项，本应用的菜单栏由动作表生成、不带这一项，所以不撞。「上一个未读」先不绑：core / CLI 没有（`docs/plan/012_gui-ssot.md` 第九节） |
+| global | `cmd-shift-u` | `next_unread_chat`（任何焦点下，含输入框） | 草案，卡 G11 人选 B 照用（2026-11-16）。原草案 Slack 的 `alt-shift-down` 撤掉：Opt+Shift+↓ 是按段扩选（规矩 9、清单 K9）。也不用 `cmd-j`：Slack 的 Cmd-J 是「本会话第一条未读」（`findings-a11y.md` 第四节表），照 Slack 留给下一行；Cocoa 应用「编辑 › 查找 › 跳到所选内容」的 Cmd-J 是菜单项，本应用的菜单栏由动作表生成、不带这一项，所以不撞。「上一个未读」先不绑：core / CLI 没有（`docs/plan/012_gui-ssot.md` 第九节） |
 | global | `cmd-j` | `jump_first_unread`（当前会话的第一条未读；没有未读就最新一条） | 草案；Slack 同键同义（`findings-a11y.md` 第四节表） |
 | `chat_list` · `message_list` | `m` | `listen_new` | 001 拍板 3（「按 m 主动收听」）；exp004 |
 | `chat_list` | `shift-m` | `mute_chat`（M3.3「一个键静音」） | 草案；和 `m` 分开是因为 `m` 已给收听 |
@@ -103,12 +105,12 @@
 | `message_list` | `enter` | `open_reading_view` | 草案（M3.5） |
 | `message_list` | `r` | `reply` | 草案 |
 | `message_list` | `i` | `focus_composer`（T04「一个快捷键进输入框」） | 草案 |
-| global | `cmd-l` | `focus_composer`（任何焦点下进当前会话的输入框，清单 F16） | 草案 ⏳ 卡 G11 |
+| global | `cmd-l` | `focus_composer`（任何焦点下进当前会话的输入框，清单 F16） | 草案，卡 G11 人选 B 照用（2026-11-16） |
 | `message_list` | `o` | `open_attachment` | 草案（M3.7） |
 | `message_list` | `space` | `play_pause` | 草案（M3.8） |
 | `message_list`（`playing`） | `left` · `right` · `[` · `]` | `seek_back` · `seek_forward` · `speed_down` · `speed_up` | 草案 ⏳ ←→ 不在播放时留给什么 |
-| `message_list` | `cmd-backspace` | `delete_for_all`（读一遍删哪条、给所有人，直接删，不弹框，#113） | 草案（M4.6；同访达「移到废纸篓」的键） |
-| `message_list` | `shift-r` | `resend`（只对发送失败的那条） | 草案 |
+| `message_list` | `cmd-shift-backspace` | `delete_for_all`（读一遍删哪条、给所有人，直接删，不弹框，#113） | 卡 G11 人选 B（2026-11-16）：不再有确认框，改用比访达「移到废纸篓」多一个 Shift 的键，防顺手误按；M4.6 |
+| `message_list` | `shift-r` | `resend`（只对发送失败的那条；读一遍、直接重发，不弹框） | 草案 |
 | `message_list` · `reading` | `escape` | `back` | 草案（M3.5「Esc 回原处」） |
 | `reading` · `message_list` | `l` | `list_links` | 草案（M3.5） |
 | `link_list` | `enter` | `open_link`（先过 `open_link` 的确认，`actions.md`） | 草案 |

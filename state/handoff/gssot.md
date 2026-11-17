@@ -3,14 +3,23 @@
 ## b20 接手（2026-11-16）
 
 - **手上**：`_tmp/20261116-b20/gssot.md`（MAIN）——① 按 Touch ID 删除改 GUI 规约（specs/gui/**、012、decision.md：确认步骤 → 发送前读一遍、直接发、不弹框）；② 把待人拍板的卡（G9 G11 G15 G16 G17）整理成能直接问人的样子
-- **做到哪**：已报到大总管（旧进度、未提交改动归属、合 main 预计冲突只在 docs/reviews/README.md 且应能自动合）；等大总管合 main
-- **下一步**：合完后改约 40 处确认相关文字 → 整理卡 → atg-review → codex 040
+- **做到哪**：大总管已提交 304e9ae 并合 main（53d4f8c）。① Touch ID 删除已改完（7 个文件：README、keymap、a11y-tree、focus、announce、checklist、012；新增播报来源 `send_plan`、焦点触发 `send_submitted` / `delete_submitted` / `resend_submitted`；确认框只剩打开链接 / 附件）② 五张卡已整理成「问人」一段（decision.md 第一节；G11 新增一问：删除不弹框后改 Cmd+Shift+Delete）
+- **下一步**：atg-review 第 2 轮 → 清 P0/P1 → codex 040（范围 `53d4f8c` 起）→ 报大总管提交；G18 待问
 - **不动**：.42cog/intent.md 改动、docs/plan/013、exp009（ggpui）、exp010（gcomp）、docs/reviews/042/043、别人的现状页
-- **要人定的事**：见 decision.md（整理中）
+- **要人定的事**：`docs/research/004_gui/decision.md` 第一节 G9 G11 G15 G16 G17（已报大总管去问）
+- **报给大总管的规约冲突（别人的文件，只报不改）**：`actions.md` 第一节第 5 小节仍写「GUI 窗口标题前加『直发模式』，启动时播报『直发模式已开启，发送不再确认』」——直发成唯一方式后这句没意义，GUI 规约没照写；`002_roadmap.md` M4.6 仍写「过确认（同 M4.2）」，GUI 规约按 D1 / #113 写成不弹框
 
 ### b20 流水
 
 - 2026-11-16 · 读 common、交代、旧现状页；只读看 git status / log / diff；报到大总管
+- 2026-11-16 · 大总管提交 304e9ae、合 main 53d4f8c
+- 2026-11-16 · 改 Touch ID 相关 7 个文件（脚本 scratchpad `edits.py`，逐处唯一匹配替换）；research 下 findings-*.md 里的 Touch ID 是调研存档，不改
+- 2026-11-16 · atg-review 第 1 轮已起（run wf_aff83e1a-80f，范围 `git diff HEAD`——起时未提交）；大总管随后提交 835ef2d，**以后各轮与 codex 一律用范围 `53d4f8c...835ef2d`（及其后的修复）**
+- 2026-11-16 · 大总管：冲突 ③a ③b 并进 issue #115（codex 线改，不归我）；五张卡大总管去问人
+- 2026-11-16 · atg-review 第 1 轮：P1×2（同一件：契约第 5 小节 GUI 启动提示规约没交代）、P2×9、P3×8。修：README 写明该条与 M4.6「过确认」待 #115、GUI 先不做；术语「直发」改「直接发送（direct_mode）」，单说「直发」只指直发公告；补术语 发送闸 / 凭据 / 交出 / 撤回占位；send_plan 时机写清（读与发同时、不等读完）；focus 删键名副本、M4.6 出处注明；清单修订表恢复两条旧行、追加新行；F8 / A18 覆盖删除、重发；keymap resend / delete 行写法统一；L2 术语补 test_exempt；G11 措辞与 B19-3/4 出处。新开卡 G18（读一遍：边念边发还是念完再发、长文、念不念编号）
+- 2026-11-16 · 人拍板（大总管转）：G9 A · G11 B · G15 B · G17 A；G16 未问按默认。落：decision.md 各卡标「人选」、013 加 B20-1～B20-4；keymap 删除改 `cmd-shift-backspace`、草案行照用；a11y-tree 消息项 `role_description`「消息」、导出格式加 `roledesc`、清单 S30
+- 2026-11-16 · atg-review 第 2 轮已起（wf_7b0c1fc8-ac3，范围 `git diff 53d4f8c`）
+- 2026-11-16 · 重写 decision.md 第一节：五张卡各一段「问人」+ 选项 · 代价 · 建议 · 默认；细目与出处挪到节末；修掉 G11 旧文里与 G17 矛盾的「焦点留在搜索框，↑↓ 移高亮」
 
 ---
 

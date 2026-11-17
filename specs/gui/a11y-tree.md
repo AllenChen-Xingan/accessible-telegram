@@ -37,7 +37,7 @@
 | 未读分隔 | `divider-unread:<chat_id>` | `divider-unread:101` | 不进 ↑↓ 顺序、不可停（B19-7）；只是画面上的一条线，进树时是不可聚焦的装饰 |
 | 输入框 | `composer:<chat_id>` | `composer:101` | |
 | 发送按钮 | `send:<chat_id>` | `send:101` | |
-| 搜索框 / 结果列表 / 结果项 | `search` · `search-results` · 消息命中 `hit:<chat_id>:<message_id>`、会话命中 `chat-hit:<chat_id>` | `hit:101:9` · `chat-hit:101` | 结果列表是 `NavList`（卡 G17 默认 A：↓ 进去、Esc 回搜索框） |
+| 搜索框 / 结果列表 / 结果项 | `search` · `search-results` · 消息命中 `hit:<chat_id>:<message_id>`、会话命中 `chat-hit:<chat_id>` | `hit:101:9` · `chat-hit:101` | 结果列表是 `NavList`（卡 G17 人选 A：↓ 进去、Esc 回搜索框） |
 | 状态栏 | `status` | `status` | 常驻用户状态（`errors.md` 第一节第 4 小节「常驻」） |
 | 播报节点 | `live:<序号>` | `live:42` | 同一句重播要换节点（exp001 结论 3），序号单调增 |
 | 阅读视图 | `reading:<chat_id>:<message_id>` | `reading:101:1001` | |
@@ -61,7 +61,7 @@
 | 会话列表 | `List`（AXList） | 文案「会话」+ 新消息提醒 | — | 焦点；active descendant = 选中项 | 设焦点（AX Focus）后 ↑↓ 等键（`keymap.md`） | 001 拍板 1；exp003 |
 | 会话项 | `ListItem`（AXGroup，exp003 实测） | `speech::chat_brief` | ⏳ | 选中；位置 / 总数（只进 GPUI 层） | 回车 = 打开（`keymap.md`） | T02；003 R2 |
 | 消息列表 | `List`（AXList） | 文案「消息」+ 新消息提醒 | — | 同会话列表 | 同会话列表 | 001 拍板 2；exp003b-v2 |
-| 消息项 | `ListItem`（AXGroup） | `speech::brief` | 详情提示「按 D 听详情」（键从按键表取）。有隐藏内容时正文里另有「隐藏内容，按 D 展开」（读法的 `expand_key`）——两句说的是同一个键，各在各的位置（名称 / 提示语），不重复 | 选中；位置 / 总数 | D = 读详情，有隐藏内容同时展开，再按收起（B19-6）；回车 = 阅读视图 | 001 拍板 3 B；003 R1；M3.5 |
+| 消息项 | `ListItem`（AXGroup），`role_description` 设「消息」（macOS 上是 AXRoleDescription，VoiceOver 读「消息」不读「组」；卡 G15 人选 B，2026-11-16；文案表取） | `speech::brief` | 详情提示「按 D 听详情」（键从按键表取）。有隐藏内容时正文里另有「隐藏内容，按 D 展开」（读法的 `expand_key`）——两句说的是同一个键，各在各的位置（名称 / 提示语），不重复 | 选中；位置 / 总数 | D = 读详情，有隐藏内容同时展开，再按收起（B19-6）；回车 = 阅读视图 | 001 拍板 3 B；003 R1；M3.5 |
 | 系统消息项 | 同消息项 | `speech::brief`（`Doc::Service`） | — | 同上 | — | `content-tree.md` 第三节第 4 小节 |
 | 撤回占位 | 同消息项 | `speech::brief`（`Doc::Tombstone`） | — | 同上 | — | 001 拍板 7；003 R7 |
 | 日期分隔 | `Heading`（VO+Cmd+H 能按日期跳；清单 S14） | `speech` 的日期读法（树节点待加，`content-tree.md` 第三节第 1 小节「以后加」已列） | — | — | — | 清单 S14 |
@@ -70,7 +70,7 @@
 | 输入框 | `MultilineTextInput`（AXTextArea） | 文案「输入消息」；回复态加 `speech` 的「回复 X」 | — | 焦点；值 = 草稿 | 直接打字；回车 = 发送 | 001 第二节第 5 小节；T04 |
 | 发送按钮 | `Button`（AXButton） | 文案「发送」 | — | 禁用（输入为空时；经 `parent_node().set_disabled()`） | AX Press | exp003b-v2 |
 | 搜索框 | `SearchInput`（AXTextField + AXSearchField） | 文案「搜索消息」/「搜索会话」（不写「搜索框」） | — | 焦点；值 | 打字；↓ 进结果列表；Esc 关 | T08；清单 K14 |
-| 搜索结果 | `List` + `ListItem`（同 `NavList`，卡 G17 默认 A） | 列表名「搜索结果」+ 结果数（`speech`）；消息项 = `speech::brief`，会话项 = `speech::chat_brief` | — | 同 `NavList` | 回车打开；Esc 回搜索框 | M4.5 |
+| 搜索结果 | `List` + `ListItem`（同 `NavList`，卡 G17 人选 A） | 列表名「搜索结果」+ 结果数（`speech`）；消息项 = `speech::brief`，会话项 = `speech::chat_brief` | — | 同 `NavList` | 回车打开；Esc 回搜索框 | M4.5 |
 | 链接列表 | `List` + `ListItem`（同 `NavList`） | 列表名文案「链接」；项 = 链接文字 + 地址（`message_links`；隐藏的链接读「隐藏内容」，`content-tree.md` 第八节） | — | 同 `NavList` | 回车 = 打开（过 `open_link` 的确认） | M3.5 |
 | 帮助页 | `List` + `ListItem` | 列表名文案「快捷键」；第一项是使用前提（关快速导航，B19-3），其余每项「<键的读法>：<说明>」 | — | 同 `NavList` | Esc 回去 | `keymap.md` 第六节 |
 | 状态栏 | `Status`（AXGroup / AXApplicationStatus；VO 读法未实测） | `speech` 读 `Doc::Status` | — | — | — | T10 |
@@ -104,7 +104,7 @@
 **macOS 层**（`<场景>.macos.txt`），每行：
 
 ```
-<AXRole>[/<AXSubrole>] <AXIdentifier> "<AXTitle 或 AXDescription>" [value="<AXValue>"] [help="<AXHelp>"] [placeholder="…"] [AXSelected] [AXFocused] [focusable] [disabled] [required] [modal] [actions=Press,ScrollToVisible…] [linked=<标识>…]
+<AXRole>[/<AXSubrole>] [roledesc="<AXRoleDescription>"] <AXIdentifier> "<AXTitle 或 AXDescription>" [value="<AXValue>"] [help="<AXHelp>"] [placeholder="…"] [AXSelected] [AXFocused] [focusable] [disabled] [required] [modal] [actions=Press,ScrollToVisible…] [linked=<标识>…]
 ```
 
 名称一格：有 AXTitle 取 AXTitle，否则 AXDescription，后面标来源 `(t)` / `(d)`。文本类元素另加 `sel=<起>-<止>` · `caret=<行>`（X3）。
@@ -113,7 +113,7 @@
 
 另出一份**通知记录** `<场景>.notify.txt`：一行一条 `<序号> <通知名> <目标标识>`（Created / UIElementDestroyed / TitleChanged / ValueChanged / FocusedUIElementChanged / AnnouncementRequested〔带优先级，不带文字〕/ TextInputMarkingSession*），给 S21、A20、A21、A16 判。转子（S17）不在任何一份导出里，等 P15 实验定格式。
 
-只写有的。清单里按 macOS 层判的条目各查哪一项：子角色 S9 · 值 S7 · `focusable` F10 · `actions` X1、S16、AG7 · `disabled` AG4 · 焦点两行 F4–F6、F17、S28 · `sel` / `caret` X3、K19 · 通知记录 S21、A16、A20、A21。**frame 不进快照**（每次都变，规范化要去掉）：X2 在导出那一刻对着布局现场比，比完只在快照末尾记一行 `# frame-check ok` 或列出超差的标识
+只写有的。清单里按 macOS 层判的条目各查哪一项：子角色 S9 · `roledesc` S30 · 值 S7 · `focusable` F10 · `actions` X1、S16、AG7 · `disabled` AG4 · 焦点两行 F4–F6、F17、S28 · `sel` / `caret` X3、K19 · 通知记录 S21、A16、A20、A21。**frame 不进快照**（每次都变，规范化要去掉）：X2 在导出那一刻对着布局现场比，比完只在快照末尾记一行 `# frame-check ok` 或列出超差的标识
 
 **两层共同**：
 

@@ -56,3 +56,31 @@
 ### B19-12 加载更早消息后不播报（G14）
 
 - 人选：「不说」——选中项原地不动，不播「已加载 N 条」
+
+## 2026-11-16（批次 b20）
+
+> 人在对话里定、由大总管转述（原话在大总管记录里）；「落到哪」由 gssot 写。题面：`docs/research/004_gui/decision.md` 第一节。
+
+### B20-1 借鉴 Quill：照表（G9）
+
+- 人选：A——借 12 条、不借 6 条（细目表在 decision.md 第一节末）
+- 落到哪：表里各行「落到本项目哪」一列已在规约里；无新改动
+
+### B20-2 具体按键：照草案，删除改 Cmd+Shift+Delete（G11）
+
+- 人选：B
+- 落到哪：`specs/gui/keymap.md` 第五节 `delete_for_all` 改 `cmd-shift-backspace`，其余「草案」行照用
+
+### B20-3 消息项读「消息」不读「组」（G15）
+
+- 人选：B——直接换，不做两种试听
+- 落到哪：`specs/gui/a11y-tree.md` 消息项设 `role_description`「消息」；导出格式加 `roledesc`；清单 S30
+
+### B20-4 搜索结果：↓ 进结果列表（G17）
+
+- 人选：A
+- 落到哪：规约原已按 A 写（`keymap.md` 搜索几行、`focus.md` `search_results_entered`、清单 K14、S28）
+
+### G16 没问
+
+- 按默认 A：外部移焦点照常移、只记日志，真碰到焦点乱跳再问
