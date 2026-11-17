@@ -33,6 +33,7 @@
 | 026 | 2026-11-14 | #59 会话租约共用模块 lease.rs 与 Hub / serve / watch 迁移（codex · diff） | 第 1、2 轮各 P2×2，全部属实已改；两轮无 P0/P1，满足停止线（第 2 轮的两条也直接改了，未开 issue）→ `026_lease-codex.md` |
 | 027 | 2026-11-14 | #62 #64 #95 第三批：td 起停收尾、用法错误不回显原文、auth 死路统一判、watch 出 status 前 Ctrl+C（codex · 两轮） | 第一轮 P2×2 全部属实已修；第二轮无发现；两轮无 P0/P1，收敛 → `027_batch3-62-64-95-codex.md` |
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
+| 045 | 2026-11-16 | #97 #98 #100 #40 第四批：标记原子发布、tty 读看停止标志、内核故障即报断开、密码缓冲区按容量清零（codex · diff 类） | 四轮：P1×5 属实已修、P2 留 #116；第 3、4 轮无 P0/P1，收敛 → `045_batch4-97-98-100-40-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
 | 039 | 2026-11-16 | #59 3c `transcribe` 命令（Doc::Transcription、stt_unavailable、辅助程序查找、lease::Guard；codex · diff） | 第 1 轮仅 P2×2，全部属实：途中更新改成闸门、补 18+ 途中变化与守卫共存测试；第 2 轮仅 P2×2（同两截的剩余：下载闸门、假后端「没开不推」）开 issue；两轮无 P0/P1，满足停止线 → `039_transcribe-codex.md` |

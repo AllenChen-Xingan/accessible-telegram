@@ -34,7 +34,15 @@
   - **更正（2026-11-16）**：#106 分支早已由 06803cb 修过（执行方记「watch 离开（现有 N 个）」、测试按事件等、去掉探针与 sleep）；本分支叠在旧 #106（a5b4786）上，没有 06803cb 等 4 个提交。建议不改代码，由大总管把 origin/feat/59-lease 合进本分支（预计 serve.rs、lifecycle.rs 冲突，取 #106 版），合后领名额复验并连跑 20 次。已报大总管，等回复
   - 大总管合 origin/feat/59-lease 进本分支（9ce7840，serve.rs 冲突我解）。复验（名额，已还）：test 520 过 0 败、clippy 三遍、fmt、门槛过；two_watches 单跑 20/20、整套 20 次未再挂 → #121 已修
   - 新见偶发（非 3c，main 原有）：`serve_replaces_stale_socket_and_refuses_busy_profile`「关掉后锁放了」整套 20 次挂 1 次；建议另开 issue，已报大总管
-- 下一步：等大总管推送 #125、定要不要我查新偶发
+- 合 main（#117 #110）的两处文档冲突我解了（reviews README、config-privacy 修订记录，两边都留），等大总管提交推送 #125
+- #54（`serve_replaces_stale_socket_and_refuses_busy_profile`「关掉后锁放了」）只读排查，**未找到确定原因**：
+  - 排除：① 锁在假后端 `shutdown` 里放（`fake.rs:1124` `*l = None`），`serve` 退 0 已被测试断言，说明走到了；就算没放，`FakeBackend` 在执行方线程闭包末尾丢掉，`stop()` 的 `join` 返回时锁文件已关 ② 档案目录 `atgs-stale-<pid>` 全进程唯一，别的测试不删不占 ③ 第二个执行方 `b2` 拿锁失败即关文件，不留 ④ atg-cli / atg-core 里没有别处起子进程；`stt.rs` 起辅助程序不带 `pre_exec`，macOS 上走 posix_spawn，锁文件带 O_CLOEXEC，理论上子进程拿不走
+  - 剩两种可能（都要实验分辨）：甲 断言失败的其实是 `Err(internal{profile_lock_io})` 而不是 `profile_busy`（断言信息没打出是哪种）；乙 有别的进程 / 子进程拿着同一个打开文件（fork 继承）
+  - 实验计划（要名额，临时诊断，不提交）：断言前把 `probe_lock()` 的结果打出来，失败时对锁文件跑 `lsof` 记下持有者 pid/fd；atg-cli 整套连跑 40 次。#54 早在 10-26 就有（那时还没有转写测试起子进程），乙的可能性偏小
+- #125 已推送（463b0e7），CI 全绿，等人合。#54 实验大总管准做，名额排第四（fix → msg1 → msg2 → 我）
+- #54 诊断补丁已从工作区撤回（2026-11-17，大总管要合 #126 进本分支；lifecycle.rs 与 HEAD 一致）。补丁原文存 `/private/tmp/claude-501/-Users-allenchen-xingan-chen-B-MyCreate-5-App-atg-wt-4-media/4b45d824-d525-415a-9269-1eb3d401fdba/scratchpad/diag54.txt`，轮到名额时贴回第 146 行断言处、跑完再撤
+- 合 #126 的冲突（cli.md、config-privacy.md 变更记录）我解了，两边都留；main 正文条款核对都在
+- 下一步：等名额 → atg-cli 整套连跑 40 次、收 DIAG54 → 撤补丁 → 报结论
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 
