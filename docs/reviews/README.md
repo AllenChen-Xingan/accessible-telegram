@@ -45,3 +45,4 @@
 | 047 | 2026-11-16 | PR #112 + #114 删除 Touch ID、发送一律直发（codex 补审 · diff 类 · 两轮） | 两轮均无 P0/P1；P2 共 7 条（第 2 轮 3 条是第 1 轮的重提）：契约与 README 文字残留 → #115，N7 第二测试号私聊例外（契约有、代码从未实现）→ 交人定，1 条驳回；安全不变量 codex 核过都在 → `047_remove-touch-id-codex.md` |
 | 049 | 2026-11-17 | #60 R7 第一刀：拆 `tree/text.rs`，遍历部分挪进 `tree/text/walk.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（记录里的行数是旧数）已改 → `049_r7-tree-text-codex.md` |
 | 050 | 2026-11-17 | #60 R7 第二刀：拆 `speech.rs`，系统消息进 `speech/service.rs`，全文渲染与正文附件读法并进 `speech/content.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1 轮 P2×1（交接页进度写的是中间版本）属实已改；第 2 轮零发现，收敛 → `050_r7-speech-codex.md` |
+| 053 | 2026-11-17 | #60 R7 第五刀：拆 cli `history.rs`，links 进 `history/links.rs`、读法与渲染进 `history/render.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1、2 轮各 P2×1（010、交接页里导出个数与行数写错），都属实已改；两轮无 P0/P1，收敛 → `053_r7-history-codex.md` |
