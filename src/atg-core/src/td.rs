@@ -43,7 +43,7 @@ mod real {
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
-    use crate::model::{AddedReactions, FailedInfo};
+    use crate::model::{AddedReactions, FailedInfo, MessageCaps};
     use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
     use crate::model::{ChatTarget, Me};
     use crate::secret::{self, Secret};
@@ -704,7 +704,7 @@ mod real {
             })
         }
 
-        async fn can_reply(&self, mid: MsgId) -> Result<bool, CoreError> {
+        async fn message_caps(&self, mid: MsgId) -> Result<MessageCaps, CoreError> {
             let id = self.client_id().ok_or_else(Self::not_started)?;
             let r = link::guard(
                 self.shared.clone(),
@@ -713,7 +713,7 @@ mod real {
             .await?;
             let enums::MessageProperties::MessageProperties(p) =
                 r.map_err(|e| self.read_error("message", &e))?;
-            Ok(p.can_be_replied)
+            Ok(requests::caps(&p))
         }
 
         async fn failed_info(&self, mid: MsgId) -> Result<Option<FailedInfo>, CoreError> {
