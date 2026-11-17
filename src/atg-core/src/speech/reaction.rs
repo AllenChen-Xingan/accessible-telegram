@@ -6,8 +6,9 @@
 use super::{ME, SpeechCtx, UNKNOWN_SENDER, hm, sender_name};
 use crate::tree::{Reaction, ReactionKind, Reactor};
 
-/// 一种回应怎么叫：emoji 照读；自定义表情、付费星星、不认识的给说法
-pub(super) fn label(k: &ReactionKind) -> String {
+/// 一种回应怎么叫：emoji 照读（不转义：转义会把 ❤️ 显示成 `❤\u{FE0F}`，VoiceOver 也照念）；自定义表情、付费星星、
+/// 不认识的给说法。读法与 CLI 的计划句共用这一份
+pub fn label(k: &ReactionKind) -> String {
     match k {
         ReactionKind::Emoji { emoji } => emoji.clone(),
         ReactionKind::CustomEmoji { .. } => "自定义表情".to_owned(),
@@ -42,4 +43,12 @@ pub(super) fn reactor(r: &Reactor, cx: &SpeechCtx) -> String {
         sender_name(&r.sender, UNKNOWN_SENDER)
     };
     format!("{who}，{}，{}", label(&r.kind), hm(r.date, cx))
+}
+
+/// `reactions` 结尾行：「共 5 个回应，列出 2 个；还有更多，接着看加 --cursor 2」（`next` = 下一页的游标）
+pub fn page_summary(total: u32, listed: usize, next: Option<&str>) -> String {
+    let more = next.map_or(String::new(), |c| {
+        format!("；还有更多，接着看加 --cursor {c}")
+    });
+    format!("共 {total} 个回应，列出 {listed} 个{more}")
 }

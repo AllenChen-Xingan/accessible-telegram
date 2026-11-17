@@ -173,7 +173,7 @@ impl Gate {
             kind: plan.kind(),
             result: Outcome::Submitted,
             error: None,
-            target: plan.log_target(),
+            reaction: plan.log_target(),
         };
         append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
             CoreError::Internal {
@@ -232,7 +232,7 @@ impl Gate {
             kind: plan.kind(),
             result: outcome,
             error: error.map(CoreError::code),
-            target: plan.log_target(),
+            reaction: plan.log_target(),
         };
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).is_err() {
             logline::warn("direct_log_write_failed", &[]);
@@ -293,15 +293,15 @@ struct DirectLogLine {
     result: Outcome,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<&'static str>,
-    /// 动在哪条消息上、可能挤掉了几个原先的回应（[`Gated::log_target`]；只有表情回应有，拿不准记 `null`）
+    /// 表情回应动在哪条消息上、按最坏情况可能挤掉几个原先的回应（[`Gated::log_target`]；拿不准记 `null`）
     #[serde(
         skip_serializing_if = "Option::is_none",
-        serialize_with = "target_fields"
+        serialize_with = "reaction_fields"
     )]
-    target: Option<(i64, Option<usize>)>,
+    reaction: Option<(i64, Option<usize>)>,
 }
 
-fn target_fields<S: serde::Serializer>(
+fn reaction_fields<S: serde::Serializer>(
     t: &Option<(i64, Option<usize>)>,
     s: S,
 ) -> Result<S::Ok, S::Error> {
@@ -309,7 +309,7 @@ fn target_fields<S: serde::Serializer>(
     let mut m = s.serialize_map(Some(2))?;
     if let Some((id, n)) = t {
         m.serialize_entry("message_id", id)?;
-        m.serialize_entry("replaced", n)?;
+        m.serialize_entry("may_replace", n)?;
     }
     m.end()
 }

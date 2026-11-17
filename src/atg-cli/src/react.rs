@@ -37,7 +37,7 @@ pub struct ReactParams {
     pub emoji: String,
     #[serde(default)]
     pub remove: bool,
-    /// 这条上我已点了别的回应时，允许它被挤掉
+    /// 可能挤掉我原先点的回应也照点：我已点了别的（`reaction_would_replace`），或拿不准点了哪些（`reaction_state_unknown`）
     #[serde(default)]
     pub replace: bool,
     #[serde(default)]
@@ -202,7 +202,11 @@ fn run_react<B: Backend>(
 
 /// 「给 私聊 · 张三 · 777 里 id 5 那条加上回应 👍（可能挤掉你原先点的 ❤️）」
 fn said(plan: &ReactPlan) -> String {
-    let swapped: Vec<String> = plan.replaces().iter().map(react::emoji_of).collect();
+    let swapped: Vec<String> = plan
+        .replaces()
+        .iter()
+        .map(speech::reaction::label)
+        .collect();
     let swapped = match (swapped.is_empty(), plan.replaces_known()) {
         (true, true) => String::new(),
         (true, false) => "（你原先点了哪些拿不准，可能挤掉）".to_owned(),
@@ -214,7 +218,7 @@ fn said(plan: &ReactPlan) -> String {
         send::target_zh(plan.target()),
         plan.message().message_id,
         if plan.remove() { "去掉" } else { "加上" },
-        react::emoji_of(plan.kind()),
+        speech::reaction::label(plan.kind()),
     )
 }
 
@@ -290,16 +294,8 @@ fn run_reactions<B: Backend>(
     if more {
         data["next_cursor"] = json!(page.next_offset);
     }
-    let next = if more {
-        format!("；还有更多，接着看加 --cursor {}", page.next_offset)
-    } else {
-        String::new()
-    };
-    let zh = format!(
-        "共 {} 个回应，列出 {} 个{next}",
-        page.total,
-        page.items.len()
-    );
+    let next = more.then_some(page.next_offset.as_str());
+    let zh = speech::reaction::page_summary(page.total, page.items.len(), next);
     result_line(sink, format, data, &zh);
     Ok(0)
 }

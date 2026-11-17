@@ -110,7 +110,7 @@ pub enum Command {
     React(ReactArgs),
     /// 看谁点了这条消息的回应，一行一个（kind:"reactor"）
     Reactions(ReactionsArgs),
-    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），确认后逐条等结果。确认方式同 send
+    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
     Show(Rest),

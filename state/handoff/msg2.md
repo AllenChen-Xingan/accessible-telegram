@@ -16,7 +16,13 @@
   - ⚠️ 要大总管同意：`send/text.rs` 两处、`send/resending.rs` 一处 match 加 `| Answer::Done`（不加编译不过）
   - 合并提交 b2d0e85（大总管）；三行 `| Answer::Done` 经准加上
   - 验证（2026-11-16）：check 过；test 483 过 0 败；clippy -D warnings 0（tdlib-api 与 --features atg-cli/tdlib）
-  - 下一步：atg-review 第 5 轮 → codex 032
+- 自审第 5 轮（2026-11-16）：P0 0 · P1 0 · P2 7 · P3 12
+  - 已修 P2：选 A 出处；ReactPlan 定义补 replaces_known；留痕字段改名 `reaction{message_id, may_replace}`；errors.md hint_zh 指明两种；CLI 计划句用 `speech::reaction::label`（删 `emoji_of`）；补测试（服务器失败 / 一页没取全 / 频道 / 服务器全但没 synced；fake `_added_fail`）
+  - 已修 P3：加密聊天统一、补发结束指针、去掉判法写进契约、changelog 顺序、注释残留
+  - 未修 P2（不在本线）：`src/atg-cli/README.md:21` Touch ID 旧说法，已报大总管
+  - 拆 `send/react/tests/replace.rs`（行数线）
+  - 修后验证：test 486 过 0 败；clippy 0（tdlib-api 与 atg-cli/tdlib）
+  - codex 032：隐私扫描拦 9 条 `token: ConfirmToken` 误报（同 023），等人放行 --force-secrets；脚本 `_tmp/reviews-032/run-1.sh`
 
 交代：MAIN `_tmp/20261113-b18/msg2.md`。顺序 #9 → #10 → #12 → #13 → #11 → #7，一个 issue 一个 PR。
 

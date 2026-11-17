@@ -37,7 +37,7 @@
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。
 
-`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；表情回应的 `reaction_invalid`（不是一个 emoji）· `reaction_not_chosen`（要去掉的回应我没点过；也可能只是 emoji 写法不同）· `reaction_would_replace`（这条上我已点了别的回应，再点可能把它挤掉）· `reaction_state_unknown`（拿不准我已点了哪些，再点可能挤掉原来的）；这两种 CLI 在错误行补 `hint_zh`，`react --replace` 放行。
+`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；表情回应的 `reaction_invalid`（不是一个 emoji）· `reaction_not_chosen`（要去掉的回应我没点过；也可能只是 emoji 写法不同，或群里本机缓存还没跟上）· `reaction_would_replace`（这条上我已点了别的回应，再点可能把它挤掉）· `reaction_state_unknown`（拿不准我已点了哪些，再点可能挤掉原来的）；后两种（`reaction_would_replace`、`reaction_state_unknown`）CLI 在错误行补 `hint_zh`，`react --replace` 放行。
 
 **CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对；另：执行方上同时挂着的 `watch` 已到上限 8 个时也借用它，说明写「已到上限」，`config-privacy.md` 第一节第 2 小节「流式订阅」）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 

@@ -34,3 +34,4 @@
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 032 | 2026-11-16 | #9 表情回应 `react` / `reactions`（合 main 后直发；codex · diff 类） | 第 1 轮 P1×1（交出不复核）P2×2（Touch ID 残留、统计句在 CLI）：属实 2、部分属实 1，已改；待第 2 轮 → `032_react-9-codex.md` |

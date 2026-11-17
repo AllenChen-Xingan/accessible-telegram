@@ -219,6 +219,10 @@ impl FakeBackend {
             what: "message",
             td: None,
         })?;
+        // 测试夹具：消息带 `_added_fail` 时模拟服务器不给名单
+        if m["_added_fail"].as_bool() == Some(true) {
+            return Err(CoreError::Network { td: None });
+        }
         let want = kind.and_then(crate::tdjson::reaction_type);
         let all: Vec<Value> = m["_added"]
             .as_array()

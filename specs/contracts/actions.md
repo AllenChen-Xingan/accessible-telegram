@@ -113,8 +113,8 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
 |---|---|---|---|---|
-| `react_prepare(id: MsgId, emoji: String, remove: bool, replace: bool)` | `ReactPlan`：目标会话、哪一条、哪个回应、加还是去、会挤掉的我原先点的回应、这份名单拿不拿得准（`replaces_known`）、开法、摘要 | `not_found` `invalid_input`（`why`：`reaction_invalid` 不是一个 emoji；`reaction_not_chosen` 要去掉的我没点过；`reaction_would_replace` 这条上我已点了别的回应、没给 `replace`——每条能点几个有上限，超了 TDLib 自动去掉最早的，直发没人当场看着，所以默认拒；`reaction_state_unknown` 我点过哪些拿不准、没给 `replace`：本机库里是缓存，拿得准要调用方等到补发结束，且只有私聊、私密聊天信本机（TDLib 只给它们推回应变化，`MessagesManager.cpp` 里普通群、超级群、频道都靠打开时轮询），其余另向服务器取一页「谁点了」（`getMessageAddedReactions`）、一页取全才算）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → `getMessage`（这条在不在、我点过哪些）→ 组请求、算摘要。v0 只收 emoji（`reactionTypeEmoji`）；自定义表情不做，**付费星星（`reactionTypePaid`，要花钱）不做** |
-| `react(plan, token)` | `Ack` | `send_refused` `forbidden` `invalid_input`（这个会话不许这个回应，TDLib 400）`send_outcome_unknown` | **L2，直发** | `addMessageReaction`（`:13748`，`is_big=false` 不放大动画、`update_recent_reactions=false` 不改本机「最近用过的回应」列表——少动别处）/ `removeMessageReaction`（`:13754`）。和其他 L2 一样直发（#113），闸开 `direct_mode` 凭据（测试服务器收藏夹 `test_exempt`）。其余照 L2：凭据绑会话 + 请求摘要（哪条、哪个回应、加或去）、60 秒一次性、受限与限流照管、不自动重试、测试服务器只许收藏夹；交出连同应答 30 秒上限，到点 `send_outcome_unknown`（回应可能已点上）。**留痕**：照直发写 `direct-send.log`（`kind` 为 `react` / `unreact`，不记 emoji）；另记 `target`：点在哪条消息上（`message_id`）、可能挤掉了几个原先的回应（`replaced`，只记个数；拿不准还用 `replace` 放行的记 `null`）；不进重复提交拦截（同一个回应点两次不会多出一个） |
+| `react_prepare(id: MsgId, emoji: String, remove: bool, replace: bool)` | `ReactPlan`：目标会话、哪一条、哪个回应、加还是去、可能挤掉的我原先点的回应、这份名单拿不拿得准（`replaces_known`）、开法、摘要 | `not_found` `invalid_input`（`why`：`reaction_invalid` 不是一个 emoji；`reaction_not_chosen` 要去掉的我没点过；`reaction_would_replace` 这条上我已点了别的回应、没给 `replace`——每条能点几个有上限，超了 TDLib 自动去掉最早的，直发没人当场看着，所以默认拒；`reaction_state_unknown` 我点过哪些拿不准、没给 `replace`：本机库里是缓存，拿得准要调用方等到补发结束（启动或重连后数据追平，即 `sync_done`，本节第 7 小节），且只有私聊、加密聊天信本机（TDLib 只给它们推回应变化，`MessagesManager.cpp` 里普通群、超级群、频道都靠打开时轮询），其余另向服务器取一页「谁点了」（`getMessageAddedReactions`）、一页取全才算）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → `getMessage`（这条在不在、我点过哪些）→ 组请求、算摘要。去掉（`remove`）判我点没点过只看本机缓存，任何会话都不另问服务器：判错只会误报 `reaction_not_chosen`，不会动到别的回应。v0 只收 emoji（`reactionTypeEmoji`）；自定义表情不做，**付费星星（`reactionTypePaid`，要花钱）不做** |
+| `react(plan, token)` | `Ack` | `send_refused` `forbidden` `invalid_input`（这个会话不许这个回应，TDLib 400）`send_outcome_unknown` | **L2，直发** | `addMessageReaction`（`:13748`，`is_big=false` 不放大动画、`update_recent_reactions=false` 不改本机「最近用过的回应」列表——少动别处）/ `removeMessageReaction`（`:13754`）。和其他 L2 一样直发（#113），闸开 `direct_mode` 凭据（测试服务器收藏夹 `test_exempt`）。**交出前复核**：没给 `replace` 的加回应，交出前按准备时同样的条件再判一次会不会挤掉、拿不拿得准（计划可能是早先准备的，期间又点了别的）；同一后端同一条消息同时只许一个回应在交出途中，第二个报 `reaction_state_unknown`。其余照 L2：凭据绑会话 + 请求摘要（哪条、哪个回应、加或去）、60 秒一次性、受限与限流照管、不自动重试、测试服务器只许收藏夹；交出连同应答 30 秒上限，到点 `send_outcome_unknown`（回应可能已点上）。**留痕**：照直发写 `direct-send.log`（`kind` 为 `react` / `unreact`，不记 emoji）；另记 `reaction`：点在哪条消息上（`message_id`）、按最坏情况可能挤掉几个原先的回应（`may_replace`，事前估的上限、不是实际挤掉的数，只记个数；拿不准还用 `replace` 放行的记 `null`；去掉回应恒为 0）；不进重复提交拦截（同一个回应点两次不会多出一个） |
 | `added_reactions(id: MsgId, kind: Option<ReactionKind>, offset: String, limit: u32)` | `AddedReactions`：总数 + 这一页（谁、哪个回应、是不是我、时间）+ 下一页的 `next_offset`（空 = 没有更多） | `not_found` `invalid_input` | L0 | `getMessageAddedReactions`（`:13802`），只读；`limit` 1–100（调用方先查）。点回应的人经 `updateUser` 先进事件流，名字投影时从 store 填（`tree` 的 `reactor` 节点） |
 
 **待发出的消息**（MVP 必做）：`status()` 列出「待发出」的消息（会话 id、临时消息 id、确认时间）；`pending_cancel(MsgId)` 删除待发消息，**只是尽力撤销**：删除只停本机的网络请求（`MessagesManager.cpp:21330-21345`），请求已发出就照样送达，TDLib 随后才在服务器上撤回；会话变得不可访问时连撤回都没有，消息留在对方那边（`:27848-27851`、`:8463-8473`）。所以它不是「结果未知」时的补救，确认说明里也不许写成「可以撤销」（003 发3、建议第 8 条）。实际效果在测试服务器上实测，列为 M2.1 验收项；启动时先列出上次留下的待发消息并告诉人（开着消息库时 TDLib 下次启动会自动续发，003 发8）。能否抢在续发之前撤销，**未核**。
@@ -149,7 +149,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
    Touch ID / 系统密码（原 `human_auth`）已整个删除（人定 2026-11-16「touch id 这个功能彻底关掉以及完全不用」，#113）
 
-   理由：终端确认（`/dev/tty`）拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，AI 能无人在场完成真实发送；拍板 10 只给「测试服务器 + 收藏夹」免确认，正式服务器的收藏夹不在其内（codex 评审 004 的 P0）。所以默认模式下终端确认**不再开凭据**，正式服务器一律要 AI 拿不到的东西（第七节第 9 条的理由推广到 CLI 与 GUI 全部发送：界面分不清按键的是人还是 AI，这是推断，不是原话）。
+   理由（历史，#113 前；现在正式服务器一律直发，这段只说明为什么从来不做终端确认）：终端确认（`/dev/tty`）拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，AI 能无人在场完成真实发送；拍板 10 只给「测试服务器 + 收藏夹」免确认，正式服务器的收藏夹不在其内（codex 评审 004 的 P0）。所以终端确认**不开凭据**；当时正式服务器改要 AI 拿不到的东西（Touch ID），#113 起整个删除、改为直发（第七节第 9 条的理由推广到 CLI 与 GUI 全部发送：界面分不清按键的是人还是 AI，这是推断，不是原话）。
 
 2. **测试服务器上只许发收藏夹**（架构方案第四节第 1 小节）：测试服务器上发往收藏夹以外的会话，有什么凭据都拒绝（`send_refused(test_dc_saved_only)`）。测试号谁都能登，别人可能往里发消息、拉群。
    **唯一例外（N7 人定）**：与**第二个自己控制的测试号**的私聊——可以互发，也可以把发给它的消息给所有人删（收藏夹里删不了给所有人，`MessagesManager.cpp:8346`）。判定只认：本进程实际的 `use_test_dc` 为真 **且** 目标是与该号的私聊；该号的用户 id 在每次进入 `authorizationStateReady` 时按 `.env.local` 的 `ATG_TEST_PHONE_2`（也须 `99966` 开头）重查，不认会话名字。这个私聊里闸同样自动开 `test_exempt` 凭据（AI 推：例外是为了让自动化测试能跑，可推翻）
@@ -185,7 +185,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
   - `resend` 不进这套：重发对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
 - **测试档案**：仍然**只许发收藏夹**（`test_dc_saved_only`），外加第 4 小节第 2 条的第二个测试号私聊（N7）。测试服务器上的号谁都能登，可能是真人；`CLAUDE.md` 第五节「测试绝不向真实联系人发消息」
 - **启动时提示**：CLI 在标准错误打一行醒目提示，并在标准输出第一行输出 `kind:"status"`，带 `direct_send: true`；GUI 窗口标题前加「直发模式」，启动时播报一次「直发模式已开启，发送不再确认」，状态常驻在标题里
-- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `target`（`message_id` · `replaced` 个数，拿不准为 `null`）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
+- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
 - **建议**（都不增加摩擦）：`plan` 行照常输出（AI 和人事后都能看到发了什么）；退出时汇总「本次直发 N 条」；`status` 显示本次已直发条数；`direct-send.log` 写不进去就拒绝直发（留痕是条件，不是可选）
 - 人已明确知道并接受：AI 能直接发；收到的消息里藏的指令可能诱导 AI 发错。本契约**不**为它加确认、白名单之类的门槛
 
@@ -194,7 +194,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 类型 | 字段 |
 |---|---|
 | `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值。删除时内容换成：要删的消息 id 与各自简短读法 · 给所有人 |
-| `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 会挤掉的我原先点的回应 · 发起方 · 开法 · 摘要值 |
+| `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 可能挤掉的我原先点的回应 · 这份名单拿不拿得准（`replaces_known`）· 发起方 · 开法 · 摘要值 |
 | `AddedReactions` | `total` · 这一页每项（回应种类 · 谁（发送人 id）· 是不是我 · 时间）· `next_offset`（空 = 没有更多） |
 | `PendingMessage` | `chat_id` · 临时 `message_id` · 确认时间 |
 | `Page<T>` | `items` · `next_cursor`（无更多时为空）· `total`（TDLib 给得出时才有，否则空） |
@@ -293,10 +293,10 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 建议：A（不回绕，和列表两端夹紧一致）
 
 **A4. ~~发给别人一律 Touch ID，要不要放宽~~ —— 已被第七节第 11 条（直发模式）吸收，关闭**
-默认模式保持最严（正式服务器一律 Touch ID）；嫌确认烦，用 `--unsafe-direct-send` 启动。原来的放宽选项不再需要。
+（已废止：#113 起正式服务器一律直发，没有 Touch ID；下面是当时的原文）默认模式保持最严（正式服务器一律 Touch ID）；嫌确认烦，用 `--unsafe-direct-send` 启动。原来的放宽选项不再需要。
 
 **D1. 直发模式管不管「改 / 删 / 回应」** —— ✅ 人选 B：全部免确认
-人原话是「直接发」。本文暂定只管「发出」类（发送、重发，以后的发文件、转发）；编辑、删除（双方）、表情回应照默认规则要 Touch ID。
+（已废止：#113 起一律直发，含表情回应；下面是当时的原文）人原话是「直接发」。本文暂定只管「发出」类（发送、重发，以后的发文件、转发）；编辑、删除（双方）、表情回应照默认规则要 Touch ID。
 - A. 只管「发出」（暂定）
 - B. 一切 L2 都免确认
 - 建议：A；直发模式下 AI 改错、删错别人看得到的消息，比多发一条更难挽回
@@ -341,8 +341,9 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：交出前（所有等待之后）再查一次受限与限流；限制标记读不准就拒发
 - 2026-11-13 issue #52 codex 016 第 7 轮后（属技术细节）：确认框估行数时连字符、斜杠、标点等断行机会也算（两种断法取多的）；估算挪到 `atg-core::confirm_box`
 - 2026-11-14 #9 表情回应（手下 msg2，B18-2 人定）：动作表加「表情回应」一组（`react_prepare` · `react` · `added_reactions`），第二批留位去掉 `react`；凭据开法加 `unconfirmed`（人定不确认的动作种类，照样留痕）
-- 2026-11-14 #9 自审第 3 轮后（手下 msg2，属技术细节）：`react_prepare` 加 `reaction_state_unknown`（缓存可能旧时拒）
 - 2026-11-14 #9 自审第 1 轮后（手下 msg2，属技术细节）：加回应会挤掉我原先点的别的回应时默认拒（`reaction_would_replace`），`replace` 放行并在计划里列出；第 5 小节写明 `react` 不进重复提交拦截；第 4 小节理由段补 `unconfirmed` 例外；第 6 小节加 `ReactPlan`、`AddedReactions`；第 4 小节第 7 条清单补三个交出函数
 - 2026-11-14 #9 自审第 2 轮后（手下 msg2）：表情回应的留痕另记 `target`（哪条消息、挤掉了几个）；`replaces` 统一说「可能」
+- 2026-11-14 #9 自审第 3 轮后（手下 msg2，属技术细节）：`react_prepare` 加 `reaction_state_unknown`（缓存可能旧时拒）
 - 2026-11-16 issue #111 / #113（人定）：先改成默认直发，再把 Touch ID / 系统密码确认整个删除——`human_auth`、确认框估算与 `too_long_to_confirm`、`auth_failed`、`not_interactive` 全部去掉；直发为唯一方式
-- 2026-11-16 #9 合 main 后（手下 msg2，人定选 A）：`unconfirmed` 开法随 Touch ID 删除去掉，`react` 与其他 L2 一样开 `direct_mode`（不进重复提交拦截）；拿不准我已点了哪些：只有私聊、加密聊天信本机（TDLib 只给它们推回应变化），普通群、超级群、频道都向服务器取名单；`replace` 放行拿不准的时计划带 `replaces_known:false`，留痕 `target.replaced` 记 `null`
+- 2026-11-16 #9 合 main 后（手下 msg2；第 4 轮 P1 那道待定题人定 2026-11-16 选 A——「普通群也向服务器取名单，拿不准就拒、要 replace」；另两项是 B「拿不准时改走 Touch ID」随 #113 作废、C「不拦只留痕」；大总管转达，题面在 `state/coord.md` 待定清单）：`unconfirmed` 开法随 Touch ID 删除去掉，`react` 与其他 L2 一样开 `direct_mode`（不进重复提交拦截）；拿不准我已点了哪些：只有私聊、加密聊天信本机（TDLib 只给它们推回应变化），普通群、超级群、频道都向服务器取名单；`replace` 放行拿不准的时计划带 `replaces_known:false`，留痕 `reaction.may_replace` 记 `null`（留痕字段由 `target{message_id, replaced}` 改名 `reaction{message_id, may_replace}`：plan 行的 `target` 是会话，不能同名；`replaced` 读着像实际挤掉的数）
+- 2026-11-16 #9 codex 032 第 1 轮后（手下 msg2）：`react` 交出前复核会不会挤掉（#1，P1）、同一条消息串行；第一节第 4 小节理由段与第四节 A4、D1 标明 #113 后已废止（#2）

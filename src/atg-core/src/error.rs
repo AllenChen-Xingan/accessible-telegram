@@ -109,7 +109,7 @@ pub enum InvalidSendWhy {
     ReactionNotChosen,
     /// 加上这个回应可能把我原先点的别的回应挤掉（每条能点几个有上限），没给 `--replace`（#9）
     ReactionWouldReplace,
-    /// 拿不准这条上我已点了哪些回应（没等到同步完，或超级群 / 频道里服务器不给名单），加上可能把它挤掉（#9）
+    /// 拿不准这条上我已点了哪些回应（没等到同步完，或私聊、加密聊天以外的会话里服务器没给全名单），加上可能把它挤掉（#9）
     ReactionStateUnknown,
 }
 

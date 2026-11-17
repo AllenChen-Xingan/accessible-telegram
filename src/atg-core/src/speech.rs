@@ -23,7 +23,7 @@ use crate::tree::*;
 
 mod content;
 mod playback;
-mod reaction;
+pub mod reaction;
 use reaction::reactions;
 mod status;
 use content::dur;

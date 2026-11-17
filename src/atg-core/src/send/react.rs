@@ -37,8 +37,11 @@ pub struct ReactPlan {
     /// 加上时**可能**被挤掉的、我原先点的回应：每条能点几个有上限（非 Telegram Premium 会员 1 个，会员更多，会话也可另设），
     /// 上限多少本地拿不准，所以按最坏情况把我点过的别的全列出来；`--replace` 才放行
     replaces: Vec<ReactionKind>,
-    /// 「我原先点了哪些」拿不拿得准（拿不准还放行只能是 `--replace`；留痕的 `replaced` 记 `null`）
+    /// 「我原先点了哪些」拿不拿得准（拿不准还放行只能是 `--replace`；留痕的 `reaction.may_replace` 记 `null`）
     replaces_known: bool,
+    /// 准备时给的 `replace` / `synced`：交出前按同样的条件再判一次（codex 032 第 1 轮 #1）
+    replace: bool,
+    synced: bool,
     request: Value,
     digest: [u8; 32],
     origin: SendOrigin,
@@ -63,7 +66,7 @@ impl ReactPlan {
     pub fn replaces(&self) -> &[ReactionKind] {
         &self.replaces
     }
-    /// [`Self::replaces`] 是不是全的：假 = 本机与服务器都拿不准我点过哪些
+    /// [`Self::replaces`] 是不是全的：假 = 拿不准我点过哪些（判法见 [`prepare_react`]；私聊、加密聊天只看本机，不问服务器）
     pub fn replaces_known(&self) -> bool {
         self.replaces_known
     }
@@ -96,23 +99,12 @@ impl Gated for ReactPlan {
     fn kind(&self) -> &'static str {
         if self.remove { "unreact" } else { "react" }
     }
-    // 没人当场看着：留痕记下点在哪条上、可能挤掉几个（只记个数，不记 emoji；拿不准记 null）
+    // 没人当场看着：留痕记下点在哪条上、按最坏情况可能挤掉几个（只记个数，不记 emoji；拿不准记 null；去掉回应恒为 0）
     fn log_target(&self) -> Option<(i64, Option<usize>)> {
         Some((
             self.message.message_id,
             self.replaces_known.then_some(self.replaces.len()),
         ))
-    }
-}
-
-/// 给人看的 emoji（[`check_emoji`] 已拒掉除变体选择符、零宽连接符外的一切看不见的字符，所以原样给，不转义——
-/// 转义会把 ❤️ 显示成 `❤\u{FE0F}`，VoiceOver 也照念）。不是 emoji 的种类给空串
-pub fn emoji_of(k: &ReactionKind) -> String {
-    match k {
-        ReactionKind::Emoji { emoji } => emoji.clone(),
-        ReactionKind::CustomEmoji { .. } | ReactionKind::Paid | ReactionKind::Unknown { .. } => {
-            String::new()
-        }
     }
 }
 
@@ -169,7 +161,12 @@ pub struct ReactAsk<'a> {
 /// 人刚在手机上点的可能还没到（自审第 3 轮 P1）。拿得准的条件：调用方等到了补发结束（`synced`），且只有私聊、
 /// 加密聊天（TDLib 照推回应变化；`MessagesManager.cpp` 里普通群、超级群、频道都靠打开时轮询，自审第 4 轮 P1）；
 /// 其余另向服务器取一次「谁点了」（`getMessageAddedReactions`）里我点的那几个，取不到或一页没取全就算拿不准。
-/// `replace` 为真两种都放行，计划里列出已知的（拿不准时 `replaces_known` 假）
+/// 服务器给全了也还要 `synced`：服务器名单只补「我点了」，本机缓存里刚取消、还没同步掉的那个会被误当成仍点着
+/// ——误报只会多拒，但没同步完时整个本机视图都不可信，宁可一并按拿不准处理。
+/// `replace` 为真两种都放行，计划里列出已知的（拿不准时 `replaces_known` 假）。
+///
+/// 去掉（`remove`）只看本机缓存判我点没点过：判错只会误报 `reaction_not_chosen` 或交给 TDLib 一个无效果的去掉，
+/// 不会动到别的回应，所以不另问服务器
 pub async fn prepare_react<B: Backend>(
     b: &B,
     id: MsgId,
@@ -190,23 +187,15 @@ pub async fn prepare_react<B: Backend>(
             why: InvalidSendWhy::ReactionNotChosen,
         });
     }
-    let mut replaces: Vec<ReactionKind> = Vec::new();
-    let mut replaces_known = true;
-    if !ask.remove {
-        let (mine, known) = my_reactions(b, id, &target, &m, ask.synced).await;
-        replaces = mine.into_iter().filter(|k| *k != kind).collect();
-        replaces_known = known;
-        let why = if !replaces.is_empty() {
-            Some(InvalidSendWhy::ReactionWouldReplace)
-        } else if !known {
-            Some(InvalidSendWhy::ReactionStateUnknown)
-        } else {
-            None
-        };
-        if let (Some(why), false) = (why, ask.replace) {
-            return Err(CoreError::InvalidSend { why });
+    let (replaces, replaces_known) = if ask.remove {
+        (Vec::new(), true)
+    } else {
+        let (replaces, known) = would_replace(b, id, &target, &kind, &m, ask.synced).await;
+        if !ask.replace {
+            refuse_replace(&replaces, known)?;
         }
-    }
+        (replaces, known)
+    };
     let request = react_request(id, &kind, ask.remove).ok_or(CoreError::Internal {
         what: "react_request_shape",
     })?;
@@ -218,11 +207,81 @@ pub async fn prepare_react<B: Backend>(
         remove: ask.remove,
         replaces,
         replaces_known,
+        replace: ask.replace,
+        synced: ask.synced,
         request,
         digest,
         origin,
         mode,
     })
+}
+
+/// 加上 `kind` 可能挤掉的我原先点的回应，以及拿不拿得准（见 [`prepare_react`]）
+async fn would_replace<B: Backend>(
+    b: &B,
+    id: MsgId,
+    target: &ChatTarget,
+    kind: &ReactionKind,
+    m: &crate::model::Message,
+    synced: bool,
+) -> (Vec<ReactionKind>, bool) {
+    let (mine, known) = my_reactions(b, id, target, m, synced).await;
+    (mine.into_iter().filter(|k| k != kind).collect(), known)
+}
+
+/// 没给 `replace` 时：可能挤掉、或拿不准，都拒
+fn refuse_replace(replaces: &[ReactionKind], known: bool) -> Result<(), CoreError> {
+    let why = if !replaces.is_empty() {
+        InvalidSendWhy::ReactionWouldReplace
+    } else if !known {
+        InvalidSendWhy::ReactionStateUnknown
+    } else {
+        return Ok(());
+    };
+    Err(CoreError::InvalidSend { why })
+}
+
+/// 交出前复核（codex 032 第 1 轮 #1）：计划可能是早先准备的，期间我又点了别的（先后准备 👍、❤️ 两份计划再依次交出，
+/// 第二份就会挤掉第一份），所以没给 `replace` 的加回应在交出前按同样的条件再判一次
+async fn recheck<B: Backend>(b: &B, plan: &ReactPlan) -> Result<(), CoreError> {
+    if plan.remove || plan.replace {
+        return Ok(());
+    }
+    let m = b.message_get(plan.message).await?;
+    let (replaces, known) =
+        would_replace(b, plan.message, &plan.target, &plan.kind, &m, plan.synced).await;
+    refuse_replace(&replaces, known)
+}
+
+/// 同一条消息同时只许一个回应在「复核 → 交出 → 等应答」之间：两个并发的加回应都先复核、再各自交出，复核就白做了。
+/// 第二个直接按拿不准拒（`reaction_state_unknown`），不排队等。键带上闸的地址：一个后端一道闸，不同后端（含并行的测试）互不相拦
+static IN_FLIGHT: std::sync::Mutex<Vec<(usize, MsgId)>> = std::sync::Mutex::new(Vec::new());
+
+struct InFlight((usize, MsgId));
+
+impl InFlight {
+    fn take(gate: &gate::Gate, id: MsgId) -> Result<Self, CoreError> {
+        let id = (std::ptr::from_ref(gate) as usize, id);
+        let mut v = IN_FLIGHT
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if v.contains(&id) {
+            return Err(CoreError::InvalidSend {
+                why: InvalidSendWhy::ReactionStateUnknown,
+            });
+        }
+        v.push(id);
+        Ok(Self(id))
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        let mut v = IN_FLIGHT
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        v.retain(|x| *x != self.0);
+    }
 }
 
 /// 我在这条上点了哪些回应（去重），以及拿不拿得准（见 [`prepare_react`]）
@@ -256,13 +315,16 @@ async fn my_reactions<B: Backend>(
 /// 向服务器取「谁点了」时一页要多少（TDLib 上限 100）
 const SERVER_PAGE: u32 = 100;
 
-/// `react`（L2）：验凭据 → 留痕「已提交」→ 交给 TDLib → 记结果。成功回凭据的开法
+/// `react`（L2）：验凭据 → 复核会不会挤掉（[`recheck`]，同一条消息串行）→ 留痕「已提交」→ 交给 TDLib → 记结果。
+/// 成功回凭据的开法
 pub async fn react<B: Backend>(
     b: &B,
     plan: &ReactPlan,
     token: ConfirmToken,
 ) -> Result<ConfirmMode, CoreError> {
     let mode = b.gate().verify(token, plan)?;
+    let _one = InFlight::take(b.gate(), plan.message)?;
+    recheck(b, plan).await?;
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::React {

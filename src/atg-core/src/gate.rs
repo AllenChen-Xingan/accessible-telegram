@@ -151,7 +151,7 @@ pub trait Gated: Sealed {
     fn dedup(&self) -> bool;
     /// 留痕里的内容类型（`text` / `resend`……），不是内容本身
     fn kind(&self) -> &'static str;
-    /// 留痕里另记的：动在哪条消息上、挤掉了我原先点的几个回应（`None` = 拿不准）。只有表情回应有；只记 id 与个数
+    /// 留痕里另记的 `reaction`：动在哪条消息上、按最坏情况可能挤掉我原先点的几个回应（`None` = 拿不准）。只有表情回应有；只记 id 与个数
     fn log_target(&self) -> Option<(i64, Option<usize>)> {
         None
     }
