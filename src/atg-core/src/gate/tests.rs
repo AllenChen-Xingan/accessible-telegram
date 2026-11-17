@@ -1,7 +1,6 @@
 //! `gate` 的测试：开凭据、复核、防重复记录、直发留痕、限流冷却。
 
 use super::*;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 struct Plan {
@@ -20,9 +19,6 @@ impl Gated for Plan {
     }
     fn intent(&self) -> [u8; 32] {
         self.intent
-    }
-    fn confirm_text(&self) -> String {
-        "发给：收藏夹".into()
     }
     fn dedup(&self) -> bool {
         true
@@ -45,9 +41,6 @@ impl Gated for Resend {
     fn intent(&self) -> [u8; 32] {
         self.0.intent
     }
-    fn confirm_text(&self) -> String {
-        String::new()
-    }
     fn dedup(&self) -> bool {
         false
     }
@@ -58,7 +51,7 @@ impl Gated for Resend {
 
 #[test]
 fn non_dedup_plans_skip_guard_but_keep_log() {
-    let (g, _, dir) = gate(true, false, Ok(()));
+    let (g, dir) = gate(false);
     let p = Resend(plan(777, 4));
     for _ in 0..2 {
         let t = g.issue(&p, false).unwrap();
@@ -75,11 +68,7 @@ fn non_dedup_plans_skip_guard_but_keep_log() {
 
 #[test]
 fn mode_names_match_serde() {
-    for m in [
-        ConfirmMode::TestExempt,
-        ConfirmMode::HumanAuth,
-        ConfirmMode::DirectMode,
-    ] {
+    for m in [ConfirmMode::TestExempt, ConfirmMode::DirectMode] {
         assert_eq!(
             serde_json::to_value(m).unwrap(),
             serde_json::json!(m.as_str())
@@ -92,16 +81,6 @@ fn plan(target: ChatId, d: u8) -> Plan {
         target,
         digest: [d; 32],
         intent: [d; 32],
-    }
-}
-
-/// 记下被问了几次；按设定放行或拒
-struct CountingAuth(Arc<AtomicU32>, Result<(), SendRefusedReason>);
-
-impl Authenticator for CountingAuth {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        self.1
     }
 }
 
@@ -123,17 +102,12 @@ const ME: Me = Me {
     test_number: true,
 };
 
-fn gate(
-    direct: bool,
-    test_dc: bool,
-    auth: Result<(), SendRefusedReason>,
-) -> (Gate, Arc<AtomicU32>, PathBuf) {
-    let n = Arc::new(AtomicU32::new(0));
-    let g = Gate::new(direct, Holder::Cli, Box::new(CountingAuth(n.clone(), auth)));
-    let dir = temp_dir(&format!("{direct}{test_dc}"));
+fn gate(test_dc: bool) -> (Gate, PathBuf) {
+    let g = Gate::new(Holder::Cli);
+    let dir = temp_dir(&format!("{test_dc}"));
     g.set_server(test_dc, &dir, derive_guard_key(b"k", "t"));
     g.set_me(ME);
-    (g, n, dir)
+    (g, dir)
 }
 
 fn reason(e: CoreError) -> SendRefusedReason {
@@ -144,27 +118,24 @@ fn reason(e: CoreError) -> SendRefusedReason {
 }
 
 #[test]
-fn test_dc_saved_is_exempt_and_never_asks() {
-    let (g, n, _) = gate(false, true, Err(SendRefusedReason::AuthFailed));
+fn test_dc_saved_is_exempt() {
+    let (g, _) = gate(true);
     let p = plan(ME.saved_chat_id, 1);
     let t = g.issue(&p, false).unwrap();
     assert_eq!(t.mode(), ConfirmMode::TestExempt);
     assert_eq!(g.verify(t, &p).unwrap(), ConfirmMode::TestExempt);
-    assert_eq!(n.load(Ordering::SeqCst), 0);
 }
 
 #[test]
-fn test_dc_other_chat_refused_even_in_direct_mode() {
-    for direct in [false, true] {
-        let (g, _, _) = gate(direct, true, Ok(()));
-        let e = g.issue(&plan(777, 1), false).unwrap_err();
-        assert_eq!(reason(e), SendRefusedReason::TestDcSavedOnly);
-    }
+fn test_dc_other_chat_refused() {
+    let (g, _) = gate(true);
+    let e = g.issue(&plan(777, 1), false).unwrap_err();
+    assert_eq!(reason(e), SendRefusedReason::TestDcSavedOnly);
 }
 
 #[test]
 fn test_dc_saved_needs_test_number() {
-    let (g, _, _) = gate(false, true, Ok(()));
+    let (g, _) = gate(true);
     g.set_me(Me {
         test_number: false,
         ..ME
@@ -174,27 +145,20 @@ fn test_dc_saved_needs_test_number() {
 }
 
 #[test]
-fn main_server_saved_still_needs_human_auth() {
-    let (g, n, _) = gate(false, false, Ok(()));
-    let p = plan(ME.saved_chat_id, 1);
-    let t = g.issue(&p, false).unwrap();
-    assert_eq!(t.mode(), ConfirmMode::HumanAuth);
-    assert_eq!(n.load(Ordering::SeqCst), 1);
-    let (g, _, _) = gate(false, false, Err(SendRefusedReason::AuthFailed));
-    assert_eq!(
-        reason(g.issue(&p, false).unwrap_err()),
-        SendRefusedReason::AuthFailed
-    );
-    let (g, _, _) = gate(false, false, Err(SendRefusedReason::NotInteractive));
-    assert_eq!(
-        reason(g.issue(&p, false).unwrap_err()),
-        SendRefusedReason::NotInteractive
-    );
+fn main_server_is_always_direct_without_asking() {
+    // 人定 2026-11-16：Touch ID 确认整个去掉，正式服务器的一切目标（含收藏夹）都直发
+    let (g, _) = gate(false);
+    for target in [ME.saved_chat_id, 777] {
+        let p = plan(target, 1);
+        let t = g.issue(&p, false).unwrap();
+        assert_eq!(t.mode(), ConfirmMode::DirectMode);
+        assert_eq!(g.verify(t, &p).unwrap(), ConfirmMode::DirectMode);
+    }
 }
 
 #[test]
 fn token_binds_target_and_digest_once_within_ttl() {
-    let (g, _, _) = gate(true, false, Ok(()));
+    let (g, _) = gate(false);
     let p = plan(777, 1);
     // 目标不对
     let t = g.issue(&p, false).unwrap();
@@ -234,7 +198,7 @@ fn token_binds_target_and_digest_once_within_ttl() {
 
 #[test]
 fn direct_mode_blocks_duplicate_until_again_or_failure() {
-    let (g, n, dir) = gate(true, false, Ok(()));
+    let (g, dir) = gate(false);
     let p = plan(777, 9);
     let t = g.issue(&p, false).unwrap();
     let mode = g.verify(t, &p).unwrap();
@@ -258,8 +222,6 @@ fn direct_mode_blocks_duplicate_until_again_or_failure() {
     // 别的会话、别的内容不受影响
     assert!(g.issue(&plan(778, 9), false).is_ok());
     assert!(g.issue(&plan(777, 8), false).is_ok());
-    // 直发从不弹框
-    assert_eq!(n.load(Ordering::SeqCst), 0);
     // 记录里没有内容：只有时间、会话、指纹、状态；权限 0600
     let raw = fs::read_to_string(dir.join(GUARD_FILE)).unwrap();
     let v: Vec<GuardEntry> = serde_json::from_str(&raw).unwrap();
@@ -357,7 +319,7 @@ fn fingerprint_depends_on_key_and_hides_content() {
 
 #[test]
 fn account_limited_stops_everything() {
-    let (g, _, _) = gate(true, false, Ok(()));
+    let (g, _) = gate(false);
     g.limits().note(&CoreError::AccountLimited { td: None });
     assert_eq!(
         reason(g.issue(&plan(778, 2), false).unwrap_err()),
@@ -367,11 +329,11 @@ fn account_limited_stops_everything() {
 
 #[test]
 fn account_limited_survives_into_the_next_process_until_removed() {
-    let (g, _, dir) = gate(true, false, Ok(()));
+    let (g, dir) = gate(false);
     g.limits().note(&CoreError::AccountLimited { td: None });
     assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
     // 下一个进程（新的闸）开在同一个档案目录上：照样停
-    let next = Gate::new(true, Holder::Cli, Box::new(NoAuth));
+    let next = Gate::new(Holder::Cli);
     next.set_server(false, &dir, derive_guard_key(b"k", "t"));
     next.set_me(ME);
     assert_eq!(
@@ -380,7 +342,7 @@ fn account_limited_survives_into_the_next_process_until_removed() {
     );
     // 人处理完、删掉标记：再开就恢复
     fs::remove_file(dir.join(ACCOUNT_LIMITED_FILE)).unwrap();
-    let after = Gate::new(true, Holder::Cli, Box::new(NoAuth));
+    let after = Gate::new(Holder::Cli);
     after.set_server(false, &dir, derive_guard_key(b"k", "t"));
     after.set_me(ME);
     assert!(after.issue(&plan(778, 2), false).is_ok());
@@ -388,7 +350,7 @@ fn account_limited_survives_into_the_next_process_until_removed() {
 
 #[test]
 fn direct_sent_counts_handed_over_sends() {
-    let (g, _, _) = gate(true, false, Ok(()));
+    let (g, _) = gate(false);
     let p = plan(777, 3);
     assert_eq!(g.direct_sent(), 0);
     let t = g.issue(&p, false).unwrap();
@@ -424,7 +386,7 @@ fn visible_escapes_bidi_zero_width_and_controls() {
 #[test]
 fn late_limit_from_the_receiver_stops_sending() {
     // codex 016 第 3 轮 #2 / 第 4 轮：收线程经同一份限制记下（等结果超时后才到的失败），下一次开凭据就拒
-    let (g, _, dir) = gate(true, false, Ok(()));
+    let (g, dir) = gate(false);
     assert!(g.issue(&plan(777, 1), false).is_ok());
     g.limits().note(&CoreError::AccountLimited { td: None });
     assert!(dir.join(ACCOUNT_LIMITED_FILE).exists());
@@ -436,7 +398,7 @@ fn late_limit_from_the_receiver_stops_sending() {
 
 #[test]
 fn flood_wait_blocks_the_next_send() {
-    let (g, _, _) = gate(true, false, Ok(()));
+    let (g, _) = gate(false);
     g.limits().note(&CoreError::RateLimited {
         retry_after_s: 60,
         td: None,

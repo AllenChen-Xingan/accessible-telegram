@@ -1,9 +1,9 @@
 //! 假后端：数据全是编的（名字取自 `src/atg-core/fixtures/names.txt`），不碰真实账号与本机档案目录。
 use super::*;
 use atg_core::config::{Profile, ServerKind};
-use atg_core::error::{Holder, SendRefusedReason};
+use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend, FakeSend};
-use atg_core::gate::{Authenticator, Gate};
+use atg_core::gate::Gate;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Default)]
@@ -21,18 +21,11 @@ impl Sink for Cap {
     }
 }
 
-struct Deny;
-impl Authenticator for Deny {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        Err(SendRefusedReason::AuthFailed)
-    }
-}
-
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 
-fn backend(direct: bool, test_phone: bool) -> FakeBackend {
-    let b = FakeBackend::with_gate(Gate::new(direct, Holder::Cli, Box::new(Deny))).unwrap();
+fn backend(test_phone: bool) -> FakeBackend {
+    let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: if test_phone {
             "+9996612345"
@@ -109,7 +102,7 @@ fn last(cap: &Cap) -> Value {
 
 #[test]
 fn direct_duplicate_is_refused_with_when_and_what() {
-    let b = backend(true, false);
+    let b = backend(false);
     let p = profile(ServerKind::Main);
     let mut again = params("777", "好的");
     again.again = true;
@@ -137,7 +130,7 @@ fn direct_duplicate_is_refused_with_when_and_what() {
 
 #[test]
 fn failure_ends_with_error_carrying_failed_id_and_resend_flag() {
-    let b = backend(false, true);
+    let b = backend(true);
     b.script_sends(vec![FakeSend::Fail {
         code: 400,
         message: "MESSAGE_TOO_LONG".into(),
@@ -160,7 +153,7 @@ fn unknown_outcome_exits_10_and_says_do_not_resend() {
         (FakeSend::Silent, "timeout"),
         (FakeSend::Delete, "pending_deleted"),
     ] {
-        let b = backend(false, true);
+        let b = backend(true);
         b.script_sends(vec![step]);
         let p = profile(ServerKind::Test);
         let r = run_many(&b, &p, &[params("saved", "测试")]);
@@ -179,26 +172,24 @@ fn unknown_outcome_exits_10_and_says_do_not_resend() {
 }
 
 #[test]
-fn main_server_without_touch_id_sends_nothing() {
-    let b = backend(false, false);
+fn main_server_sends_without_touch_id() {
+    // 人定 2026-11-16：Touch ID 整个去掉，正式服务器（含收藏夹）一律直发，不弹框、不出提示
+    let b = backend(false);
     let p = profile(ServerKind::Main);
     let r = run_many(&b, &p, &[params("saved", "测试")]);
     let (code, cap) = &r[0];
-    assert_eq!(*code, 8);
-    assert_eq!(last(cap)["data"]["reason"], "auth_failed");
-    // plan 先出，确认方式写明要 Touch ID
+    assert_eq!(*code, 0, "{:?}", cap.out);
     let plan: Value = serde_json::from_str(&cap.out[0]).unwrap();
     assert_eq!(plan["kind"], "plan");
-    assert_eq!(plan["data"]["confirm"], "human_auth");
+    assert_eq!(plan["data"]["confirm"], "direct_mode");
     assert_eq!(plan["data"]["target"]["saved"], true);
-    // 弹框前在标准错误说一句人话（自审第 12 轮 P2）
-    assert!(cap.err.iter().any(|l| l == HUMAN_AUTH_PROMPT_ZH));
-    assert!(b.submitted().is_empty());
+    assert!(cap.err.iter().all(|l| !l.contains("Touch ID")));
+    assert_eq!(b.submitted().len(), 1);
 }
 
 #[test]
 fn dry_run_only_plans() {
-    let b = backend(true, false);
+    let b = backend(false);
     let p = profile(ServerKind::Main);
     let mut sp = params("777", "好的");
     sp.dry_run = true;
@@ -211,7 +202,7 @@ fn dry_run_only_plans() {
 
 #[test]
 fn test_dc_other_chat_refused() {
-    let b = backend(true, true);
+    let b = backend(true);
     let p = profile(ServerKind::Test);
     let r = run_many(&b, &p, &[params("777", "好的")]);
     assert_eq!(r[0].0, 8);
@@ -230,7 +221,7 @@ fn resend_params(ids: Vec<i64>) -> ResendParams {
 /// 先发一条失败的，再按 error 行里的 message_id 重发：plan → 回显 → result（items 逐条）
 #[test]
 fn resend_after_failure_reports_each_item() {
-    let b = backend(false, true);
+    let b = backend(true);
     b.script_sends(vec![FakeSend::Fail {
         code: 400,
         message: "MESSAGE_TOO_LONG".into(),
@@ -282,7 +273,7 @@ fn resend_after_failure_reports_each_item() {
 /// （codex 016 第 2 轮 #3：原来只报第一条失败，文字模式看不到未知项）
 #[test]
 fn mixed_resend_reports_unknown_first() {
-    let b = backend(false, true);
+    let b = backend(true);
     let fail = || FakeSend::Fail {
         code: 400,
         message: "MESSAGE_TOO_LONG".into(),
@@ -333,7 +324,7 @@ fn mixed_resend_reports_unknown_first() {
 /// 重发又失败：结尾是 error，码与字段取那一条，items 照带
 #[test]
 fn resend_that_fails_again_ends_with_error() {
-    let b = backend(false, true);
+    let b = backend(true);
     let fail = || FakeSend::Fail {
         code: 400,
         message: "MESSAGE_TOO_LONG".into(),
@@ -379,7 +370,7 @@ fn resend_that_fails_again_ends_with_error() {
 
 #[test]
 fn resend_of_message_that_did_not_fail_is_invalid() {
-    let b = backend(false, true);
+    let b = backend(true);
     let p = profile(ServerKind::Test);
     let (code, cap) = crate::history::with_backend(&b, &p, Instant::now(), |b, st, fe| {
         let mut first = Cap::default();

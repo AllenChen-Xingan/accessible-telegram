@@ -7,7 +7,7 @@
 //! - 标准输出：起好后一行 `status`（带 `listening:true`），结束时一行 `result`（`reason:"interrupted"`，退出码 0，
 //!   同 `watch` 被打断算正常结束）；后端故障就以 `disconnected` 结尾，好让人重开
 //! - 标准错误：每处理一个请求记一句「命令名 · 退出码 · 耗时」，不记参数（参数以后会带内容）
-//! - 能执行的见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类的凭据由本进程的闸开（本进程以 `--unsafe-direct-send` 启动才直发）；流式的 `watch` 挂进订阅者表（`join_watch`）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
+//! - 能执行的见 `specs/contracts/config-privacy.md` 第一节第 2 小节「现在能转的」（正本）。发送类的凭据由本进程的闸开；流式的 `watch` 挂进订阅者表（`join_watch`）。登录、登出与其余授权步骤不经接口，回 `usage`；不认的命令回 `not_implemented`；
 //!   版本号不对、请求形状不对回 `internal{ipc_version_mismatch | ipc_bad_request}`（这时还不知道要哪种格式，一律 JSON）
 //! - 只连上就断的（发起方探一下执行方在不在）不记
 //! - 请求一个处理完才接下一个；处理中途后来者在队列里等。空闲时每 [`POLL`] 把事件流喂进常驻的 Store，
@@ -76,15 +76,10 @@ pub fn run(g: &Global, format: Format, started: Instant) -> ExitCode {
         {
             return ExitCode::from(crate::out::busy_to(&mut Stdio, format, &e, m));
         }
-        let b = match crate::session::td_backend_with(g.unsafe_direct_send) {
+        let b = match crate::session::td_backend() {
             Ok(b) => b,
             Err(f) => return ExitCode::from(fail_with_to(&mut Stdio, format, &f)),
         };
-        if g.unsafe_direct_send {
-            Stdio.err(
-                "⚠️ atg-cli serve：直发模式已开启——转来的发送不再确认，到本进程退出为止（--unsafe-direct-send）",
-            );
-        }
         crate::signals::install();
         ExitCode::from(serve(
             &b,
@@ -226,7 +221,7 @@ fn status_line<B: Backend>(b: &B, format: Format, own: &mut dyn Sink) {
                     "net": r.lines.net,
                     "user_status": r.status,
                     "pending_sends": [],
-                    "direct_send": b.gate().direct(),
+                    "direct_send": true,
                     "direct_sent": b.gate().direct_sent(),
                     "listening": true,
                 }),
@@ -474,43 +469,32 @@ fn execute<B: Backend>(
         "send" => {
             let code = match serde_json::from_value::<crate::send::SendParams>(fa.params) {
                 Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
-                Ok(p) => {
-                    // 执行方以直发启动：发起方要和直跑一样先看到醒目提示与 status 行
-                    if ctx.b.gate().direct() {
-                        crate::send::direct_banner(ctx.b, sink, format);
-                    }
-                    crate::send::execute_send(
-                        ctx.b,
-                        ctx.stream,
-                        ctx.feed,
-                        &p,
-                        sink,
-                        format,
-                        started,
-                        atg_core::send::RESULT_TIMEOUT,
-                    )
-                }
+                Ok(p) => crate::send::execute_send(
+                    ctx.b,
+                    ctx.stream,
+                    ctx.feed,
+                    &p,
+                    sink,
+                    format,
+                    started,
+                    atg_core::send::RESULT_TIMEOUT,
+                ),
             };
             ("send", code)
         }
         "resend" => {
             let code = match serde_json::from_value::<crate::send::ResendParams>(fa.params) {
                 Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),
-                Ok(p) => {
-                    if ctx.b.gate().direct() {
-                        crate::send::direct_banner(ctx.b, sink, format);
-                    }
-                    crate::send::execute_resend(
-                        ctx.b,
-                        ctx.stream,
-                        ctx.feed,
-                        &p,
-                        sink,
-                        format,
-                        started,
-                        atg_core::send::RESULT_TIMEOUT,
-                    )
-                }
+                Ok(p) => crate::send::execute_resend(
+                    ctx.b,
+                    ctx.stream,
+                    ctx.feed,
+                    &p,
+                    sink,
+                    format,
+                    started,
+                    atg_core::send::RESULT_TIMEOUT,
+                ),
             };
             ("resend", code)
         }
