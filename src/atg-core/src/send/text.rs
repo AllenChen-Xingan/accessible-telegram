@@ -272,9 +272,21 @@ pub async fn send_text<B: Backend>(
     plan: &TextPlan,
     token: ConfirmToken,
 ) -> Result<Submitted, CoreError> {
+    hand_over(b, plan, token, &AtomicBool::new(false)).await
+}
+
+/// [`send_text`] 本体；`handed` 在真交出之前置真（[`submit_within`] 到点时据此分「没交出」与「结果未知」，#80）
+async fn hand_over<B: Backend>(
+    b: &B,
+    plan: &TextPlan,
+    token: ConfirmToken,
+    handed: &AtomicBool,
+) -> Result<Submitted, CoreError> {
     let mode = b.gate().verify(token, plan)?;
     // 发6②：准备到交出之间最长 60 秒、还等了人确认，被回复那条可能已被删、被挪话题
     preview_check(b, plan).await?;
+    // 置在交出前的复核之后：这之后到交给 TDLib 之间没有 await，到点只会发生在这之前或交出之后
+    handed.store(true, Ordering::SeqCst);
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::Message {
@@ -301,7 +313,15 @@ pub fn send_and_wait<B: Backend>(
     on_event: &mut dyn FnMut(Envelope),
 ) -> Result<(ConfirmMode, MsgId, Waited), CoreError> {
     let started = std::time::Instant::now();
-    let sub = submit_within(b, plan, plan.mode, timeout, send_text(b, plan, token))?;
+    let handed = AtomicBool::new(false);
+    let sub = submit_within(
+        b,
+        plan,
+        plan.mode,
+        timeout,
+        &handed,
+        hand_over(b, plan, token, &handed),
+    )?;
     let (mode, temp) = (sub.mode, sub.temp);
     let w = wait(
         stream,

@@ -132,3 +132,105 @@ fn resend_rechecks_before_submitting() {
     block_on(resend(&r.b, &plan, t)).unwrap();
     assert_eq!(r.b.submitted().len(), 1);
 }
+
+/// 造一条可以重发的失败消息，返回它的 id
+fn failed_one(r: &mut Rig) -> i64 {
+    r.b.script_sends(vec![FakeSend::Fail {
+        code: 400,
+        message: "X".into(),
+        can_retry: true,
+    }]);
+    let Waited::Failed { message, .. } = send_once(r, FRIEND, &draft("好的", None), false).unwrap()
+    else {
+        panic!("应当失败");
+    };
+    message.id.message_id
+}
+
+/// 重发卡在交出前的复核里就到点（#80）：没交出 → `network`，不算直发
+#[test]
+fn resend_timing_out_before_handing_over_is_network() {
+    let mut r = rig("rs-pre-hang", false);
+    let id = failed_one(&mut r);
+    let plan = block_on(prepare_resend(&r.b, FRIEND, &[id], SendOrigin::Cli)).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    let before = r.b.gate().direct_sent();
+    r.b.fail_next(
+        "failed_info",
+        CoreError::Internal {
+            what: FakeBackend::HANG,
+        },
+    );
+    let e = resend_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .err()
+    .unwrap();
+    assert_eq!(e.code(), "network");
+    assert_eq!(r.b.gate().direct_sent(), before);
+}
+
+/// 重发交出之后才到点：照旧结果未知
+#[test]
+fn resend_timing_out_after_handing_over_stays_unknown() {
+    let mut r = rig("rs-post-hang", false);
+    let id = failed_one(&mut r);
+    let plan = block_on(prepare_resend(&r.b, FRIEND, &[id], SendOrigin::Cli)).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    r.b.fail_next(
+        "submit",
+        CoreError::Internal {
+            what: FakeBackend::HANG,
+        },
+    );
+    let e = resend_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .err()
+    .unwrap();
+    assert!(matches!(
+        e,
+        CoreError::SendOutcomeUnknown {
+            why: UnknownWhy::Timeout,
+            ..
+        }
+    ));
+}
+
+/// 重发的留痕按条记（#83）：每条重发一行「已提交」、一行结果，都带它的旧 id
+#[test]
+fn resend_log_has_one_line_per_message_with_old_id() {
+    let mut r = rig("rs-log", false);
+    let id = failed_one(&mut r);
+    let plan = block_on(prepare_resend(&r.b, FRIEND, &[id], SendOrigin::Cli)).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    resend_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_secs(2),
+        &mut |_| {},
+    )
+    .unwrap();
+    let log = std::fs::read_to_string(r.dir.join(crate::gate::DIRECT_LOG_FILE)).unwrap();
+    let mine: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("\"kind\":\"resend\""))
+        .collect();
+    assert_eq!(mine.len(), 2, "{log}");
+    let old = format!("\"old_id\":{id}");
+    assert!(mine.iter().all(|l| l.contains(&old)), "{log}");
+    assert!(mine[0].contains("\"result\":\"submitted\""));
+    assert!(mine[1].contains("\"result\":\"succeeded\""));
+}

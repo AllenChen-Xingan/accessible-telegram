@@ -6,7 +6,12 @@
 - 大总管定：#83 等 msg2 #9 合后加 old_id；#80 交出前到点报 network 属技术细节；#109 交 msg1 在 #57 修；发送闸组等 #9 #57 合 main 后另开分支，现在只写测试计划与契约改法
 - 2026-11-16 名额复跑 470 过，大总管提交 1ac69f4。codex 045 第 2 轮（改名 045-batch4-main，范围 origin/main...HEAD）P1×2 属实已改（sigaction 两信号都挡；锁里 TCSANOW + tcflush），P2 = #116 契约写例外。未编译
 - 2026-11-16 复跑 470 过，大总管提交 72042e2。codex 045 第 3、4 轮通过，达停止线。PR 草稿 MAIN/_tmp/20261116-b20/pr-fix-97-98-100.md。第四批交大总管开 PR
-- 下一步：等 #9 #57 合 main → 大总管开新分支 → 发送闸组 #77 #80 #83（codex 048）
+- 2026-11-16 大总管合 origin/main（#117 #110）、开 PR #126；我解 config-privacy.md 变更记录冲突（两行都留）；CI clippy 挂在 tests/config.rs 旧助手 temp_root → 改用 testkit::temp_dir（config.rs 单测同改），复跑 473 过，大总管已提交推送，等 CI
+- **第四批已收尾**（PR #126 待人合并）
+- 现在：待命。下一步：等 #9 #57 合 main → 大总管从新 main 开分支 → 发送闸组 #77 #80 #83（codex 048；`token: ConfirmToken` 隐私扫描误报按 common.md 第 15 条报大总管核准再 --force-secrets）
+- 2026-11-17 换工作副本 atg-wt/fix-gate（分支 fix/77-80-83，从 main 266f5f3）。#109 已由 msg1 在 #134 修掉。按新 main 复核清单已报大总管：#77 不改 verify/before_submit 签名（again 按 digest 记在闸里、每次 verify 覆盖）；#80 照 react_within 口径给 submit_within 加 handed；#83 Gated 加默认 log_items、DirectLogLine 加 old_id（放 reaction 之后，与 msg2 的 from_chat_id 相邻）、加 after_item。等大总管放行
+- 2026-11-17 放行开工。#77 #80 #83 代码 + 测试 + 契约写完（16 文件），未编译；已申请名额。注意：测试与修法同时写，没在修前实测红
+- 下一步：名额 → fmt/clippy/test → atg-review → codex 048 → PR
 - 要人定的事：无
 
 # fix 现状页（批次 b18）

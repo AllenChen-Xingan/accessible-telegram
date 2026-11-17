@@ -18,6 +18,9 @@ struct Facts {
 pub struct Gate {
     proc: Holder,
     used: Mutex<HashSet<u64>>,
+    /// 验过的凭据带没带 `--again`，按计划摘要记，交出前查重时取（#77）。每次验凭据都覆盖：
+    /// 同一份计划后来又开了一张不带的，不沿用前一张的放行
+    again: Mutex<HashMap<[u8; 32], bool>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
     /// 账号受限、限流冷却（与收线程共用一份，见 [`crate::send_limits`]）
@@ -30,6 +33,7 @@ impl Gate {
         Self {
             proc,
             used: Mutex::new(HashSet::new()),
+            again: Mutex::new(HashMap::new()),
             facts: Mutex::new(Facts::default()),
             direct_sent: std::sync::atomic::AtomicU64::new(0),
             limits: crate::send_limits::SendLimits::new(),
@@ -88,7 +92,7 @@ impl Gate {
         Ok(ConfirmMode::DirectMode)
     }
 
-    /// 开凭据。直发先查防重复（`again` 放行这一次）
+    /// 开凭据。直发先查防重复（`again` 放行这一次）：这里只为早拒、人少等；以交出前 [`Self::before_submit`] 那次为准（#77）
     pub fn issue(&self, plan: &dyn Gated, again: bool) -> Result<ConfirmToken, CoreError> {
         let mode = self.mode_for(plan.target())?;
         match mode {
@@ -108,6 +112,7 @@ impl Gate {
             nonce: u64::from_le_bytes(nonce),
             issued: Instant::now(),
             mode,
+            again,
         })
     }
 
@@ -139,6 +144,15 @@ impl Gate {
         if !lock(&self.used).insert(token.nonce) {
             return Err(refused(SendRefusedReason::TokenReused));
         }
+        {
+            let mut again = lock(&self.again);
+            // 验过却没走到交出（复核被拒、超时……）的会留下；攒多了整个清掉。清掉的只会让那次交出按不带
+            // `--again` 查重：宁可多拦
+            if again.len() >= AGAIN_KEEP {
+                again.clear();
+            }
+            again.insert(token.digest, token.again);
+        }
         Ok(token.mode)
     }
 
@@ -160,34 +174,37 @@ impl Gate {
         let key = f.guard_key.as_ref().ok_or(CoreError::Internal {
             what: "gate_not_started",
         })?;
-        // 留痕是条件：交出前先真写一行「已提交」（只打开文件不够：磁盘满时照样打得开，会先发后写不进去，
-        // codex 016 第 1 轮 #5）。等到结果后再写一行结果
         let now = unix_now();
-        let line = DirectLogLine {
-            at: now,
-            proc: self.proc,
-            pid: std::process::id(),
-            chat_id: plan.target(),
-            temp_id: 0,
-            final_id: None,
-            kind: plan.kind(),
-            result: Outcome::Submitted,
-            error: None,
-            reaction: plan.log_target(),
-        };
-        append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
-            CoreError::Internal {
-                what: "direct_log_unwritable",
+        // 查重与登记一步做完（#77）：凭据开出到交出之间别的同内容发送可能已经交出了。攥着 facts 锁做，
+        // 进程内不交错；跨进程靠档案锁（同一档案同时只有一个进程）。命中就拒，什么都不写
+        let guard = plan.dedup().then(|| {
+            (
+                GuardStore::new(dir.join(GUARD_FILE)),
+                fingerprint(key, plan.target(), &plan.intent()),
+            )
+        });
+        if let Some((store, fp)) = &guard {
+            let again = lock(&self.again).remove(&plan.digest()).unwrap_or(false);
+            let claimed =
+                store
+                    .claim(now, plan.target(), fp, again)
+                    .map_err(|_| CoreError::Internal {
+                        what: "send_guard_unwritable",
+                    })?;
+            if let Err(e) = claimed {
+                return Err(duplicate(now, &e));
             }
-        })?;
-        if plan.dedup() {
-            let store = GuardStore::new(dir.join(GUARD_FILE));
-            let fp = fingerprint(key, plan.target(), &plan.intent());
-            store
-                .record(unix_now(), plan.target(), &fp, Outcome::Submitted)
-                .map_err(|_| CoreError::Internal {
-                    what: "send_guard_unwritable",
-                })?;
+        }
+        // 留痕是条件：交出前先真写一行「已提交」（只打开文件不够：磁盘满时照样打得开，会先发后写不进去，
+        // codex 016 第 1 轮 #5）。等到结果后再写一行结果。写不进去就拒，刚登记的「已提交」改成失败、不拦重跑
+        let lines = self.log_lines(plan, now, 0, None, Outcome::Submitted, None);
+        if append_direct_log(&dir.join(DIRECT_LOG_FILE), &lines, now).is_err() {
+            if let Some((store, fp)) = &guard {
+                let _ = store.settle(now, plan.target(), fp, Outcome::Failed);
+            }
+            return Err(CoreError::Internal {
+                what: "direct_log_unwritable",
+            });
         }
         // 前置条件都过了，接下来就交给 TDLib：算一条直发
         self.direct_sent
@@ -222,21 +239,94 @@ impl Gate {
                 logline::warn("send_guard_update_failed", &[]);
             }
         }
-        let line = DirectLogLine {
-            at: now,
+        // 批量的计划没拿到临时 id（请求整个失败 / 到点）：每条各记一行（#83）
+        let lines = self.log_lines(
+            plan,
+            now,
+            temp_id,
+            final_id,
+            outcome,
+            error.map(CoreError::code),
+        );
+        if append_direct_log(&dir.join(DIRECT_LOG_FILE), &lines, now).is_err() {
+            logline::warn("direct_log_write_failed", &[]);
+        }
+    }
+
+    /// 批量计划里一条的结果（#83）：`old_id` 是它重发前的 id；TDLib 说不能重发的那条记 `failed`、
+    /// `error:"not_resendable"`。只写留痕（批量重发不进防重复）
+    #[allow(clippy::too_many_arguments)]
+    pub fn after_item(
+        &self,
+        mode: ConfirmMode,
+        plan: &dyn Gated,
+        old_id: i64,
+        temp_id: i64,
+        final_id: Option<i64>,
+        outcome: Outcome,
+        error: Option<&'static str>,
+    ) {
+        if mode != ConfirmMode::DirectMode {
+            return;
+        }
+        let f = lock(&self.facts);
+        let Some(dir) = f.dir.as_ref() else {
+            return;
+        };
+        let now = unix_now();
+        let mut line = self.log_line(plan, now, temp_id, final_id, outcome, error);
+        line.old_id = Some(old_id);
+        if append_direct_log(&dir.join(DIRECT_LOG_FILE), &[line], now).is_err() {
+            logline::warn("direct_log_write_failed", &[]);
+        }
+    }
+
+    fn log_line(
+        &self,
+        plan: &dyn Gated,
+        at: i64,
+        temp_id: i64,
+        final_id: Option<i64>,
+        result: Outcome,
+        error: Option<&'static str>,
+    ) -> DirectLogLine {
+        DirectLogLine {
+            at,
             proc: self.proc,
             pid: std::process::id(),
             chat_id: plan.target(),
             temp_id,
             final_id,
             kind: plan.kind(),
-            result: outcome,
-            error: error.map(CoreError::code),
+            result,
+            error,
             reaction: plan.log_target(),
-        };
-        if append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).is_err() {
-            logline::warn("direct_log_write_failed", &[]);
+            old_id: None,
         }
+    }
+
+    /// 一次记账要写的几行：单条计划一行；批量计划（[`Gated::log_items`] 非空）且没有临时 id 时每条一行
+    fn log_lines(
+        &self,
+        plan: &dyn Gated,
+        at: i64,
+        temp_id: i64,
+        final_id: Option<i64>,
+        result: Outcome,
+        error: Option<&'static str>,
+    ) -> Vec<DirectLogLine> {
+        let items = plan.log_items();
+        if items.is_empty() || temp_id != 0 {
+            return vec![self.log_line(plan, at, temp_id, final_id, result, error)];
+        }
+        items
+            .into_iter()
+            .map(|old| {
+                let mut l = self.log_line(plan, at, temp_id, final_id, result, error);
+                l.old_id = Some(old);
+                l
+            })
+            .collect()
     }
 
     fn check_duplicate(&self, plan: &dyn Gated) -> Result<(), CoreError> {
@@ -257,17 +347,25 @@ impl Gate {
             })?;
         match hit {
             None => Ok(()),
-            Some(e) => Err(CoreError::SendRefused {
-                reason: SendRefusedReason::DuplicateRecent,
-                last: Some(crate::error::LastSend {
-                    at: e.at,
-                    ago_s: now.saturating_sub(e.at).max(0),
-                    outcome: e.state,
-                }),
-            }),
+            Some(e) => Err(duplicate(now, &e)),
         }
     }
 }
+
+/// 防重复命中：说明写清几秒前、什么结果
+fn duplicate(now: i64, e: &GuardEntry) -> CoreError {
+    CoreError::SendRefused {
+        reason: SendRefusedReason::DuplicateRecent,
+        last: Some(crate::error::LastSend {
+            at: e.at,
+            ago_s: now.saturating_sub(e.at).max(0),
+            outcome: e.state,
+        }),
+    }
+}
+
+/// [`Gate`] 的 `again` 表最多留几条（见 `verify`）
+const AGAIN_KEEP: usize = 256;
 
 fn refused(reason: SendRefusedReason) -> CoreError {
     CoreError::SendRefused { reason, last: None }
@@ -299,6 +397,9 @@ struct DirectLogLine {
         serialize_with = "reaction_fields"
     )]
     reaction: Option<(i64, Option<usize>)>,
+    /// 批量重发里这一行说的是哪条（重发前的旧 id；[`Gated::log_items`]，#83）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    old_id: Option<i64>,
 }
 
 fn reaction_fields<S: serde::Serializer>(
@@ -314,9 +415,13 @@ fn reaction_fields<S: serde::Serializer>(
     m.end()
 }
 
-/// 追加一行；文件头一行已超过 30 天时先把过期的整理掉（整体重写）
-fn append_direct_log(path: &Path, line: &DirectLogLine, now: i64) -> std::io::Result<()> {
-    let text = serde_json::to_string(line).unwrap_or_default();
+/// 追加几行（一次写进去）；文件头一行已超过 30 天时先把过期的整理掉（整体重写）
+fn append_direct_log(path: &Path, lines: &[DirectLogLine], now: i64) -> std::io::Result<()> {
+    let text = lines
+        .iter()
+        .map(|l| serde_json::to_string(l).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
     if let Ok(old) = fs::read_to_string(path) {
         let stale = |l: &str| {
             serde_json::from_str::<serde_json::Value>(l)
