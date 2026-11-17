@@ -240,3 +240,16 @@
 - **进度（2026-11-17，工作副本 `atg-wt/arch-reducer`，分支 `refactor/r7-tests-reducer`，从 2309789 开）**：已挪完，没提交。`tests/reducer.rs` 删除，换成 `tests/reducer/{main 58, chats 165, tombstones 207, fields 340, history 327, send 488, restricted 207, cache 149, projection 173}`。逐行比对：去掉的只有 12 行旧分节线；多出来的只有头注释、`use super::*`、`mod`、`#[path]`、一条新分节线、空行。按源码静态比对，测试名 77 = 77、一致；编译后还要用 `--list` 再比一次。顺带改了两处注释：`tests/common/mod.rs`（原来写「只有 reducer.rs 用」，实际 pending、transcripts 也在用，一并写准）、`tests/transcripts.rs:311` 改成新路径。`--tighten` 7 → 6（这个分支上没有 #144，后合的那个基线文件有小冲突）。010 表格已回写。下一步：等名额编译 → 自审 → codex 052
 - 自审 1 轮：P0/P1 零；P2 已改：3 个只有一个主题用的助手挪进各自的主题文件（`pending` → `send.rs`；`restricted_target_and_reply`、`quote_leaks` → `restricted.rs`），`main.rs` 只留 `cache`、`restricted` 共用的 `small`；头注释里「第几轮」的来源标注标得不全，去掉了。P3：`StoreConfig` 的导入并进 store 那一行；010 写清 2222 和 2102 两个行数的来历。复跑全套检查：test 618 过 0 败，`--list` 77 = 77，去掉模块前缀后一致。下一步：codex 052
 - ✅ codex 052 两轮零发现，收敛，记录在 `docs/reviews/052_r7-tests-reducer-codex.md`，索引已加。等大总管提交、开 PR
+
+## R7 第五刀：拆 cli `history.rs`（2026-11-17，只出计划；codex 编号 053；分支等计划定了由大总管从 main 开）
+
+- **实查**（origin/main）：`src/atg-cli/src/history.rs` 706 行，测试已经在 `history/tests.rs`。分节：类型与 `query`（1–135）· 起后端 → 取 → 关（`run`、`run_links`、`with_backend`、`resolve`、`load_chat`，136–223）· history 取数（`collect`、`Fetcher`、`older`、`newer`，224–473）· 读法与渲染（`speech_ctx`、`render`、`UNREAD_BELOW`，474–599）· links（601–703）
+- **拆法**（只挪不改）：
+  1. links 那一节（`LinksQuery`、`LinkList`、`links_query`、`collect_links`、`HIDDEN_LINK`、`render_links`，约 103 行）→ 新文件 `history/links.rs`
+  2. 读法与渲染（`speech_ctx`、`render`、`UNREAD_BELOW`，约 126 行）→ 新文件 `history/render.rs`
+  3. 根留类型、`query`、起后端那几个函数、取数（约 485 行）
+  - 只挪 links 一节不够：706 − 103 ≈ 603，还在线上，所以渲染也挪
+- **为了编得过、路径不变**：根上 `mod links; mod render;`，加 `pub use links::{LinkList, LinksQuery, collect_links, links_query, render_links}; pub use render::{UNREAD_BELOW, render, speech_ctx};`。外面的 `history::speech_ctx`（17 处）、`history::render`、`history::links_query` 这些调用一行不改；测试经 `use super::*` 照样拿得到。`render` 这个名字既是模块也是函数，一个在类型命名空间、一个在值命名空间，不冲突
+  - 子模块开头 `use super::*;`，再补各自用到的 `use`；根上只给挪走部分用的导入（如 `links_marked`）跟着挪走，编译器会报哪些没用了
+  - `doc_id`（根上私有）被 `render` 用，子模块看得到父模块的私有项，不用改可见性
+- **验收**：fmt、两种 clippy、`test --workspace`（`history/tests.rs` 和快照兜底，快照一条不能变）；按行做多重集比对；`--tighten`；自审 + codex 053（diff 类）
