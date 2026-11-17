@@ -4,7 +4,8 @@
 - 2026-11-16 大总管提交 WIP 8ecdea6、merge origin/main；我解了 5 处冲突（README/errors/baseline 取 main；cli.md 正文取本分支含 #98 的一句、变更记录两边都留；本页取本分支），未 commit。codex：第四批 045，发送闸组 048
 - 2026-11-16 复跑全过（468 过）；codex 045 第 1 轮 P1×3 属实已改（secret 容量区按 MaybeUninit 清、signals 加 TTY_LOCK + 线程屏蔽、config on_missing 再读标记），P2 #4 → issue #116；记录 docs/reviews/045_*（第 1 轮）。未编译
 - 大总管定：#83 等 msg2 #9 合后加 old_id；#80 交出前到点报 network 属技术细节；#109 交 msg1 在 #57 修；发送闸组等 #9 #57 合 main 后另开分支，现在只写测试计划与契约改法
-- 下一步：等名额（排第四）→ fmt/clippy/test → codex 045 第 2 轮 → PR
+- 2026-11-16 名额复跑 470 过，大总管提交 1ac69f4。codex 045 第 2 轮（改名 045-batch4-main，范围 origin/main...HEAD）P1×2 属实已改（sigaction 两信号都挡；锁里 TCSANOW + tcflush），P2 = #116 契约写例外。未编译
+- 下一步：等名额 → fmt/clippy/test → 提交 → codex 第 3 轮（新名第 2 轮）→ 连续两轮无 P0/P1 → PR
 - 要人定的事：无
 
 # fix 现状页（批次 b18）

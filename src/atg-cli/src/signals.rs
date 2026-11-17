@@ -6,7 +6,8 @@
 //! 信号可能落在任何一个线程（TDLib、收线程……）。「登记 + 切」与「放回 + 撤销」各是一段，攥着 [`TTY_LOCK`] 做、
 //! 且做的时候本线程挡住 SIGINT / SIGTERM；第二次信号的处理函数也先抢这把锁再放回终端。这样别的线程上的处理函数
 //! 要么等这一段做完（切好了再放回、不会被随后的「切」盖掉），要么先做完（这一段抢不到锁，进程随即退出）；
-//! 本线程上的处理函数不会撞上自己攥着的锁（那时信号挡着）。处理函数抢到锁就不再放：马上 `_exit`（codex 045 第 1 轮 #2）
+//! 本线程上的处理函数不会撞上自己攥着的锁（那时信号挡着）；处理函数之间也互不嵌套（[`install`]）。锁里只做不会阻塞的事
+//! （`TCSANOW`，不等输出排空），否则终端输出被暂停时锁一直放不开，第二次信号也退不出去（codex 045 第 2 轮 #2）。处理函数抢到锁就不再放：马上 `_exit`（codex 045 第 1 轮 #2）
 
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
@@ -65,7 +66,7 @@ extern "C" fn on_signal(_: libc::c_int) {
         spin_lock();
         let fd = TTY_FD.load(Ordering::SeqCst);
         if fd >= 0 {
-            // 用 TCSANOW 立刻生效：马上就 `_exit` 了，不等输出排空（正常恢复用 TCSAFLUSH，丢掉没读的输入）
+            // 用 TCSANOW 立刻生效：马上就 `_exit` 了，不等输出排空（正常的切换与恢复也用 TCSANOW、另用 `tcflush` 丢输入，见 `tty.rs`）
             // SAFETY: fd 已发布，SAVED 在发布之前写好、之后不再写
             unsafe { libc::tcsetattr(fd, libc::TCSANOW, (*SAVED.0.get()).as_ptr()) };
         }
@@ -74,14 +75,21 @@ extern "C" fn on_signal(_: libc::c_int) {
     }
 }
 
-/// 用 `libc::signal` 装：macOS 上按 BSD 语义，自带 `SA_RESTART`——阻塞中的 `read` 等被信号打断后由系统重启、
-/// 接着等，所以读终端那边靠 `select` 切片看 [`STOP`]（`tty.rs`），不靠 `read` 被打断
+/// 用 `sigaction` 装，带 `SA_RESTART`（与 macOS 上 `signal` 的 BSD 语义相同）：阻塞中的 `read` 等被信号打断后由系统
+/// 重启、接着等，所以读终端那边靠 `select` 切片看 [`STOP`]（`tty.rs`），不靠 `read` 被打断。
+/// 处理期间 SIGINT、SIGTERM **两个都挡**：第二次信号的处理函数攥着 [`TTY_LOCK`] 时，另一个信号若落到同一线程、
+/// 嵌套进来，会自旋等外层永远不放的锁——死锁、退不出去（codex 045 第 2 轮 #1）
 pub fn install() {
-    let h = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
-    // SAFETY: 处理函数只用异步信号安全的操作
+    // SAFETY: sigaction 结构体全零后填好处理函数、屏蔽集与标志；处理函数只用异步信号安全的操作
     unsafe {
-        libc::signal(libc::SIGINT, h);
-        libc::signal(libc::SIGTERM, h);
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        sa.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut sa.sa_mask);
+        libc::sigaddset(&mut sa.sa_mask, libc::SIGINT);
+        libc::sigaddset(&mut sa.sa_mask, libc::SIGTERM);
+        libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
     }
 }
 

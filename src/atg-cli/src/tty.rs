@@ -52,9 +52,12 @@ impl Drop for Restore {
     fn drop(&mut self) {
         // 放回与撤销登记一段做完（`signals` 模块头）
         crate::signals::disarm_tty(|| {
+            // TCSANOW + 丢掉没读的输入：不用 TCSAFLUSH，它要等输出排空，终端输出被暂停时会一直卡在锁里
+            // （`signals` 模块头，codex 045 第 2 轮 #2）
             // SAFETY: fd 是本进程打开着的 /dev/tty；orig 是 tcgetattr 填好的
             unsafe {
-                libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.orig);
+                libc::tcsetattr(self.fd, libc::TCSANOW, &self.orig);
+                libc::tcflush(self.fd, libc::TCIFLUSH);
             }
         });
     }
@@ -107,9 +110,13 @@ impl Tty {
         raw.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
         raw.c_cc[libc::VMIN] = 1;
         raw.c_cc[libc::VTIME] = 0;
+        // TCSANOW 再丢输入（切换时丢掉已敲进来的，同 TCSAFLUSH 的效果、但不等输出排空，见 `Restore`）
         // SAFETY: 同上
         let switched = crate::signals::arm_tty(fd, &orig, || unsafe {
-            libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) == 0
+            libc::tcsetattr(fd, libc::TCSANOW, &raw) == 0 && {
+                libc::tcflush(fd, libc::TCIFLUSH);
+                true
+            }
         });
         if !switched {
             return (Vec::new(), Err(ReadEnd::Cancelled));
@@ -139,7 +146,7 @@ impl Tty {
 
 /// 一片片 `select` 着读。约定：**交出 `ErrorKind::Interrupted` 只表示停止标志立起来了**（`read_raw_line` 认作
 /// Ctrl+C）；真的 `EINTR`（被信号打断）在这里吞掉、当这一片结束，回头再看标志，不往上交。
-/// fd 超出 `select` 能管的范围（`FD_SETSIZE`）时退回直接 `read`（不再看标志，不该发生：本进程 fd 很少）
+/// fd 超出 `select` 能管的范围（`FD_SETSIZE`）时退回直接 `read`（不再看标志；继承的描述符多时会发生，#116 待修）
 struct Polled<'a> {
     file: &'a File,
     stop: &'a AtomicBool,
