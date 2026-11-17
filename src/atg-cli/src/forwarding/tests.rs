@@ -203,3 +203,54 @@ fn all_not_forwarded_says_nothing_was_sent() {
     let zh = end["data"]["message_zh"].as_str().unwrap();
     assert!(zh.contains("什么都没转"), "{zh}");
 }
+
+/// 契约写法 `forward FROM MSG_ID... --to CHAT [--dry-run] [--again]`：后置选项不能被吞成消息 id（codex 033 第 1 轮 #1）
+#[test]
+fn trailing_options_are_not_swallowed_as_ids() {
+    use clap::Parser;
+    let cli = crate::args::Cli::try_parse_from([
+        "atg-cli",
+        "forward",
+        "-100555",
+        "5",
+        "7",
+        "--to",
+        "888",
+        "--dry-run",
+        "--again",
+    ])
+    .unwrap_or_else(|e| panic!("{e}"));
+    let Some(crate::args::Command::Forward(a)) = cli.command else {
+        panic!("不是 forward");
+    };
+    assert_eq!(a.from, "-100555");
+    assert_eq!(a.ids, vec![5, 7]);
+    assert_eq!(a.to, "888");
+    assert!(a.dry_run && a.again);
+    // 目标也可以是负数 id（超级群）
+    let cli =
+        crate::args::Cli::try_parse_from(["atg-cli", "forward", "777", "5", "--to", "-100555"])
+            .unwrap_or_else(|e| panic!("{e}"));
+    let Some(crate::args::Command::Forward(a)) = cli.command else {
+        panic!("不是 forward");
+    };
+    assert_eq!(a.to, "-100555");
+}
+
+/// 交出这一步就结果未知：结尾照样逐条列出，每条 unknown（codex 033 第 1 轮 #2）
+#[test]
+fn unknown_at_hand_over_still_lists_every_item() {
+    let b = backend();
+    let mut m5 = msg(5, "第5条");
+    m5["_forward_answer"] = json!("shape");
+    b.set_history(FRIEND, vec![m5, msg(7, "第7条")]);
+    let r = run(&b, &[fp(&[5, 7], false, false)]);
+    let (code, cap) = &r[0];
+    assert_eq!(*code, 10, "{:?}", cap.out);
+    let end = lines(cap).pop().unwrap();
+    assert_eq!(end["data"]["code"], "send_outcome_unknown");
+    let items = end["data"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|i| i["outcome"] == "unknown"));
+    assert_eq!(end["data"]["from_chat_id"], FRIEND);
+}

@@ -155,9 +155,37 @@ fn run_inner<B: Backend>(
         return Ok(0);
     }
     let token = b.gate().issue(&plan, p.again).map_err(Fail::Core)?;
-    let (mode, outcomes) =
-        fwd::forward_and_wait(b, &plan, token, stream, timeout, &mut |env| feed.apply(env))
-            .map_err(Fail::Core)?;
+    let (mode, outcomes) = match fwd::forward_and_wait(
+        b,
+        &plan,
+        token,
+        stream,
+        timeout,
+        &mut |env| feed.apply(env),
+    ) {
+        Ok(v) => v,
+        // 交出这一步就不知道下落：可能整批都已交出。结尾照样逐条列出（每条 unknown），补转时才知道哪几条不能列
+        Err(e @ CoreError::SendOutcomeUnknown { .. }) => {
+            let why = match &e {
+                CoreError::SendOutcomeUnknown { why, .. } => *why,
+                _ => unreachable!(),
+            };
+            let items: Vec<serde_json::Value> = plan
+                    .items()
+                    .iter()
+                    .map(|i| json!({"message_id": i.id, "outcome": "unknown", "temp_message_id": 0, "why": why}))
+                    .collect();
+            let msg = format!("{}；{}", summary_zh(&items), e.message_zh());
+            return Ok(l2_fail(
+                sink,
+                format,
+                &e,
+                json!({"message_zh": msg, "chat_id": to, "from_chat_id": from,
+                        "confirm": plan.mode().as_str(), "items": items}),
+            ));
+        }
+        Err(e) => return Err(Fail::Core(e)),
+    };
 
     let mut items = Vec::new();
     let mut first: Option<CoreError> = None;

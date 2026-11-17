@@ -356,7 +356,8 @@ pub struct ForwardArgs {
     #[arg(value_name = "FROM_CHAT", allow_hyphen_values = true)]
     pub from: String,
     /// 要转的消息 id（来源会话里的，用 history 输出的 message_id；一条或几条，最多 20 条）
-    #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
+    // 不开 allow_hyphen_values：可变长参数开了它会把后面的 --to、--dry-run、--again 也吞成 id（codex 033 第 1 轮 #1）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..)]
     pub ids: Vec<i64>,
     /// 转给哪个会话：id，或 saved
     #[arg(long, value_name = "CHAT_ID", allow_hyphen_values = true)]
