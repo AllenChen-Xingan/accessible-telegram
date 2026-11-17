@@ -99,14 +99,32 @@ pub fn wait(
 
 /// 等到结果后交给闸记账（直发的防重复记录与留痕）
 pub fn finish<B: Backend>(b: &B, plan: &dyn Gated, sub: Submitted, w: &Waited) {
-    let Submitted { mode, temp } = sub;
-    let (outcome, final_id, err) = match w {
+    let Submitted { mode, temp, old } = sub;
+    let (outcome, final_id, err) = verdict_of(w);
+    match old {
+        // 批量重发的一条：按条记、带旧 id（#83）
+        Some(old) => b.gate().after_item(
+            mode,
+            plan,
+            old,
+            temp.message_id,
+            final_id,
+            outcome,
+            err.map(CoreError::code),
+        ),
+        None => b
+            .gate()
+            .after_outcome(mode, plan, temp.message_id, final_id, outcome, err),
+    }
+}
+
+/// 下落 → 记账用的结果、正式 id、错误（[`finish`] 与重发按条记账共用）
+fn verdict_of(w: &Waited) -> (Outcome, Option<i64>, Option<&CoreError>) {
+    match w {
         Waited::Succeeded(m) => (Outcome::Succeeded, Some(m.id.message_id), None),
         Waited::Failed { message, error, .. } => {
             (Outcome::Failed, Some(message.id.message_id), Some(error))
         }
         Waited::Unknown(_) => (Outcome::Unknown, None, None),
-    };
-    b.gate()
-        .after_outcome(mode, plan, temp.message_id, final_id, outcome, err);
+    }
 }

@@ -5,7 +5,6 @@
     "src/atg-cli/src/history.rs": 706,
     "src/atg-core/src/fake.rs": 1014,
     "src/atg-core/src/td.rs": 797,
-    "src/atg-core/src/tdjson.rs": 836,
-    "src/atg-core/tests/reducer.rs": 2102
+    "src/atg-core/src/tdjson.rs": 836
   }
 }
