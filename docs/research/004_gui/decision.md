@@ -7,7 +7,7 @@
 
 ## 一、本批（b20）的卡
 
-> 2026-11-16 人已定 G9 G11 G15 G17 G18（大总管问人后转述，结果正本 `docs/plan/013_decisions-b19-gui.md` B20-1～B20-4、B20-6）；G16 没问，按默认；G18 也已定（B20-6）。
+> 2026-11-16 人已定 G9 G11 G15 G17 G18（大总管问人后转述，结果正本 `docs/plan/013_decisions-b19-gui.md` B20-1～B20-4、B20-6）；G16 没问，按默认。
 > 2026-11-16 b20 整理：每张卡第一段「问人」能原样拿去问（不看别的文件也懂）；其后是选项 · 代价 · 建议 · 默认；细目和出处在最后，问人时不必念。人不选就按默认走。
 
 ### G9 · 借鉴 Quill 哪些、不借鉴哪些
@@ -118,7 +118,7 @@
 | 卡 | 定了什么 | 理由 / 出处 |
 |---|---|---|
 | G1 | 八张界面表（按键、保留键、动作、树契约、焦点、播报路由、文案、视觉令牌）写成 Rust 表，放在**不依赖 GPUI 的小 crate**（暂名 `src/atg-gui-spec`），`atg-gui` 依赖它 | CI 不编 GPUI 也能生成、比对（012 第一节第 2 条）。新建 crate 守 `specs/architecture-rules.md` 第 10 条，新共享模块按第 4 条先报大总管、过 arch 线 |
-| G2 | CI：工作区通配改显式清单，`atg-gui` 单独一个 CI 任务 | 通配 `src/atg-*` 会把 GPUI 拉进 `cargo test --workspace`（012 第五节第 1 条）；编译成本还没实测，数字到了再核 |
+| G2 | CI：`atg-gui` 留在工作区（成员可仍用通配或改显式清单）；普通任务改 `cargo clippy / test --workspace --exclude atg-gui`，另设 GUI 任务 `-p atg-gui`；建好后用 `cargo metadata` 核两组命令实际选到的包（只改成员清单不会改变 `--workspace` 的选包，codex 040 第 5 轮） | 通配 `src/atg-*` 会把 GPUI 拉进 `cargo test --workspace`（012 第五节第 1 条）；编译成本还没实测，数字到了再核 |
 | G3 | 稳定标识写法 `msg:<chat>:<msg>`（冒号式），走 `.accessibility_id()` → AXIdentifier | `specs/gui/a11y-tree.md` 第二节；两份调研都建议走这个出口 |
 | G4 | 动作比对并进 `scripts/check-sources.py`（一个比对入口） | 它是门槛文件（`specs/architecture-rules.md` 第 1 条的 `GATE_FILES`），合并要人或大总管加 `baseline:loosen` 标签 |
 | G7 | 文案不上本地化框架，收成一张 `TextId` 表 | 012 第三节第 4 小节 |

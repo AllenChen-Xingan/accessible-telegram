@@ -34,5 +34,6 @@
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 040 | 2026-11-17 | GUI 唯一真相源与规约（`specs/gui/`、012、004 `decision.md`、013；b20 随 Touch ID 删除改直接发送、L2 发送流程 `focus.md` 第六节；codex · 五轮；先 atg-review 自审 11 轮） | 提出 14（P1×6、P2×8）：全部属实、全部已改，无驳回；第 4、5 轮无 P0/P1，满足停止线；无剩余 P2。core / 契约缺口登记 012 第八节（#77 #115 #118 #119 #120） → `040_gui-ssot-codex.md` |
 | 042 | 2026-11-14 | 无障碍最佳实践与先例调研（findings-a11y、sources ## ga11y；codex · 三轮） | 提出 12（P1×1、P2×11）：全部属实、全部已改，无驳回；第 2、3 轮无 P0/P1，满足停止线；第 3 轮 3 条 P2 直接改、未再复核 → `042_findings-a11y-codex.md` |
 | 043 | 2026-11-14 | GPUI 应用架构与组件先例调研（findings-components、quill-index、exp010；codex · 六轮） | 提出 17（P1×8、P2×9）：属实 15、部分属实 1、驳回 1（settings_ui 挂接，摘录截断所致，第 2 轮 codex 接受）；全部已改；第 5、6 轮无 P0/P1，满足停止线 → `043_gui-components-codex.md` |

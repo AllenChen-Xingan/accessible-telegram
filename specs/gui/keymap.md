@@ -60,10 +60,10 @@
 | `mute_chat` | 能力 | `mute` · `atg-cli mute` | L0 |
 | `focus_composer` · `reply` | 界面 | 只设焦点和回复目标 | — |
 | `insert_newline` | 界面 | 输入框里换行（文本编辑本身，不经 core） | — |
-| `send` | 能力 | `send_text_prepare` → 过闸 → `send_text`，不弹框；返回成功读一遍计划（`announce.md` `send_plan`）、返回错误播 `send_refused`；按下到返回之间在途，回车、Cmd+回车被吃掉（`focus.md` `send_submitted`） · `atg-cli send` | L2 |
-| `send_again` | 能力 | 同 `send`，但这一次绕过重复提交拦截（对应 `atg-cli send --again`，契约「只这一次」）。**只在**上一次 `send_refused_now` 的原因是 `duplicate_recent`、且它报的上次结果是「已发出」（上次是「未知 / 已提交」不武装：那条可能已经发出）、之后草稿与回复目标一个字没改、键盘焦点没离开这个输入框（切走应用再回来不算离开；VO 光标拖走键盘焦点算离开）、且不在在途态时有效（`UiState.send_again_armed`）；任一条件不成立即失效，失效时这个键不截 | L2 |
-| `resend` | 能力 | `resend_prepare` → 过闸 → `resend`；返回成功读一遍计划（`send_plan`）、返回错误播 `send_refused`，不弹框 · `atg-cli resend` | L2 |
-| `delete_for_all` | 能力 | `delete_prepare` → 过闸 → `delete`；返回成功读一遍计划（`send_plan`）、返回错误播 `send_refused`，不弹框 · `atg-cli delete` | L2 |
+| `send` | 能力 | `send_text_prepare` → 过闸 → `send_text`（交出段 + 后台收尾段），不弹框；交出段 · 收尾段、在途态与各结局见 `focus.md` 第六节 · `atg-cli send` | L2 |
+| `send_again` | 能力 | `send_text_prepare` → 过闸（这一次放行重复提交拦截）→ `send_text` · `atg-cli send --again`（契约「只这一次」）。**只在**上一次 `send_refused_now` 的原因是 `duplicate_recent`、且它报的上次结果 `last_outcome` 是 `succeeded`「已发出」（`unknown` / `submitted` 时无效：那条可能已经发出）、之后草稿与回复目标一个字没改、键盘焦点没离开这个输入框（切走应用再回来不算离开；VO 光标拖走键盘焦点算离开）、且不在在途态时有效（`UiState.send_again_armed`）；任一条件不成立即无效，无效时这个键不截 | L2 |
+| `resend` | 能力 | `resend_prepare` → 过闸 → `resend`（逐条），不弹框；结局见 `focus.md` 第六节 · `atg-cli resend` | L2 |
+| `delete_for_all` | 能力 | `delete_prepare` → 过闸 → `delete`，不弹框；`Ack` 读计划、以 `messages_deleted` 为准，见 `focus.md` 第六节 · `atg-cli delete` | L2 |
 | `search_messages` · `search_chats` | 能力 | 打开搜索框（`UiState.search.mode` = 消息 / 会话）并随输入查：`search_messages`（当前会话里）/ `search_chats` · `atg-cli search messages` / `search chats` | L0 |
 | `search_enter_results` · `search_back_to_input` | 界面 | 卡 G17 人选 A：搜索框里 ↓ 把焦点移进结果列表（`NavList`，选中第一项）；结果列表里 Esc 或打可打印字符回到搜索框（字符接着输进去）。**不借用 `focus_next`**（那是 Tab 一圈） | — |
 | `open_search_hit` | 能力 | 消息命中：`chat_open` + `history` 落在那条（003 F2：搜索结果进来落在那条）· `atg-cli history CHAT_ID --after MSG_ID`；会话命中：同 `open_chat` | L0 |
@@ -117,7 +117,7 @@
 | `link_list` | `enter` | `open_link`（先过 `open_link` 的确认，`actions.md`） | 草案 |
 | `link_list` | `escape` | `back`（回阅读视图或消息列表） | 草案 |
 | `reading` | `cmd-shift-c` | `copy_text`（复制全文；`cmd-c` 留给复制选中的那段） | 草案 |
-| `composer` | `enter` · `shift-enter` | `send` · `insert_newline` | T04；组字时回车不截（规矩 8）；在途态里回车吃掉、不发（`focus.md` `send_submitted`） |
+| `composer` | `enter` · `shift-enter` | `send` · `insert_newline` | T04；组字时回车不截（规矩 8）；在途态里回车吃掉、不发（`focus.md` 第六节） |
 | `composer` | `cmd-enter` | `send_again`（Cmd+回车，回车即 Mac 键盘的 Return 键；有效条件见动作表 `send_again`，无效时不截、交给输入框，输入框对它没有动作） | 草案（AI 起，自审 b20 第 2 轮；契约 `send --again`） |
 | `composer` | `escape` | `back`（回消息列表，草稿保留） | 草案 |
 | global | `cmd-f` | `search_messages`（在当前会话里搜消息；焦点进搜索框） | 草案（T08）；macOS 标准「查找」 |

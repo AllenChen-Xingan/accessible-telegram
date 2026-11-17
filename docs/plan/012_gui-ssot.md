@@ -81,9 +81,12 @@
 | `last_chat`（**跨运行**） | `Option<ChatId>` | 上次退出时选中的会话（`app_started_signed_in` 用）。唯一要落盘的界面状态：放档案目录的 `gui-state.json`，只存 id、不存内容（`specs/contracts/config-privacy.md` 第一节第 1 小节） |
 | `reading` | `Option<MsgId>` | 阅读视图开着哪条（M3.5） |
 | `composer` | 每个会话一份草稿文字 + 回复目标 `Option<MsgId>` | 草稿只在本机内存，不同步（`draft_set` 是第二批，L2 同级把关） |
-| `in_flight` | 每个会话 × 每种 L2 动作（发送 / 删除 / 重发）一个 bool | 按下到 core 调用返回之间为真：同一动作的键被吃掉；发送在途时另把输入框设只读（删除、重发在途不锁输入框）（`focus.md` `send_submitted`）
-| `send_again_armed` | 每个会话一个 bool | 上次发送返回 `duplicate_recent` 且报的上次结果是「已发出」、之后草稿与回复目标未改、键盘焦点未离开输入框时为真；任一条件破了置假（`keymap.md` `send_again`） |
+| `in_flight` | 每个会话 × 每种 L2 动作（发送 / 删除 / 重发）一个 bool | 按下到交出段有结局之间为真（`specs/gui/focus.md` 第六节第 3、4 条）：同一动作的键被吃掉；发送在途时另把输入框设只读（删除、重发在途不锁输入框） |
+| `unknown_pending` | 临时 id 的集合 | 收尾段已按「未知」播过的待发消息；同一临时 id 晚到成败时据此改念晚到句，念完移出（`specs/gui/focus.md` 第六节第 5 条） |
+| `send_again_armed` | 每个会话一个 bool | 上次发送返回 `duplicate_recent` 且 `last_outcome` 是 `succeeded`、之后草稿与回复目标未改、键盘焦点未离开输入框时为真；任一条件破了置假（`keymap.md` `send_again`） |
 | `dialog` | `Option<对话框种类>` | 确认框（只有打开链接 / 附件；发送、删除、重发不弹框，#113）、错误框；关掉后按焦点规则表回去 |
+
+**换 id 迁移**（正本；`specs/gui/focus.md` 第六节第 5 条引这里）：一条消息换身份（发送成功换正式 id、失败换新 id、重发交出换新临时 id，`specs/contracts/actions.md` 事件 `send_succeeded` / `send_failed`）时，本表里所有持有该消息 `MsgId` 的字段（含写在元素标识里的，如 `msg:<chat>:<id>`）一起原地改——实现上统一遍历，不靠逐字段手写；现有字段：`msgs_anchor`、`revealed`、`return_to` 与 `last_focus` 里的消息元素标识、`search.anchor`（消息命中）、`links.msg`、`reading`、`composer` 的回复目标、`unknown_pending`、`send_again_armed` 记的那条；新增持有 `MsgId` 的字段必须加进这一句（单测：对每个字段造一次换 id，断言改到）。
 
 滚动位置**不存**：由选中锚点决定（「先滚再选」，`001` 第二节第 1 小节）；GPUI 列表自己的滚动句柄不算界面状态，是渲染细节。
 
@@ -174,13 +177,16 @@ GPUI 里有两个「id」，别混：
 1. `specs/content-tree.md` 第三节第 1 小节：界面反馈句要的顶层节点——发送结果（「已发送」、失败原因）、「没有更多未读」（003 A3）、下载进度 / 完成（M3.7）、播放结束（M3.8）、会话已不在列表里；以及「第一条未读」的标记（B19-7：名称前加「未读：」，分隔不进 ↑↓ 顺序——原定的 `divider{kind: unread}` 节点要不要还留着画线用，由改 content-tree 的人定）
 2. `specs/contracts/testing.md` 第一节第 6 小节：快照文件头加一行版本（`GUI_SCHEMA_V` + GPUI commit）；`check-a11y-tree.py` 的输入加上契约 JSON
 3. `specs/architecture-rules.md` 第 5 条：补「入口策略不同」这一类例外的说法（第三节第 5 小节）
-4. `.github/workflows/ci.yml`、根 `Cargo.toml`：照卡 G2（工作区通配改显式清单、`atg-gui` 单独一个 CI 任务）改；建 `atg-gui` 的那个 PR 一起做
+4. `.github/workflows/ci.yml`、根 `Cargo.toml`：照卡 G2 改（`atg-gui` 留在工作区；普通任务 `--workspace --exclude atg-gui`，GUI 任务 `-p atg-gui`；建好后用 `cargo metadata` 核两组命令实际选到的包）；建 `atg-gui` 的那个 PR 一起做
 5. `docs/plan/001_arch-stack.md` 第四节第 2 小节「只编 `atg-core` 和 `atg-cli` 时不用拉 GPUI」：照卡 G2 改说法
 6. `atg-core::notify`：「停手后再说」用的朗读时长估算（选中项字数 × 180 ms + 1 秒，exp004 模式 5、001 拍板 3 ⑤）现在没有正本，`notify` 只收 `set_user_idle(bool)`（`src/atg-core/src/notify.rs:329`）。建议放进 `notify`（纯函数、时钟可注入），界面只报按键和选中项（`specs/gui/announce.md` 第一节）
 7. `atg-core::notify::Config`：加「新消息播报详略」字段（汇总 / 只计数 / 关，B19-8；`specs/gui/announce.md` 第五节）
 8. `specs/contracts/actions.md` 第一节第 5 小节：闸对同一会话的「查重复指纹」与「写已提交」要串行、一步做完，否则 CLI 并发、GUI 与 CLI 同时发可能两条都过（即 issue #77「直发防重复查重与登记分两步、可竞态」，fix 线已排；GUI 自己的连按已由在途态挡住）
 9. `specs/contracts/actions.md` 第一节第 2 小节「确认时写明『若网络中断，恢复后仍会发出』」：没有确认步骤了，GUI 改成不逐句念、写进帮助页（`specs/gui/announce.md` `send_plan`）；契约这句要随 #115 改成「发送时 / 帮助里说明」（已报大总管，2026-11-16）
-10. `specs/contracts/actions.md` 第一节第 4 小节第 4 条「确认时给人看什么」含会话 id：GUI 读计划按卡 G18 人选不念编号（B20-6，`specs/gui/announce.md` `send_plan`）；契约要写明「界面朗读可省 id，树节点 / CLI 照给」（已报大总管，2026-11-16）
+10. `specs/contracts/actions.md` 第一节第 4 小节第 4 条「确认时给人看什么」含会话 id：GUI 读计划按卡 G18 人选不念编号（B20-6，`specs/gui/announce.md` `send_plan`）；契约要写明「界面朗读可省 id，树节点 / CLI 照给」（issue #118）
+11. `atg-core::send`：给界面分两段的入口——**交出段**（准备 → 闸开凭据 → `send_text`，返回临时 id / 错误 / 临时 id 为 0 的结果未知）立即返回；**收尾段**（`wait` + `finish` 记闸结果、写 `direct-send.log` 结果行）在后台跑，**两段共用一个从开始交出起算的时限**（契约 `send_text` 行，数由 core 定；收尾段只用剩下的时间，同 `send_and_wait`），结局（成功 / 失败 / 结果未知）以回调或事件报给界面；早到的成败（比交出应答先到）由 core 暂存、等交出应答之后按「先交出、再成败」的顺序报给界面，界面不自己排序；报过「未知」之后同一条的**晚到结果**也要报，并让闸改记录（否则晚到失败后同一句被按「未知」拦 24 小时）。另：重发成功后要不要、怎么复核回复关系（`check_kept` 只收 `TextPlan`，重发计划可含「会去掉回复关系」）待定；core 给界面一个准备（只读查询）的期限常数（现在只在 CLI）；删除的交出（等 `Ack`）也要有时限。界面怎么用见 `specs/gui/focus.md` 第六节。现在只有阻塞的 `send_and_wait` / `resend_and_wait` 把两段连着（`src/atg-core/src/send/text.rs` `send_and_wait`），交出限时 `submit_within` 不对外。接口 M4.1 定（issue #119）
+12. `atg-core::speech`：计划读法加「长正文截断 + 共 N 字」（卡 G18 人选 ②，B20-6；规则见 `specs/gui/announce.md` `send_plan`「长正文」），CLI `plan` 行不截（issue #120）
+13. `atg-core::logline`：加 debug 级入口（同样只收写死的事件名与数字字段，开发构建默认开、发布构建默认关），给 GUI 记外部无障碍动作（`specs/gui/focus.md` 第三节）
 
 ---
 
