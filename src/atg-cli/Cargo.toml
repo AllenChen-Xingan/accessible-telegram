@@ -24,5 +24,7 @@ libc = "0.2"
 tdlib = ["atg-core/tdlib"]
 
 [dev-dependencies]
+# 测试共用夹具 `atg_core::testkit`（#60 R3）
+atg-core = { path = "../atg-core", features = ["testkit"] }
 # 本机接口：转发后输出 = 直跑输出的快照
 insta = "1"

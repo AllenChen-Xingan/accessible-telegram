@@ -3,21 +3,9 @@
 use super::pick_profile;
 use atg_core::config::{Profile, ServerKind};
 use atg_core::error::CoreError;
+use atg_core::testkit::temp_dir;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-
-fn temp_root(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "atg-pick-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
 
 fn internal(what: &'static str) -> Option<CoreError> {
     Some(CoreError::Internal { what })
@@ -38,14 +26,14 @@ fn mode(p: &Path) -> u32 {
 
 #[test]
 fn first_main_is_created_as_main() {
-    let root = temp_root("first");
+    let root = temp_dir("first");
     let p = pick_profile(&root, false, "main").unwrap();
     assert_eq!(p.kind(), ServerKind::Main);
 }
 
 #[test]
 fn other_names_must_exist() {
-    let root = temp_root("other");
+    let root = temp_dir("other");
     assert_eq!(
         pick_profile(&root, false, "work").err(),
         internal("profile_marker_missing")
@@ -56,7 +44,7 @@ fn other_names_must_exist() {
 /// 正式档案丢了标记：不带 `--test-dc` 和带 `--test-dc` 都拒绝，不补写、连权限都不改
 #[test]
 fn main_with_data_but_no_marker_is_refused_either_way() {
-    let root = temp_root("relabel");
+    let root = temp_dir("relabel");
     let dir = main_without_marker(&root);
     for (test_dc, name) in [(false, "main"), (true, "main")] {
         assert_eq!(
@@ -72,7 +60,7 @@ fn main_with_data_but_no_marker_is_refused_either_way() {
 /// 读不懂的标记原样报，不转去 `create`（不建子目录、不改标记）
 #[test]
 fn garbled_marker_is_reported_without_side_effects() {
-    let root = temp_root("garbled");
+    let root = temp_dir("garbled");
     let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
     std::fs::write(p.dir().join("server-kind"), "maybe").unwrap();
     std::fs::remove_dir(p.files_dir()).unwrap();
@@ -90,7 +78,7 @@ fn garbled_marker_is_reported_without_side_effects() {
 /// `--test-dc` 撞上正式档案：先报种类不符，不先动子目录（`db` 是普通文件也照样报 mismatch）
 #[test]
 fn test_dc_on_main_profile_is_kind_mismatch_before_touching_disk() {
-    let root = temp_root("mismatch");
+    let root = temp_dir("mismatch");
     let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
     std::fs::remove_dir(p.db_dir()).unwrap();
     std::fs::write(p.db_dir(), "x").unwrap();
