@@ -29,6 +29,13 @@ fn env_var_is_the_only_place_looked_at_when_set() {
     assert_eq!(locate_from(missing, Some(exe.clone())), Err(ENV_INVALID));
     let dir = Some(d.clone().into_os_string());
     assert_eq!(locate_from(dir, Some(exe.clone())), Err(ENV_INVALID));
+    // 裸名、相对路径：查的和执行的可能不是同一个文件（裸名执行时走 PATH），一律不认
+    assert_eq!(
+        locate_from(Some(NAME.into()), Some(exe.clone())),
+        Err(ENV_INVALID)
+    );
+    let rel = Some(OsString::from(format!("bin/{NAME}")));
+    assert_eq!(locate_from(rel, Some(exe.clone())), Err(ENV_INVALID));
     let good = d.join("mine");
     put(&good, 0o700);
     assert_eq!(

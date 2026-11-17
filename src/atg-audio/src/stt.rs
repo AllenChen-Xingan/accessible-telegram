@@ -14,6 +14,10 @@ use std::time::{Duration, Instant};
 
 mod locate;
 pub use locate::locate;
+/// `stt_unavailable.what` 的码（正本在 `locate`）
+pub mod what {
+    pub use super::locate::{ALL, ENV_INVALID, NOT_FOUND, NOT_RUNNABLE, UNAVAILABLE, UNSAFE};
+}
 
 /// 协议版本。Swift 那边的 `PROTO` 由测试 `proto_matches_swift` 比对
 pub const PROTO: u32 = 1;

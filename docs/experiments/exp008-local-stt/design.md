@@ -151,7 +151,7 @@ zh-CN、en-US 各跑一个转写器，取平均置信度高的那个；另加 `-
 ### 7. 辅助程序的构建、定位与隐私（arch 定 + 本设计补）
 
 - 源码 `src/atg-audio/stt-helper/main.swift` + 同目录 `build.sh`，编到 `_build/<时间戳>/`（照 `src/tdlib-build` 先例），**不用 build.rs**、不建 `src/atg-stt/`（守则第 10 条）
-- 运行时找（arch 定 2026-11-14，代码 `atg-audio/src/stt/locate.rs`）：环境变量 `ATG_STT_HELPER`（设了就只认它，指错 → `stt_unavailable{helper_env_invalid}`，不往下找）> 可执行文件旁边 > 开发时从可执行文件往上找仓库根（要同时有 `src/atg-audio/stt-helper/` 才算，不编译期写死路径）的 `_build` 最新一份。找到的要是普通文件、属主可执行、属于当前用户、组和其他人不可写，否则 `stt_unavailable{helper_unsafe | helper_not_runnable}`、不执行。辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
+- 运行时找（arch 定 2026-11-14，代码 `atg-audio/src/stt/locate.rs`）：环境变量 `ATG_STT_HELPER`（设了就只认它，不是绝对路径或指错 → `stt_unavailable{helper_env_invalid}`，不往下找；裸名执行时会走 PATH，查过的和执行的就不是同一个文件，2026-11-16 自审）> 可执行文件旁边 > 开发时从可执行文件往上找仓库根（要同时有 `src/atg-audio/stt-helper/` 才算，不编译期写死路径）的 `_build` 最新一份。找到的要是普通文件、属主可执行、属于当前用户、组和其他人不可写，否则 `stt_unavailable{helper_unsafe | helper_not_runnable}`、不执行。辅助程序启动先报协议版本，对不上 → `stt_unavailable` 并提示跑 `build.sh`
 - 授权：exp008 在终端和 `.app`（经 LaunchServices 拉起）两种方式下都没弹窗、不需要 Info.plist 用途说明；Apple Development 签名版未测，写代码时顺带验
 - **隐私**：辅助程序的标准输出只有协议行（版本、结果）；**标准错误与错误信息只带码、长度、语种、耗时，绝不带转写文字**；Rust 端不把辅助程序的标准错误原样转出。测试：假辅助程序在标准错误写一句暗号，断言 CLI 的标准错误、错误 JSON 里都没有它
 

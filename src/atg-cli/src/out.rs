@@ -337,6 +337,24 @@ mod tests {
         assert!(at.ends_with('Z'));
     }
 
+    /// `stt_unavailable.what` 三处对齐：码的正本在 `atg_audio::stt::what`，`errors.md` 那一行逐个登记，
+    /// `atg-core` 的提示逐个有专门的修法（只有 `unavailable` 走兜底）
+    #[test]
+    fn stt_unavailable_whats_match_everywhere() {
+        use atg_audio::stt::what;
+        let spec = include_str!("../../../specs/contracts/errors.md");
+        let row = spec
+            .lines()
+            .find(|l| l.starts_with("| `stt_unavailable`"))
+            .unwrap_or_else(|| panic!("errors.md 没有 stt_unavailable 行"));
+        let hint = |w: &'static str| CoreError::SttUnavailable { what: w }.message_zh();
+        let fallback = hint("__none__");
+        for w in what::ALL {
+            assert!(row.contains(&format!("`{w}`")), "errors.md 没登记 {w}");
+            assert_eq!(hint(w) == fallback, w == what::UNAVAILABLE, "{w} 的提示");
+        }
+    }
+
     #[test]
     fn exit_codes_match_contract() {
         assert_eq!(Code::Usage.exit(), 2);

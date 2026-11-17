@@ -17,7 +17,12 @@
 - 静态通读 voice/transcribe.rs、transcribe.rs：引用的 API（stt::locate、Hub::leases、Feed::drain/pump_mut、store 凭据与裁决、Transcription::hidden）都在；SttError 是 Copy
 - 名额到手后的测试计划（一次领、连着跑）：① `cargo build --workspace` + `-p atg-cli --features tdlib` ② `cargo test --workspace`（重点 atg-audio stt/locate 5 条、voice/tests/transcribe 7 条、transcribe/tests 5 条、watch/tests/hub、serve/tests/lifecycle、atg-core privacy/coverage）③ clippy 三遍（默认、tdlib-api、atg-cli/tdlib）④ fmt --check、check-no-debug、check-file-size ⑤ 真辅助程序 ignored 测试一遍（`stt/tests/real.rs`，不出声、不弹窗）
 - 名额跑完（2026-11-16）：build（全工作区 + atg-cli tdlib）过；test 第一次编译错 1 处（transcribe/tests.rs 少引 `Outcome`，已补）→ 517 过 0 败 5 ignored；clippy 三遍过；fmt 改了 error.rs 一处排版；check-no-debug、check-file-size 过；stt-helper build.sh 编出 `_build/20261116-161819/atg-stt`，atg-audio ignored 5 条过（含真辅助程序 4 条，静音、未弹窗）。名额已还
-- 下一步：atg-review（target：origin/main...HEAD 的 3c 改动）→ codex 039
+- 大总管已提交 b061316（tests 补引、fmt、watch/tests 空行、现状页）
+- atg-review（wf_2a8176f3-c56）：无 P0/P1；P2×5 全属实已改（ATG_STT_HELPER 只认绝对路径 + 测试；helper_unsafe / unavailable 提示；what 码正本 `atg_audio::stt::what::ALL` + out.rs 三处比对测试；transcript_stale 注明可重试例外）；P3 改 6 条（cli.md 行序与 redact 句、模块头、lease 文档、content-tree 类型名、引用分组）。未编译，已申请名额复验
+- 留着的 P3（建议攒一个 issue）：`send::remember` 挪共用模块；`Outcome` 改名；`Guard` Drop 写死 Stdio；L0/F4/R1/场景目录等代号；build.sh 注释术语
+- 已定（大总管 2026-11-16）：`transcript_stale` 不挪、按注明处理；P3 五条随 PR 开一个 issue；名额排第四（arch → msg2 → fix → 我）
+- codex 039 干跑过：`_tmp/reviews-039/`，类型 diff、范围 origin/main（main 已在 HEAD 里）、隐私扫描无拦截（13 条测试假数据提示）
+- 下一步：名额复验 → codex 039 正式跑
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 

@@ -1,7 +1,7 @@
 //! `transcribe CHAT_ID MSG_ID [--lang zh|en] [--reveal]`：本机把一条语音转成文字（#59，取代 F4；契约 `specs/contracts/cli.md`）。
 //!
-//! 外壳只做：找辅助程序、选语种、把这一次的结果（树节点 `Doc::Transcription`）输出、管退出。组合动作在
-//! [`crate::voice::transcribe`]。**L0**：不外发（Apple 端侧模型；断网未实测，待人验证）、不标已听、不标已读。
+//! 外壳只做：选语种、把这一次的结果（树节点 `Doc::Transcription`）输出、管退出。找辅助程序在
+//! [`crate::session::transcribe`]（起后端之前），组合动作在 [`crate::voice::transcribe`]。**L0**：不外发（Apple 端侧模型；断网未实测，待人验证）、不标已听、不标已读。
 //! - 输出一行 `kind:"transcription"`（带读法）+ `result`；文字模式只出读法那一句
 //! - 18+ 遮挡的语音不加 `--reveal`：照转、照写表，输出不带文字（`outcome:{type:"hidden"}`），标准错误提示加 `--reveal`
 //!   （大总管定 2026-11-14，同 `history` 的遮挡口径）

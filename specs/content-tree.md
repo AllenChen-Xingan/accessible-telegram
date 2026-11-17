@@ -156,7 +156,7 @@ Message
 
 ### 7. 正式类型名（给别的规约引用）
 
-Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Unknown` ↔ `unknown`；零件：`MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind`。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
+Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Unknown` ↔ `unknown`；零件：`MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
 
 ## 四、建树规则：「纯文本 + 实体」→ 行内树
 
@@ -294,3 +294,4 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-11-13 #4 M2.6（手下 media，arch 定 2026-11-13：播放状态也先成树）：顶层加 `playback`；`v` 不加一（新增节点种类）
 - 2026-11-13 #59 3b（手下 media）：消息加可选字段 `transcript`（`Transcript`，类型放 `tree/media.rs`）；`v` 不加一。挂在消息上而不是 `voice` 附件里：附件属于存下来的 `content`，转写不是（第二节）
 - 2026-11-14 #59 3c（手下 media；18+ 口径大总管定 2026-11-14）：顶层加 `transcription`（类型放 `tree/media.rs`，读法 `speech/transcription.rs`）；18+ 遮挡没展开时 `outcome` 换成 `hidden`（第八节同一条）；`v` 不加一（新增节点种类）
+- 2026-11-16 #59 3c 自审：第三节第 7 小节正式类型名补 `Playback`、`Transcription` 与零件 `Outcome`、`Transcript`

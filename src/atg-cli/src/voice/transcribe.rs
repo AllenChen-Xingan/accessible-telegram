@@ -10,6 +10,7 @@
 //! 只在内存：转写文字等同消息内容，不落盘、不进日志。错误只带码
 
 use super::{Found, VoiceQuery, after_step, audio_fail, download, find_in};
+use crate::chats::Feed;
 use crate::history;
 use crate::lease::Guard;
 use crate::out::Fail;
@@ -25,8 +26,6 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use crate::chats::Feed;
-
 /// 转写用什么：辅助程序在哪、跑哪几个语种（顺序有意义：置信度相等取排前的）
 pub struct SttOpts {
     pub helper: PathBuf,
@@ -39,7 +38,7 @@ pub fn stt_fail(e: SttError) -> Fail {
         (SttError::Cancelled, _) => Fail::Interrupted,
         (_, Some(what)) => Fail::Core(CoreError::Internal { what }),
         (_, None) => Fail::Core(CoreError::SttUnavailable {
-            what: "unavailable",
+            what: stt::what::UNAVAILABLE,
         }),
     }
 }
@@ -114,7 +113,7 @@ pub fn transcribe<B: Backend>(
                     })
                     .collect(),
             };
-            // reducer 用同一个裁决再判一次：两步之间插不进别的输入（store 只在本线程上一件件喂），结果一样
+            // store 的 reducer（`apply`）里用同一个裁决（`transcript_verdict`）再判一次：两步之间插不进别的输入（store 只在本线程上一件件喂），结果一样
             let _ = feed.pump_mut().apply(Input::Transcribed(Transcribed {
                 ticket,
                 transcript: t.clone(),

@@ -1,5 +1,6 @@
 //! 找辅助程序 `atg-stt`（arch 定 2026-11-14；design 第三节第 7 条）。三处，按先后：
-//! 1. 环境变量 `ATG_STT_HELPER`：设了就**只认它**，指的不是能执行的普通文件 → `helper_env_invalid`，不往下找
+//! 1. 环境变量 `ATG_STT_HELPER`：设了就**只认它**，不是绝对路径、或指的不是能执行的普通文件 → `helper_env_invalid`，
+//!    不往下找（裸名会被执行时到 PATH 里另找一个、相对路径随当前目录变：查过的和执行的就不是同一个文件）
 //! 2. 可执行文件同目录（以后 app 包里放 Resources）
 //! 3. 开发时：从可执行文件往上找仓库根——**同时**有 `src/atg-audio/stt-helper/` 才算根（找到就停），取它 `_build/*/atg-stt`
 //!    里最新一份。不编译期写死路径（会把本机路径编进二进制）；认人标记免得跑到家目录里不相干的 `_build/` 里的程序
@@ -16,12 +17,16 @@ const MARKER: &str = "src/atg-audio/stt-helper";
 
 /// 三处都没找到
 pub const NOT_FOUND: &str = "helper_not_found";
-/// 环境变量指的不是能执行的普通文件
+/// 环境变量不是绝对路径，或指的不是能执行的普通文件
 pub const ENV_INVALID: &str = "helper_env_invalid";
 /// 找到了，但不是普通文件或属主不能执行
 pub const NOT_RUNNABLE: &str = "helper_not_runnable";
 /// 不属于当前用户，或组、其他人可写
 pub const UNSAFE: &str = "helper_unsafe";
+/// 辅助程序起不来、版本不对、握手超时，或语言模型没装 / 不支持（转写时才知道，不是查找出的）
+pub const UNAVAILABLE: &str = "unavailable";
+/// `stt_unavailable.what` 的全部取值（正本；`errors.md` 与 `atg-core` 的提示由 atg-cli 的测试逐个比对）
+pub const ALL: [&str; 5] = [NOT_FOUND, ENV_INVALID, NOT_RUNNABLE, UNSAFE, UNAVAILABLE];
 
 /// 找辅助程序；找不到或不安全回写死的码
 pub fn locate() -> Result<PathBuf, &'static str> {
@@ -38,6 +43,9 @@ pub(crate) fn locate_from(
 ) -> Result<PathBuf, &'static str> {
     if let Some(p) = env {
         let p = PathBuf::from(p);
+        if !p.is_absolute() {
+            return Err(ENV_INVALID);
+        }
         return match vet(&p) {
             Err(NOT_RUNNABLE) => Err(ENV_INVALID),
             r => r.map(|()| p),

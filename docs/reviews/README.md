@@ -35,3 +35,4 @@
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 039 | 2026-11-16 | #59 3c `transcribe` 命令（Doc::Transcription、stt_unavailable、辅助程序查找、lease::Guard；codex · diff） | 第 1 轮仅 P2×2，全部属实：途中更新改成闸门、补 18+ 途中变化与守卫共存测试；假后端「没开不推」「下载闸门」留 issue；待第 2 轮 → `039_transcribe-codex.md` |

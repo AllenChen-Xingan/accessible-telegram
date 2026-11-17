@@ -73,11 +73,11 @@ impl Leases {
     }
 }
 
-/// 要一份租约，是第一份就真开；开失败退掉那份（`serve`、直跑的 `watch` 共用这一处）。
+/// 要一份租约，是第一份就真开；开失败退掉那份（`serve`、直跑的 `watch`、直跑的 `transcribe` 经 [`Guard`] 共用这一处）。
 ///
 /// 「要」和「开」不是一步：前提是从 `take` 到 `chat_open` 应答之间没有别人在同一张表上要同一个会话
-/// （否则后来的那个拿到「已有人开着」，而第一个开失败退掉后会话其实没开）。现在所有使用者都在执行方线程上
-/// 一件一件跑，成立；以后有了跨线程的使用者，要先把「开着没开成」也记进表里再放开
+/// （否则后来的那个拿到「已有人开着」，而第一个开失败退掉后会话其实没开）。现在所有使用者都在同一条线程上
+/// 一件一件跑（`serve` 的执行方线程，或直跑命令的主线程），成立；以后有了跨线程的使用者，要先把「开着没开成」也记进表里再放开
 pub fn open<B: Backend>(b: &B, leases: &Leases, chat: ChatId) -> Result<(), CoreError> {
     if leases.take(chat) {
         bounded(b, b.chat_open(chat), QUERY_TIMEOUT).inspect_err(|_| leases.undo(chat))?;
