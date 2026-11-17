@@ -13,9 +13,7 @@ use crate::chats::{self, Feed};
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
 use crate::history;
 use crate::out::{self, Fail, Sink, emit_to, envelope};
-use crate::send::{
-    chat_ref, confirm_zh, ctx, echo, fail_any, finish_line, l2_fail, resolve,
-};
+use crate::send::{chat_ref, confirm_zh, ctx, echo, fail_any, finish_line, l2_fail, resolve};
 use atg_core::backend::Backend;
 use atg_core::error::CoreError;
 use atg_core::link::EventStream;
@@ -157,10 +155,9 @@ fn run_inner<B: Backend>(
         return Ok(0);
     }
     let token = b.gate().issue(&plan, p.again).map_err(Fail::Core)?;
-    let (mode, outcomes) = fwd::forward_and_wait(b, &plan, token, stream, timeout, &mut |env| {
-        feed.apply(env)
-    })
-    .map_err(Fail::Core)?;
+    let (mode, outcomes) =
+        fwd::forward_and_wait(b, &plan, token, stream, timeout, &mut |env| feed.apply(env))
+            .map_err(Fail::Core)?;
 
     let mut items = Vec::new();
     let mut first: Option<CoreError> = None;

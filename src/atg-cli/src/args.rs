@@ -104,8 +104,8 @@ pub enum Command {
     Open(Rest),
     /// 静音 / 取消静音
     Mute(Rest),
-    /// 删除消息（给所有人）
-    Delete(Rest),
+    /// 给所有人删除自己发的消息：先列出要删哪几条（kind:"plan"），然后立即删除，不再询问
+    Delete(DeleteArgs),
     /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan，和 send 一样直接点、不确认。
     /// 测试服务器上只许收藏夹
     React(ReactArgs),
@@ -380,6 +380,20 @@ pub struct ResendArgs {
     #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
     pub ids: Vec<i64>,
     /// 只输出要重发什么，不重发
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `delete` 的参数
+#[derive(Args)]
+pub struct DeleteArgs {
+    /// 会话 id（数字；收藏夹里的消息不能给所有人删）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要删的消息 id（history 输出里的 message_id；只能是自己发的、已发出的；一次最多 100 条）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..=100)]
+    pub ids: Vec<i64>,
+    /// 只输出要删什么，不删
     #[arg(long)]
     pub dry_run: bool,
 }

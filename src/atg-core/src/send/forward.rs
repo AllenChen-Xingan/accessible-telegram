@@ -269,6 +269,7 @@ fn content_mismatch() -> CoreError {
 }
 
 /// 一条转发的下落
+#[cfg_attr(test, derive(Debug))]
 pub struct ForwardOutcome {
     /// 要转的那条（来源会话里的 id）
     pub source: i64,

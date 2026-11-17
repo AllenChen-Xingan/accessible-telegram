@@ -228,7 +228,12 @@ fn edited_after_prepare_is_refused_before_submit() {
     let plan = prepare(&r, OTHER, &[5]).unwrap();
     let token = r.b.gate().issue(&plan, false).unwrap();
     let mut h = friend_history();
-    h[0] = msg(FRIEND, 5, "第5条（改过）", json!({"edit_date": 1_792_755_100}));
+    h[0] = msg(
+        FRIEND,
+        5,
+        "第5条（改过）",
+        json!({"edit_date": 1_792_755_100}),
+    );
     r.b.set_history(FRIEND, h);
     let e = block_on(forward(&r.b, &plan, token)).unwrap_err();
     assert_eq!(refused(e), SendRefusedReason::ContentMismatch);

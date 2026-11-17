@@ -23,6 +23,7 @@ const DONE: &[&str] = &[
     "reactions",
     "transcribe",
     "pending",
+    "delete",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -32,7 +33,6 @@ const PLACEHOLDERS: &[&str] = &[
     "next-unread",
     "open",
     "mute",
-    "delete",
     "show",
     "search",
     "draft",

@@ -121,6 +121,22 @@ pub enum InvalidSendWhy {
     NotForwardable,
     /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
     ForwardTooMany,
+    /// 要删的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，整批不删（#8）
+    Changed,
+}
+
+/// 不能给所有人删（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`，#8）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeleteRefusedWhy {
+    /// 收藏夹里的消息 TDLib 不许给所有人删（`MessagesManager.cpp:8346`）
+    Saved,
+    /// 不是自己发的：本应用只删自己的（大总管定 2026-11-17，待人看）
+    NotOwn,
+    /// 还没发出（待发或发送失败）：待发的用 `pending cancel`；失败的没送到对方，不用给所有人删
+    NotSent,
+    /// TDLib 说这条不能给所有人删（还在待发、过了时限、会话不许等）
+    NotRevocable,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -216,6 +232,10 @@ pub enum CoreError {
     InvalidSend {
         why: InvalidSendWhy,
     },
+    /// 机读码 `forbidden`：这条不能给所有人删，带 `why`
+    DeleteRefused {
+        why: DeleteRefusedWhy,
+    },
     Cancelled,
     /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
     /// 不安全、起不来、版本不对，或系统的语言模型没装（#59，design 第三节第 4、6、7 条）。`what` 只放写死的码
@@ -245,7 +265,7 @@ impl CoreError {
             Self::RateLimited { .. } => "rate_limited",
             Self::AccountLimited { .. } => "account_limited",
             Self::NotFound { .. } => "not_found",
-            Self::Forbidden { .. } => "forbidden",
+            Self::Forbidden { .. } | Self::DeleteRefused { .. } => "forbidden",
             Self::InvalidInput { .. } | Self::InvalidSend { .. } => "invalid_input",
             Self::Network { .. } => "network",
             Self::Disconnected => "disconnected",
@@ -288,6 +308,7 @@ impl CoreError {
             | Self::SendRefused { .. }
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
+            | Self::DeleteRefused { .. }
             | Self::Cancelled
             | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
@@ -362,6 +383,9 @@ impl CoreError {
                 InvalidSendWhy::NotPending => {
                     "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
                 }
+                InvalidSendWhy::Changed => {
+                    "要删的消息在列出计划之后、真正删之前被编辑过，计划里的正文已经不对；什么都没删，请重新发起"
+                }
                 InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
                 InvalidSendWhy::NeedsOther => {
                     "这条要换个身份发（比如以频道名义）或换引用才能重发，本应用暂不支持"
@@ -383,6 +407,16 @@ impl CoreError {
                     "要转的消息里有不能转发的（来源会话可能禁止转发）；什么都没转"
                 }
                 InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
+            },
+            Self::DeleteRefused { why } => match why {
+                DeleteRefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
+                DeleteRefusedWhy::NotOwn => "只能删自己发的消息；什么都没删",
+                DeleteRefusedWhy::NotSent => {
+                    "这条还没发出：待发的请用 pending cancel 撤销，发送失败的没送到对方、不用给所有人删；什么都没删"
+                }
+                DeleteRefusedWhy::NotRevocable => {
+                    "Telegram 说这条不能给所有人删（可能过了 Telegram 定的能删时限，或这个会话不许）；什么都没删"
+                }
             },
             Self::Cancelled => "已取消",
             // 按 `what` 给修法（码的正本在 `errors.md` 的 `stt_unavailable` 行；写法由 `atg-audio` 的 `stt::locate` 出）
