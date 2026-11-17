@@ -15,7 +15,8 @@
 //!   墓碑记下撤回前的发送人、时间（读法 R7）；撤回过的消息不会被晚到的应答或重复的更新加回来
 //! - **发送成功换 id**：旧 id → 新 id；[`Store::stable_key`] 给出最初那个 id，供 GUI 沿用元素 id
 //!
-//! 状态到内容树的投影在 [`crate::project`]。
+//! 文件分工：本文件放类型、`reduce` / `apply` 和只读的访问器；上面这些规则的实现（改状态的方法）在 `write.rs`，纯查询在
+//! `query.rs`。状态到内容树的投影在 [`crate::project`]。
 
 use crate::model::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
