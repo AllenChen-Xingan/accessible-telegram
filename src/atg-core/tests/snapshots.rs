@@ -453,3 +453,37 @@ fn partly_hidden_links_agree_across_outputs() {
     }
     assert!(checked >= 4, "夹具里套着剧透的链接太少：{checked}");
 }
+
+/// #13 只读：投票全貌（选项、票数、你选的、匿名 / 多选 / 测验 / 已结束 / 不能投）与按钮（内联、键盘；收起键盘不建；
+/// 受限的消息不带按钮）——名称、详情、全文、JSON 四层
+#[test]
+fn interactive_layers() {
+    let docs = world("interactive").docs();
+    insta::assert_snapshot!(format!(
+        "# brief\n{}\n# detail\n{}\n# full\n{}\n# json\n{}",
+        briefs(&docs),
+        layer(&docs, speech::detail, &cx()),
+        layer(&docs, speech::full, &cx()),
+        json_pretty(&docs),
+    ));
+}
+
+/// 投票选项里的剧透：不展开时不进读法、不进 data；展开后照出（#13）
+#[test]
+fn poll_option_spoiler_is_masked() {
+    let docs = world("hidden").docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 3002))
+        .expect("夹具里的投票");
+    for said in [
+        brief(poll, &cx()),
+        speech::detail(poll, &cx()),
+        speech::full(poll, &cx()),
+        json::line(poll, &cx()),
+    ] {
+        assert!(!said.contains("庚辛"), "选项里的剧透漏了：{said}");
+    }
+    assert!(speech::full(poll, &revealed()).contains("庚辛"));
+    assert!(json::line(poll, &revealed()).contains("庚辛"));
+}

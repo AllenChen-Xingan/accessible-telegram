@@ -22,6 +22,7 @@
 use crate::tree::*;
 
 mod content;
+mod interactive;
 mod playback;
 pub mod reaction;
 use reaction::reactions;
@@ -54,7 +55,11 @@ pub struct SpeechCtx {
 pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
         Doc::Message(m) => {
-            let (body, hidden) = content(&m.content, cx.reveal);
+            let (mut body, hidden) = content(&m.content, cx.reveal);
+            // 带按钮：名称末尾说几个（#13；按钮逐个在详情里）
+            if let Some(k) = &m.buttons {
+                body = format!("{body}，{}", interactive::buttons_brief(k));
+            }
             let line = then(&expand_hint(&body, hidden, cx), &hm(m.head.date, cx));
             match speaker(
                 &m.head.sender,
@@ -182,6 +187,24 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
                 parts.push(delivery(d).to_owned());
             }
             parts.extend(content::transcript_detail(m, cx.reveal));
+            // #13：投票的性质、按钮逐个
+            if let Some(Attachment::Poll {
+                anonymous,
+                multiple,
+                revotable,
+                quiz,
+                closed,
+                can_vote,
+                ..
+            }) = &m.content.attachment
+            {
+                parts.push(interactive::poll_detail(
+                    *anonymous, *multiple, *revotable, *quiz, *closed, *can_vote,
+                ));
+            }
+            if let Some(k) = &m.buttons {
+                parts.push(interactive::buttons_detail(k));
+            }
             parts.join("；")
         }
         Doc::Service(sv) => date(sv.date, cx),

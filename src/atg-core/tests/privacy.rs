@@ -6,7 +6,7 @@
 use atg_core::model::*;
 use atg_core::project;
 use atg_core::store::{Input, Store};
-use atg_core::tree::{self, Doc, Span};
+use atg_core::tree::{self, Doc, PollOption, Span};
 
 const SECRET: &str = "ZQX暗号";
 
@@ -49,7 +49,22 @@ fn attachments() -> Vec<Attachment> {
         },
         Attachment::Venue { title: s("venue") },
         Attachment::Contact { name: s("contact") },
-        Attachment::Poll { question: spans() },
+        Attachment::Poll {
+            question: spans(),
+            options: vec![PollOption {
+                text: spans(),
+                votes: 1,
+                percent: 100,
+                chosen: true,
+            }],
+            total: 1,
+            anonymous: false,
+            multiple: false,
+            revotable: true,
+            quiz: false,
+            closed: false,
+            can_vote: true,
+        },
         Attachment::Sticker { emoji: s("emoji") },
     ]
 }
@@ -89,6 +104,7 @@ fn message(message_id: i64, body: Body) -> Message {
         sending: SendingState::Sent,
         mentions_me: false,
         self_destruct: false,
+        buttons: None,
     }
 }
 

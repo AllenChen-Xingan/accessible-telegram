@@ -1,0 +1,495 @@
+---
+source: src/atg-core/tests/snapshots.rs
+expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\", briefs(&docs),\nlayer(&docs, speech::detail, &cx()), layer(&docs, speech::full, &cx()),\njson_pretty(&docs),)"
+---
+# brief
+周大山：投票，几点出发？3 个选项，你已投，20:53
+林小雨：投票，山顶海拔多少米？2 个选项，你已投，已结束，20:53
+林小雨：投票，要不要带帐篷？2 个选项，20:53
+匿名驴友：请确认报名，4 个按钮，20:54
+匿名驴友：选一个，2 个键盘按钮，20:54
+匿名驴友：收起键盘，20:54
+匿名驴友：受限内容，无法查看，20:54
+周大山：投票，集合地点，3 个选项，20:54
+# detail
+2026年10月23日 20:53；公开投票，别人看得到你投了什么，投了能改，可以多选
+2026年10月23日 20:53；匿名投票，测验，投了不能改，已结束
+2026年10月23日 20:53；公开投票，别人看得到你投了什么，投了不能改，你不能投
+2026年10月23日 20:54；按钮：确认（发给机器人）、取消（发给机器人）、活动说明（打开网址 https://example.invalid/hike）、复制集合点（复制文字）
+2026年10月23日 20:54；键盘按钮：报名（发出这句话）、发手机号（发出你的手机号）
+2026年10月23日 20:54
+2026年10月23日 20:54
+2026年10月23日 20:54；公开投票，别人看得到你投了什么，投了能改，可以多选
+# full
+投票，几点出发？第 1 项，七点，3 票，60%；第 2 项，八点，2 票，40%，你选的；第 3 项，九点，0 票，0%；共 5 人投票
+投票，山顶海拔多少米？第 1 项，一千，1 票，50%；第 2 项，两千，1 票，50%，你选的；共 2 人投票
+投票，要不要带帐篷？第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+请确认报名
+选一个
+收起键盘
+受限内容，无法查看
+投票，集合地点；第 1 项，北门停车场，3 票，60%；第 2 项，山脚，2 票，40%；第 3 项，车站，0 票，0%；共 5 人投票
+# json
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4001
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T12:53:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "几点出发？"
+          }
+        ],
+        "options": [
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "七点"
+              }
+            ],
+            "votes": 3,
+            "percent": 60
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "八点"
+              }
+            ],
+            "votes": 2,
+            "percent": 40,
+            "chosen": true
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "九点"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 5,
+        "anonymous": false,
+        "multiple": true,
+        "revotable": true,
+        "quiz": false,
+        "closed": false,
+        "can_vote": true
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：投票，几点出发？3 个选项，你已投，20:53"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4002
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:53:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "山顶海拔多少米？"
+          }
+        ],
+        "options": [
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "一千"
+              }
+            ],
+            "votes": 1,
+            "percent": 50
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "两千"
+              }
+            ],
+            "votes": 1,
+            "percent": 50,
+            "chosen": true
+          }
+        ],
+        "total": 2,
+        "anonymous": true,
+        "multiple": false,
+        "revotable": false,
+        "quiz": true,
+        "closed": true,
+        "can_vote": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，山顶海拔多少米？2 个选项，你已投，已结束，20:53"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4003
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:53:50Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "要不要带帐篷？"
+          }
+        ],
+        "options": [
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "quiz": false,
+        "closed": false,
+        "can_vote": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，要不要带帐篷？2 个选项，20:53"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4004
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:54:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "请确认报名"
+        }
+      ]
+    },
+    "tail": {},
+    "buttons": {
+      "kind": "inline",
+      "rows": [
+        [
+          {
+            "text": "确认",
+            "action": {
+              "type": "callback"
+            }
+          },
+          {
+            "text": "取消",
+            "action": {
+              "type": "callback"
+            }
+          }
+        ],
+        [
+          {
+            "text": "活动说明",
+            "action": {
+              "type": "url",
+              "url": "https://example.invalid/hike"
+            }
+          },
+          {
+            "text": "复制集合点",
+            "action": {
+              "type": "copy_text",
+              "text": "北门停车场"
+            }
+          }
+        ]
+      ]
+    }
+  },
+  "speech": {
+    "brief": "匿名驴友：请确认报名，4 个按钮，20:54"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4005
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:54:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "选一个"
+        }
+      ]
+    },
+    "tail": {},
+    "buttons": {
+      "kind": "reply",
+      "rows": [
+        [
+          {
+            "text": "报名",
+            "action": {
+              "type": "text"
+            }
+          },
+          {
+            "text": "发手机号",
+            "action": {
+              "type": "request_phone"
+            }
+          }
+        ]
+      ]
+    }
+  },
+  "speech": {
+    "brief": "匿名驴友：选一个，2 个键盘按钮，20:54"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4006
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:54:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "收起键盘"
+        }
+      ]
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "匿名驴友：收起键盘，20:54"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4007
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:54:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "restricted",
+        "reason": "因版权限制无法查看"
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "匿名驴友：受限内容，无法查看，20:54"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4008
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 102,
+        "name": "周大山"
+      },
+      "date": "2026-10-23T12:54:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "集合地点"
+          }
+        ],
+        "options": [
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "北门停车场"
+              }
+            ],
+            "votes": 3,
+            "percent": 60
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "山脚"
+              }
+            ],
+            "votes": 2,
+            "percent": 40
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "车站"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 5,
+        "anonymous": false,
+        "multiple": true,
+        "revotable": true,
+        "quiz": false,
+        "closed": false,
+        "can_vote": true
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "周大山：投票，集合地点，3 个选项，20:54"
+  }
+}

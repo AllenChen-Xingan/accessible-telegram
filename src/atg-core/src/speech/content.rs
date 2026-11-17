@@ -55,6 +55,16 @@ pub(super) fn full(m: &Message, reveal: bool) -> String {
 pub(super) fn full_content(c: &Content, reveal: bool) -> String {
     let body = full_spans(&c.body, reveal);
     let label = c.attachment.as_ref().map(|a| {
+        // 投票的全文逐项读出选项与票数（#13）；其余附件同名称
+        if let Attachment::Poll {
+            question,
+            options,
+            total,
+            ..
+        } = a
+        {
+            return super::interactive::poll_full(question, options, *total, reveal);
+        }
         let (l, spoiler) = attachment(a, reveal);
         if (spoiler || c.sensitive) && !reveal {
             format!("{l}，{HIDDEN}")
@@ -180,7 +190,9 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
     let body = body.trim().trim_end_matches(['。', '，', ',']).trim_end();
     // V13（011 B18-5，#68）：投票题目里的隐藏内容也算进整条的按键提示；与正文走同一条 `spans`
     let poll_hidden = match &c.attachment {
-        Some(Attachment::Poll { question }) => spans(question, reveal).1,
+        Some(Attachment::Poll {
+            question, options, ..
+        }) => spans(question, reveal).1 || super::interactive::options_hidden(options, reveal),
         Some(_) | None => false,
     };
     let mut hidden = body_hidden || poll_hidden;
@@ -239,7 +251,12 @@ fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
         Attachment::Location => "位置".to_owned(),
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
-        Attachment::Poll { question } => labeled("投票", &spans(question, reveal).0),
+        Attachment::Poll {
+            question,
+            options,
+            closed,
+            ..
+        } => super::interactive::poll_label(question, options, *closed, reveal),
         Attachment::Call {
             video,
             duration,

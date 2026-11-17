@@ -1,6 +1,5 @@
 ---
 source: src/atg-core/tests/snapshots.rs
-assertion_line: 51
 expression: "json_pretty(&world(\"basic\").docs())"
 ---
 {
@@ -1199,13 +1198,42 @@ expression: "json_pretty(&world(\"basic\").docs())"
             "type": "text",
             "text": "几点出发？"
           }
-        ]
+        ],
+        "options": [
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "七点"
+              }
+            ],
+            "votes": 1,
+            "percent": 50
+          },
+          {
+            "text": [
+              {
+                "type": "text",
+                "text": "八点"
+              }
+            ],
+            "votes": 1,
+            "percent": 50
+          }
+        ],
+        "total": 2,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": true,
+        "quiz": false,
+        "closed": false,
+        "can_vote": true
       }
     },
     "tail": {}
   },
   "speech": {
-    "brief": "周大山：投票，几点出发？19:33"
+    "brief": "周大山：投票，几点出发？2 个选项，19:33"
   }
 }
 {

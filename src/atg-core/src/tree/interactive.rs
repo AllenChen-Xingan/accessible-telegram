@@ -1,0 +1,106 @@
+//! 能互动的那部分（#13）：投票的选项（[`PollOption`]，挂在 `Attachment::Poll` 里）与消息上的按钮（[`Keyboard`]）。
+//! 只放数据，怎么读在 `speech/interactive.rs`。按钮的回调数据（`data`）不进树：它不给人看，按下时现取那条消息
+
+use super::Span;
+use serde::Serialize;
+
+/// 投票的一个选项（`pollOption`，`td_api.tl:475`）
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct PollOption {
+    pub text: Vec<Span>,
+    /// 投它的人数（看不到结果时为 0）
+    pub votes: u32,
+    /// 占总票数的百分比（0–100，TDLib 算好的）
+    pub percent: u32,
+    /// 我选了它
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub chosen: bool,
+}
+
+/// 消息上的按钮（`reply_markup`，`td_api.tl:4294-4314`）。只收两种有按钮的：消息下面的（`inline`）与机器人换掉输入框的
+/// 键盘（`reply`）；「收起键盘」「强制回复」没有按钮，不建
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct Keyboard {
+    pub kind: KeyboardKind,
+    /// 一行一行（TDLib 的排法），空行已去掉
+    pub rows: Vec<Vec<Button>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyboardKind {
+    /// `replyMarkupInlineKeyboard`：消息下面的按钮
+    Inline,
+    /// `replyMarkupShowKeyboard`：机器人换掉输入框的键盘，按下就是发那句文字（或交出手机号、位置……）
+    Reply,
+}
+
+impl Keyboard {
+    /// 一共几个按钮
+    pub fn count(&self) -> usize {
+        self.rows.iter().map(Vec::len).sum()
+    }
+}
+
+/// 一个按钮：上面的字 + 按下会怎样
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct Button {
+    pub text: String,
+    pub action: ButtonAction,
+}
+
+/// 按下会怎样（内联 `inlineKeyboardButtonType*` `td_api.tl:4230-4266`、键盘 `keyboardButtonType*` `:4167-4215`）。
+/// 开放集合：TDLib 以后会加新种类，认不出的进 `Unknown`
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ButtonAction {
+    /// 打开网址
+    Url {
+        url: String,
+    },
+    /// 以你的身份登录一个网站
+    LoginUrl {
+        url: String,
+    },
+    /// 打开机器人的网页应用
+    WebApp,
+    /// 把按钮上的数据发给机器人（机器人收到后做什么由它定）
+    Callback,
+    /// 同上，但要先输入两步验证密码（多见于转让、付款）
+    CallbackWithPassword,
+    /// 开一个游戏
+    Game,
+    /// 在输入框里换成对这个机器人的内联查询
+    SwitchInline,
+    /// 付款
+    Buy,
+    /// 打开一个用户的资料
+    User {
+        user_id: i64,
+    },
+    /// 把一段文字复制到剪贴板
+    CopyText {
+        text: String,
+    },
+    /// 按不了
+    Disabled,
+    /// 键盘按钮：把按钮上的字当一条消息发出去
+    Text,
+    /// 键盘按钮：把你的手机号发给机器人
+    RequestPhone,
+    /// 键盘按钮：把你的位置发给机器人
+    RequestLocation,
+    /// 键盘按钮：新建一个投票发出去
+    RequestPoll,
+    /// 键盘按钮：选几个用户发给机器人
+    RequestUsers,
+    /// 键盘按钮：选一个会话发给机器人
+    RequestChat,
+    Unknown {
+        td_type: String,
+    },
+}

@@ -176,6 +176,8 @@ pub struct Message {
     pub mentions_me: bool,
     /// 阅后即焚（`self_destruct_type` 非空）：标已听 / 已看即开始不可逆的倒计时，`mark_listened` 按 L2（`actions.md:94`）
     pub self_destruct: bool,
+    /// 消息上的按钮（`reply_markup`，#13 只读）。受限时清掉（同原内容）
+    pub buttons: Option<crate::tree::Keyboard>,
 }
 
 impl Message {
@@ -197,6 +199,9 @@ impl Message {
             }),
             sensitive,
         });
+        if restricted.is_some() {
+            self.buttons = None;
+        }
         for body in std::iter::once(&mut self.content).chain(self.ephemeral.as_mut()) {
             match (&restricted, &mut *body) {
                 (Some(r), _) => *body = Body::Content(r.clone()),

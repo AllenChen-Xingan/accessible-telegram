@@ -10,6 +10,7 @@
 //! - [`Content`]（正文 + 附件）只取决于消息本身，收到消息时建一次，存进 model；`updateMessageContent` 整块替换
 //! - [`Doc`] 是渲染时从 model + store 现投影出来的（名字、已读状态都可能晚到），不存
 
+mod interactive;
 pub mod mask;
 mod media;
 mod reaction;
@@ -17,6 +18,7 @@ pub mod text;
 mod time;
 mod top;
 
+pub use interactive::{Button, ButtonAction, Keyboard, KeyboardKind, PollOption};
 pub use media::{
     Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
     TranscriptSource, Transcription,
@@ -88,6 +90,9 @@ pub struct Message {
     /// 语音的转写（store 的转写表，投影时填；存下来的消息没有）。没有不输出（新增可选字段，`v` 不加一）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript: Option<Transcript>,
+    /// 消息上的按钮（#13，只读；`reply_markup`）。没有不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buttons: Option<Keyboard>,
 }
 
 #[derive(Clone, PartialEq, Serialize)]
@@ -273,8 +278,21 @@ pub enum Attachment {
     Contact {
         name: String,
     },
+    /// 投票（#13 读全）：选项、票数、我选了哪个，以及匿名 / 多选 / 能否改票 / 测验 / 已结束 / 我能不能投
     Poll {
         question: Vec<Span>,
+        options: Vec<PollOption>,
+        /// 总投票人数
+        total: u32,
+        anonymous: bool,
+        multiple: bool,
+        /// 投了还能改（`allows_revoting`）
+        revotable: bool,
+        /// 测验：有正确答案，投了不能改
+        quiz: bool,
+        closed: bool,
+        /// 我现在能投（没结束、TDLib 没给不许投的原因）
+        can_vote: bool,
     },
     Call {
         video: bool,

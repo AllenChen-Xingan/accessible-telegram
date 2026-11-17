@@ -92,6 +92,7 @@ pub fn message(m: &Value) -> Message {
         },
         mentions_me: b(m, "contains_unread_mention"),
         self_destruct: !m["self_destruct_type"].is_null(),
+        buttons: super::interactive::keyboard(m),
     };
     msg.enforce();
     msg
@@ -240,12 +241,7 @@ fn content(c: &Value) -> Content {
                 ),
             }),
         ),
-        "messagePoll" => (
-            vec![],
-            Some(Attachment::Poll {
-                question: formatted(&c["poll"]["question"]),
-            }),
-        ),
+        "messagePoll" => (vec![], Some(super::interactive::poll(&c["poll"]))),
         "messageCall" => (
             vec![],
             Some(Attachment::Call {

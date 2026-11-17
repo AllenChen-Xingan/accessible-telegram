@@ -179,3 +179,49 @@
 ### 开工
 等 #154 合进 main 后从 main 新开分支（大总管开工作副本）；动 `send.rs`、`gate/**` 之前先报大总管。
 - 2026-11-17 大总管：#12 计划照此做；`--as-file` 先不加（人选 B），进待定清单下次问人；开工等 #154 合
+
+## #13 投票与按钮 · 设计计划（只读阶段，2026-11-17；工作副本 msg2-13，分支 feat/13-poll-buttons，从 main fe8d1ec；codex 035）
+
+**结论**：建议拆成两个 PR——**13a 投票**（读全 + 投票 / 撤票）、**13b 按钮**（读出 + 按下）。两边都有对外动作（L2，直发不确认，同 #113），都要在「只有闸能发」清单加函数（一级评审）。读的部分（L0）先做、不动闸。
+
+### 现状
+- 树里投票只有题目（`Attachment::Poll { question }`，`tree/mod.rs:276`），选项、票数、我投了哪个都没有；消息上的按钮（`message.reply_markup`）完全没读
+
+### TDLib（`src/tdlib-rs/tdlib-rs/tl/api.tl`）
+- 投票：`messagePoll`（:5796）→ `poll`（:731：选项、总票数、匿名、多选、能否改票 `allows_revoting`、测验 `pollTypeQuiz`、已结束、`vote_restriction_reason`）；`pollOption`（:475：文字、票数、百分比、`is_chosen`）。投票 `setPollAnswer(chat, msg, option_ids: [int32])`（:13890，0 起的位置；空表 = 撤票）。变化走 `updatePoll`（:12059）
+- 按钮：`replyMarkupInlineKeyboard`（:4314，消息下面的按钮）/ `replyMarkupShowKeyboard`（:4309，机器人换掉输入框的键盘）。内联按钮 11 种（:4230–4266）：网址、登录网址、网页应用、回调、带密码的回调、游戏、切换内联、购买、用户、复制文字、禁用。键盘按钮 9 种（:4167–4215）：文字、发手机号、发位置、发起投票、选用户、选会话、网页应用……
+- 按回调按钮：`getCallbackQueryAnswer(chat, msg, callbackQueryPayloadData{data})`（:14098），机器人回一句 `callbackQueryAnswer{text, show_alert, url}`（:8384）；机器人 502 = 没在时限内回
+
+### 动作与对外等级（建议）
+| 动作 | 等级 | TDLib | 说明 |
+|---|---|---|---|
+| 读投票全貌（选项、票数、我选了哪个、匿名 / 多选 / 测验 / 已结束 / 能否改票） | L0 | 已有 `getMessage` | 进树与读法（「投票：午饭吃什么，3 个选项，共 12 票，你选了第 2 项」） |
+| `vote`（投一票 / 多选几项） | **L2** | `setPollAnswer` | 非匿名投票别人看得到你投了谁；匿名也改票数。直发、留痕；**测验投了不能改**（计划行写明）；已结束、不能投（`vote_restriction_reason`）的准备时拒 |
+| `vote --retract`（撤票） | **L2** | `setPollAnswer` 空表 | 只有 `allows_revoting` 且非测验才许 |
+| 读按钮（每行每个：文字、种类、网址按钮的网址） | L0 | 已有 `getMessage`（`reply_markup`） | 进树（新节点或消息的子节点）与读法（「按钮 3 个：确认、取消、打开网页」） |
+| `press`（按回调按钮） | **L2** | `getCallbackQueryAnswer` | 机器人收到、可能做任何事（验证入群、确认操作……）；直发、留痕；结尾带机器人回的那句 |
+| `press`（键盘上的文字按钮） | **L2** | 就是发那句文字 | 走现成的 `send_text`（同一道闸、同防重复），不新开交出口 |
+| 网址按钮 / 复制文字按钮 / 用户按钮 | L0 | — | 只读出网址、文字、用户 id，**不自动打开**（打开是 `open`，另一件 issue） |
+| 其余（登录网址、网页应用、购买、游戏、切换内联、带密码的回调；键盘上发手机号 / 位置 / 选用户 / 选会话 / 发起投票 / 网页应用） | 拒 | — | v0 一律 `invalid_input`（`why:"button_not_supported"`）：要么交出个人信息、要么要付钱或密码、要么要开网页 |
+
+### 闸（一级评审，动前报大总管）
+- `SealedKind` 加 `Vote`、`Callback` 两种；「只有闸能发」清单加 `set_poll_answer`、`get_callback_query_answer`
+- 防重复：投票**不进**（同样的票投两次结果一样，同 `react`）；按回调按钮**进**（按两次机器人收两次，可能做两次事；10 分钟，`--again` 放行）——要人定（题 3）
+- 落点：交出口分支加在 `td/real/submit.rs`、`fake/submit.rs`（不动 `td.rs`、`fake.rs` 本体）；读按钮要 `model.rs` / `tdjson` / `tree` / `speech` 加字段，`tdjson` 已被 #156 拆过，按新结构放新文件。不碰 #12 改过的文件
+
+### CLI（建议）
+- `poll CHAT MSG`（读全，L0，可并进 `history --detail`）· `vote CHAT MSG OPTION... [--retract] [--dry-run]`（OPTION 用 1 起的序号，计划行写出选项文字）
+- `buttons CHAT MSG`（列出，L0）· `press CHAT MSG ROW COL [--dry-run] [--again]`（或按序号；计划行写出按钮文字、种类、发给哪个机器人）
+
+### 要人定（经大总管）
+1. **拆不拆**：A 拆 13a 投票 / 13b 按钮两个 PR（建议，各自小、各自一级评审）；B 一个 PR
+2. **按回调按钮直发吗**：A 同一切 L2 直发、不确认（建议，按 D1 / #113）；B 回调按钮另要确认（但确认已删，等于另起一套）；C 只许按按钮文字在白名单里的（如「我不是机器人」）
+3. **按回调按钮进不进防重复**：A 进，10 分钟内同一条消息同一个按钮再按拦下，`--again` 放行（建议）；B 不进
+4. **键盘文字按钮**：A `press` 帮你把那句文字发出去（走 `send_text`，建议）；B 不做，让人自己 `send --text`
+5. **哪些按钮种类先做**：A 只做回调 + 键盘文字，网址 / 复制文字 / 用户只读出，其余拒（建议）；B 网址按钮也直接打开（要 `open`，那是另一件 issue）
+6. **测验**：A 照样许投、计划行写明「测验投了不能改、投后会公布正确答案」（建议）；B 测验不许投
+- 2026-11-17 大总管：只读那半先开工（投票全貌 + 按钮 reply_markup 读进树与读法，不碰闸、不外发）；题 1 = A（拆 13a / 13b）、题 5 = A（回调 + 键盘文字，网址只读）大总管定；题 2/3/4/6 问人中
+- 2026-11-17 **人定（经大总管）全按 A**：1 拆 13a 投票 / 13b 按钮（大总管定）· 2 按回调按钮同一切 L2 直发，计划行写明哪个按钮、哪个机器人 · 3 按回调按钮进防重复（10 分钟内同一条消息同一个按钮再按拦下，`--again` 放行），投票不进 · 4 键盘文字按钮由 `press` 走现成的 `send_text`（闸、防重复、留痕照旧）· 5 先做回调 + 键盘文字，网址 / 复制文字 / 用户只读出，其余拒（大总管定）· 6 测验许投，计划行写明「投了不能改、投后会公布答案」
+- 2026-11-17 大总管：读法里题目已以标点结尾就不再加逗号（「投票，几点出发？2 个选项」），补快照
+- 2026-11-17 #13 只读那半写完、验过：投票读全 + 按钮读出（树 `tree/interactive.rs`、映射 `tdjson/interactive.rs`、读法 `speech/interactive.rs`，`model::Message.buttons`，受限清按钮，mask 遮选项剧透）；读法题目以标点结尾不接逗号 / 分号；新夹具 `interactive.json`（含无标点题目一例）；快照：basic brief / detail / full / json、hidden_everywhere 变（逐行看过，全是投票补选项带来的），新 `interactive_layers`；649 过 0 败，clippy 两种 0，fmt / no-debug / file-size 过
+- 没接：`updatePoll`（票数变化）、`updateMessageEdited.reply_markup`（机器人改按钮）——要动 CoreEvent / store / watch，13a / 13b 前报大总管

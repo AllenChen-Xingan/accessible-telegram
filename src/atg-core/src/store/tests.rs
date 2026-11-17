@@ -45,6 +45,7 @@ fn msg(m: i64) -> Message {
         sending: SendingState::Sent,
         mentions_me: false,
         self_destruct: false,
+        buttons: None,
     }
 }
 

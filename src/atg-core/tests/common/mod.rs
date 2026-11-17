@@ -57,6 +57,7 @@ pub fn msg(chat_id: i64, message_id: i64, body: Body) -> Message {
         sending: SendingState::Sent,
         mentions_me: false,
         self_destruct: false,
+        buttons: None,
     }
 }
 
