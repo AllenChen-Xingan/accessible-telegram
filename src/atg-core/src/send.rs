@@ -40,6 +40,7 @@ use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
 use crate::link::{Envelope, EventStream, block_on_timeout};
 use crate::model::{ChatId, ChatKind, CoreEvent, Message, MsgId, ReplyRef, Topic};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 mod outcome;
@@ -129,6 +130,8 @@ pub enum Answer {
 pub struct Submitted {
     mode: ConfirmMode,
     temp: MsgId,
+    /// 批量重发里这条重发前的旧 id：[`finish`] 据此按条记留痕、带 `old_id`（#83，codex 048 第 1 轮 #2）
+    old: Option<i64>,
 }
 
 impl Submitted {
@@ -206,26 +209,30 @@ pub(crate) fn submit_failed<B: Backend>(
 }
 
 /// 交出（验凭据 → 复核 → 交给 TDLib）也算进同一个上限：TDLib 迟迟不回交出的应答时，命令与 serve 不许一直卡着
-/// （codex 016 第 1 轮 #3）。到点还没回 → 可能已经交出，按结果未知记账并报 `send_outcome_unknown`（`timeout`）
+/// （codex 016 第 1 轮 #3）。到点时看 `handed`（交出前由 `fut` 置真，见 [`text::send_text`]）：
+/// 已交出 → 可能已经发出，按结果未知记账并报 `send_outcome_unknown`（`timeout`）；
+/// 还没交出（卡在交出前的复核里）→ 什么都没发，不记账、报 `network`，可以重跑（#80，与 `react_within` 同一口径）
 fn submit_within<B: Backend, T>(
     b: &B,
     plan: &dyn Gated,
     mode: ConfirmMode,
     timeout: Duration,
+    handed: &AtomicBool,
     fut: impl std::future::Future<Output = Result<T, CoreError>>,
 ) -> Result<T, CoreError> {
-    match crate::link::block_on_timeout(fut, timeout) {
-        Some(r) => r,
-        None => {
-            b.gate()
-                .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
-            Err(CoreError::SendOutcomeUnknown {
-                chat_id: Some(plan.target()),
-                temp_message_id: 0,
-                why: UnknownWhy::Timeout,
-            })
-        }
+    if let Some(r) = crate::link::block_on_timeout(fut, timeout) {
+        return r;
     }
+    if !handed.load(Ordering::SeqCst) {
+        return Err(CoreError::Network { td: None });
+    }
+    b.gate()
+        .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+    Err(CoreError::SendOutcomeUnknown {
+        chat_id: Some(plan.target()),
+        temp_message_id: 0,
+        why: UnknownWhy::Timeout,
+    })
 }
 
 // ───────────────────────── 计划行的目标部分（两种计划行共用）─────────────────────────
