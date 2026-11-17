@@ -81,7 +81,7 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::RateLimited { .. } | E::AccountLimited { .. } => 5,
         E::NotFound { .. } => 6,
         E::Forbidden { .. }
-        | E::DeleteRefused { .. }
+        | E::ActionRefused { .. }
         | E::InvalidInput { .. }
         | E::InvalidSend { .. } => 7,
         E::SendRefused { .. } | E::Cancelled => 8,
@@ -132,7 +132,7 @@ pub fn core_error_data(e: &CoreError) -> Value {
             json!({ "chat_id": chat_id, "temp_message_id": temp_message_id, "why": to_value(why) })
         }
         CoreError::InvalidSend { why } => json!({ "why": to_value(why) }),
-        CoreError::DeleteRefused { why } => json!({ "why": to_value(why) }),
+        CoreError::ActionRefused { why } => json!({ "why": to_value(why) }),
         CoreError::Unknown { td } => json!({ "td_code": td.code }),
         _ => json!({}),
     };

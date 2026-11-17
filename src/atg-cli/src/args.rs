@@ -106,6 +106,8 @@ pub enum Command {
     Mute(Rest),
     /// 给所有人删除自己发的消息：先列出要删哪几条（kind:"plan"），然后立即删除，不再询问
     Delete(DeleteArgs),
+    /// 改自己发的一条纯文字消息：先列出原文与新文（kind:"plan"），然后立即改，不再询问
+    Edit(EditArgs),
     /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan，和 send 一样直接点、不确认。
     /// 测试服务器上只许收藏夹
     React(ReactArgs),
@@ -361,6 +363,26 @@ pub struct ResendArgs {
     pub dry_run: bool,
 }
 
+/// `edit` 的参数
+#[derive(Args)]
+pub struct EditArgs {
+    /// 会话 id，或 saved（自己的收藏夹；收藏夹里的不限时）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要改的消息 id（history 输出里的 message_id；只能是自己发的、已发出的纯文字消息）
+    #[arg(value_name = "MSG_ID")]
+    pub message_id: i64,
+    /// 改成的文字（只有纯文字；原文带的格式会丢）
+    #[arg(long, value_name = "T")]
+    pub text: Option<String>,
+    /// 从文件读改成的文字（UTF-8，64 KB 以内；Telegram 一条最多 4096 字，超了交出后被拒）
+    #[arg(long, value_name = "PATH")]
+    pub text_file: Option<std::path::PathBuf>,
+    /// 只输出要怎么改，不改
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
 /// `delete` 的参数
 #[derive(Args)]
 pub struct DeleteArgs {
@@ -502,6 +524,7 @@ impl Command {
             Command::Open(_) => "open",
             Command::Mute(_) => "mute",
             Command::Delete(_) => "delete",
+            Command::Edit(_) => "edit",
             Command::React(_) => "react",
             Command::Reactions(_) => "reactions",
             Command::Resend(_) => "resend",
