@@ -272,7 +272,7 @@ fn test_phone_only_from_env_file_and_only_test_numbers() {
 #[test]
 fn concurrent_first_create_never_sees_a_half_written_marker() {
     for round in 0..50 {
-        let root = temp_root(&format!("race-{round}"));
+        let root = temp_dir(&format!("race-{round}"));
         let results: Vec<_> = std::thread::scope(|s| {
             let hs: Vec<_> = (0..8)
                 .map(|i| {

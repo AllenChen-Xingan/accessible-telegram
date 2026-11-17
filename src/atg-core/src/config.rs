@@ -463,9 +463,9 @@ fn write_private(path: &Path, content: &str) -> Result<(), CoreError> {
 mod tests {
     use super::*;
 
+    /// 共用夹具建的新空目录（#60 R3），下面放一个档案目录 `profiles/p`
     fn scratch(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("atg-cfg-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::testkit::temp_dir(tag);
         fs::create_dir_all(root.join("profiles").join("p")).unwrap();
         root
     }
@@ -478,7 +478,6 @@ mod tests {
         fs::write(dir.join(MARKER), "main").unwrap();
         fs::write(dir.join(LOCK), "").unwrap();
         assert!(on_missing(&root, &dir, ServerKind::Main).is_ok());
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// 真缺标记、目录里有别的东西：仍报 missing，且不补写（#61）
@@ -495,6 +494,5 @@ mod tests {
             })
         ));
         assert!(!dir.join(MARKER).exists());
-        let _ = fs::remove_dir_all(&root);
     }
 }
