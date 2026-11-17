@@ -84,6 +84,7 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::SendRefused { .. } | E::Cancelled => 8,
         E::ProfileBusy { .. } | E::DbKeyInvalid { .. } => 9,
         E::SendOutcomeUnknown { .. } => 10,
+        E::SttUnavailable { .. } => 11,
         E::Internal { .. } | E::Unknown { .. } => 1,
     }
 }
@@ -106,7 +107,9 @@ pub fn core_error_data(e: &CoreError) -> Value {
     let extra = match e {
         CoreError::AuthWrongState { expected } => json!({ "expected": to_value(expected) }),
         CoreError::RateLimited { retry_after_s, .. } => json!({ "retry_after_s": retry_after_s }),
-        CoreError::NotFound { what, .. } | CoreError::Internal { what } => json!({ "what": what }),
+        CoreError::NotFound { what, .. }
+        | CoreError::Internal { what }
+        | CoreError::SttUnavailable { what } => json!({ "what": what }),
         CoreError::ProfileBusy { holder: Some(h) } => json!({ "holder": to_value(h) }),
         CoreError::DbKeyInvalid { source } => json!({ "source": to_value(source) }),
         CoreError::SendRefused { reason, last } => {
@@ -334,6 +337,24 @@ mod tests {
         assert!(at.ends_with('Z'));
     }
 
+    /// `stt_unavailable.what` 三处对齐：码的正本在 `atg_audio::stt::what`，`errors.md` 那一行逐个登记，
+    /// `atg-core` 的提示逐个有专门的修法（只有 `unavailable` 走兜底）
+    #[test]
+    fn stt_unavailable_whats_match_everywhere() {
+        use atg_audio::stt::what;
+        let spec = include_str!("../../../specs/contracts/errors.md");
+        let row = spec
+            .lines()
+            .find(|l| l.starts_with("| `stt_unavailable`"))
+            .unwrap_or_else(|| panic!("errors.md 没有 stt_unavailable 行"));
+        let hint = |w: &'static str| CoreError::SttUnavailable { what: w }.message_zh();
+        let fallback = hint("__none__");
+        for w in what::ALL {
+            assert!(row.contains(&format!("`{w}`")), "errors.md 没登记 {w}");
+            assert_eq!(hint(w) == fallback, w == what::UNAVAILABLE, "{w} 的提示");
+        }
+    }
+
     #[test]
     fn exit_codes_match_contract() {
         assert_eq!(Code::Usage.exit(), 2);
@@ -356,6 +377,12 @@ mod tests {
             (CoreError::Forbidden { td: None }, 7),
             (CoreError::AuthPhoneNotForProfile, 3),
             (CoreError::Cancelled, 8),
+            (
+                CoreError::SttUnavailable {
+                    what: "helper_not_found",
+                },
+                11,
+            ),
             (
                 CoreError::ProfileBusy {
                     holder: Some(Holder::Gui),

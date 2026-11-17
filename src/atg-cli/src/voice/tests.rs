@@ -525,3 +525,5 @@ fn ctrl_c_while_download_hangs_is_interrupted() {
     );
     assert!(matches!(b.calls().last(), Some(Call::Shutdown)));
 }
+
+mod transcribe;

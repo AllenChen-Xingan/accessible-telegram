@@ -122,7 +122,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `forward` | L2 | `forwardMessages`（`:13180`） |
 | `react` | L2 | `addMessageReaction`（`:13748`） |
 | `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
-| `speech_to_text` | L0 | `recognizeSpeech`（`:13121`） |
+| `speech_to_text` | L0 | **本机转写**（#59 取代 F4）：`atg-audio` 的 `stt` 起本机辅助程序、用 Apple 端侧模型（SpeechAnalyzer），音频经管道喂、不落盘、不外发（以 Apple 端侧说明为据，**断网未实测**，待人验证）；不调 `recognizeSpeech`（`:13121`，那是 Telegram 服务器识别、要 Premium）。CLI `transcribe`；结果只在内存（转写表），不标已听 |
 | `mark_unread` | L0 | `toggleChatIsMarkedAsUnread`（`:14514`） |
 
 所有 L2 一律走同一道闸。
@@ -330,5 +330,6 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：发送前查限流截止（`rate_limited`）与账号受限，两者收到即落盘；`Gated` 只许核心内的计划实现
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：交出前（所有等待之后）再查一次受限与限流；限制标记读不准就拒发
 - 2026-11-13 issue #52 codex 016 第 7 轮后（属技术细节）：确认框估行数时连字符、斜杠、标点等断行机会也算（两种断法取多的）；估算挪到 `atg-core::confirm_box`
+- 2026-11-14 #59 3c（手下 media，按 exp008 设计）：`speech_to_text` 改成本机转写（取代 F4 的 `recognizeSpeech`），L0 不变
 - 2026-11-16 issue #111 / #113（人定）：先改成默认直发，再把 Touch ID / 系统密码确认整个删除——`human_auth`、确认框估算与 `too_long_to_confirm`、`auth_failed`、`not_interactive` 全部去掉；直发为唯一方式
 - 2026-11-16 issue #115（codex 047 补审，只改文字）：删 Touch ID 后的文字残留——第一节第 4 小节理由段改成「不做终端确认、一律直发」；第 5 小节「启动时提示」改为不提示（GUI 也不加「直发模式」、不播报）；验收表去掉 `--unsafe-direct-send` 前提，留痕按 `submitted` + 结果两行；第 4 小节小标题改「`plan` 给人看什么」、验收表 tmux 反例括注改写

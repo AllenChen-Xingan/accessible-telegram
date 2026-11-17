@@ -30,11 +30,13 @@
 | 022 | 2026-11-13 | #63 #73 #78 #79 CLI 等待都有期限、Ctrl+C 能收尾（codex · 两轮） | 第一轮 P2×5、第二轮 P2×4，全部属实；8 条已修，1 条（watch 等授权线时按 Ctrl+C 的结尾行）开 issue；两轮无 P0/P1，收敛 → `022_bounded-waits-63-codex.md` |
 | 018 | 2026-11-13 | #4 下载与播放的代码（atg-audio、download / play；codex · 三轮，逐文件审） | 提出 8（P1×2、P2×6）：全部属实；代码全改，剩 1 条 P2 的测试缺口开 issue；第 2、3 轮无 P0/P1，收敛 → `018_pr4-voice-code-codex.md` |
 | 024 | 2026-11-13 | #59 转写底座（atg-audio 的 stt 模块与 Swift 辅助程序；codex · 逐文件审） | 第 1 轮 P1×3 P2×1、第 2 轮 P1×1 P2×2、第 3 轮 P1×1 P2×2、第 4 轮 P1×1 P2×2：全部属实，已改；第 5 轮 P1×1（同一处，人定丙：已改，边界调度竞态此后算 P2）；第 6、7 轮无 P0/P1，满足停止线，剩 P2×1 开 issue → `024_stt-base-codex.md` |
+| 026 | 2026-11-14 | #59 会话租约共用模块 lease.rs 与 Hub / serve / watch 迁移（codex · diff） | 第 1、2 轮各 P2×2，全部属实已改；两轮无 P0/P1，满足停止线（第 2 轮的两条也直接改了，未开 issue）→ `026_lease-codex.md` |
 | 027 | 2026-11-14 | #62 #64 #95 第三批：td 起停收尾、用法错误不回显原文、auth 死路统一判、watch 出 status 前 Ctrl+C（codex · 两轮） | 第一轮 P2×2 全部属实已修；第二轮无发现；两轮无 P0/P1，收敛 → `027_batch3-62-64-95-codex.md` |
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 045 | 2026-11-16 | #97 #98 #100 #40 第四批：标记原子发布、tty 读看停止标志、内核故障即报断开、密码缓冲区按容量清零（codex · diff 类） | 四轮：P1×5 属实已修、P2 留 #116；第 3、4 轮无 P0/P1，收敛 → `045_batch4-97-98-100-40-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 039 | 2026-11-16 | #59 3c `transcribe` 命令（Doc::Transcription、stt_unavailable、辅助程序查找、lease::Guard；codex · diff） | 第 1 轮仅 P2×2，全部属实：途中更新改成闸门、补 18+ 途中变化与守卫共存测试；第 2 轮仅 P2×2（同两截的剩余：下载闸门、假后端「没开不推」）开 issue；两轮无 P0/P1，满足停止线 → `039_transcribe-codex.md` |
 | 044 | 2026-11-14 | #60 R3a 测试共用夹具 testkit 第一刀（codex · diff 类 · 两轮） | 第 1 轮 P2×2 属实（删残留失败时交出旧目录；一处临时目录被误当成文件）已改；第 2 轮零发现，收敛 → `044_r3a-testkit-codex.md` |
 | 046 | 2026-11-16 | #108 testkit 特性只许在 dev 依赖里开的机器检查（`check-sources.py` testkit 一条；codex · contract 类 · 三轮） | 第 1 轮 P1×1（继承改名漏检）属实，已改结构；第 2、3 轮无 P0/P1，收敛；第 3 轮抽查「不符」1 条（记录写过头），已补测试 → `046_testkit-gate-108-codex.md` |
 | 047 | 2026-11-16 | PR #112 + #114 删除 Touch ID、发送一律直发（codex 补审 · diff 类 · 两轮） | 两轮均无 P0/P1；P2 共 7 条（第 2 轮 3 条是第 1 轮的重提）：契约与 README 文字残留 → #115，N7 第二测试号私聊例外（契约有、代码从未实现）→ 交人定，1 条驳回；安全不变量 codex 核过都在 → `047_remove-touch-id-codex.md` |

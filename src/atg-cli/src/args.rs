@@ -121,6 +121,8 @@ pub enum Command {
     Draft(Rest),
     /// 前台放一条语音：标准输入收控制命令，标准输出逐行出状态（默认不标已听；档案被占时不转发）
     Play(PlayArgs),
+    /// 本机把一条语音转成文字（不外发、不标已听；档案被占时不转发）
+    Transcribe(TranscribeArgs),
     /// 只打印读法：夹具（TDLib 更新的 JSON 数组）→ 树 → 读法，不联网
     Speech(SpeechArgs),
     /// 机读自描述
@@ -231,7 +233,7 @@ pub struct LinksArgs {
     pub reveal: bool,
 }
 
-/// 一条消息：会话 + 消息 id（`download`、`play` 共用；以后 `transcribe` 也用）
+/// 一条消息：会话 + 消息 id（`download`、`play`、`transcribe` 共用）
 #[derive(Args)]
 pub struct MsgRef {
     /// 会话 id，或 saved（自己的收藏夹）
@@ -257,6 +259,26 @@ pub struct PlayArgs {
     /// 标为已听（对方看得到）：出口准备好之后、出声之前标；阅后即焚的语音会拒绝（确认还没做）
     #[arg(long)]
     pub mark_listened: bool,
+}
+
+/// `transcribe` 的参数
+#[derive(Args)]
+pub struct TranscribeArgs {
+    #[command(flatten)]
+    pub at: MsgRef,
+    /// 只用这一种语言的模型（不给时中文、英文都跑，取置信度高的）
+    #[arg(long, value_enum)]
+    pub lang: Option<Lang>,
+    /// 被标为敏感内容（18+）的语音也输出转写文字；不加时照转，但只说「隐藏内容」
+    #[arg(long)]
+    pub reveal: bool,
+}
+
+/// `transcribe --lang` 的取值
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Lang {
+    Zh,
+    En,
 }
 
 /// `send` 的参数。正文只从 `--text` / `--text-file` 来，不从标准输入读（标准输入可能是 AI 拼进来的管道）
@@ -411,6 +433,7 @@ impl Command {
             Command::Watch(_) => "watch",
             Command::Draft(_) => "draft",
             Command::Play(_) => "play",
+            Command::Transcribe(_) => "transcribe",
             Command::Speech(_) => "speech",
             Command::Schema(_) => "schema",
             Command::Serve => "serve",

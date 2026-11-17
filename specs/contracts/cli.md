@@ -42,6 +42,7 @@
 | `watch [--chat CHAT_ID] [--reveal]` | 订阅更新，持续输出事件，Ctrl+C 结束（第 5 小节）。新消息与正在输入带 `notify` v0 的判定；消息的隐藏内容默认遮住（规则同 `history`），`--reveal` 才出原文；`--chat` 可写 `saved`；加 `--redact` 报 `not_implemented`。**不标已读** | `subscribe`；`--chat` 时另有 `chat_get`（先把会话装进 store、确认它在，找不到报 `not_found`）+ 成对的 `chat_open` / `chat_close`；碰到设置还没取到的论坛话题时 `forum_topic_get`（只读） | T05 T10 |
 | `draft set CHAT_ID (--text T \| --text-file PATH)` · `draft clear CHAT_ID`（第二批） | 写 / 清草稿；先输出 `plan`，确认规则与 `send` 相同 | `draft_set` `draft_clear` | T04 |
 | `play CHAT_ID MSG_ID [--mark-listened]`（F3 人定进 MVP；声音从新建的 `atg-audio` 出，F8） | 前台播放语音（v0 只认语音；不是语音 → `invalid_input`）。标准输入每行一条控制命令：`pause` · `resume` · `seek +N` / `seek -N`（秒）· `speed X`（0.5–2）· `stop`；标准输出每次状态变化一行 `kind:"playback"`（树节点 `playback`：`state` · `position_s` · `duration_s` · `speed`，带 `speech.brief`）。读不懂的命令、倍速越界、非有限数：出一行**非终结的** `kind:"control_rejected"`（`code:"invalid_input"` + `message_zh`），照常播；跳转截到 [0, 时长]，跳到末尾即播完。标准输入 EOF：播着就播完为止，暂停着按 `stop`。播完或 `stop` 输出 `result`（`reason:"finished"\|"stopped"` · `marked_listened`），退出码 0；Ctrl+C → `error(interrupted)`、130。默认不标已听；`--mark-listened`：下载、解码、声音出口停着打开都成功后才标、标成功才出声；阅后即焚的语音报 `not_implemented`（L2 确认还没做）；标了之后出声失败 → `internal{what:"audio_output_failed"}`（已标无法撤回）。解码失败 → `internal{what:"audio_decode_failed"}`。加 `--redact` 报 `not_implemented`（每行带读法，打码还没做）。细则 `docs/experiments/exp008-local-stt/design.md` 第三节第 5、5b 条 | `message_get` `file_download` `mark_listened` | T07 |
+| `transcribe CHAT_ID MSG_ID [--lang zh\|en] [--reveal]`（#59 取代 F4） | 本机把一条语音转成文字（v0 只认语音；不是语音 → `invalid_input`）：不外发、不标已听、不标已读。没下就先下（同 `play`）。不给 `--lang` 时中文、英文双跑、取置信度高的。输出一行 `kind:"transcription"`（树节点 `transcription`：`id` 是这条**现在的** id · `sensitive` · `outcome`：`text`（带 `lang` `source` `segments`）/ `no_speech` / `hidden`，带 `speech.brief`）+ `result`（`chat_id` · `message_id` · `outcome`），退出码 0；文字模式只出读法那一句。18+ 遮挡的语音不加 `--reveal`：照转，但输出不带文字（`hidden`），标准错误提示加 `--reveal`。转完提交时消息已撤回 → `not_found{what:"message"}`；内容已换成别的文件 → `internal{what:"transcript_stale"}`（再跑一次）。本机转不了（辅助程序找不到 / 不安全 / 版本不对、语言模型没装）→ `stt_unavailable`（退出码 11）；辅助程序超时、坏输出 → `internal{what:"stt_timeout" \| "stt_helper_failed"}`。Ctrl+C → `error(interrupted)`、130。结果只在本进程内存，之后另一条 `history` 看不到。加 `--redact` 报 `not_implemented`（输出里就是转写原文，打码还没做，不悄悄输出原文）。细则 `docs/experiments/exp008-local-stt/design.md` 第二节第 3 条、第三节第 1、6、7 条 | `chat_open` `message_get` `file_download` `chat_close` | — |
 | `speech --fixture PATH [--level brief\|chat_brief] [--reveal]` | 只打印读法：夹具文件（TDLib 更新对象的 JSON 数组，按顺序喂进 store，读法夹具在 `src/atg-core/fixtures/speech/`）→ 树 → 读法，不联网、不碰档案。`brief`（默认）按到达顺序每条消息 / 系统消息 / 撤回占位 / 状态一行；`chat_brief` 主列表每个会话一行（`kind:"chat"`）。读法都在 `speech.brief`；CLI 没有按键，不读「按 D 展开」「按 M 收听」。`result.data` 带 `level`、`count`、`tz`、`utc_offset_s`：给了 `--tz` 时 `tz:"fixed"`、`utc_offset_s` 是那个固定偏移（秒）；跟系统时区时 `tz:"system"`、`utc_offset_s` 为 `null`（每个钟点按它自己的时间点取偏移，夏令时前后不同，没有对所有行都成立的一个值）。隐藏内容默认遮住（规则同上，`content-tree.md` 第八节），`--reveal` 才出原文。读不了、不是 JSON 数组 → `usage`。以后有场景目录再加 `--scenario NAME`；`detail` 归 `show` / `history --detail`（M1.6） | 无（直接调 `speech`） | 定标 |
 | `schema [COMMAND]` | 机读自描述（第 6 小节） | — | — |
 | `serve` | 常驻当执行方：占着档案、开本机接口，替后起的 `atg-cli` 执行转来的命令；起好输出一行 `status`（另带 `listening:true`），Ctrl+C / SIGTERM 后先做完手上的请求，输出 `result`（`reason:"interrupted"` · `served`：执行了几个请求 · `refused`：拒绝了几个非本用户的连接），退出码 0（同 `watch`：被打断就是正常结束）；再按一次立刻以 130 退出、不出结尾行。没有登录入口：要登录先停掉它。细则 `config-privacy.md` 第一节第 2 小节 | — | — |
@@ -93,6 +94,7 @@
 | `version` | 各版本号 |
 | `link` | `links` 的一行：`index`（从 1 起）· `text` · `url`（隐藏时 `null`）· `hidden`（链接落在剧透里，或链接文字里套着剧透） |
 | `playback` | `play` 的状态：树节点 `playback`（`content-tree.md` 第三节第 1 小节）——`state`（`playing` / `paused`；结束不出这一行，看 `result.reason`）· `position_s` · `duration_s` · `speed`；带 `speech.brief` |
+| `transcription` | `transcribe` 这一次的结果：树节点 `transcription`（`content-tree.md` 第三节第 1 小节）——`id` · `sensitive` · `outcome`（`text` / `no_speech` / `hidden`）；带 `speech.brief` |
 | `control_rejected` | `play` 播放中拒绝一条控制命令（**不是结尾**，播放照常）：`code`（`invalid_input`）· `message_zh` |
 | `result` | 见下 |
 | `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有三个自有码 `usage`、`interrupted`、`not_implemented` |
@@ -128,6 +130,7 @@
 | 8 | 发送被拒或人取消 | `send_refused` `cancelled` |
 | 9 | 本地档案被占用且本机接口连不上 / 本地库钥匙不对 | `profile_busy` `db_key_invalid` |
 | 10 | 发送结果未知（已交出，没等到成败） | `send_outcome_unknown` |
+| 11 | 本机缺能力 / 环境不满足，要人去装或去设置（arch 定 2026-11-14：同类的码以后也进这一档；`not_implemented` 仍是 1） | `stt_unavailable` |
 | 130 | Ctrl+C 中断（`watch`、`serve` 除外：第一次是正常结束、退出码 0；被第二次打断时才是 130，无结尾行） | `interrupted` |
 
 ### 5. 流式（`watch`）
@@ -238,6 +241,7 @@
 - 2026-11-13 issue #52 codex 016 第 2 轮后（属技术细节）：`resend` 结尾行有结果未知的优先报它，说明逐项计数
 - 2026-11-13 #63 #73 #78（手下 fix，大总管定期限取值 2026-11-13）：加「最多等多久」一段：起后端、登录每步、查询类、`download` 的期限与到点报的码，各命令按 Ctrl+C 的结局；`download` 行指过去
 - 2026-11-14 #64 #95（手下 fix，大总管定 2026-11-13）：退出码 2 写明用法错误的标准错误说明不回显用户写的值、所有命令一样；`watch` 出 `status` 之前已按 Ctrl+C 只出一行 `result`、退 0（「最多等多久」「输出什么」「怎么结束」三处）
+- 2026-11-14 #59 3c（手下 media；arch 定 2026-11-14）：退出码表加 11（本机缺能力 / 环境不满足，`stt_unavailable`）；加 `transcribe` 一行
 - 2026-11-14 #98（手下 fix，属技术细节）：「最多等多久」写明登录这组读终端时外部 SIGTERM 也按 `interrupted` 收尾、第二次信号先放回终端再退出
 - 2026-11-16 #98 codex 045 第 2 轮（手下 fix，属技术细节）：「最多等多久」写明 fd ≥ 1024 的例外（#116）
 - 2026-11-16 issue #113（人定）：Touch ID 删除——`--confirm` 去掉、`confirm` 取值去掉 `human_auth`、`too_long_to_confirm` 不再出现；`--unsafe-direct-send` 隐藏、无作用；直发不再先出 `status` 行与醒目提示

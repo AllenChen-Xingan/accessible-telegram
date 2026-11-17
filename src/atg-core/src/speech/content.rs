@@ -1,5 +1,5 @@
 //! 正文与附件的读法（`docs/plan/010_complexity-budget.md` 定的 `speech/content.rs`；`speech.rs` 里其余正文、附件的读法
-//! 以后照 010 搬进来）。现在有：时长的说法（视频、语音、音频、播放状态共用）、语音的转写（#59）。
+//! 以后照 010 搬进来）。现在有：时长的说法（视频、语音、音频、播放状态共用）、内容的全文、语音的转写（#59）。
 //! **转写的句子是 AI 草稿，待人实听**。
 //!
 //! 转写（`docs/experiments/exp008-local-stt/design.md` 第二节第 4 条、第三节第 2 条）：
@@ -9,7 +9,8 @@
 //!   读屏只拿它当停顿，v0 不按语种分）
 //! - 隐藏内容（18+ 遮挡）没展开时：全文不接转写、详情不说「已转文字」，同 JSON 不输出转写（`tree/mask.rs`）
 
-use crate::tree::{Attachment, Message, Transcript};
+use super::{HIDDEN, attachment, full_spans};
+use crate::tree::{Attachment, Content, Message, Transcript};
 
 /// 时长：「12 秒」「1 分 5 秒」「1 小时 2 分」
 pub(super) fn dur(secs: u32) -> String {
@@ -37,7 +38,7 @@ pub(super) fn transcript_detail(m: &Message, reveal: bool) -> Option<String> {
 
 /// 消息的全文：内容的全文，是语音再接转写；遮着的（18+ 没展开）不接
 pub(super) fn full(m: &Message, reveal: bool) -> String {
-    let full = super::full_content(&m.content, reveal);
+    let full = full_content(&m.content, reveal);
     if !matches!(m.content.attachment, Some(Attachment::Voice { .. }))
         || (m.content.sensitive && !reveal)
     {
@@ -48,6 +49,25 @@ pub(super) fn full(m: &Message, reveal: bool) -> String {
         .as_ref()
         .map_or_else(|| NOT_YET.to_owned(), punctuate);
     format!("{full}，{tail}")
+}
+
+/// 内容的全文：附件照名称的说法放在前面，正文原样（`super::full` 的正文部分）
+pub(super) fn full_content(c: &Content, reveal: bool) -> String {
+    let body = full_spans(&c.body, reveal);
+    let label = c.attachment.as_ref().map(|a| {
+        let (l, spoiler) = attachment(a, reveal);
+        if (spoiler || c.sensitive) && !reveal {
+            format!("{l}，{HIDDEN}")
+        } else {
+            l
+        }
+    });
+    match (label, body.trim().is_empty()) {
+        (None, true) => "空消息".to_owned(),
+        (None, false) => body,
+        (Some(l), true) => l,
+        (Some(l), false) => format!("{l}，{body}"),
+    }
 }
 
 /// 片段拼成一句：前一段末尾没有标点就补「，」；全是空白的片段跳过

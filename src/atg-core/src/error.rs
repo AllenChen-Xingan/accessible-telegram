@@ -199,6 +199,11 @@ pub enum CoreError {
         why: InvalidSendWhy,
     },
     Cancelled,
+    /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
+    /// 不安全、起不来、版本不对，或系统的语言模型没装（#59，design 第三节第 4、6、7 条）。`what` 只放写死的码
+    SttUnavailable {
+        what: &'static str,
+    },
     /// 406（附件都不建）或本项目自己的 bug。`what` 只放写死的说明，不放运行时的值
     Internal {
         what: &'static str,
@@ -231,6 +236,7 @@ impl CoreError {
             Self::SendRefused { .. } => "send_refused",
             Self::SendOutcomeUnknown { .. } => "send_outcome_unknown",
             Self::Cancelled => "cancelled",
+            Self::SttUnavailable { .. } => "stt_unavailable",
             Self::Internal { .. } => "internal",
             Self::Unknown { .. } => "unknown",
         }
@@ -265,6 +271,7 @@ impl CoreError {
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
             | Self::Cancelled
+            | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
         }
     }
@@ -337,6 +344,24 @@ impl CoreError {
                 }
             },
             Self::Cancelled => "已取消",
+            // 按 `what` 给修法（码的正本在 `errors.md` 的 `stt_unavailable` 行；写法由 `atg-audio` 的 `stt::locate` 出）
+            Self::SttUnavailable { what } => match *what {
+                "helper_not_found" => {
+                    "找不到本机转写程序 atg-stt：开发时先跑 src/atg-audio/stt-helper/build.sh；不在仓库里运行时设环境变量 ATG_STT_HELPER 指向它"
+                }
+                "helper_env_invalid" => {
+                    "环境变量 ATG_STT_HELPER 要写 atg-stt 的完整路径（以 / 开头）、指向能执行的文件，请改正或去掉它"
+                }
+                "helper_not_runnable" => {
+                    "找到的 atg-stt 不是能执行的文件，请重跑 src/atg-audio/stt-helper/build.sh"
+                }
+                "helper_unsafe" => {
+                    "atg-stt 不属于你，或别人能改它，为安全不执行：用自己的账号重跑 src/atg-audio/stt-helper/build.sh 编一份新的；是自己的文件只是权限太宽，就 chmod 755 它"
+                }
+                _ => {
+                    "本机语音转文字用不了（系统没有中文、英文的语音识别模型，或转写程序 atg-stt 起不来、和本程序版本不配）：先在系统设置的「键盘 › 听写」里打开听写、加上中文和英文，等它下完模型再试；从源码运行的再重跑 src/atg-audio/stt-helper/build.sh"
+                }
+            },
             Self::Internal { .. } => "程序内部出错",
             Self::Unknown { .. } => "出现了无法识别的错误",
         }
