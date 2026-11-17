@@ -199,3 +199,15 @@
 - **验收**：fmt、两种 clippy、`test --workspace`（读法快照一条都不能变）；按行做多重集比对（只多 mod / use / pub(super) / 头注释）；`--tighten`；自审 + codex 050（diff 类；新文件作为依据文件给它读）
 - **进度（2026-11-17，工作副本 `atg-wt/arch-speech`，分支 `refactor/r7-speech`，从 266f5f3 开）**：挪完，大总管已提交检查点 ff44a49。**最终拆法比上面的计划多挪了一块**（自审 P2）：全文逐段渲染（`MASK`、`full_spans`、`full_span`，原第 212–285 行）也挪进了 `content.rs`，因为它和 `spans` 是同一类、`content.rs` 本来就要用它。最终行数：`speech.rs` 810 → 394，新 `speech/service.rs` 93，`speech/content.rs` 95 → 438。可见性：`service`、`content`、`spans`、`merge_emoji` 改成 `pub(super)`；`merge_emoji` 只有测试用，根里那行导入加了 `#[cfg(test)]`；`content.rs` 的导入改成 `use crate::tree::*`。检查：fmt、两种 clippy、test 600 过 0 败、快照不变、no-debug、doc 都通过。`--tighten` 9 → 8（这个分支上没有 #139，两者后合的那个在基线文件里有一处小冲突）。010 表格、`content-tree.md` 代码地图已回写。自审 1 轮：P1×1（rustfmt）、P2×1（全文层）已改，P3 已收尾。codex 050 第 1 轮：P2×1（本条进度写的还是中间版本）已改
 - ✅ codex 050 两轮收敛（第 1 轮 P2×1 已改，第 2 轮零发现），记录在 `docs/reviews/050_r7-speech-codex.md`，索引已加。等大总管提交、开 PR
+
+## R7 第三刀：拆 `store/mod.rs`（2026-11-17，只出计划；codex 编号 051；分支等计划定了由大总管从 main 开）
+
+- **实查**（origin/main）：`store/mod.rs` 926 行，测试已经在 `store/tests.rs`。已有子模块：`query`（纯查询，`impl Store`）、`table`（消息表）、`ticket`（凭据）、`transcripts`（转写表）
+- **结构**：1–406 是类型（`Input`、`Entry`、`Tomb`、`Window`、`Patch`、`FieldChange`、`Store`…）、`reduce`、`apply` / `apply_inner`、只读访问器；407–923 全是 `impl Store` 里改状态的私有方法：`update`（按事件分派，407–544）、底层写入（`upsert_snapshot`、`put_live`、`put_tomb`、`take`、`mark_evicted`、`prune`、`show_in_window`，545–635）、字段变更 / 删除 / 换 id / 最后一条（`change`、`delete`、`rename`、`set_last`，636–773）、窗口与历史应答（`open_window`、`history`，774–923）
+- **拆法（方案 A，建议）**：407–923 整块挪进新文件 `store/write.rs`，作为第二个 `impl Store` 块（和 `query.rs` 同一种写法），约 525 行；根剩约 410 行，超线文件减一个
+  - 根要调用的只有 4 个：`update`、`prune`、`open_window`、`history`，这 4 个改成 `pub(super)`。其余 9 个只在这一块里互相调用，原样保持私有
+  - `write.rs` 头上写 `use super::*;`（子模块看得到父模块的私有类型和 `topic_notify`、`update_version`、`MAX_ORPHANS`），外加 `use crate::model::*;` 和用到的 `std::collections`
+  - 根上的 `use std::collections::{…}` 里，挪走后不再用到的会报「没用的导入」，要删掉（编译器会告诉哪个）
+- **方案 B（不建议）**：分成 `update.rs`（407–773）和 `window.rs`（774–923）。窗口那段要调用 `put_live`、`take`、`show_in_window`，`pub(super)` 要放宽到 7 个，两个文件也不比一个文件好找
+- **不挪**：`Patch` / `FieldChange` / `FieldSeqs`（88–225）。`table.rs` 也在用它们，挪走的话字段和方法都要放宽可见性，改动面太大，收益小
+- **验收**：fmt、两种 clippy、`test --workspace`（`tests/reducer.rs` 的 2102 行 reducer 测试是主要兜底）；逐行比对（只多 mod / use / 4 个 pub(super) / 头注释）；`--tighten`；自审 + codex 051（diff 类）
