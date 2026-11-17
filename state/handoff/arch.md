@@ -326,15 +326,19 @@
 - 等大总管叫：R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`；R3a 余下 4 处（core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`）。都等 #149、#154 合并
 - 要人定的事：无
 
-## R3a 第三刀（2026-11-17，工作副本 `atg-wt/arch-r3a3`，分支 `refactor/r3a-testkit-3`，从 main 384da95 起；评审编号 058）
+## R3a 第三刀（2026-11-17，工作副本 `atg-wt/arch-r3a3`，分支 `refactor/r3a-testkit-3`，从 main 384da95 起；codex 编号 058）
 
-计划 `_tmp/20261116-b20/plan-next-arch.md` 的 PR 1。只动测试与 `testkit.rs` 头注释，产品代码不碰。
+计划 `_tmp/20261116-b20/plan-next-arch.md` 的 PR 1。上一节说要等的 #149、#154 都已合进 main（384da95），所以开工。只动测试与 `testkit.rs` 头注释，产品代码不碰。
 
-- 换成 testkit 的（本地临时目录助手换成 `temp_dir`，删掉随之没用的计数器与导入；档案名、服务器种类、本地助手名与调用处都不变）：
+- 换成 testkit 的（本地临时目录助手换成 `temp_dir`，删掉随之没用的计数器与导入；档案名、服务器种类、本地助手名与调用处都不变）。两处行为差别，测试全过、都无害：
+  - 原来只删不建、交给 `Profile::create` 的几处（core delete/edit/forward，cli delete/edit/forwarding），现在拿到的是**已建好的空目录**。`Profile::create` 接受已存在的空目录，`testkit::profile` 本来就这么用
+  - `tests/cli.rs` 的 speech 一处原来是「进程号 + `create_dir_all`」，可能复用上次留下的目录；现在每次都是全新的空目录
   - core：`gate/tests.rs`（本地 `temp_dir` 只留一行转给 testkit，目录名仍是 `atg-gate-<tag>-…`）、`delete/tests.rs`
   - cli：`delete/tests.rs`、`tests/cli.rs` 的 `speech_bad_input_is_usage_and_does_not_echo`
   - **计划外多换的 4 处**：#8（编辑）、#10（转发）合进 main 时新加的同款写法——core `edit/tests.rs`、`send/forward/tests.rs`，cli `edit/tests.rs`、`forwarding/tests.rs`
-- 不换：`tests/cli.rs` 的 `send_usage_paths`（大总管定：#12 发文件正在改那附近，等它合并后再换；这次连注释都不加，免得撞行）
+- 不换：`tests/cli.rs` 的 `send_usage_paths`（大总管定：#12 发文件正在改那附近，等它合并后再换；这次连注释都不加，免得和 #12 的分支改到同一段、合并时冲突）
 - 换完 `git grep 'std::env::temp_dir()' -- src` 只剩：testkit 自己、ipc、serve、`tests/send_limits.rs`、atg-audio（都是故意不换）和 `send_usage_paths`
-- 已过（2026-11-17，大总管给名额）：fmt、两种 clippy（`-D warnings`）、`cargo test --workspace` 680 过、0 败、5 忽略，check-no-debug、check-sources、check-file-size；改过的 8 个测试文件 `#[test]` 数前后相等（23、7、7、21、11、17、6、10）
-- 待：大总管提交检查点 → atg-review → codex 058
+- 已过（2026-11-17，大总管给名额）：fmt、`clippy --workspace --all-targets -D warnings`、`clippy -p atg-core --features tdlib-api --all-targets -D warnings`、`cargo test --workspace` 680 过、0 败、5 忽略，check-no-debug、check-sources、check-file-size；改过的 8 个测试文件 `#[test]` 数前后相等（core gate 23、delete 7、edit 11、send/forward 17；cli delete 7、`tests/cli.rs` 21、edit 6、forwarding 10）
+- 检查点 d776ea1（大总管提交）
+- atg-review 第 1 轮（384da95...d776ea1）：P0/P1/P2 零；P3×8 已改（gate 本地助手补注释说明为什么留、010 R3 行回写第二刀第三刀、交接页补行为差别与几处说明）
+- 待：大总管提交 → codex 058

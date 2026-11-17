@@ -83,6 +83,7 @@ fn plan(target: ChatId, d: u8) -> Plan {
     }
 }
 
+// 留这一层而不让调用处直接用 testkit：目录名保持 `atg-gate-<tag>-…`（认得出是闸的测试），6 处调用也不用改
 fn temp_dir(tag: &str) -> PathBuf {
     crate::testkit::temp_dir(&format!("gate-{tag}"))
 }
