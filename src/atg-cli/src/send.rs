@@ -117,7 +117,7 @@ pub(crate) fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::mode
     }
 }
 
-fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
+pub(crate) fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
     ChatRef::parse(s).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))
 }
 
@@ -135,7 +135,7 @@ pub(crate) fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra:
     out::core_exit(e)
 }
 
-fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
+pub(crate) fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
     match f {
         Fail::Core(e) => l2_fail(sink, format, e, json!({})),
         other => out::fail_with_to(sink, format, other),
@@ -143,7 +143,7 @@ fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
 }
 
 /// 一条消息的读法上下文（同 `history`；CLI 没有按键）
-fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
+pub(crate) fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
     history::speech_ctx(tz, false)
 }
 
@@ -186,7 +186,7 @@ pub(crate) fn echo(sink: &mut dyn Sink, format: Format, cx: &SpeechCtx, doc: &Do
     }
 }
 
-fn confirm_zh(m: ConfirmMode) -> &'static str {
+pub(crate) fn confirm_zh(m: ConfirmMode) -> &'static str {
     match m {
         ConfirmMode::TestExempt => "测试服务器发收藏夹，不用确认",
         ConfirmMode::DirectMode => "直接发，不确认",
@@ -348,7 +348,7 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &TextPlan, reply_brief: 
     }
 }
 
-fn finish_line(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
+pub(crate) fn finish_line(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
     match format {
         Format::Json => emit_to(sink, &envelope("result", data)),
         Format::Text => sink.out(zh),

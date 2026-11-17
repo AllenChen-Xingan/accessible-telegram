@@ -44,7 +44,7 @@ pub const EXECUTOR_GONE_SEND_ZH: &str = "替你执行的进程中途断了，发
 fn is_l2(command: &str) -> bool {
     matches!(
         command,
-        "send" | "resend" | "react" | "pending_cancel" | "delete" | "edit"
+        "send" | "resend" | "react" | "forward" | "pending_cancel" | "delete" | "edit"
     )
 }
 
@@ -298,8 +298,22 @@ pub fn forward(
             Ok(Frame::Exit { code }) => return code,
             // 发送类：执行方可能已交出，按「结果未知」报（退出码 10，不许重发），不按「可以再跑一次」的断线报
             Err(_) if is_l2(command) => {
-                let chat = params["chat"].as_str().and_then(|c| c.parse::<i64>().ok());
-                return crate::out::emit_send_unknown(sink, format, chat, EXECUTOR_GONE_SEND_ZH);
+                // 目标会话：forward 的在 `to`（`chat` 是别的发送类命令的）
+                let key = if command == "forward" { "to" } else { "chat" };
+                let chat = params[key].as_str().and_then(|c| c.parse::<i64>().ok());
+                // forward：照直跑时的结尾逐条列 unknown、带来源会话（补转时才知道哪几条不能列，codex 033 第 2 轮 #1）
+                let extra = if command == "forward" {
+                    crate::forwarding::gone_extra(params, EXECUTOR_GONE_SEND_ZH)
+                } else {
+                    json!({})
+                };
+                return crate::out::emit_send_unknown(
+                    sink,
+                    format,
+                    chat,
+                    EXECUTOR_GONE_SEND_ZH,
+                    extra,
+                );
             }
             Err(e) => {
                 let msg = match e {

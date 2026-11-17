@@ -10,6 +10,8 @@ pub enum Cap {
     Reply,
     DeleteForAll,
     Edit,
+    /// 转发（#10）：关掉 = 模拟来源会话禁止转发
+    Forward,
 }
 
 impl FakeBackend {
@@ -38,6 +40,7 @@ impl FakeBackend {
             can_reply: on(Cap::Reply),
             can_delete_for_all: own && !saved && on(Cap::DeleteForAll),
             can_edit: own && sent && on(Cap::Edit),
+            can_forward: on(Cap::Forward),
         })
     }
 }

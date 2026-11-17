@@ -186,19 +186,19 @@ impl Gate {
         let now = unix_now();
         // 查重与登记一步做完（#77）：凭据开出到交出之间别的同内容发送可能已经交出了。攥着 facts 锁做，
         // 进程内不交错；跨进程靠档案锁（同一档案同时只有一个进程）。命中就拒，什么都不写
+        // 一份计划可能有好几个指纹（转发每条一个，#10）：任一命中整个拒，都没命中才一起记
         let guard = plan.dedup().then(|| {
             (
                 GuardStore::new(dir.join(GUARD_FILE)),
-                fingerprint(key, plan.target(), &plan.intent()),
+                fingerprints(key, plan),
             )
         });
-        if let Some((store, fp)) = &guard {
-            let claimed =
-                store
-                    .claim(now, plan.target(), fp, again)
-                    .map_err(|_| CoreError::Internal {
-                        what: "send_guard_unwritable",
-                    })?;
+        if let Some((store, fps)) = &guard {
+            let claimed = store
+                .claim_all(now, plan.target(), fps, again)
+                .map_err(|_| CoreError::Internal {
+                    what: "send_guard_unwritable",
+                })?;
             if let Err(e) = claimed {
                 return Err(duplicate(now, &e));
             }
@@ -207,8 +207,8 @@ impl Gate {
         // codex 016 第 1 轮 #5）。等到结果后再写一行结果。写不进去就拒，刚登记的「已提交」改成失败、不拦重跑
         let lines = self.log_lines(plan, now, 0, None, Outcome::Submitted, None);
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &lines, now).is_err() {
-            if let Some((store, fp)) = &guard {
-                let _ = store.settle(now, plan.target(), fp, Outcome::Failed);
+            if let Some((store, fps)) = &guard {
+                let _ = store.settle_all(now, plan.target(), fps, Outcome::Failed);
             }
             return Err(CoreError::Internal {
                 what: "direct_log_unwritable",
@@ -238,14 +238,12 @@ impl Gate {
             return;
         };
         let now = unix_now();
-        if plan.dedup() {
-            let fp = fingerprint(key, plan.target(), &plan.intent());
-            if GuardStore::new(dir.join(GUARD_FILE))
-                .settle(now, plan.target(), &fp, outcome)
+        if plan.dedup()
+            && GuardStore::new(dir.join(GUARD_FILE))
+                .settle_all(now, plan.target(), &fingerprints(key, plan), outcome)
                 .is_err()
-            {
-                logline::warn("send_guard_update_failed", &[]);
-            }
+        {
+            logline::warn("send_guard_update_failed", &[]);
         }
         // 批量的计划没拿到临时 id（请求整个失败 / 到点）：每条各记一行（#83）
         let lines = self.log_lines(
@@ -262,7 +260,8 @@ impl Gate {
     }
 
     /// 批量计划里一条的结果（#83）：`old_id` 是它重发前的 id；TDLib 说不能重发的那条记 `failed`、
-    /// `error:"not_resent"`（与 CLI `items` 的 outcome 同名；只在留痕里，不是对外错误码）。只写留痕（批量重发不进防重复）
+    /// `error:"not_resent"`（与 CLI `items` 的 outcome 同名；只在留痕里，不是对外错误码）。批量重发不进防重复，只写留痕；
+    /// 进防重复的批量计划（转发，`old_id` 是来源里那条的 id，#10）另把这一条的指纹改成结果
     #[allow(clippy::too_many_arguments)]
     pub fn after_item(
         &self,
@@ -282,6 +281,26 @@ impl Gate {
             return;
         };
         let now = unix_now();
+        if plan.dedup()
+            && let Some(key) = f.guard_key.as_ref()
+        {
+            let fps = fingerprints(key, plan);
+            // 指纹与 `log_items` 一一对应：找到这条就只改它。对不上（不该发生）就一个都不改——都停在「已提交」，
+            // 按结果未知拦 24 小时（宁可多拦；拿这一条的结果去改全部，失败时反倒会把别条的拦截解掉）
+            let mine = plan
+                .log_items()
+                .iter()
+                .position(|&o| o == old_id)
+                .filter(|_| fps.len() == plan.log_items().len())
+                .map(|i| vec![fps[i].clone()]);
+            if let Some(mine) = mine
+                && GuardStore::new(dir.join(GUARD_FILE))
+                    .settle_all(now, plan.target(), &mine, outcome)
+                    .is_err()
+            {
+                logline::warn("send_guard_update_failed", &[]);
+            }
+        }
         let mut line = self.log_line(plan, now, temp_id, final_id, outcome, error);
         line.old_id = Some(old_id);
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &[line], now).is_err() {
@@ -309,6 +328,7 @@ impl Gate {
             result,
             error,
             reaction: plan.log_target(),
+            from_chat_id: plan.log_source(),
             old_id: None,
         }
     }
@@ -344,12 +364,11 @@ impl Gate {
                 what: "gate_not_started",
             });
         };
-        let fp = fingerprint(key, plan.target(), &plan.intent());
         let store = GuardStore::new(dir.join(GUARD_FILE));
         let now = unix_now();
-        // 读不了记录：宁可拒（直发撤不回）
+        // 读不了记录：宁可拒（直发撤不回）。好几个指纹都命中时报拦得最久的那条（同交出前的认领）
         let hit = store
-            .hit(now, plan.target(), &fp)
+            .hit_any(now, plan.target(), &fingerprints(key, plan))
             .map_err(|_| CoreError::Internal {
                 what: "send_guard_unreadable",
             })?;
@@ -384,6 +403,14 @@ fn open_append(path: &Path) -> std::io::Result<fs::File> {
         .open(path)
 }
 
+/// 一份计划的全部防重复指纹（[`Gated::intents`]，同序）
+fn fingerprints(key: &Secret, plan: &dyn Gated) -> Vec<String> {
+    plan.intents()
+        .iter()
+        .map(|i| fingerprint(key, plan.target(), i))
+        .collect()
+}
+
 #[derive(Serialize)]
 struct DirectLogLine {
     at: i64,
@@ -402,7 +429,10 @@ struct DirectLogLine {
         serialize_with = "reaction_fields"
     )]
     reaction: Option<(i64, Option<usize>)>,
-    /// 批量重发里这一行说的是哪条（重发前的旧 id；[`Gated::log_items`]，#83）
+    /// 转发的来源会话（[`Gated::log_source`]，#10）；只记 id
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from_chat_id: Option<ChatId>,
+    /// 批量计划里这一行说的是哪条（[`Gated::log_items`]）：重发是重发前的旧 id（#83），转发是来源里那条的 id（#10）
     #[serde(skip_serializing_if = "Option::is_none")]
     old_id: Option<i64>,
 }

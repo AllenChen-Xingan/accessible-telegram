@@ -59,6 +59,37 @@ impl TdBackend {
                     .await?;
                 Ok(Answer::Deleted)
             }
+            SealedKind::Forward { request } => {
+                let a = requests::forward(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "forward")]);
+                let enums::Messages::Messages(ms) = self
+                    .detached(
+                        functions::forward_messages(
+                            a.chat,
+                            a.topic,
+                            a.from,
+                            a.ids,
+                            a.options,
+                            a.copy,
+                            a.remove_caption,
+                            id,
+                        ),
+                        requests::resent,
+                    )
+                    .await?;
+                // TDLib 接下了、回序列化却失败的那条不能压成 None（那是「转不了」）：整次报
+                // `td_message_reserialize_failed`，由 `submit_failed` 按结果未知记账（同 `map_message` 的约定）
+                let mut out = Vec::with_capacity(ms.messages.len());
+                for m in ms.messages {
+                    out.push(match m {
+                        None => None,
+                        Some(m) => Some(Self::map_message(m).ok_or(CoreError::Internal {
+                            what: "td_message_reserialize_failed",
+                        })?),
+                    });
+                }
+                Ok(Answer::Resent(out))
+            }
             // 应答 = 服务器已改完（不像发送先回临时消息），没有要登记的待回结果
             SealedKind::Edit { request } => {
                 let (chat, message, content) = requests::edit(request)?;

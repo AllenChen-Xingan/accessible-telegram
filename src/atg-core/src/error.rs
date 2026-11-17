@@ -117,6 +117,16 @@ pub enum InvalidSendWhy {
     NotText,
     /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
     TooMany,
+    /// 一条都没转出去（#10）：准备时有一条不能转（`messageProperties.can_be_forwarded` 为假，如来源会话开了禁止转发），
+    /// 整批不交出；或交出后 TDLib 说每一条都转不了（应答全是 null）
+    NotForwardable,
+    /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
+    ForwardTooMany,
+    /// 目标是加密聊天：TDLib 转进加密聊天一律改成复制（`send_copy` 恒为真，`td_api.tl:13177`），对方看到的消息不带原作者，
+    /// 像是本人写的；本应用只做带原发送人的转发，所以整批不转（#10）
+    ForwardToSecretChat,
+    /// 交给 TDLib 之后它说其中几条转不了（应答里是 null），别的各有结果（#10；一条都没转出是 `NotForwardable`）
+    NotForwarded,
     /// 要删 / 要改的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，什么都不动（#8）
     Changed,
     /// 要改的不是纯文字消息（带附件）：说明文字的编辑（`editMessageCaption`）第二批再做（#8 B，大总管定 2026-11-17）。
@@ -412,6 +422,16 @@ impl CoreError {
                 }
                 InvalidSendWhy::ReactionStateUnknown => {
                     "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
+                }
+                InvalidSendWhy::NotForwardable => {
+                    "要转的消息里有不能转发的（来源会话可能禁止转发）；什么都没转"
+                }
+                InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
+                InvalidSendWhy::ForwardToSecretChat => {
+                    "不能转进加密聊天：Telegram 会把它变成复制、不带原作者，对方会以为是你写的；什么都没转"
+                }
+                InvalidSendWhy::NotForwarded => {
+                    "有的消息 Telegram 说转不了（结尾说明点了是哪几条），别的各有结果；不要整批加 --again 重转，那会把已转出的再转一遍"
                 }
             },
             Self::ActionRefused { why } => match why {

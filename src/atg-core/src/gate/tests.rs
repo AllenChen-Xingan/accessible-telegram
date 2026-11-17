@@ -281,6 +281,46 @@ fn duplicate_record_expires_after_window() {
     assert_eq!(s.load().unwrap().len(), 1);
 }
 
+/// 多指纹（#10）：任一命中就整个不认领、什么都不写；都没命中才一起记；收尾逐个改
+#[test]
+fn claim_all_is_all_or_nothing() {
+    let dir = temp_dir("claim-all");
+    let s = GuardStore::new(dir.join(GUARD_FILE));
+    let fps = |v: &[&str]| v.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+    s.record(1000, 777, "b", Outcome::Unknown).unwrap();
+    // "b" 在拦截期：整批拒，"a"、"c" 不记
+    assert!(
+        s.claim_all(1001, 777, &fps(&["a", "b", "c"]), false)
+            .unwrap()
+            .is_err()
+    );
+    assert!(s.hit(1001, 777, "a").unwrap().is_none());
+    assert!(s.hit(1001, 777, "c").unwrap().is_none());
+    // 不含 "b" 的一批照记；--again 连 "b" 也放行
+    assert!(
+        s.claim_all(1002, 777, &fps(&["a", "c"]), false)
+            .unwrap()
+            .is_ok()
+    );
+    assert!(s.claim_all(1003, 777, &fps(&["b"]), true).unwrap().is_ok());
+    // 收尾：只改给到的那几个，"a" 失败就不再拦，"c" 停在「已提交」照拦
+    s.settle_all(1004, 777, &fps(&["a"]), Outcome::Failed)
+        .unwrap();
+    assert!(s.hit(1005, 777, "a").unwrap().is_none());
+    assert!(s.hit(1005, 777, "c").unwrap().is_some());
+}
+
+/// 同一指纹上较早的「结果未知」不被后来 --again 的「已发出」盖住（codex 033 第 2 轮 #2）
+#[test]
+fn worst_hit_sees_older_unknown_under_newer_success() {
+    let dir = temp_dir("worst-older");
+    let s = GuardStore::new(dir.join(GUARD_FILE));
+    s.record(1000, 777, "a", Outcome::Unknown).unwrap();
+    s.record(1100, 777, "a", Outcome::Succeeded).unwrap();
+    let hit = s.hit_any(1200, 777, &["a".to_owned()]).unwrap().unwrap();
+    assert_eq!(hit.state, Outcome::Unknown);
+}
+
 #[test]
 fn clock_turned_back_does_not_lift_the_guard() {
     // codex 016 第 1 轮 #1：时钟往回拨，比「现在」还晚的记录照样拦，等时钟追上再过期

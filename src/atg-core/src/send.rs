@@ -43,6 +43,7 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+pub mod forward;
 mod outcome;
 pub mod react;
 pub(crate) mod resending;
@@ -113,6 +114,8 @@ pub(crate) enum SealedKind<'a> {
     React { request: &'a Value },
     /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
     Delete { request: &'a Value },
+    /// `forwardMessages`（#10）：请求 JSON，摘要算过的就是它；应答同重发（[`Answer::Resent`]）
+    Forward { request: &'a Value },
     /// `editMessageText`（`chat_id` · `message_id` · `input_message_content`）：改自己发的一条（#8 B）
     Edit { request: &'a Value },
 }
@@ -137,7 +140,8 @@ pub enum Answer {
 pub struct Submitted {
     mode: ConfirmMode,
     temp: MsgId,
-    /// 批量重发里这条重发前的旧 id：[`finish`] 据此按条记留痕、带 `old_id`（#83，codex 048 第 1 轮 #2）
+    /// 批量计划里这条的 id（[`crate::gate::Gated::log_items`]：重发是重发前的旧 id，#83；转发是来源里那条的 id，#10）：
+    /// [`finish`] 据此按条记留痕、带 `old_id`，进防重复的还只改这一条的指纹
     old: Option<i64>,
 }
 

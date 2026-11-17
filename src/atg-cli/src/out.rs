@@ -156,6 +156,7 @@ pub fn emit_send_unknown(
     format: Format,
     chat_id: Option<i64>,
     message_zh: &str,
+    extra: Value,
 ) -> u8 {
     let e = CoreError::SendOutcomeUnknown {
         chat_id,
@@ -165,9 +166,13 @@ pub fn emit_send_unknown(
     let mut data = core_error_data(&e);
     data["message_zh"] = json!(message_zh);
     data["retryable"] = json!(false);
+    // 各命令自己的附加字段（如 forward 的 `from_chat_id`、逐条 `items`，以及点名了 id 的 `message_zh`）
+    if let (Some(d), Value::Object(x)) = (data.as_object_mut(), extra) {
+        d.extend(x);
+    }
     match format {
+        Format::Text => sink.out(data["message_zh"].as_str().unwrap_or(message_zh)),
         Format::Json => emit_to(sink, &envelope("error", data)),
-        Format::Text => sink.out(message_zh),
     }
     core_exit(&e)
 }

@@ -127,3 +127,55 @@
 2. **留痕记不记来源会话 id**：A 记（事后能查转了哪个会话的东西，但多一处会话关系痕迹）· B 不记、只记条数（建议 A：留痕本来就记目标 `chat_id`，来源同一级，不涉内容）。默认 A
 3. **一次最多几条**：TDLib 上限 100。A 照 100 · B 先限 20（建议 B：误转一大批撤不回，防重复只拦同一批）。默认 B
 - 2026-11-17 大总管：三题进待定清单，先按默认做（不做 `--copy`、留痕记来源会话 id、一次最多 20 条）；等 #135 合后开工
+
+## #10 开工记录（2026-11-17，工作副本 atg-wt/msg2-10，分支 feat/10-forward）
+- CLI 命令文件名 `src/atg-cli/src/forwarding.rs`：`forward.rs` 已是本机接口转发；`specs/README.md` 命名规约只管档案，代码按命令名起，撞名时照 `send/resending.rs` 的先例用动名词（大总管同意）
+- 核心放 `send/forward.rs`（`Submitted` 只有 send 模块能造）；共享文件只新增：`send.rs`（`pub mod forward;`、`SealedKind::Forward`）、`gate.rs`（`log_source` 默认方法）、`gate/check.rs`（`from_chat_id` 字段两处）、`error.rs`（`NotForwardable`、`ForwardTooMany`），都经大总管批
+- 「能不能转」照 #8 的 `message_caps` 写（不另起 props.rs、不动 td.rs 的 getMessageProperties）。**#8 合进 main、合给我之后要补**：`model.rs` 的 `MessageCaps` 加 `can_forward`；`td/requests.rs` 的 `caps()` 加 `can_forward: p.can_be_forwarded`；`fake/caps.rs` 的 `Cap` 加 `Forward`、`caps()` 加 `can_forward: on(Cap::Forward)`。在那之前 core 编不过，不领名额
+- 2026-11-17 大总管：论坛群不带话题落进 General（不拒、计划行写明）进待定清单，默认照现在走；人要统一成拒再改。#10 代码与契约已写完，等 #8 合进 main、合给我后补 MessageCaps.can_forward 三处再编译
+- 2026-11-17 fix 的 codex 048 改了 --again 接法：fix 的 PR 进 main、合给我后，`send/forward.rs` 的 `forward()` 改用 `verify_again` / `before_submit_again`（原 verify / before_submit 变成不带 again 的包装）。回归靠 core 的 `same_batch_twice_is_held_unless_again` 与 CLI 的 `same_batch_again_is_held_then_released`：没改对它们会红
+- 2026-11-17 自审第 2 轮 P1（防重复按整批指纹，换子集能把结果未知的那条再转一遍）：大总管选 A——闸支持一张计划多个指纹（Gated::intents 默认 vec![intent]，check.rs 查重复与收尾逐个），forward 每条一个指纹。**等 #143 进 main、合给我后再动闸**；A 落地后整个 #10 PR 属一级评审，PR 描述单列「闸的改动」「只有闸能发清单（加 forward_messages）」两节
+- 2026-11-17 #10 收敛：自审 6 轮（改闸后第 5、6 轮无 P0/P1）；codex 033 三轮（第 2、3 轮无 P0/P1），记录 `docs/reviews/033_forward-10-codex.md`；test 622 过、clippy 两种 0。下一步：大总管开 PR（闸改动 + 「只有闸能发」清单属一级评审，PR 描述单列两节），之后接 #12 发文件 / 图片（codex 034）
+
+## #12 发文件 / 图片 · 设计计划（只读阶段，2026-11-17；等 #10 的 PR 合后从 main 新开分支，codex 034）
+
+**结论**：照 `send` 的骨架做「发一个本机文件」，L2 直发过闸；比发文字多三件要紧的事——**交出的是快照副本**（防交出后文件被换）、**哪些路径能发**（防 AI 被诱导把本机密钥发出去，要人定）、**上传要等得久**（30 秒不够）。
+
+### TDLib
+- `sendMessage` + `inputMessageDocument{document: inputDocument{document: inputFileLocal{path}, thumbnail: null, disable_content_type_detection: false}, caption}`（`td_api.tl:6700,6426,340`）；图片另有 `inputMessagePhoto`（`:6716`，要 `width`/`height`，有 `self_destruct_type`、`has_spoiler`）
+- 交出后 TDLib **异步读文件、上传**，进度走 `updateFile`（`:11596`，`remote.uploaded_size` / `is_uploading_completed`）；成败照旧 `updateMessageSendSucceeded` / `Failed`
+- 说明文字上限 `getOption("message_caption_length_max")`（普通号 1024 字）
+
+### 核心（atg-core，新文件 `send/file.rs`）
+- `prepare_file(b, chat, path, caption, reply_to, origin) -> FilePlan`：路径规则（人定 A，见下）→ `stat`（普通文件、大小上限 50 MB，人定）→ **复制一份快照**到档案目录 `outbox/`（0600，文件名随机，不带原名以外的信息）并算 SHA-256 → 计划带「原文件名、大小、类型、SHA-256 前 8 位」给人看；请求里的路径是快照的
+- 摘要绑：请求（含快照路径）+ 文件 SHA-256 + 说明文字；交出前重算快照的 SHA-256，变了拒（`content_mismatch`）。快照在等到结果（成功 / 失败）后删；结果未知的留着（TDLib 下次启动续发要读它），过 24 小时清
+- 防重复：进；指纹 = 目标 + 文件 SHA-256 + 说明 + 回复（`sending_id` 记 0），**不含路径**（同一文件换个地方再发也拦）
+- 等结果：不是固定 30 秒，而是「有进度就续」——`updateFile` 的已上传量在涨就接着等，**无进度 60 秒**到点按结果未知；总上限按大小算（人定默认）
+- 留痕：内容类型 `document` / `photo`、文件大小；**不记路径、不记文件名、不记说明文字**
+- 话题群规则、测试服务器只许收藏夹、`--redact` 先拒：同 `send`
+
+### CLI
+- `atg-cli send-file CHAT_ID PATH [--caption T | --caption-file P] [--reply-to MSG_ID] [--dry-run] [--again]`（图片按扩展名自动判断，没有 `--photo`）（或做成 `send --file PATH`）；标准错误按 10% 报上传进度（`kind:"progress"` 进标准输出要先进契约）
+- 经本机接口代跑：发起方把**文件内容**带过去还是只带路径？只带路径的话执行方读的是发起方给的路径（同 `--text-file` 的先例：发起方读成内容再带过去）。大文件走管道不合适——v0 档案被占时报 `profile_busy`、不转（同 `download`），待定
+
+### 要改的契约
+- `actions.md`：`send_file` 从第二批留位挪进主表；第 5 小节写明文件指纹不含路径；第 6 小节加 `FilePlan`；「只有闸能发」清单不变（仍是 `send_message`）
+- `cli.md` 加一行；`errors.md` 加 `why`：`file_not_allowed`（路径不许发）、`file_too_large`、`not_a_file`、`caption_too_long`；`config-privacy.md`：档案目录加 `outbox/`，写清何时删
+
+### 测试（先写会红的）
+- 路径规则：许可目录外、密钥类文件名（`.env*`、`id_rsa*`、`*.pem`、档案目录本身、TDLib 数据目录）一律拒
+- 准备后改了原文件 → 交出的是快照，内容照旧；快照被改 → `content_mismatch`
+- 同一文件换路径再发被拦、`--again` 放行；失败的删快照、结果未知的留
+- 上传有进度不超时、无进度 60 秒按结果未知
+- 真机只发收藏夹、一个几 KB 的编造文本文件
+
+### 人定（2026-11-17，大总管转达，选择题）
+1. **哪些文件能发 → A**：只许「下载」「桌面」「文稿」（`~/Downloads`、`~/Desktop`、`~/Documents`，按解析符号链接后的真实路径判）+ 密钥类文件名黑名单（`.env*`、`id_rsa*` / `id_ecdsa*` / `id_ed25519*`、`*.pem` `*.key` `*.p12` `*.keystore`、`*.session`、`credentials*`、`.netrc`，以及 atg 档案目录、TDLib 数据目录里的任何东西）。不许 → `invalid_input`，`why:"file_not_allowed"`（说明里写许可的目录）
+2. **大小上限 → A**：50 MB，超了 `why:"file_too_large"`
+3. **图片 → B（按扩展名自动判断）**：`jpg` `jpeg` `png` `webp` 自动按图片发（`inputMessagePhoto`，Telegram 会压缩、对方直接看到图），其余按文件发（`inputMessageDocument`，不压缩）。按图片发不了的自动退回按文件发、计划行写明：TDLib 规定图片 ≤ 10 MB、宽 + 高 ≤ 10000、长宽比 ≤ 20（`td_api.tl:6429`）——大小在准备时判；宽高从文件头读（PNG / JPEG / WebP 头，读不出给 0，TDLib 说「可能被服务器替换」，待实测）。`gif` `heic` 等 v0 一律按文件发。计划行与文字模式都说清「按图片发（会被压缩）」还是「按文件发」
+4. **等多久 → 默认**：有进度就续，无进度 60 秒算结果未知，总上限 10 分钟
+- 另：删除 / 编辑「不放开改别人的」人已定（与本块无关，记一笔）
+
+### 开工
+等 #154 合进 main 后从 main 新开分支（大总管开工作副本）；动 `send.rs`、`gate/**` 之前先报大总管。
+- 2026-11-17 大总管：#12 计划照此做；`--as-file` 先不加（人选 B），进待定清单下次问人；开工等 #154 合

@@ -63,6 +63,7 @@ impl FakeBackend {
             }
             SealedKind::Resend { request } => Ok(self.resend(request)),
             SealedKind::Delete { request } => self.delete(request).await,
+            SealedKind::Forward { request } => self.forward(request),
             SealedKind::Edit { request } => self.edit(request).await,
             SealedKind::React { request } => {
                 let chat = request["chat_id"].as_i64().unwrap_or(0);
@@ -253,6 +254,72 @@ impl FakeBackend {
             out.push(Some(crate::tdjson::message(&pending)));
         }
         Answer::Resent(out)
+    }
+
+    /// `forwardMessages`（#10）：来源里在、能转（没被 [`FakeBackend::deny`] 关掉转发）的逐条造一条待发的，按剧本推结果；
+    /// 转不了的那条应答里是 `None`（同 TDLib 的 null）；消息带私有键 `_forward_null` 时也给 `None`（模拟准备时能转、
+    /// 交出时 TDLib 才说转不了）。剧本下一步是「拒」时整批拒
+    pub(super) fn forward(&self, request: &Value) -> Result<Answer, CoreError> {
+        let chat = request["chat_id"].as_i64().unwrap_or(0);
+        let from = request["from_chat_id"].as_i64().unwrap_or(0);
+        let ids: Vec<i64> = request["message_ids"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default();
+        lock(&self.calls).push(Call::Submit {
+            chat,
+            preview: false,
+            resend: false,
+        });
+        if let Some(e) = self.scripted_reject() {
+            return Err(e);
+        }
+        lock(&self.submitted).push(request.clone());
+        let mut out = Vec::new();
+        for id in ids {
+            let old = self.find_message(MsgId {
+                chat_id: from,
+                message_id: id,
+            });
+            let fwd = self.caps(MsgId {
+                chat_id: from,
+                message_id: id,
+            });
+            let ok = fwd.is_ok_and(|c| c.can_forward);
+            let Some(old) = old.filter(|m| ok && m["_forward_null"] != true) else {
+                out.push(None);
+                continue;
+            };
+            let temp = self.new_id();
+            let req = json!({"input_message_content": {"text": old["content"]["text"].clone()},
+                "topic_id": request["topic_id"].clone(), "reply_to": null});
+            let pending = self.own_message(
+                chat,
+                temp,
+                &req,
+                json!({"@type": "messageSendingStatePending", "sending_id": 0}),
+            );
+            self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
+            self.play_send(chat, temp, &req);
+            out.push(Some(crate::tdjson::message(&pending)));
+        }
+        // 测试夹具：来源第一条带 `_forward_answer` 时造认不出的应答（条数少一条 / 形状不对 / 回序列化失败）
+        let first = request["message_ids"][0].as_i64().unwrap_or(0);
+        let odd = self.find_message(MsgId {
+            chat_id: from,
+            message_id: first,
+        });
+        match odd.as_ref().and_then(|m| m["_forward_answer"].as_str()) {
+            Some("short") => {
+                out.pop();
+                Ok(Answer::Resent(out))
+            }
+            Some("shape") => Ok(Answer::Done),
+            Some("reserialize") => Err(CoreError::Internal {
+                what: "td_message_reserialize_failed",
+            }),
+            _ => Ok(Answer::Resent(out)),
+        }
     }
 
     /// 真发一条之后按剧本推结果（推在应答之前：结果比应答先到，发4），再把它登记成「交出成功、等成败」

@@ -107,6 +107,8 @@ pub struct MessageCaps {
     pub can_delete_for_all: bool,
     /// `can_be_edited`：能改它的文字
     pub can_edit: bool,
+    /// `can_be_forwarded`：能转发（来源会话禁止转发时为假；#10）
+    pub can_forward: bool,
 }
 
 /// 谁点了哪个表情回应（`addedReaction`，`td_api.tl:7927`）：只放 id，名字投影时填（[`crate::project::reactor`]）
