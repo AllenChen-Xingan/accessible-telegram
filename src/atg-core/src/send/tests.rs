@@ -36,6 +36,8 @@ fn msg(chat: i64, id: i64, text: &str, topic: Value) -> Value {
 struct Rig {
     b: FakeBackend,
     stream: EventStream,
+    /// 档案目录（看 `direct-send.log`）
+    dir: std::path::PathBuf,
 }
 
 fn rig(tag: &str, test_dc: bool) -> Rig {
@@ -105,7 +107,11 @@ fn rig(tag: &str, test_dc: bool) -> Rig {
     block_on(b.start(&profile)).unwrap();
     b.wait_auth(Duration::from_secs(5), &|s| s == AuthStep::Ready)
         .unwrap();
-    Rig { b, stream }
+    Rig {
+        b,
+        stream,
+        dir: root.join("profiles").join("p"),
+    }
 }
 
 fn draft(text: &str, reply_to: Option<i64>) -> Draft {

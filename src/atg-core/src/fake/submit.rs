@@ -43,6 +43,10 @@ impl FakeBackend {
                     return Ok(Answer::Message(crate::tdjson::message(&m)));
                 }
                 if let Some(e) = self.scripted_reject() {
+                    // 照 [`FakeBackend::HANG`] 的约定：交出请求本身一直不应答（测「交出后到点」）
+                    if matches!(e, CoreError::Internal { what } if what == FakeBackend::HANG) {
+                        std::future::pending::<()>().await;
+                    }
                     return Err(e);
                 }
                 lock(&self.submitted).push(request.clone());

@@ -355,7 +355,7 @@ pub struct ForwardArgs {
     /// 来源会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "FROM_CHAT", allow_hyphen_values = true)]
     pub from: String,
-    /// 要转的消息 id（一条或几条，最多 20 条）
+    /// 要转的消息 id（来源会话里的，用 history 输出的 message_id；一条或几条，最多 20 条）
     #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
     pub ids: Vec<i64>,
     /// 转给哪个会话：id，或 saved

@@ -273,7 +273,7 @@ fn summary_zh(items: &[serde_json::Value]) -> String {
         let got = ids(o);
         if !got.is_empty() {
             zh.push_str(&format!(
-                "，{word} {} 条（id {}）",
+                "，{word} {} 条（来源里的 id {}）",
                 got.len(),
                 got.join("、")
             ));
@@ -282,7 +282,7 @@ fn summary_zh(items: &[serde_json::Value]) -> String {
     let unsure = ids("unknown");
     if !unsure.is_empty() {
         zh.push_str(&format!(
-            "，结果未知 {} 条（id {}：可能已转出，网络恢复后 Telegram 会继续送出；这几条不要再转，补转也别列进去）",
+            "，结果未知 {} 条（来源里的 id {}：可能已转出，网络恢复后 Telegram 会继续送出；这几条不要再转，补转也别列进去）",
             unsure.len(),
             unsure.join("、")
         ));

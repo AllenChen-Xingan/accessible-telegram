@@ -158,7 +158,7 @@ fn forwards_sorted_deduped_and_logs_source_chat() {
     assert_eq!(req["send_copy"], false);
     // 留痕：交出前一行 + 每条结果一行，都带来源会话 id，不带正文
     let lines = log_lines(&r);
-    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert_eq!(lines.len(), 4, "{lines:?}");
     for l in &lines {
         assert_eq!(l["kind"], "forward");
         assert_eq!(l["from_chat_id"], FRIEND);
@@ -340,4 +340,69 @@ fn unreadable_answers_are_outcome_unknown_and_held() {
         let e = once(&mut r, OTHER, &[5, 7], false).unwrap_err();
         assert_eq!(refused(e), SendRefusedReason::DuplicateRecent, "{kind}");
     }
+}
+
+#[test]
+fn secret_chat_target_is_refused() {
+    let r = rig("secret", false);
+    const SECRET: i64 = 999;
+    r.b.set_chat(
+        SECRET,
+        vec![json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": SECRET, "title": "周大山",
+            "type": {"@type": "chatTypeSecret", "secret_chat_id": 1, "user_id": OTHER},
+            "positions": [], "notification_settings": {}}})],
+    );
+    assert_eq!(
+        why(prepare(&r, SECRET, &[5]).unwrap_err()),
+        InvalidSendWhy::ForwardToSecretChat
+    );
+}
+
+/// 每条一个指纹（自审第 2 轮 P1）：一批里结果未知的那条，换一批、单转它也拦；失败的那条可以单转
+#[test]
+fn unknown_item_is_held_in_any_later_batch() {
+    let mut r = rig("subset", false);
+    r.b.script_sends(vec![FakeSend::Succeed, FakeSend::Silent]);
+    let plan = prepare(&r, OTHER, &[5, 7]).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    let (_, out) = forward_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(matches!(
+        out[1].result,
+        Some((_, Waited::Unknown(UnknownWhy::Timeout)))
+    ));
+    let e = once(&mut r, OTHER, &[7], false).unwrap_err();
+    assert_eq!(refused(e), SendRefusedReason::DuplicateRecent);
+    // 留痕按条记：带来源里那条的 id
+    let lines = log_lines(&r);
+    assert!(
+        lines
+            .iter()
+            .any(|l| l["old_id"] == 7 && l["result"] == "unknown")
+    );
+}
+
+#[test]
+fn failed_item_can_be_forwarded_alone() {
+    let mut r = rig("failed1", false);
+    r.b.script_sends(vec![
+        FakeSend::Succeed,
+        FakeSend::Fail {
+            code: 400,
+            message: "CHAT_WRITE_FORBIDDEN".into(),
+            can_retry: false,
+        },
+    ]);
+    once(&mut r, OTHER, &[5, 7], false).unwrap();
+    once(&mut r, OTHER, &[7], false).unwrap();
+    // 成功的那条 10 分钟内照样拦
+    let e = once(&mut r, OTHER, &[5], false).unwrap_err();
+    assert_eq!(refused(e), SendRefusedReason::DuplicateRecent);
 }

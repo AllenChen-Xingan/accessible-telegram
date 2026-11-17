@@ -100,6 +100,8 @@ pub struct ConfirmToken {
     nonce: u64,
     issued: Instant,
     mode: ConfirmMode,
+    /// 开凭据时带了 `--again`：交出前的查重放行这一次（#77）
+    again: bool,
 }
 
 impl ConfirmMode {
@@ -147,6 +149,11 @@ pub trait Gated: Sealed {
     fn digest(&self) -> [u8; 32];
     /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要
     fn intent(&self) -> [u8; 32];
+    /// 防重复按哪几个指纹拦（#10）：默认就是 [`Gated::intent`] 一个。一次动好几条、每条都可能单独重来的（转发），
+    /// 每条一个——换一批、取子集也拦得住其中结果未知的那条。有几个时与 [`Gated::log_items`] 一一对应、同序
+    fn intents(&self) -> Vec<[u8; 32]> {
+        vec![self.intent()]
+    }
     /// 进不进直发防重复（B17-2）。重发不进：对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
     fn dedup(&self) -> bool;
     /// 留痕里的内容类型（`text` / `resend`……），不是内容本身
@@ -158,6 +165,10 @@ pub trait Gated: Sealed {
     /// 留痕里另记的来源会话（`from_chat_id`）：只有转发有（#10）；只记 id
     fn log_source(&self) -> Option<ChatId> {
         None
+    }
+    /// 一次请求动好几条时（批量重发），各条的旧 id：留痕按条记，每条一行、带 `old_id`（#83）。单条的计划是空表
+    fn log_items(&self) -> Vec<i64> {
+        Vec::new()
     }
 }
 
@@ -214,6 +225,14 @@ pub enum Outcome {
 
 // ───────────────────────── 防重复记录 ─────────────────────────
 
+/// 什么算命中：同会话同指纹、上次不是「明确失败」，取最近一条。开凭据时的早拒与交出前的认领共用这一份判定（#77）
+fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&'a GuardEntry> {
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
+        .max_by_key(|e| e.at)
+}
+
 /// 一条防重复记录：时间、会话、指纹、状态。**不记内容、不记名字**
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardEntry {
@@ -264,12 +283,44 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
-        Ok(Self::live(now, self.load()?)
-            .into_iter()
-            .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
-            .max_by_key(|e| e.at))
+        Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
+    }
+
+    /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。
+    /// 命中返回 `Ok(Err(那条))`，什么都不写。调用方攥着闸的锁调（进程内不交错；跨进程有档案锁）
+    pub fn claim(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fp: &str,
+        again: bool,
+    ) -> std::io::Result<Result<(), GuardEntry>> {
+        self.claim_all(now, chat, &[fp.to_owned()], again)
+    }
+
+    /// [`Self::claim`] 的多指纹版（#10）：先查全部，任一命中就整个不认领、什么都不写；都没命中才一起记「已提交」
+    pub fn claim_all(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fps: &[String],
+        again: bool,
+    ) -> std::io::Result<Result<(), GuardEntry>> {
+        let mut entries = Self::live(now, self.load()?);
+        if !again && let Some(hit) = fps.iter().find_map(|fp| latest_hit(&entries, chat, fp)) {
+            return Ok(Err(hit.clone()));
+        }
+        for fp in fps {
+            entries.push(GuardEntry {
+                at: now,
+                chat_id: chat,
+                fp: fp.clone(),
+                state: Outcome::Submitted,
+            });
+        }
+        self.save(&entries).map(Ok)
     }
 
     pub fn record(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
@@ -287,20 +338,33 @@ impl GuardStore {
 
     /// 把最近一条「已提交」的改成结果；找不到就补一条
     pub fn settle(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
+        self.settle_all(now, chat, &[fp.to_owned()], state)
+    }
+
+    /// [`Self::settle`] 的多指纹版（#10）：读一次、逐个改、写一次
+    pub fn settle_all(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fps: &[String],
+        state: Outcome,
+    ) -> std::io::Result<()> {
         // 同 [`Self::record`]：读不了就不覆盖（「已提交」留着，照样按结果未知拦）
         let mut entries = Self::live(now, self.load()?);
-        match entries
-            .iter_mut()
-            .rev()
-            .find(|e| e.chat_id == chat && e.fp == fp && e.state == Outcome::Submitted)
-        {
-            Some(e) => e.state = state,
-            None => entries.push(GuardEntry {
-                at: now,
-                chat_id: chat,
-                fp: fp.to_owned(),
-                state,
-            }),
+        for fp in fps {
+            match entries
+                .iter_mut()
+                .rev()
+                .find(|e| e.chat_id == chat && &e.fp == fp && e.state == Outcome::Submitted)
+            {
+                Some(e) => e.state = state,
+                None => entries.push(GuardEntry {
+                    at: now,
+                    chat_id: chat,
+                    fp: fp.clone(),
+                    state,
+                }),
+            }
         }
         self.save(&entries)
     }
