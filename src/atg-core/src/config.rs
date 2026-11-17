@@ -139,7 +139,7 @@ pub fn default_log_dir() -> Result<PathBuf, CoreError> {
     home().map(|h| h.join("Library/Logs/atg"))
 }
 
-fn home() -> Result<PathBuf, CoreError> {
+pub(crate) fn home() -> Result<PathBuf, CoreError> {
     std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
         .map(PathBuf::from)

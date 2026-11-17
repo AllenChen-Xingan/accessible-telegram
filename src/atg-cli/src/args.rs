@@ -116,6 +116,8 @@ pub enum Command {
     /// 把一个会话里的一条或几条消息转发到另一个会话（带原发送人；一次最多 20 条）。先输出一行 plan，直接转、不确认；
     /// 逐条等结果。测试服务器上只许转给收藏夹
     Forward(ForwardArgs),
+    /// 发一个文件或图片（只许「下载」「桌面」「文稿」里的、50 MB 以内）。先输出一行 plan，直接发、不确认；按上传进度等结果
+    SendFile(crate::send_file::SendFileArgs),
     /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
@@ -555,6 +557,7 @@ impl Command {
             Command::React(_) => "react",
             Command::Reactions(_) => "reactions",
             Command::Forward(_) => "forward",
+            Command::SendFile(_) => "send-file",
             Command::Resend(_) => "resend",
             Command::Show(_) => "show",
             Command::Search(_) => "search",

@@ -22,7 +22,7 @@
 
 use crate::auth::{self, AuthPrompt};
 use crate::backend::{
-    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, Upload, already_subscribed,
 };
 use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
@@ -47,6 +47,7 @@ mod caps;
 mod edit;
 mod files;
 mod submit;
+mod upload;
 
 pub use call::Call;
 pub use caps::Cap;
@@ -127,6 +128,7 @@ pub struct FakeBackend {
     histories: Mutex<HashMap<ChatId, Vec<Value>>>,
     /// `file_download` 回什么：`None` = TDLib 回来了但没下完；没登记 = 找不到
     files: Mutex<HashMap<i32, Option<Downloaded>>>,
+    uploads: Mutex<VecDeque<Upload>>, // `upload_progress` 按次回的进度（`fake/upload.rs`，#12）
     /// 每个会话第一次 `history` 只回 1 条
     short_first: Mutex<Option<std::collections::HashSet<ChatId>>>,
     /// 停住：（先照常应答几次，再连着几次只回起点那一条）——TDLib 正从服务器拉、一直没拉到的样子
@@ -196,6 +198,7 @@ impl FakeBackend {
             forum_topics: Mutex::new(HashMap::new()),
             histories: Mutex::new(HashMap::new()),
             files: Mutex::new(HashMap::new()),
+            uploads: Mutex::new(VecDeque::new()),
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
             cap: Mutex::new(None),
@@ -885,6 +888,10 @@ impl Backend for FakeBackend {
 
     async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError> {
         self.do_mark_listened(id).await
+    }
+
+    async fn upload_progress(&self, id: MsgId) -> Result<Option<Upload>, CoreError> {
+        self.do_upload_progress(id).await
     }
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {

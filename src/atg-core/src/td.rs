@@ -35,7 +35,7 @@ mod real {
     use super::{boot, requests};
     use crate::auth::{self, AuthPrompt};
     use crate::backend::{
-        Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+        Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, Upload, already_subscribed,
     };
     use crate::config::{self, Profile, ProfileLock, ServerKind};
     use crate::error::{CoreError, Holder, map_td_error};
@@ -63,6 +63,7 @@ mod real {
     // 交出口（发送、重发、表情回应）与「谁点了回应」：见这两个子模块（从本文件拆出，#60 行数线）
     mod reactions;
     mod submit;
+    mod upload;
 
     /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
     static INSTANCE: AtomicBool = AtomicBool::new(false);
@@ -611,6 +612,10 @@ mod real {
                 }),
                 Err(e) => Err(self.read_error("message", &e)),
             }
+        }
+
+        async fn upload_progress(&self, mid: MsgId) -> Result<Option<Upload>, CoreError> {
+            self.upload_progress_impl(mid).await
         }
 
         async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {

@@ -50,6 +50,7 @@ mod react;
 mod pending;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod send;
+mod send_file;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
@@ -127,6 +128,7 @@ fn main() -> ExitCode {
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Send(a) => run_send(&cli.global, format, &a, started),
         Command::Forward(a) => forwarding::run(&cli.global, format, &a, started),
+        Command::SendFile(a) => send_file::run(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
         Command::React(a) => react::run(&cli.global, format, &a, started),
         Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),

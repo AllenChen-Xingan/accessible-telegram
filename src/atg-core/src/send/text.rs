@@ -140,7 +140,7 @@ pub(crate) fn text_request(
 /// `sending_id`：我们自定的一个数，TDLib 原样放回这条待发消息的状态里（`messageSendingStatePending.sending_id`）。
 /// 「待发」那条的新消息更新可能比带临时 id 的应答先到，那时还不知道哪个临时 id 是自己这次的（同一进程里可能同时
 /// 有别的发送）；带上它就能认出来（发7）。每次随机，所以防重复的「意图摘要」要把它清零，否则同一句话每次指纹都不同
-fn random_sending_id() -> Result<i32, CoreError> {
+pub(super) fn random_sending_id() -> Result<i32, CoreError> {
     let mut b = [0u8; 4];
     getrandom::fill(&mut b).map_err(|_| CoreError::Internal { what: "random" })?;
     // 正数、非 0（0 在 TDLib 里表示「没给」）
