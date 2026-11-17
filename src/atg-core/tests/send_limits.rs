@@ -9,7 +9,7 @@ use atg_core::backend::Backend;
 use atg_core::config::{Profile, ServerKind};
 use atg_core::error::{CoreError, Holder, SendRefusedReason};
 use atg_core::fake::{FakeAuth, FakeBackend, FakeSend};
-use atg_core::gate::{Gate, NoAuth};
+use atg_core::gate::Gate;
 use atg_core::link::block_on;
 use atg_core::send::{Draft, SendOrigin, prepare_text, send_and_wait, send_text};
 use atg_core::status::AuthStep;
@@ -20,7 +20,7 @@ use std::time::Duration;
 const ME: i64 = 4242;
 
 fn rig(tag: &str) -> (FakeBackend, atg_core::link::EventStream) {
-    let b = FakeBackend::with_gate(Gate::new(false, Holder::Cli, Box::new(NoAuth))).unwrap();
+    let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: "+9996612345".into(),
         logged_in: true,

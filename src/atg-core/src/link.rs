@@ -137,7 +137,12 @@ impl Shared {
     /// 改三条线；变了的线各推一个事件，合成状态变了再推 `UserStatusChanged`。
     /// 内核已 `faulted` / `closed` 后不再回头
     pub fn set_lines(&self, f: impl FnOnce(&mut Lines)) {
-        let mut st = lock(&self.state);
+        Self::apply_lines(&mut lock(&self.state), f);
+        self.cond.notify_all();
+    }
+
+    /// [`Shared::set_lines`] 的锁内部分（调用方攥着锁、放锁后自己唤醒）
+    fn apply_lines(st: &mut State, f: impl FnOnce(&mut Lines)) {
         let old = st.lines.clone();
         f(&mut st.lines);
         if matches!(old.core, CoreState::Faulted | CoreState::Closed) {
@@ -145,25 +150,23 @@ impl Shared {
         }
         let new = st.lines.clone();
         if new.core != old.core {
-            Self::emit(&mut st, CoreEvent::CoreStateChanged(new.core));
+            Self::emit(st, CoreEvent::CoreStateChanged(new.core));
         }
         if new.auth != old.auth {
-            Self::emit(&mut st, CoreEvent::AuthStepChanged(new.auth));
+            Self::emit(st, CoreEvent::AuthStepChanged(new.auth));
         }
         if new.net != old.net {
-            Self::emit(&mut st, CoreEvent::NetStateChanged(new.net.clone()));
+            Self::emit(st, CoreEvent::NetStateChanged(new.net.clone()));
             // 补发结束（`sync_done`，`cli.md`「什么时候算数据齐了」）：启动或重连后连接线到 ready
             if new.net == NetState::Ready {
-                Self::emit(&mut st, CoreEvent::SyncDone);
+                Self::emit(st, CoreEvent::SyncDone);
             }
         }
         let status = new.user_status();
         if status != st.status {
             st.status = status;
-            Self::emit(&mut st, CoreEvent::UserStatusChanged(status));
+            Self::emit(st, CoreEvent::UserStatusChanged(status));
         }
-        drop(st);
-        self.cond.notify_all();
     }
 
     pub fn set_core(&self, core: CoreState) {
@@ -178,16 +181,17 @@ impl Shared {
         lock(&self.state).status
     }
 
-    /// 收到一条授权状态更新：先换提示、再改授权线（等步骤变化的一方醒来时提示已是新的）
+    /// 收到一条授权状态更新：提示、代次、授权线在同一把锁里一起换（等待方看到新代次时步骤一定是新的，#64）。
+    /// 步骤名没变也唤醒
     pub fn set_auth(&self, prompt: AuthPrompt) {
         let step = prompt.step;
         {
             let mut st = lock(&self.state);
             st.prompt = prompt;
             st.auth_gen += 1;
+            Self::apply_lines(&mut st, |l| l.auth = step);
         }
-        // set_lines 末尾总会唤醒等待方，步骤名没变也一样
-        self.set_lines(|l| l.auth = step);
+        self.cond.notify_all();
     }
 
     /// 到现在为止收到过几条授权状态更新（提交之前记下，之后用 [`Shared::wait_auth_after`] 等新的）
@@ -510,3 +514,6 @@ impl EventStream {
 
 mod block;
 pub use block::{Until, block_on, block_on_timeout, block_on_until};
+
+#[cfg(test)]
+mod tests;
