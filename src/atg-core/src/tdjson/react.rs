@@ -54,7 +54,8 @@ pub fn reaction_type(k: &ReactionKind) -> Option<Value> {
     Some(match k {
         ReactionKind::Emoji { emoji } => json!({"@type": "reactionTypeEmoji", "emoji": emoji}),
         ReactionKind::CustomEmoji { custom_emoji_id } => {
-            json!({"@type": "reactionTypeCustomEmoji", "custom_emoji_id": custom_emoji_id.parse::<i64>().ok()?})
+            let id = custom_emoji_id.parse::<i64>().ok()?;
+            json!({"@type": "reactionTypeCustomEmoji", "custom_emoji_id": id})
         }
         ReactionKind::Paid => json!({"@type": "reactionTypePaid"}),
         ReactionKind::Unknown { .. } => return None,

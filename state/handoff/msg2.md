@@ -85,3 +85,44 @@
 - codex 032 共 6 轮：第 5 轮仅 P2×1（契约删确认残留，已改），第 6 轮零发现，连续两轮无 P0/P1，满足停止线；无剩余 P2
 - 合 main（64918b8，含 #117 #125 #133）后复验：test 533 过 0 败；clippy 两种 0（带 tdlib 的示例 `live_wait_phone.rs` 是 main 的遗留，PR #134 修，合进来后再合一次）
 - 下一步：大总管开 #9 的 PR；之后接 #10 转发（codex 033）
+
+## #10 转发 · 设计计划（只读阶段，2026-11-17；等 #135 合后从 main 新开分支）
+
+**结论**：照 `resend` 的骨架做，一条命令一张凭据转发同一来源会话的一条或几条，进重复提交拦截；要动 `send/**`（新文件 `send/forward.rs`、`SealedKind`/`Answer` 加一种）和 `gate/**`（只是 `Gated` 实现，不改闸），开工前报大总管。
+
+### TDLib
+- `forwardMessages chat_id topic_id from_chat_id message_ids options send_copy remove_caption = Messages`（`td_api.tl:13180`）：id 须严格递增、一次最多 100；不能转的那条返回 `null`；转进私密聊天、或本地消息时 `send_copy` 恒为真
+- 能不能转看 `getMessageProperties.can_be_forwarded`（复制看 `can_be_copied` / `can_be_copied_to_secret_chat`）；开了「禁止转发」（`has_protected_content`）的会话里都是假
+- 转出的每条都是新的待发消息：临时 id → `updateMessageSendSucceeded` / `Failed`，等法同 `resend`（逐条，30 秒）
+
+### 内核（atg-core）
+- `prepare_forward(b, to: ChatId, topic: Option<..>, from: ChatId, ids: &[i64], copy: bool, origin) -> ForwardPlan`
+  - 目标走现成的 `chat_target`，测试服务器只许收藏夹（同 `send`）；论坛群不给话题就落「General」，计划里写明
+  - 去重、排序，超 100 → `invalid_input`（`why:"too_many"`）
+  - 逐条：在不在（`not_found`）、`can_be_forwarded`（复制时 `can_be_copied`，目标是私密聊天看 `_to_secret_chat`），不行 → `invalid_input`（`why:"not_forwardable"`，点名哪条）
+  - 计划带每条的简短读法（同 `history`，隐藏内容照样遮）与原发送人——人事后看 `plan` 就知道转了什么、转给谁
+- 摘要绑：请求 JSON + 每条的内容指纹（交出前重取一次比对，变了（被编辑、被删）→ `send_refused(content_mismatch)`，同 `resend` codex 016 第 2 轮 #2 的做法）
+- `forward(b, plan, token)`：验凭据 → 复核 → `before_submit` → `SealedKind::Forward{request}` → `Answer::Resent` 那种 `Vec<Option<Message>>`（考虑改名成通用的 `Answer::Many`，或另加 `Answer::Forwarded`）→ 逐条 `wait` / `finish`
+- `forward_and_wait`：同 `resend_and_wait`，CLI 与以后的 GUI 共用
+- **重复提交拦截**：要进（同一批转两次对方会收到两份，撤不回）。指纹 = 目标 + 话题 + 来源会话 + id 列表 + `copy`；`--again` 放行。这一点和 `react`、`resend` 都不一样
+- 留痕：`direct-send.log` 的内容类型记 `forward`、条数；不记来源会话名与内容（来源 `chat_id` 记不记待定，见下）
+- 假后端：`do_forward`（按 `can_be_forwarded` 字段决定能不能转、给出临时 id、可配置让某条失败）
+
+### CLI
+- `atg-cli forward FROM_CHAT MSG_ID... --to CHAT [--topic TOPIC_ID] [--copy] [--dry-run] [--again]`：先一行 `plan`，直发；逐条等结果，结尾 `result` / `error` 的 `items` 照 `resend`（成功 / 失败 / 结果未知 / 不能转）；结果未知退出码 10、不许重转。`CHAT` 可写 `saved`。`--redact` 先报 `not_implemented`
+- 经本机接口转发（`config-privacy.md` 能转的命令加一条）
+
+### 要改的契约
+- `actions.md`：`forward` 从「第二批留位」挪进主表（`forward_prepare` · `forward`），第 5 小节「重复提交拦截」写 `forward` 进；第 6 小节加 `ForwardPlan`
+- `cli.md`：加 `forward` 一行；`errors.md`：`why` 加 `too_many`、`not_forwardable`；`config-privacy.md`：能转的命令加 `forward`
+
+### 测试（先写会红的）
+- 测试服务器转给非收藏夹被拒；禁止转发的会话被拒；超 100 被拒；id 乱序去重后按序
+- 准备后来源消息被编辑 → `content_mismatch`；同一批 10 分钟内再转被拦、`--again` 放行
+- 一条转成功一条失败 → `items` 各自下落、退出码按 `resend` 规则；到点 → `send_outcome_unknown`
+- 真机只转到收藏夹（来源也用收藏夹里的消息），先报大总管
+
+### 要人定的事（建议 + 默认，转大总管）
+1. **`--copy`（不带原发送人的复制）v0 做不做**：A 做（多一个开关，复制会隐去原作者）· B 先只做普通转发（建议，默认 B；复制以后再加）
+2. **留痕记不记来源会话 id**：A 记（事后能查转了哪个会话的东西，但多一处会话关系痕迹）· B 不记、只记条数（建议 A：留痕本来就记目标 `chat_id`，来源同一级，不涉内容）。默认 A
+3. **一次最多几条**：TDLib 上限 100。A 照 100 · B 先限 20（建议 B：误转一大批撤不回，防重复只拦同一批）。默认 B
