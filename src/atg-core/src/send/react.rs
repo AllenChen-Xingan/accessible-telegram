@@ -243,11 +243,19 @@ fn refuse_replace(replaces: &[ReactionKind], known: bool) -> Result<(), CoreErro
 /// 计划再依次交出，第二份就会挤掉第一份），也可能断过线、补发还没完。所以加回应在交出前按同样的条件再判一次：
 /// 「补发完了」要准备时完了**且**现在连接线仍是 `ready`；没给 `replace` 的照旧拒，给了的不拒、只用新算的结果留痕。
 /// 回刷新后的计划（去掉回应原样回）
-async fn recheck<B: Backend>(b: &B, plan: &ReactPlan) -> Result<ReactPlan, CoreError> {
+///
+/// `pending`：同一条消息上还有放弃了的请求（[`InFlight`]）——它可能随时点上，所以这次「会挤掉几个」一律算拿不准
+/// （codex 032 第 4 轮 #1）
+async fn recheck<B: Backend>(
+    b: &B,
+    plan: &ReactPlan,
+    pending: bool,
+) -> Result<ReactPlan, CoreError> {
     if plan.remove {
         return Ok(plan.clone());
     }
-    let synced = plan.synced
+    let synced = !pending
+        && plan.synced
         && b.wait_net(Duration::ZERO, &|n| *n == crate::status::NetState::Ready)
             .is_some();
     let m = b.message_get(plan.message).await?;
@@ -282,6 +290,8 @@ struct Slot {
 
 struct InFlight {
     serial: u64,
+    /// 拿到时同一条消息上已有放弃了的请求（只有 `replace` 能走到这）
+    pending: bool,
     /// 已交出、还没确定结束：这时被丢掉就算「放弃」
     armed: bool,
 }
@@ -297,6 +307,7 @@ impl InFlight {
         let key = (std::ptr::from_ref(gate) as usize, id);
         let mut v = slots();
         let busy = v.iter().any(|s| s.key == key && (!s.abandoned || !replace));
+        let pending = v.iter().any(|s| s.key == key);
         if busy {
             return Err(CoreError::InvalidSend {
                 why: InvalidSendWhy::ReactionStateUnknown,
@@ -310,6 +321,7 @@ impl InFlight {
         });
         Ok(Self {
             serial,
+            pending,
             armed: false,
         })
     }
@@ -375,7 +387,7 @@ async fn react_inner<B: Backend>(
 ) -> Result<ConfirmMode, CoreError> {
     let mode = b.gate().verify(token, plan)?;
     let mut one = InFlight::take(b.gate(), plan.message, plan.replace)?;
-    let plan = &recheck(b, plan).await?;
+    let plan = &recheck(b, plan, one.pending).await?;
     *sent
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(plan.clone());

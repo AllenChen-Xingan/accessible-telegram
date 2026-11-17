@@ -370,3 +370,18 @@ fn disconnected_submit_keeps_message_locked() {
     once(&r, FRIEND, THUMB, false).unwrap_err();
     once(&r, FRIEND, THUMB, false).unwrap();
 }
+
+#[test]
+fn replace_after_abandoned_logs_null() {
+    // codex 032 第 4 轮 #1：同一条上有放弃了的请求（可能随时点上），带 replace 的这次放行，但「会挤掉几个」记 null
+    let r = rig("pending", false);
+    let mut a = super::super::InFlight::take(r.b.gate(), id(FRIEND), false).unwrap();
+    a.armed = true;
+    drop(a);
+    once_with(&r, FRIEND, THUMB, false, true).unwrap();
+    let log = log_lines(&r);
+    assert_eq!(log.len(), 2, "{log:?}");
+    for l in &log {
+        assert!(l["reaction"]["may_replace"].is_null(), "{l}");
+    }
+}

@@ -1,7 +1,7 @@
 # 评审 032 · #9 表情回应（`react` / `reactions`，合 main 后直发）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`origin/main`（= 分叉点 719d5d1，评审时 main 没前进，两点与三点等价）对工作区的 diff；新文件 `src/atg-core/src/send/react/tests/replace.rs` 未跟踪，作依据附上。重点写在 `_tmp/reviews-032/focus.md`（不入库）。
-> **最新一轮：第 3 轮（2026-11-17）· 总评「修改」· 待第 4 轮**（#2 按人定威胁模型降为 P2、开 issue）（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
+> **最新一轮：第 4 轮（2026-11-17）· 总评「修改」· 待第 5 轮**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
 > 累计：提出 8 条（P1×3、P2×5），属实 6 条、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
 > 之前：多视角自审 5 轮（atg-review；第 4 轮 P1「普通群信缓存」按人定 A 修；第 5 轮 P0/P1 零）。机器验收：`cargo test -p atg-core -p atg-cli` 486 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib`）0。
 > 隐私扫描：密钥类命中 9 条，全是参数类型标注 `token: ConfirmToken`（同 023）；人定 2026-11-16 长期放行这一类，大总管逐条核实后准加 `--force-secrets`。chat-content 只提示 11 条，都是测试夹具里编的 TDLib JSON。
@@ -85,3 +85,30 @@
 - codex 列的「不符」：无
 - codex 列的「核实属实」：6 条
 - 无法核实：无
+
+### 是否再审
+
+要再审：#1、#3 改完开第 4 轮。
+
+## 第 4 轮（2026-11-17）· 总评「修改」
+
+范围同上（检查点 461477b）。原文：`_tmp/reviews-032/react-9-3dot-codex-3.md`（不入库）。effort medium，83 秒（`result: P0×0 P1×1 P2×1 P3×0`）。
+上一轮处理的验证：codex 抽查确认第 3 轮 #1（按序号收尾、断线留「放弃」、测试已改）与 #3（到点按复核后的计划记账）都已修；#2 已记为降级开 issue，不重复报。
+本轮 P0/P1：1 条 · 停止线：未满足 · 留作 issue 的 P2：无
+
+- **P1｜src/atg-core/src/send/react.rs:378 有放弃了的请求时，`--replace` 留痕仍记确定值**（第 4 轮 #1）
+  - 核实：属实（确定性路径：A 到点放弃 → B 带 `replace` 放行；私聊、补发完、缓存为空时 B 记 `may_replace:0`，A 却可能随后点上）。
+  - 处理：`InFlight` 拿到时记下同条消息上是否已有槽位（`pending`），传给 `recheck`，有就按拿不准算（`replaces_known=false`，交出行、结果行都记 `null`）。补测试 `replace_after_abandoned_logs_null`。
+- **P2｜specs/contracts/actions.md:249 「为什么」第 3 条仍以「须人确认」为依据**（第 4 轮 #2）
+  - 核实：属实。但这句引的是 `.42cog/intent.md` 第 16 行原文（「发消息等对外动作，无论走哪条路都须人确认」），intent 本身还没随 #113 改。
+  - 处理：契约第 3 条改为现行的「过闸」依据，注明 intent 原句与 #113 冲突、待人改；intent 是人的正本，不由我改，已报大总管。
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：7 条
+- 无法核实：无
+
+### 是否再审
+
+要再审：本轮有 P1，改完开第 5 轮。
