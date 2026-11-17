@@ -2,7 +2,7 @@
 
 > 对象：`origin/main`（= 分叉点 719d5d1，评审时 main 没前进，两点与三点等价）对工作区的 diff；新文件 `src/atg-core/src/send/react/tests/replace.rs` 未跟踪，作依据附上。重点写在 `_tmp/reviews-032/focus.md`（不入库）。
 > **最新一轮：第 5 轮（2026-11-17）· 总评「修改」· 无 P0/P1，待第 6 轮确认**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
-> 累计：提出 9 条（P1×3、P2×6），属实 7 条、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
+> 累计（第 1–5 轮）：提出 14 条（P1×6、P2×8），属实 12 条（其中第 3 轮 #2 按人定威胁模型降 P2 → #131）、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
 > 之前：多视角自审 5 轮（atg-review；第 4 轮 P1「普通群信缓存」按人定 A 修；第 5 轮 P0/P1 零）。机器验收：`cargo test -p atg-core -p atg-cli` 486 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib`）0。
 > 隐私扫描：密钥类命中 9 条，全是参数类型标注 `token: ConfirmToken`（同 023）；人定 2026-11-16 长期放行这一类，大总管逐条核实后准加 `--force-secrets`。chat-content 只提示 11 条，都是测试夹具里编的 TDLib JSON。
 
