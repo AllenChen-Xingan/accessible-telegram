@@ -260,8 +260,11 @@ pub async fn forward<B: Backend>(
         )),
         // 一条都没转出：没有凭条可收尾，这里直接记「失败」——否则防重复停在「已提交」，按结果未知拦 24 小时
         Ok(Answer::Resent(ms)) if ms.iter().all(Option::is_none) => {
+            let why = CoreError::InvalidSend {
+                why: InvalidSendWhy::NotForwardable,
+            };
             b.gate()
-                .after_outcome(mode, plan, 0, None, gate::Outcome::Failed, None);
+                .after_outcome(mode, plan, 0, None, gate::Outcome::Failed, Some(&why));
             Ok(ms.into_iter().map(|_| None).collect())
         }
         Ok(Answer::Resent(ms)) => Ok(ms

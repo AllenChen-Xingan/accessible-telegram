@@ -298,7 +298,23 @@ impl FakeBackend {
             self.play_send(chat, temp, &req);
             out.push(Some(crate::tdjson::message(&pending)));
         }
-        Ok(Answer::Resent(out))
+        // 测试夹具：来源第一条带 `_forward_answer` 时造认不出的应答（条数少一条 / 形状不对 / 回序列化失败）
+        let first = request["message_ids"][0].as_i64().unwrap_or(0);
+        let odd = self.find_message(MsgId {
+            chat_id: from,
+            message_id: first,
+        });
+        match odd.as_ref().and_then(|m| m["_forward_answer"].as_str()) {
+            Some("short") => {
+                out.pop();
+                Ok(Answer::Resent(out))
+            }
+            Some("shape") => Ok(Answer::Done),
+            Some("reserialize") => Err(CoreError::Internal {
+                what: "td_message_reserialize_failed",
+            }),
+            _ => Ok(Answer::Resent(out)),
+        }
     }
 
     /// 真发一条之后按剧本推结果（推在应答之前：结果比应答先到，发4），再把它登记成「交出成功、等成败」

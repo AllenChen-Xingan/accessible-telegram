@@ -117,7 +117,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
 |---|---|---|---|---|
 | `forward_prepare(to: ChatId, from: ChatId, ids: Vec<i64>)` | `ForwardPlan`：目标与来源会话（类型、名字、id）、每条的 id 与纯文字正文（带附件、系统消息为空）、发起方、开法、摘要 | `not_found` `invalid_input`（`why`：`forward_too_many` 一次超过 20 条，不截断、不分批；`not_forwardable` 有一条不能转，如来源会话禁止转发，整批不转）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → 来源会话 → 逐条 `getMessage`（在不在）+ `getMessageProperties.can_be_forwarded` → 组请求、算摘要。id 去重、按从小到大排（TDLib 要严格递增）。目标是论坛群时不带话题，落进「General」（计划行写明）。只做普通转发（带原发送人），不做复制（`send_copy`，会隐去原作者）；20 条与「不做复制」是人定前的默认（2026-11-17，待人定） |
-| `forward(plan, token)` | 每条一项：`PendingMessage`（目标会话里的临时 id）或「转不了」（TDLib 应答里是 null） | `send_refused` `forbidden` `send_outcome_unknown` | **L2，直发** | `forwardMessages`（`:13180`，`options` 为空即默认、`send_copy=false`、`remove_caption=false`）。和其他 L2 一样直发（#113）。**交出前复核**：逐条重取，和计划比（内容、临时内容（如阅后即焚换上的那份）、受限原因、敏感内容标记、编辑时间、发送人；即 `model::Message` 里决定「转出去是什么」的几项）；准备到交出之间被编辑、删掉、变得不能转的，`send_refused(content_mismatch)`、什么都不交出。每条之后照 `send` 等结果（整批共用 30 秒，连同交出），到点 `send_outcome_unknown`；应答条数对不上、形状不对，或 TDLib 回的消息本应用解析不了，也按结果未知报（已交出，可能已转出；`why` 记 `disconnected`）。应答里个别条是 null（交出时才转不了）的，其余照常等；全是 null 的直接记「失败」收尾（不停在「已提交」，同一批再转不被拦）。**进重复提交拦截**（第 5 小节）：同一批转两次对方就收到两份。**留痕**另记来源会话 `from_chat_id`（只记 id） |
+| `forward(plan, token)` | 每条一项：`PendingMessage`（目标会话里的临时 id）或「转不了」（TDLib 应答里是 null） | `send_refused` `forbidden` `send_outcome_unknown` | **L2，直发** | `forwardMessages`（`:13180`，`options` 为空即默认、`send_copy=false`、`remove_caption=false`）。和其他 L2 一样直发（#113）。**交出前复核**：逐条重取，和计划比（内容、临时内容（如阅后即焚换上的那份）、受限原因、敏感内容标记、编辑时间、发送人；即 `model::Message` 里决定「转出去是什么」的几项）；准备到交出之间被编辑、删掉、变得不能转的，`send_refused(content_mismatch)`、什么都不交出。每条之后照 `send` 等结果（整批共用 30 秒，连同交出），到点 `send_outcome_unknown`；应答条数对不上、形状不对，或 TDLib 回的消息本应用解析不了，也按结果未知报（已交出，可能已转出；`why` 记 `disconnected`）。应答里个别条是 null（交出时才转不了）的，其余照常等；全是 null 的直接记「失败」收尾（留痕带码 `invalid_input`，不停在「已提交」，同一批再转不被拦），对外报 `invalid_input`，`why:"not_forwardable"`（一条都没转出）。**进重复提交拦截**（第 5 小节）：同一批转两次对方就收到两份。**留痕**另记来源会话 `from_chat_id`（只记 id） |
 
 **表情回应（#9）**
 
@@ -369,6 +369,7 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-17 #8 A（msg1，大总管定 2026-11-17）：`delete_prepare` 只许自己发的、`forbidden.why`（`saved` / `not_own` / `not_revocable`）；`delete` 交出前复查与 `changed`
 - 2026-11-17 #8 A 自审（msg1）：还没发出的（待发、失败）自己拦 `forbidden why:not_sent`（TDLib 对它们说能给所有人删）；`changed` 措辞改为「列出计划之后、交出之前」；成功即本机已删、服务器在后台补做
 - 2026-11-17 #10 转发（手下 msg2；人定前按默认：不做复制、一次最多 20 条、留痕记来源会话）：动作表加「转发」一组（`forward_prepare` · `forward`），第二批留位去掉 `forward`；第 5 小节写明 `forward` 进重复提交拦截、留痕另记 `from_chat_id`；第 6 小节加 `ForwardPlan`
-- 2026-11-17 #10 自审第 1 轮后（手下 msg2）：`forward` 应答条数不对、回序列化失败按结果未知；全是 null 记「失败」收尾；`ForwardPlan` 补 `note_zh`；复核项写明
 - 2026-11-17 #10 转发（手下 msg2；**一级评审，人本人看**）：第一节第 4 小节第 7 条「只有闸能发」清单加 `forward_messages`（交出口 `SealedKind::Forward` 只由 `send::forward` 在闸验过凭据后造）
+- 2026-11-17 #10 自审第 1 轮后（手下 msg2）：`forward` 应答条数不对、回序列化失败按结果未知；全是 null 记「失败」收尾；`ForwardPlan` 补 `note_zh`；复核项写明
 - 2026-11-17 #10 自审第 2 轮后（手下 msg2）：应答形状不对也按结果未知；`forward` 列进「免什么」现行项；结果未知的 `why` 写明
+- 2026-11-17 #10 自审第 3 轮后（手下 msg2）：全 null 写明对外码与留痕带码；修订记录里清单那条挪回首条之后

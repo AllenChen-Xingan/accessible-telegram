@@ -256,19 +256,30 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &ForwardPlan) {
 
 /// 结尾一句：几条、成功几条、失败几条、结果未知的点名（不要再转）
 fn summary_zh(items: &[serde_json::Value]) -> String {
-    let count = |o: &str| items.iter().filter(|i| i["outcome"] == o).count();
-    let mut zh = format!("要转 {} 条，成功 {} 条", items.len(), count("succeeded"));
+    let ids = |o: &str| -> Vec<String> {
+        items
+            .iter()
+            .filter(|i| i["outcome"] == o)
+            .map(|i| i["message_id"].to_string())
+            .collect()
+    };
+    let mut zh = format!(
+        "要转 {} 条，成功 {} 条",
+        items.len(),
+        ids("succeeded").len()
+    );
+    // 文字模式没有 items：失败、转不了的也点名 id，补转要列的就是它们
     for (o, word) in [("failed", "失败"), ("not_forwarded", "转不了")] {
-        let n = count(o);
-        if n > 0 {
-            zh.push_str(&format!("，{word} {n} 条"));
+        let got = ids(o);
+        if !got.is_empty() {
+            zh.push_str(&format!(
+                "，{word} {} 条（id {}）",
+                got.len(),
+                got.join("、")
+            ));
         }
     }
-    let unsure: Vec<String> = items
-        .iter()
-        .filter(|i| i["outcome"] == "unknown")
-        .map(|i| i["message_id"].to_string())
-        .collect();
+    let unsure = ids("unknown");
     if !unsure.is_empty() {
         zh.push_str(&format!(
             "，结果未知 {} 条（id {}：可能已转出，网络恢复后 Telegram 会继续送出；这几条不要再转，补转也别列进去）",

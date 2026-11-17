@@ -315,8 +315,29 @@ fn all_null_at_submit_closes_the_record_as_failed() {
     // 一条都没转出：记「失败」收尾，不停在「已提交」——同一批再转不被拦
     let last = log_lines(&r).pop().unwrap();
     assert_eq!(last["result"], "failed");
+    assert_eq!(last["error"], "invalid_input");
     let mut h = friend_history();
     h[0] = msg(FRIEND, 5, "第5条", json!({}));
     r.b.set_history(FRIEND, h);
     once(&mut r, OTHER, &[5], false).unwrap();
+}
+
+/// 已交出、应答认不出的三种：都按结果未知报、记账，同一批 24 小时内照样拦
+#[test]
+fn unreadable_answers_are_outcome_unknown_and_held() {
+    for kind in ["short", "shape", "reserialize"] {
+        let mut r = rig(kind, false);
+        let mut h = friend_history();
+        h[0] = msg(FRIEND, 5, "第5条", json!({"_forward_answer": kind}));
+        r.b.set_history(FRIEND, h);
+        let e = once(&mut r, OTHER, &[5, 7], false).unwrap_err();
+        assert!(
+            matches!(e, CoreError::SendOutcomeUnknown { .. }),
+            "{kind}: {e:?}"
+        );
+        let last = log_lines(&r).pop().unwrap();
+        assert_eq!(last["result"], "unknown", "{kind}");
+        let e = once(&mut r, OTHER, &[5, 7], false).unwrap_err();
+        assert_eq!(refused(e), SendRefusedReason::DuplicateRecent, "{kind}");
+    }
 }

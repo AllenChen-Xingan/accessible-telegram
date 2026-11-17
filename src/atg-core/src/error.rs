@@ -117,11 +117,12 @@ pub enum InvalidSendWhy {
     NotText,
     /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
     TooMany,
-    /// 要转发的那条不能转（`messageProperties.can_be_forwarded` 为假，如来源会话开了禁止转发；#10）
+    /// 一条都没转出去（#10）：准备时有一条不能转（`messageProperties.can_be_forwarded` 为假，如来源会话开了禁止转发），
+    /// 整批不交出；或交出后 TDLib 说每一条都转不了（应答全是 null）
     NotForwardable,
     /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
     ForwardTooMany,
-    /// 交出之后 TDLib 说其中有几条转不了（应答里是 null），其余照常转出（#10；区别于准备时整批拒的 `NotForwardable`）
+    /// 交给 TDLib 之后它说其中几条转不了（应答里是 null），别的各有结果（#10；一条都没转出是 `NotForwardable`）
     NotForwarded,
     /// 要删的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，整批不删（#8）
     Changed,
@@ -410,7 +411,7 @@ impl CoreError {
                 }
                 InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
                 InvalidSendWhy::NotForwarded => {
-                    "有的消息 Telegram 交出时说转不了（见 items 里 not_forwarded 的那几条），别的各自的结果也在 items 里；不要整批加 --again 重转，那会把已转出的再转一遍"
+                    "有的消息 Telegram 说转不了（结尾说明点了是哪几条），别的各有结果；不要整批加 --again 重转，那会把已转出的再转一遍"
                 }
             },
             Self::DeleteRefused { why } => match why {
