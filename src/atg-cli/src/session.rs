@@ -460,7 +460,7 @@ pub fn resend(
 
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
 #[cfg(feature = "tdlib")]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::td::TdBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -470,7 +470,7 @@ type L2Body<'a> = dyn FnMut(
 
 /// 不编 TDLib 时只为通过类型检查（`l2_run` 在那种构建里直接报 `not_implemented`，用不到它）
 #[cfg(not(feature = "tdlib"))]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::fake::FakeBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -478,13 +478,35 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的 `--unsafe-direct-send`）→
-/// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
-fn l2_run(
+/// 发送类命令（`send`、`resend`、`react`）的直跑外壳：选档案 → 起真实后端（直发与否看本进程的
+/// `--unsafe-direct-send`）→ 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
+pub(crate) fn l2_run(
     g: &Global,
     format: crate::args::Format,
     command: &'static str,
     started: std::time::Instant,
+    body: &mut L2Body<'_>,
+) -> u8 {
+    backend_run(g, format, command, started, true, body)
+}
+
+/// 只读命令（`reactions`）借同一套起停，但不出直发的开场提示（同 `links`、`history`）
+pub(crate) fn l0_run(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    started: std::time::Instant,
+    body: &mut L2Body<'_>,
+) -> u8 {
+    backend_run(g, format, command, started, false, body)
+}
+
+fn backend_run(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    started: std::time::Instant,
+    banner: bool,
     body: &mut L2Body<'_>,
 ) -> u8 {
     use crate::out::{Stdio, fail_with_to};
@@ -500,7 +522,7 @@ fn l2_run(
     }
     #[cfg(not(feature = "tdlib"))]
     {
-        let _ = (started, body);
+        let _ = (started, banner, body);
         fail_with_to(
             &mut Stdio,
             format,
@@ -515,7 +537,7 @@ fn l2_run(
         let r = open_profile(g).and_then(|profile| {
             let b = td_backend_with(g.unsafe_direct_send)?;
             crate::history::with_backend(&b, &profile, started, |b, stream, feed| {
-                if b.gate().direct() {
+                if banner && b.gate().direct() {
                     crate::send::direct_banner(b, &mut Stdio, format);
                 }
                 Ok(body(b, stream, feed, &mut Stdio))

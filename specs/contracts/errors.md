@@ -37,7 +37,7 @@
 
 `send_refused.reason` 的取值：`no_token` · `target_mismatch` · `content_mismatch` · `token_expired` · `token_reused` · `not_interactive` · `auth_failed`（Touch ID / 系统密码没过）· `test_dc_saved_only`（测试服务器上目标不是收藏夹）· `account_limited` · `duplicate_recent`（直发模式下最近已向同一会话提交过同样的内容：上次已发出的看 10 分钟、结果未知的看 24 小时；另带 `last_at`（RFC3339）、`last_ago_s`、`last_outcome`（`submitted` / `succeeded` / `unknown`），说明写清几秒前、什么结果，`--again` 放行，`actions.md` 第一节第 5 小节）· `too_long_to_confirm`（正文太长、Touch ID 确认框放不下全文：人看不到全文就不让按；说明只叫拆成几条短的，不提直发模式——那等于教发起方自己绕过人的确认）· `reply_dropped`（TDLib 的预览把回复关系去掉了：被回复那条找不到、不能回复或不在同一话题）· `topic_changed`（预览把消息放进了别的话题） · `l1_disabled`（这一类 L1 副作用被整类关掉；F1、A2 人定后第一阶段不会出现，留作以后的开关，`actions.md` 第一节第 4 小节第 9 条）。`not_interactive` 指弹不出 Touch ID / 系统密码框（经 SSH 运行、本机没设登录密码）。
 
-`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）。
+`invalid_input` 在发送准备里另带 `why`：`forum_needs_reply`（话题群里请先选一条消息回复）· `reply_not_allowed`（被回复的那条不能回复）· `empty_text` · `too_long`（正文超过 64 KB）· 重发时的 `not_failed` · `cannot_retry` · `needs_other`（要换发送身份或引用）· `paid`（要付星）；表情回应的 `reaction_invalid`（不是一个 emoji）· `reaction_not_chosen`（要去掉的回应我没点过；也可能只是 emoji 写法不同）· `reaction_would_replace`（这条上我已点了别的回应，再点可能把它挤掉）· `reaction_state_unknown`（拿不准我已点了哪些，再点可能挤掉原来的）；这两种 CLI 在错误行补 `hint_zh`，`react --replace` 放行。
 
 **CLI 自有码**（不是 `CoreError`，只出现在 CLI 的 `error` 行，`cli.md`）：`usage`（参数不对；另：执行方上同时挂着的 `watch` 已到上限 8 个时也借用它，说明写「已到上限」，`config-privacy.md` 第一节第 2 小节「流式订阅」）· `interrupted`（Ctrl+C）· `not_implemented`（子命令还没实现，带 `command`；退出码 1）。
 
@@ -180,3 +180,6 @@
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：`internal.what` 登记 `send_limits_unreadable`；受限 / 限流只从交出口与收线程两处登记，交出前最后复查一次
 - 2026-11-13 issue #52 codex 016 第 6 轮后（属技术细节）：`internal.what` 登记 `send_limits_unwritable`，`send_limits_unreadable` 加「上一个进程没收尾」；交出应答的限制登记不受调用方等待期限影响（td 后端在独立线程里等应答）
 - 2026-11-13 issue #61（大总管授权 2026-11-13，属技术细节）：`internal.what` 登记 `profile_marker_missing`、`profile_marker_unreadable` 及人怎么恢复
+- 2026-11-14 #9 表情回应（手下 msg2）：`invalid_input.why` 加 `reaction_invalid`、`reaction_not_chosen`
+- 2026-11-14 #9 自审第 1 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_would_replace`
+- 2026-11-14 #9 自审第 3 轮后（手下 msg2）：`invalid_input.why` 加 `reaction_state_unknown`

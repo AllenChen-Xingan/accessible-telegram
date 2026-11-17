@@ -110,6 +110,14 @@ pub enum InvalidSendWhy {
     NeedsOther,
     /// 重发要付星（付费发送不做）
     Paid,
+    /// 表情回应给的不是一个 emoji（空、太长、全是 ASCII、带空白或除 U+FE0F / U+200D 外看不见的字符；#9）
+    ReactionInvalid,
+    /// 要去掉的回应我没点过（#9）
+    ReactionNotChosen,
+    /// 加上这个回应可能把我原先点的别的回应挤掉（每条能点几个有上限），没给 `--replace`（#9）
+    ReactionWouldReplace,
+    /// 拿不准这条上我已点了哪些回应（没等到同步完，或超级群 / 频道里服务器不给名单），加上可能把它挤掉（#9）
+    ReactionStateUnknown,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -348,6 +356,16 @@ impl CoreError {
                 }
                 InvalidSendWhy::Paid => {
                     "这条重发要付 Telegram Stars（Telegram 的付费星星），本应用不做付费发送"
+                }
+                InvalidSendWhy::ReactionInvalid => "表情回应请给一个 emoji，如 👍",
+                InvalidSendWhy::ReactionNotChosen => {
+                    "这条消息上你没点过这个回应；emoji 写法可能不同（如 ❤ 与 ❤️），照消息详情里显示的抄"
+                }
+                InvalidSendWhy::ReactionWouldReplace => {
+                    "这条消息上你已点了别的回应，再点可能把它挤掉；确要换请明确说要替换"
+                }
+                InvalidSendWhy::ReactionStateUnknown => {
+                    "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
                 }
             },
             Self::Cancelled => "已取消",

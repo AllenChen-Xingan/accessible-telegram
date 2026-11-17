@@ -25,6 +25,9 @@ use crate::tree::*;
 use serde_json::Value;
 
 mod file;
+mod react;
+use react::reactions;
+pub use react::{added_reactions, reaction_type};
 
 /// 认识、但 v0 没做专门节点的系统消息。读法读出类型。清单随 `docs/research/002_features/content-types.md` 增补
 const OTHER_SERVICE: &[&str] = &[
@@ -518,17 +521,6 @@ fn ephemeral(e: &Value, chat_id: i64) -> Option<Body> {
     e.is_object().then(|| body(&e["content"], chat_id))
 }
 
-fn reactions(info: &Value) -> Vec<Reaction> {
-    arr(&info["reactions"], "reactions")
-        .iter()
-        .map(|r| Reaction {
-            kind: reaction_kind(&r["type"]),
-            count: u(r, "total_count"),
-            chosen: b(r, "is_chosen"),
-        })
-        .collect()
-}
-
 fn sender(v: &Value) -> SenderId {
     match ty(v) {
         "messageSenderUser" => SenderId::User(i(v, "user_id")),
@@ -763,21 +755,6 @@ fn entity_kind(t: &Value) -> EntityKind {
             seconds: u(t, "media_timestamp"),
         },
         other => K::Unknown {
-            td_type: other.to_owned(),
-        },
-    }
-}
-
-fn reaction_kind(v: &Value) -> ReactionKind {
-    match ty(v) {
-        "reactionTypeEmoji" => ReactionKind::Emoji {
-            emoji: s(v, "emoji").to_owned(),
-        },
-        "reactionTypeCustomEmoji" => ReactionKind::CustomEmoji {
-            custom_emoji_id: str_or_num(&v["custom_emoji_id"]),
-        },
-        "reactionTypePaid" => ReactionKind::Paid,
-        other => ReactionKind::Unknown {
             td_type: other.to_owned(),
         },
     }

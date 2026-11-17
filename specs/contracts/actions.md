@@ -33,7 +33,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 ### 3. 动作表
 
-记法：`名字(参数) -> 返回`。返回里的 `ChatItem`、`Message`、`UserRef`、`MsgId`（消息身份，`{chat_id, message_id}` 一个对象）是 `tree` 定的内容节点，正式名以 `specs/content-tree.md` 第三节第 7 小节为准（群不是单独类型，是 `ChatItem` 的 `ChatKind`）；不属于内容树的 `SendPlan`、`PendingMessage`、`Page`、`MessageProps` 在本文第一节第 6 小节定义。`Ack` = 成功无返回值。所有动作都可能返回 `disconnected`、`network`、`rate_limited`、`internal`，下表「错误」列只写**额外**的。
+记法：`名字(参数) -> 返回`。返回里的 `ChatItem`、`Message`、`UserRef`、`MsgId`（消息身份，`{chat_id, message_id}` 一个对象）是 `tree` 定的内容节点，正式名以 `specs/content-tree.md` 第三节第 7 小节为准（群不是单独类型，是 `ChatItem` 的 `ChatKind`）；不属于内容树的 `SendPlan`、`ReactPlan`、`AddedReactions`、`PendingMessage`、`Page`、`MessageProps` 在本文第一节第 6 小节定义。`Ack` = 成功无返回值。所有动作都可能返回 `disconnected`、`network`、`rate_limited`、`internal`，下表「错误」列只写**额外**的。
 
 **生命周期**
 
@@ -109,6 +109,14 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `delete_prepare(chat: ChatId, ids: Vec<MessageId>)` | `SendPlan`（删哪几条、给所有人） | `not_found` `forbidden` | L0 | 只查不发；逐条按 `message_properties` 的「能否删除（双方）」检查，不能的拒。⚠️ 收藏夹里的消息不能给所有人删（`MessagesManager.cpp:8346`），必拒 |
 | `delete(plan, token: ConfirmToken)` | `Ack`；结果经 `messages_deleted` | `send_refused` `forbidden` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表 |
 
+**表情回应（#9，B18-2）**
+
+| 动作 | 返回 | 额外错误 | 等级 | TDLib |
+|---|---|---|---|---|
+| `react_prepare(id: MsgId, emoji: String, remove: bool, replace: bool)` | `ReactPlan`：目标会话、哪一条、哪个回应、加还是去、会挤掉的我原先点的回应、开法、摘要 | `not_found` `invalid_input`（`why`：`reaction_invalid` 不是一个 emoji；`reaction_not_chosen` 要去掉的我没点过；`reaction_would_replace` 这条上我已点了别的回应、没给 `replace`——每条能点几个有上限，超了 TDLib 自动去掉最早的，不确认就没人看得到，所以默认拒；`reaction_state_unknown` 我点过哪些拿不准、没给 `replace`：本机库里是缓存，拿得准要调用方等到补发结束，且私聊、普通群、私密聊天（回应变化 TDLib 照推），超级群 / 频道另向服务器取一页「谁点了」（`getMessageAddedReactions`）、一页取全才算）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → `getMessage`（这条在不在、我点过哪些）→ 组请求、算摘要。v0 只收 emoji（`reactionTypeEmoji`）；自定义表情不做，**付费星星（`reactionTypePaid`，要花钱）不做** |
+| `react(plan, token)` | `Ack` | `send_refused` `forbidden` `invalid_input`（这个会话不许这个回应，TDLib 400）`send_outcome_unknown` | **L2，不确认** | `addMessageReaction`（`:13748`，`is_big=false` 不放大动画、`update_recent_reactions=false` 不改本机「最近用过的回应」列表——少动别处）/ `removeMessageReaction`（`:13754`）。**B18-2 人定：正式服务器默认模式下也不确认**（可撤销），闸开 `unconfirmed` 凭据（第 4 小节第 1 条）；直发模式照开 `direct_mode`。其余照 L2：凭据绑会话 + 请求摘要（哪条、哪个回应、加或去）、60 秒一次性、受限与限流照管、不自动重试、测试服务器只许收藏夹；交出连同应答 30 秒上限，到点 `send_outcome_unknown`（回应可能已点上）。**留痕**：`unconfirmed` 与 `direct_mode` 一样写 `direct-send.log`（`kind` 为 `react` / `unreact`，不记 emoji）；另记 `target`：点在哪条消息上（`message_id`）、可能挤掉了几个原先的回应（`replaced`，只记个数）；不进重复提交拦截（同一个回应点两次不会多出一个），不算进 `direct_sent`（`status` 与直发开场行里「本次已直发几条」的计数） |
+| `added_reactions(id: MsgId, kind: Option<ReactionKind>, offset: String, limit: u32)` | `AddedReactions`：总数 + 这一页（谁、哪个回应、是不是我、时间）+ 下一页的 `next_offset`（空 = 没有更多） | `not_found` `invalid_input` | L0 | `getMessageAddedReactions`（`:13802`），只读；`limit` 1–100（调用方先查）。点回应的人经 `updateUser` 先进事件流，名字投影时从 store 填（`tree` 的 `reactor` 节点） |
+
 **待发出的消息**（MVP 必做）：`status()` 列出「待发出」的消息（会话 id、临时消息 id、确认时间）；`pending_cancel(MsgId)` 删除待发消息，**只是尽力撤销**：删除只停本机的网络请求（`MessagesManager.cpp:21330-21345`），请求已发出就照样送达，TDLib 随后才在服务器上撤回；会话变得不可访问时连撤回都没有，消息留在对方那边（`:27848-27851`、`:8463-8473`）。所以它不是「结果未知」时的补救，确认说明里也不许写成「可以撤销」（003 发3、建议第 8 条）。实际效果在测试服务器上实测，列为 M2.1 验收项；启动时先列出上次留下的待发消息并告诉人（开着消息库时 TDLib 下次启动会自动续发，003 发8）。能否抢在续发之前撤销，**未核**。
 
 `Draft` 第一阶段只有：纯文本 + 可选「回复哪条」（`inputMessageText` `:6680`、`inputMessageReplyToMessage` `:3518`）。Markdown 转实体（`parseMarkdown` `:13836`）第二批。
@@ -120,7 +128,6 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `edit_text` | L2 | `editMessageText`（`:13252`） |
 | `delete(ids, revoke=false)` | L0 但本机不可逆 | 只删自己这边；要人当场确认（给所有人的已进 MVP，见上表） |
 | `forward` | L2 | `forwardMessages`（`:13180`） |
-| `react` | L2 | `addMessageReaction`（`:13748`） |
 | `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
 | `speech_to_text` | L0 | `recognizeSpeech`（`:13121`） |
 | `mark_unread` | L0 | `toggleChatIsMarkedAsUnread`（`:14514`） |
@@ -140,8 +147,9 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
    | `test_exempt` | 「测试服务器 + 收藏夹」（001 第七节第 10 条，人已定），以及第 2 条的第二个测试号私聊（N7） | 闸自动开，写死 |
    | `human_auth` | 正式服务器上的**一切目标**，含自己的收藏夹（CLI 和 GUI 都一样） | Touch ID / 系统密码（macOS 本地认证） |
    | `direct_mode` | 以直发参数启动的这一次运行（第 5 小节） | 不确认 |
+   | `unconfirmed` | 正式服务器默认模式下，人定不确认的动作种类：现在只有表情回应（B18-2，`docs/plan/011_decisions-b18.md`） | 不确认；照样留痕（`direct-send.log`）、照样验目标与摘要、受限与限流照管 |
 
-   理由：终端确认（`/dev/tty`）拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，AI 能无人在场完成真实发送；拍板 10 只给「测试服务器 + 收藏夹」免确认，正式服务器的收藏夹不在其内（codex 评审 004 的 P0）。所以默认模式下终端确认**不再开凭据**，正式服务器一律要 AI 拿不到的东西（第七节第 9 条的理由推广到 CLI 与 GUI 全部发送：界面分不清按键的是人还是 AI，这是推断，不是原话）。
+   理由：终端确认（`/dev/tty`）拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，AI 能无人在场完成真实发送；拍板 10 只给「测试服务器 + 收藏夹」免确认，正式服务器的收藏夹不在其内（codex 评审 004 的 P0）。所以默认模式下终端确认**不再开凭据**，正式服务器一律要 AI 拿不到的东西（唯一例外是上表的 `unconfirmed`：人定不确认的动作种类，现在只有自己能去掉的表情回应，B18-2）（第七节第 9 条的理由推广到 CLI 与 GUI 全部发送：界面分不清按键的是人还是 AI，这是推断，不是原话）。
 
 2. **测试服务器上只许发收藏夹**（架构方案第四节第 1 小节）：测试服务器上发往收藏夹以外的会话，有什么凭据都拒绝（`send_refused(test_dc_saved_only)`）。测试号谁都能登，别人可能往里发消息、拉群。
    **唯一例外（N7 人定）**：与**第二个自己控制的测试号**的私聊——可以互发，也可以把发给它的消息给所有人删（收藏夹里删不了给所有人，`MessagesManager.cpp:8346`）。判定只认：本进程实际的 `use_test_dc` 为真 **且** 目标是与该号的私聊；该号的用户 id 在每次进入 `authorizationStateReady` 时按 `.env.local` 的 `ATG_TEST_PHONE_2`（也须 `99966` 开头）重查，不认会话名字。这个私聊里闸同样自动开 `test_exempt` 凭据（AI 推：例外是为了让自动化测试能跑，可推翻）
@@ -154,7 +162,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 6. **凭据的性质**（写死，改它的 PR 人本人看）：不实现 `Clone` / `Copy` / `Serialize` / `Deserialize`；`send_text` 按值吃掉它；有效期 60 秒，用单调时钟；用过的随机数在进程内登记；**绝不跨进程传递**。CLI 经本机接口由别的进程执行时（P1 人定一开始就做，`config-privacy.md` 第一节第 2 小节），由**执行方**的闸重新开凭据，确认说明里标明「来自命令行，可能是 AI」（与第 4 条同一句）。
 
-7. **只有闸能发**：`atg-core` 以外的代码不得直接调 tdlib-rs 的发送类函数（`send_message`、`delete_messages`、`send_chat_action`、`set_option`（`online`）、`view_messages`、`set_chat_draft_message`、`open_message_content`……）。tdlib-rs 只在 `atg-core::td` 里引入；CI 用一个扫描脚本拦（`testing.md` 第一节第 4 小节）。改到闸、对外等级、这条清单的 PR 属一级评审，人本人看。
+7. **只有闸能发**：`atg-core` 以外的代码不得直接调 tdlib-rs 的发送类函数（`send_message`、`resend_messages`、`add_message_reaction`、`remove_message_reaction`、`delete_messages`、`send_chat_action`、`set_option`（`online`）、`view_messages`、`set_chat_draft_message`、`open_message_content`……）。tdlib-rs 只在 `atg-core::td` 里引入；CI 用一个扫描脚本拦（`testing.md` 第一节第 4 小节）。改到闸、对外等级、这条清单的 PR 属一级评审，人本人看。
 
 8. 验凭据：目标对、摘要对、60 秒内、没用过、第 2、3 条成立；任一不符即 `send_refused`，不发。
 9. **L1 也在入口把关**：`mark_read`、`mark_listened`、`set_online`、`typing`、`draft_set` 都只从 `atg-core` 入口走。F1、A2 人定后，`mark_read` / `set_online` / `typing` 不再一律拒、不确认，谁调谁负责（GUI 按官方客户端的时机调；CLI 不调）；`mark_listened` 照同一取向（AI 推，可推翻：GUI 播放即标，CLI 只在 `play --mark-listened` 时）。开发 / 测试时在正式档案上发这些 L1 也允许（N3 人定，`.42cog/real.md`「不替我对外发消息」已去掉「标记已读」）；`draft_set` 仍按 L2 同级把关；阅后即焚的 `mark_listened` 按 L2。`send_refused(l1_disabled)` 保留，供以后若加整类关闭的开关时用（第一阶段没有这个开关）。
@@ -165,7 +173,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 - **怎么进入**：启动参数 `--unsafe-direct-send`，CLI 与 GUI 同名同义（GUI 是启动参数，不是界面里的开关）。**只认命令行参数**：不读环境变量、不读 `config.toml`，也不传给子进程——这样它一定出现在启动命令里，看得见
 - **管多久**：从启动到这个进程退出。没有中途开关；不进入时，001 第七节第 9、10 条和本文第一节第 4 小节的默认闸照旧从严
-- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），以及将来的 `send_file` / `send_voice` / `forward` / `edit_text` / `react`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
+- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），以及 `react`（默认模式本来就不确认，B18-2）、将来的 `send_file` / `send_voice` / `forward` / `edit_text`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
 - **不免什么**（这些不是「确认」，是防误发与防封号，不增加摩擦）：摘要与目标校验照做（防「确认 A 发 B」那类程序错误）；L2 不自动重试；限流与 `account_limited` 照旧；**重复提交拦截**（下一条）。`logout` 的当场确认不是 L2，照旧
 - **重复提交拦截**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A「拦下」）：一次性凭据只防同一张凭据被重放，直发模式下闸每次自动开新凭据，双击、界面重复触发、AI 在「结果未知」后重跑都会发出第二条，撤不回。所以：
   - **管谁**：只管 `direct_mode` 凭据（含转给以直发启动的执行方的命令）。`test_exempt` 不拦（回归测试要反复发固定文本）；`human_auth` 每次都有人按，不拦
@@ -173,10 +181,11 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
   - **记在哪**：档案目录 `send-guard.json`（`config-privacy.md` 第一节第 1 小节）。交给 TDLib **之前**写「已提交」（写不进去就拒直发，同留痕），等到结果改成「已发出 / 失败 / 未知」；进程中途死掉，「已提交」照样算数。记录文件读不了（含文件坏了）就不写、拒直发——拿空表覆盖会抹掉别的发送的记录；坏了要人删掉它才恢复
   - **何时拦**：同会话同指纹、上次是「已发出」且在 **10 分钟内**，或上次是「未知 / 已提交（没收尾）」且在 **24 小时内** → `send_refused(duplicate_recent)`，`error.data` 带 `last_at`、`last_ago_s`、`last_outcome`，说明写清「几秒前、什么结果」。上次是「失败」（服务器明确没收）不拦——失败的用 `resend`。10 分钟要长过「结果未知」的 30 秒，又不把同一句话长久拦死。结果未知的另留 24 小时：那条可能还在 TDLib 的本地待发队列里，下次任何一条命令启动 TDLib 都会自动续发（003 发8），断网几小时后才发出也有可能，10 分钟后放行就会发两条（自审第 2 轮）；仍有期限，不永远拦（B17-2「到期作废」）。每次写时删掉过期的。时间比「现在」还晚的记录（本机时钟被往回拨过）照样算数，等时钟追上再过期——丢掉就等于回拨时钟能解除拦截
   - **放行**：`send --again`（只这一次；经本机接口转发时随参数过去）。放行的那次照样记一条
+  - `react` 也不进这套：同一个回应点两次 Telegram 那边不会多出一个
   - `resend` 不进这套：重发对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
 - **测试档案**：仍然**只许发收藏夹**（`test_dc_saved_only`），外加第 4 小节第 2 条的第二个测试号私聊（N7）。测试服务器上的号谁都能登，可能是真人；`CLAUDE.md` 第五节「测试绝不向真实联系人发消息」
 - **启动时提示**：CLI 在标准错误打一行醒目提示，并在标准输出第一行输出 `kind:"status"`，带 `direct_send: true`；GUI 窗口标题前加「直发模式」，启动时播报一次「直发模式已开启，发送不再确认」，状态常驻在标题里
-- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件……）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
+- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 开法（`confirm`：`direct_mode` / `unconfirmed`）· 表情回应另有 `target`（`message_id` · `replaced` 个数）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
 - **建议**（都不增加摩擦）：`plan` 行照常输出（AI 和人事后都能看到发了什么）；退出时汇总「本次直发 N 条」；`status` 显示本次已直发条数；`direct-send.log` 写不进去就拒绝直发（留痕是条件，不是可选）
 - 人已明确知道并接受：AI 自己也能加这个参数；收到的消息里藏的指令可能诱导 AI 发错。本契约**不**为它加 Touch ID、白名单之类的门槛
 
@@ -185,6 +194,8 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 类型 | 字段 |
 |---|---|
 | `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值。删除时内容换成：要删的消息 id 与各自简短读法 · 给所有人 |
+| `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 会挤掉的我原先点的回应 · 发起方 · 开法 · 摘要值 |
+| `AddedReactions` | `total` · 这一页每项（回应种类 · 谁（发送人 id）· 是不是我 · 时间）· `next_offset`（空 = 没有更多） |
 | `PendingMessage` | `chat_id` · 临时 `message_id` · 确认时间 |
 | `Page<T>` | `items` · `next_cursor`（无更多时为空）· `total`（TDLib 给得出时才有，否则空） |
 | `MessageProps` | 能否回复 / 转发 / 编辑 / 删除（仅自己）/ 删除（双方）· 能否收听 |
@@ -329,3 +340,7 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：发送前查限流截止（`rate_limited`）与账号受限，两者收到即落盘；`Gated` 只许核心内的计划实现
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：交出前（所有等待之后）再查一次受限与限流；限制标记读不准就拒发
 - 2026-11-13 issue #52 codex 016 第 7 轮后（属技术细节）：确认框估行数时连字符、斜杠、标点等断行机会也算（两种断法取多的）；估算挪到 `atg-core::confirm_box`
+- 2026-11-14 #9 表情回应（手下 msg2，B18-2 人定）：动作表加「表情回应」一组（`react_prepare` · `react` · `added_reactions`），第二批留位去掉 `react`；凭据开法加 `unconfirmed`（人定不确认的动作种类，照样留痕）
+- 2026-11-14 #9 自审第 3 轮后（手下 msg2，属技术细节）：`react_prepare` 加 `reaction_state_unknown`（缓存可能旧时拒）
+- 2026-11-14 #9 自审第 1 轮后（手下 msg2，属技术细节）：加回应会挤掉我原先点的别的回应时默认拒（`reaction_would_replace`），`replace` 放行并在计划里列出；第 5 小节写明 `react` 不进重复提交拦截；第 4 小节理由段补 `unconfirmed` 例外；第 6 小节加 `ReactPlan`、`AddedReactions`；第 4 小节第 7 条清单补三个交出函数
+- 2026-11-14 #9 自审第 2 轮后（手下 msg2）：表情回应的留痕另记 `target`（哪条消息、挤掉了几个）；`replaces` 统一说「可能」

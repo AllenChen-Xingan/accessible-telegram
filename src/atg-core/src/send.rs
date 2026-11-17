@@ -80,6 +80,8 @@ pub(crate) enum SealedKind<'a> {
     Message { request: &'a Value, preview: bool },
     /// `resendMessages`：请求 JSON（TDLib 形状；摘要算过的就是它）
     Resend { request: &'a Value },
+    /// `addMessageReaction` / `removeMessageReaction`（看请求的 `@type`）：请求 JSON，摘要算过的就是它
+    React { request: &'a Value },
 }
 
 /// 交出口的应答
@@ -89,6 +91,8 @@ pub enum Answer {
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
+    /// 应答只有 `ok` 的（表情回应）
+    Done,
 }
 
 // ───────────────────────── 发文字 ─────────────────────────
@@ -320,7 +324,7 @@ pub async fn prepare_text<B: Backend>(
     let me = b.me().await?;
     let mut target = b.chat_target(chat).await?;
     target.saved = target.id == me.saved_chat_id;
-    let mode = b.gate().mode_for(target.id)?;
+    let mode = b.gate().mode_for(target.id, true)?;
 
     let (reply_to, topic) = match draft.reply_to {
         None => (None, None),
@@ -389,7 +393,7 @@ async fn preview_check<B: Backend>(b: &B, plan: &TextPlan) -> Result<(), CoreErr
         Answer::Message(m) => {
             check_kept(plan, &m).map_err(|reason| CoreError::SendRefused { reason, last: None })
         }
-        Answer::Resent(_) => Err(CoreError::Internal {
+        Answer::Resent(_) | Answer::Done => Err(CoreError::Internal {
             what: "preview_answer_shape",
         }),
     }
@@ -456,7 +460,7 @@ pub async fn send_text<B: Backend>(
     };
     match crate::send_limits::submit(b, sealed).await {
         Ok(Answer::Message(m)) => Ok(Submitted { mode, temp: m.id }),
-        Ok(Answer::Resent(_)) => Err(CoreError::Internal {
+        Ok(Answer::Resent(_) | Answer::Done) => Err(CoreError::Internal {
             what: "send_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
@@ -890,7 +894,7 @@ pub async fn prepare_resend<B: Backend>(
     let me = b.me().await?;
     let mut target = b.chat_target(chat).await?;
     target.saved = target.id == me.saved_chat_id;
-    let mode = b.gate().mode_for(target.id)?;
+    let mode = b.gate().mode_for(target.id, true)?;
     let items = load_items(b, target.id, ids).await?;
     let request = json!({
         "@type": "resendMessages",
@@ -946,7 +950,7 @@ pub async fn resend<B: Backend>(
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
             .collect()),
-        Ok(Answer::Message(_)) => Err(CoreError::Internal {
+        Ok(Answer::Message(_) | Answer::Done) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
@@ -1010,48 +1014,10 @@ pub fn resend_and_wait<B: Backend>(
     Ok((mode, out))
 }
 
-// ───────────────────────── 计划行 ─────────────────────────
-
-/// 计划行（`kind:"plan"` 的 `data`，`actions.md` 第一节第 6 小节 `SendPlan`）。内容全文照给（这是给人确认用的）
-pub fn plan_json(plan: &TextPlan) -> Value {
-    json!({
-        "action": "send_text",
-        "target": target_json(&plan.target),
-        "text": plan.text,
-        // 正文里看不见的字符（零宽、标签字符……）有几个：人确认时看到的是转义后的，AI 读 JSON 时据此留意
-        "hidden_chars": gate::hidden_count(&plan.text),
-        "reply_to": plan.reply_to,
-        "topic": plan.topic,
-        "origin": plan.origin,
-        "confirm": plan.mode,
-        "digest": plan.digest_hex(),
-        "note_zh": QUEUE_NOTE_ZH,
-    })
-}
-
-pub fn resend_plan_json(plan: &ResendPlan) -> Value {
-    json!({
-        "action": "resend",
-        "target": target_json(&plan.target),
-        "messages": plan.items.iter().map(|i| json!({"message_id": i.id, "drops_reply": i.drops_reply,
-            "text": i.text, "hidden_chars": i.text.as_deref().map(gate::hidden_count),
-            "reply_to": i.reply.json()})).collect::<Vec<_>>(),
-        "origin": plan.origin,
-        "confirm": plan.mode,
-        "digest": plan.digest_hex(),
-        "note_zh": QUEUE_NOTE_ZH,
-    })
-}
-
-fn target_json(t: &ChatTarget) -> Value {
-    json!({
-        "chat_id": t.id,
-        "kind": t.kind,
-        "title": t.title,
-        "is_forum": t.is_forum,
-        "saved": t.saved,
-    })
-}
+// 计划行：见 [`json`] 模块；表情回应：见 [`react`] 模块
+mod json;
+pub mod react;
+pub use json::{plan_json, react_plan_json, resend_plan_json};
 
 #[cfg(test)]
 mod tests {

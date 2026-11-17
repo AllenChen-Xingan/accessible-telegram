@@ -28,13 +28,13 @@ use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::{Gate, NoAuth};
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::FailedInfo;
+use crate::model::{AddedReactions, FailedInfo};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
-use crate::send::{Answer, Sealed, SealedKind};
+use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, CoreState, NetState};
-use crate::tree::FileRef;
+use crate::tree::{FileRef, ReactionKind};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -44,6 +44,7 @@ use std::time::Duration;
 
 mod call;
 mod files;
+mod submit;
 
 pub use call::Call;
 
@@ -996,111 +997,17 @@ impl Backend for FakeBackend {
     }
 
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
-        self.started()?;
-        self.ready_or_401("submit").await?;
-        match req.into_kind() {
-            SealedKind::Message { request, preview } => {
-                let chat = request["chat_id"].as_i64().unwrap_or(0);
-                lock(&self.calls).push(Call::Submit {
-                    chat,
-                    preview,
-                    resend: false,
-                });
-                if !lock(&self.chat_info).contains_key(&chat) {
-                    return Err(CoreError::NotFound {
-                        what: "chat",
-                        td: None,
-                    });
-                }
-                if preview {
-                    let hook = lock(&self.preview_hook).take();
-                    if let Some(hook) = hook {
-                        hook();
-                    }
-                    let mut r = request.clone();
-                    if lock(&self.preview_drops).pop_front().unwrap_or(false) {
-                        r["reply_to"] = Value::Null;
-                    }
-                    let m = self.own_message(chat, 0, &r, Value::Null);
-                    return Ok(Answer::Message(crate::tdjson::message(&m)));
-                }
-                let rejected = {
-                    let mut script = lock(&self.send_script);
-                    match script.front() {
-                        Some(FakeSend::Reject(e)) => {
-                            let e = e.clone();
-                            script.pop_front();
-                            Some(e)
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(e) = rejected {
-                    return Err(e);
-                }
-                lock(&self.submitted).push(request.clone());
-                let temp = self.new_id();
-                let pending = self.own_message(
-                    chat,
-                    temp,
-                    request,
-                    json!({"@type": "messageSendingStatePending", "sending_id": request["options"]["sending_id"].clone()}),
-                );
-                self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
-                self.play_send(chat, temp, request);
-                Ok(Answer::Message(crate::tdjson::message(&pending)))
-            }
-            SealedKind::Resend { request } => {
-                let chat = request["chat_id"].as_i64().unwrap_or(0);
-                let ids: Vec<i64> = request["message_ids"]
-                    .as_array()
-                    .map(|a| a.iter().filter_map(Value::as_i64).collect())
-                    .unwrap_or_default();
-                lock(&self.calls).push(Call::Submit {
-                    chat,
-                    preview: false,
-                    resend: true,
-                });
-                let mut out = Vec::new();
-                for id in ids {
-                    let old = self.find_message(MsgId {
-                        chat_id: chat,
-                        message_id: id,
-                    });
-                    let ok = old
-                        .as_ref()
-                        .and_then(crate::tdjson::failed_info)
-                        .is_some_and(|f| f.can_retry);
-                    let Some(old) = old.filter(|_| ok) else {
-                        out.push(None);
-                        continue;
-                    };
-                    lock(&self.submitted).push(
-                        json!({"@type": "resendMessages", "chat_id": chat, "message_ids": [id]}),
-                    );
-                    let temp = self.new_id();
-                    let request = json!({"input_message_content": {"text": old["content"]["text"].clone()},
-                        "topic_id": old["topic_id"].clone(), "reply_to": null});
-                    let pending = self.own_message(
-                        chat,
-                        temp,
-                        &request,
-                        json!({"@type": "messageSendingStatePending", "sending_id": 0}),
-                    );
-                    // TDLib 重发时先删掉失败那条（不是撤回），再造一条待发的
-                    lock(&self.histories)
-                        .entry(chat)
-                        .or_default()
-                        .retain(|m| m["id"].as_i64() != Some(id));
-                    self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
-                        "message_ids": [id], "is_permanent": true, "from_cache": false}));
-                    self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
-                    self.play_send(chat, temp, &request);
-                    out.push(Some(crate::tdjson::message(&pending)));
-                }
-                Ok(Answer::Resent(out))
-            }
-        }
+        self.do_submit(req).await
+    }
+
+    async fn added_reactions(
+        &self,
+        id: MsgId,
+        kind: Option<&ReactionKind>,
+        offset: &str,
+        limit: u32,
+    ) -> Result<AddedReactions, CoreError> {
+        self.do_added_reactions(id, kind, offset, limit).await
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

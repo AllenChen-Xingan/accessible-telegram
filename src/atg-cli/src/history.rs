@@ -108,9 +108,8 @@ fn doc_id(d: &Doc) -> Option<i64> {
         Doc::Message(m) => Some(m.id.message_id),
         Doc::Service(s) => Some(s.id.message_id),
         Doc::Tombstone(t) => Some(t.id.message_id),
-        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
-            None
-        }
+        Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) => None,
+        Doc::Reactor(_) | Doc::Unknown(_) => None,
     }
 }
 

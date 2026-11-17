@@ -1,13 +1,14 @@
 //! `gate`：发送闸——L2 动作（发送、重发……）的唯一入口。规约正本：`specs/contracts/actions.md` 第一节第 4、5 小节。
 //!
 //! 等级（`actions.md` 第一节第 2 小节）：**L0** = 只读或只影响本机，随便调（发送前的准备、预览都是）；**L2** = 发给
-//! 别人、撤不回（发送、重发、删除），只能凭一次性凭据交出，且绝不自动重试。
+//! 别人（发送、重发、删除、表情回应；除表情回应外都撤不回），只能凭一次性凭据交出，且绝不自动重试。
 //!
 //! - **凭据** [`ConfirmToken`] 只能由 [`Gate::issue`] 开出：构造函数不公开，不实现 `Clone` / `Copy` /
 //!   `Serialize` / `Deserialize`，后端发送时按值吃掉它；60 秒（单调时钟：不受人改系统时间影响，改时间续不了期）；每张凭据带一个随机数，验过就记进本进程的「已用」表，同一张不能用两次；凭据本身**绝不交给
 //!   别的进程**（经本机接口转来的命令由执行方自己的闸重开）
-//! - **三种开法**（[`ConfirmMode`]）：测试服务器 + 收藏夹 → `test_exempt`（写死）；以直发参数启动 → `direct_mode`；
-//!   其余（正式服务器的一切目标，含自己的收藏夹）→ `human_auth`（Touch ID / 系统密码，[`Authenticator`]）
+//! - **四种开法**（[`ConfirmMode`]）：测试服务器 + 收藏夹 → `test_exempt`（写死）；以直发参数启动 → `direct_mode`；
+//!   人定不确认的动作（[`Gated::needs_confirm`] 假，只有表情回应，B18-2）→ `unconfirmed`；其余（正式服务器的一切目标，
+//!   含自己的收藏夹）→ `human_auth`（Touch ID / 系统密码，[`Authenticator`]）
 //! - **收藏夹**：Telegram 里自己与自己的私聊；私聊的会话 id 就是对方的用户 id，所以收藏夹的会话 id = 自己的用户 id，
 //!   闸按这个等式认收藏夹，不认会话名字（别人可以把会话改名叫「收藏夹」）
 //! - **测试服务器只许发收藏夹**：判定只认本进程**实际**传给 `setTdlibParameters` 的 `use_test_dc`（后端起来时
@@ -16,8 +17,8 @@
 //! - **摘要**：交给 TDLib 那份请求的 JSON 字节 + 自己的账号 id + 服务器类别，SHA-256（[`digest`]）。凭据绑目标 + 摘要。
 //!   账号与服务器也算进去：开凭据之后换了号或换了服务器，旧凭据就对不上，不会被拿去替另一个账号发
 //! - **直发防重复**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A）：见 [`GuardStore`]
-//! - **直发留痕**：档案目录 `direct-send.log`，一条直发一行（时间、进程种类、进程号、会话 id、临时与最终消息 id、
-//!   类型、结果），不记内容与名字，保留 30 天；写不进去就拒绝直发
+//! - **直发留痕**：`direct-send.log`，`direct_mode` 与 `unconfirmed` 每次交出前后各一行（字段见规约第 5 小节，含开法
+//!   `confirm`），不记内容与名字，保留 30 天，写不进去就拒绝交出；`unconfirmed` 不进防重复、不算直发条数
 //!
 //! 威胁边界同规约：闸防「走正规接口时出错或越权」，防不了能改本仓代码的程序。
 //!
@@ -86,6 +87,8 @@ pub enum ConfirmMode {
     HumanAuth,
     /// 以 `--unsafe-direct-send` 启动的这次运行（001 拍板 11）
     DirectMode,
+    /// 这类动作人定不确认（表情回应，B18-2：`docs/plan/011_decisions-b18.md`）；照样留痕、照样受限流管
+    Unconfirmed,
 }
 
 /// 一次性确认凭据。故意不派生 `Clone` / `Copy` / `Serialize` / `Deserialize`；`Debug` 只打开法
@@ -104,7 +107,13 @@ impl ConfirmMode {
             Self::TestExempt => "test_exempt",
             Self::HumanAuth => "human_auth",
             Self::DirectMode => "direct_mode",
+            Self::Unconfirmed => "unconfirmed",
         }
+    }
+
+    /// 交出要不要写 `direct-send.log`：没人按过的都留痕（直发、免确认的动作种类）
+    pub fn logged(self) -> bool {
+        matches!(self, Self::DirectMode | Self::Unconfirmed)
     }
 }
 
@@ -153,6 +162,14 @@ pub trait Gated: Sealed {
     /// （人看不到全文，按下去等于没确认；自审第 5、7 轮 P1）
     fn confirm_fits(&self) -> bool {
         fits_confirm_box(&self.confirm_text())
+    }
+    /// 正式服务器默认模式下要不要人确认。只有人定免确认的动作种类（表情回应，B18-2）回假
+    fn needs_confirm(&self) -> bool {
+        true
+    }
+    /// 留痕里另记的：动在哪条消息上、挤掉了我原先点的几个回应（表情回应用；只记 id 与个数，不记内容）
+    fn log_target(&self) -> Option<(i64, usize)> {
+        None
     }
 }
 
@@ -320,8 +337,8 @@ impl Gate {
         lock(&self.facts).me
     }
 
-    /// 这份计划会用哪种方式确认（不弹框、不记账）。测试服务器上目标不是收藏夹 → `test_dc_saved_only`
-    pub fn mode_for(&self, target: ChatId) -> Result<ConfirmMode, CoreError> {
+    /// 用哪种方式确认（不弹框不记账；`confirm` = [`Gated::needs_confirm`]）。测试服务器只许收藏夹，否则拒
+    pub fn mode_for(&self, target: ChatId, confirm: bool) -> Result<ConfirmMode, CoreError> {
         self.limits.check(unix_now())?;
         let f = lock(&self.facts);
         let use_test_dc = f.use_test_dc.ok_or(CoreError::Internal {
@@ -335,18 +352,18 @@ impl Gate {
                 Err(refused(SendRefusedReason::TestDcSavedOnly))
             };
         }
-        Ok(if self.direct {
-            ConfirmMode::DirectMode
-        } else {
-            ConfirmMode::HumanAuth
+        Ok(match (self.direct, confirm) {
+            (true, _) => ConfirmMode::DirectMode,
+            (false, false) => ConfirmMode::Unconfirmed,
+            (false, true) => ConfirmMode::HumanAuth,
         })
     }
 
     /// 开凭据。直发模式先查防重复（`again` 放行这一次）；默认模式弹 Touch ID / 系统密码
     pub fn issue(&self, plan: &dyn Gated, again: bool) -> Result<ConfirmToken, CoreError> {
-        let mode = self.mode_for(plan.target())?;
+        let mode = self.mode_for(plan.target(), plan.needs_confirm())?;
         match mode {
-            ConfirmMode::TestExempt => {}
+            ConfirmMode::TestExempt | ConfirmMode::Unconfirmed => {}
             ConfirmMode::DirectMode => {
                 if plan.dedup() && !again {
                     self.check_duplicate(plan)?;
@@ -381,7 +398,7 @@ impl Gate {
         plan: &dyn Gated,
     ) -> Result<ConfirmMode, CoreError> {
         // 测试服务器规则每次交出前重查（`actions.md` 第一节第 4 小节第 3 条）
-        let now_mode = self.mode_for(plan.target())?;
+        let now_mode = self.mode_for(plan.target(), plan.needs_confirm())?;
         if token.target != plan.target() {
             return Err(refused(SendRefusedReason::TargetMismatch));
         }
@@ -404,7 +421,7 @@ impl Gate {
         Ok(token.mode)
     }
 
-    /// 交给 TDLib 之前：直发要先把「已提交」记下、留痕文件要写得进去，否则拒发
+    /// 交给 TDLib 之前：直发与免确认的动作要先把「已提交」写进留痕（写不进去就拒），直发另记防重复
     pub(crate) fn before_submit(
         &self,
         mode: ConfirmMode,
@@ -412,7 +429,7 @@ impl Gate {
     ) -> Result<(), CoreError> {
         // 交出前最后一次复查限制：所有 await 之后的唯一位置（codex 016 第 5 轮 #1，见 `send_limits` 模块文档）
         self.limits.check(unix_now())?;
-        if mode != ConfirmMode::DirectMode {
+        if !mode.logged() {
             return Ok(());
         }
         let f = lock(&self.facts);
@@ -433,14 +450,19 @@ impl Gate {
             temp_id: 0,
             final_id: None,
             kind: plan.kind(),
+            confirm: mode,
             result: Outcome::Submitted,
             error: None,
+            target: plan.log_target(),
         };
         append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).map_err(|_| {
             CoreError::Internal {
                 what: "direct_log_unwritable",
             }
         })?;
+        if mode != ConfirmMode::DirectMode {
+            return Ok(()); // 免确认的动作种类：只留痕，不进直发防重复、不算直发条数
+        }
         if plan.dedup() {
             let store = GuardStore::new(dir.join(GUARD_FILE));
             let fp = fingerprint(key, plan.target(), &plan.intent());
@@ -466,7 +488,7 @@ impl Gate {
         outcome: Outcome,
         error: Option<&CoreError>,
     ) {
-        if mode != ConfirmMode::DirectMode {
+        if !mode.logged() {
             return;
         }
         let f = lock(&self.facts);
@@ -474,7 +496,7 @@ impl Gate {
             return;
         };
         let now = unix_now();
-        if plan.dedup() {
+        if mode == ConfirmMode::DirectMode && plan.dedup() {
             let fp = fingerprint(key, plan.target(), &plan.intent());
             if GuardStore::new(dir.join(GUARD_FILE))
                 .settle(now, plan.target(), &fp, outcome)
@@ -491,8 +513,10 @@ impl Gate {
             temp_id,
             final_id,
             kind: plan.kind(),
+            confirm: mode,
             result: outcome,
             error: error.map(CoreError::code),
+            target: plan.log_target(),
         };
         if append_direct_log(&dir.join(DIRECT_LOG_FILE), &line, now).is_err() {
             logline::warn("direct_log_write_failed", &[]);
@@ -643,113 +667,13 @@ pub fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, path)
 }
 
-fn open_append(path: &Path) -> std::io::Result<fs::File> {
-    fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .mode(0o600)
-        .open(path)
-}
+// 直发留痕的一行与追加：见 [`log`] 模块
+mod log;
+use log::{DirectLogLine, append_direct_log};
 
-#[derive(Serialize)]
-struct DirectLogLine {
-    at: i64,
-    proc: Holder,
-    pid: u32,
-    chat_id: ChatId,
-    temp_id: i64,
-    final_id: Option<i64>,
-    kind: &'static str,
-    result: Outcome,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<&'static str>,
-}
-
-/// 追加一行；文件头一行已超过 30 天时先把过期的整理掉（整体重写）
-fn append_direct_log(path: &Path, line: &DirectLogLine, now: i64) -> std::io::Result<()> {
-    let text = serde_json::to_string(line).unwrap_or_default();
-    if let Ok(old) = fs::read_to_string(path) {
-        let stale = |l: &str| {
-            serde_json::from_str::<serde_json::Value>(l)
-                .ok()
-                .and_then(|v| v["at"].as_i64())
-                .is_some_and(|at| now.saturating_sub(at) >= DIRECT_LOG_KEEP_S)
-        };
-        if old.lines().next().is_some_and(stale) {
-            let mut keep: String = old
-                .lines()
-                .filter(|l| !stale(l))
-                .flat_map(|l| [l, "\n"])
-                .collect();
-            keep.push_str(&text);
-            keep.push('\n');
-            return write_atomic(path, keep.as_bytes());
-        }
-    }
-    let mut f = open_append(path)?;
-    writeln!(f, "{text}")
-}
-
-// ───────────────────────── 给人看的文字 ─────────────────────────
-
-/// 把会改写终端显示、读屏也不读的字符换成可见的 `\u{…}`：控制字符（换行、制表符除外）与 [`invisible`] 列的
-/// 全部看不见的字符（零宽、双向控制、标签字符、变体选择符……；`actions.md` 第一节第 4 小节第 4 条）
-pub fn visible(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        if hides(c) {
-            out.push_str(&format!("\\u{{{:04X}}}", u32::from(c)));
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// [`visible`] 会把几个字符换成 `\u{…}`（计划行里报给 AI：正文里藏了几个看不见的字符）
-pub fn hidden_count(s: &str) -> usize {
-    s.chars().filter(|&c| hides(c)).count()
-}
-
-fn hides(c: char) -> bool {
-    c != '\n' && c != '\t' && (c.is_control() || invisible(c))
-}
-
-/// 看不见、读屏也不读、却能藏东西的字符：Unicode 的 Default_Ignorable_Code_Point 全集（Unicode 15.1
-/// `DerivedCoreProperties.txt`），外加格式类（Cf）与行 / 段分隔符（Zl / Zp）里不在其中的那几个。
-/// 包括零宽字符、双向控制、软连字符、蒙古文变体选择符、变体选择符（含补充平面）、标签字符（U+E0000–E007F，
-/// 能藏一整段只有程序读得出的文字）。宁可多转（emoji 的 U+FE0F、U+200D 也会显示成 `\u{…}`），不可漏
-/// （自审第 3 轮 P1：人按 Touch ID 时看到的必须就是要发出去的全文）
-fn invisible(c: char) -> bool {
-    matches!(
-        u32::from(c),
-        0x00AD
-            | 0x034F
-            | 0x061C
-            | 0x0600..=0x0605
-            | 0x06DD
-            | 0x070F
-            | 0x0890..=0x0891
-            | 0x08E2
-            | 0x115F..=0x1160
-            | 0x17B4..=0x17B5
-            | 0x180B..=0x180F
-            | 0x200B..=0x200F
-            | 0x2028..=0x202E
-            | 0x2060..=0x206F
-            | 0x3164
-            | 0xFE00..=0xFE0F
-            | 0xFEFF
-            | 0xFFA0
-            | 0xFFF0..=0xFFFB
-            | 0x110BD
-            | 0x110CD
-            | 0x13430..=0x1343F
-            | 0x1BCA0..=0x1BCA3
-            | 0x1D173..=0x1D17A
-            | 0xE0000..=0xE0FFF
-    )
-}
+// 给人看的文字（转义看不见的字符）：见 [`visible`] 模块
+mod visible;
+pub use visible::{hidden_count, visible};
 
 #[cfg(test)]
 mod tests {

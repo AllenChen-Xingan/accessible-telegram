@@ -22,7 +22,7 @@
 | 账号被限标记 | `profiles/<档案>/account-limited`（0600，内容只有写入时的 Unix 秒）：收到 `account_limited` 后写下，之后启动的进程照样停掉全部 L2；人处理好之后手动删掉才恢复（`errors.md` 第一节第 4 小节） | 否 |
 | 限流截止 | `profiles/<档案>/flood-until`（0600，内容只有 Unix 秒）：发送遇到限流（`rate_limited`）时写下「到这一刻之前不许再发」，之后启动的进程照样遵守，到点自然失效（`errors.md` 第一节第 5 小节） | 否 |
 | 交出未完成 | `profiles/<档案>/send-pending`（0600，内容只有 Unix 秒）：每次把发送类请求交给 TDLib 之前写，交出这一步结束（正常返回、出错、调用方等不及丢掉）就删——但期间有受限 / 限流没写进盘时留着（并补写）；超时丢弃后晚到的受限遇上写盘失败仍有缺口，见 #88；之后启动的进程看到它就拒发（`internal{send_limits_unreadable}`），人确认账号状态后手动删掉 | 否 |
-| 直发留痕 | `profiles/<档案>/direct-send.log`：每条直发两行（交出前「已提交」、等到结果后一行），只有时间、进程、id、类型、结果，不记内容（`actions.md` 第一节第 5 小节），保留 30 天 | 否 |
+| 直发留痕 | `profiles/<档案>/direct-send.log`：每条直发（以及正式服务器上不确认的表情回应，B18-2）两行（交出前「已提交」、等到结果后一行），只有时间、进程、id、类型、开法（`confirm`）、结果（表情回应另有点在哪条、挤掉几个），不记内容（`actions.md` 第一节第 5 小节），保留 30 天 | 否 |
 | 本机接口套接字 | `profiles/<档案>/atg.sock`（第 2 小节「本机接口」；Unix 套接字路径上限约 104 字节，开工时核） | 否 |
 | 限流记录 | `profiles/<档案>/flood.json`：各类动作「到什么时候之前不许再发」、`account_limited` 标记（`errors.md` 第一节第 5 小节） | 否 |
 | 日志 | `~/Library/Logs/atg/`（本项目日志 `atg-<进程>.log`，TDLib 日志 `tdlib-<档案>.log`） | 否 |
@@ -55,7 +55,7 @@
       - `--chat`：执行方替订阅者 `chat_open`，摘掉时 `chat_close`；同一会话几个订阅者按引用计数，只开一次、最后一个走了才关。**`chat_open` 只为订阅，不调 `viewMessages`、不标已读**
       - 结束：发起方 Ctrl+C → 发起方关掉连接、在本地写结尾行 `result`（`reason:"interrupted"`，带本地数的 `events`、`alerts`），退出码 0（同直跑）；执行方停（Ctrl+C / SIGTERM）→ 给每个订阅者写 `result`（`interrupted`）+ `exit 0`；执行方故障 → `error(disconnected)` + `exit 4`
       - 发起方转 `watch` 时**不用** 150 秒帧超时（事件可能很久才来一个），只靠断开认出执行方退出
-    - 现在能转的：`chats`、`history`、`links`、`watch`（流式）、`auth state`（只读、不带秘密）；`send`、`resend`（闸在执行方，凭据由执行方开；`--text-file` 在发起方读成文字再带过去，执行方不读发起方给的路径）。`login`、`logout` 与 `auth` 其余分步不转
+    - 现在能转的：`chats`、`history`、`links`、`watch`（流式）、`auth state`（只读、不带秘密）；`reactions`（只读）；`send`、`resend`、`react`（闸在执行方，凭据由执行方开；`--text-file` 在发起方读成文字再带过去，执行方不读发起方给的路径）。`login`、`logout` 与 `auth` 其余分步不转
   - 第一阶段 GUI 只当执行方：GUI 启动时档案已被 CLI 占着，报 `profile_busy`（说清是哪个 CLI 进程），请人先关掉它
 
 ### 3. 本地库加密（人已定：加密，密钥放钥匙串）
@@ -199,3 +199,4 @@ TDLib 只加密数据库，附件以明文落盘（第一节第 3 小节）。
 - 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：落盘清单加 `flood-until`；`account-limited` 改为收到即写（不论从哪条路得知）
 - 2026-11-13 issue #52 codex 016 第 6 轮后（属技术细节）：落盘清单加 `send-pending`
 - 2026-11-13 issue #61（大总管授权 2026-11-13，属技术细节）：第一节第 2 小节写明「新档案」的定义，只有新档案才写标记，留着东西却缺标记一律拒绝
+- 2026-11-14 #9 表情回应（手下 msg2）：能转的命令加 `reactions`、`react`；`direct-send.log` 也记不确认的表情回应（每行带 `confirm`：`direct_mode` / `unconfirmed`）

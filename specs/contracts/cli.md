@@ -35,6 +35,8 @@
 | `open (--link URL \| --file CHAT_ID MSG_ID)` | 用系统打开；协议与类型白名单，先输出 `plan` 再确认（`actions.md` `open_link` / `open_file`） | `open_link` `open_file` | T06 T07 |
 | `mute CHAT_ID (on\|off)` | 静音 / 取消静音 | `mute` | T05 |
 | `delete CHAT_ID MSG_ID... [--dry-run]` | 删除消息，**给所有人**（S1 人定进 MVP；只删自己这边第二批）：先逐条输出 `plan`（删哪条 + 简短读法），按闸确认后输出结果；`--dry-run` 只输出 `plan` | `delete_prepare` `delete` | T04 |
+| `react CHAT_ID MSG_ID EMOJI [--remove \| --replace] [--dry-run]` | 给这条消息加上（`--remove` 去掉自己点过的）一个 emoji 回应：先一行 `plan`（`action`（`react` / `unreact`）· `target` · `message_id` · `reaction` · `replaces`（可能被挤掉的我原先点的回应）· `origin` · `confirm` · `digest`），**不弹确认框**（表情回应自己能去掉，项目负责人定的例外 B18-2，只限它；测试服务器只许收藏夹），交出后一行 `result`（`chat_id` · `message_id` · `reaction` · `removed` · `confirm`）。`confirm` 说的是**怎么开的凭据**，不是服务器有没有收下：`unconfirmed` = 按规则不用人确认，`test_exempt` / `direct_mode` 同 `send`。**可能挤掉原来的回应**：每条能点几个有上限（不是 Telegram Premium 会员的号 1 个，会员更多，会话也可能另设），超了 Telegram 会去掉我最早点的那个；上限本地拿不准，所以按最坏情况：这条上我已点了别的回应时默认拒（`invalid_input`，`why:"reaction_would_replace"`），**拿不准我已点了哪些**也拒（`why:"reaction_state_unknown"`）：准备前先等补发完（最多 10 秒，同 `history`），等不到，或在超级群 / 频道里服务器不给「谁点了」名单（没打开的超级群、频道，回应变化不一定推到本机），本机库里的可能是旧的。两种拒都在错误行带 `hint_zh`（「确要点就加 --replace」）；确要点加 `--replace`（`plan.replaces` 列出已知可能被挤掉的；`direct-send.log` 记下点在哪条、挤掉了几个）。`--remove` 与 `--replace` 不能同用（`usage`）。加 `--redact` 报 `not_implemented`（`plan` 带会话名，还没做隐去）。**emoji 照原样抄**：同一个 emoji 有几种写法（❤ 与 ❤️ 差一个看不见的变体选择符），去掉时要和 `history --detail` / `reactions` 里显示的一字不差；除变体选择符与零宽连接符外，带看不见的字符一律拒。`--dry-run` 只出 `plan` + `result(dry_run:true)`。不是一个 emoji → `invalid_input`（`why:"reaction_invalid"`）；去掉没点过的 → `invalid_input`（`why:"reaction_not_chosen"`）；会话不许这个回应 → TDLib 400 `invalid_input`；没等到应答 → `send_outcome_unknown`（退出码 10，回应可能已点上，先 `history CHAT_ID --detail` 看一眼）。`CHAT_ID` 可写 `saved` | `react_prepare` `react` | T06 |
+| `reactions CHAT_ID MSG_ID [--emoji E] [-n N] [--cursor C]` | 谁点了这条消息的回应，一行一个 `kind:"reactor"`（树节点 `reactor`；`speech.brief`「林小雨，👍，19:33」，自己点的读「我」），新的在前；`--emoji` 只看这一个；`-n` 默认 50（1–100）；结尾 `result`：`count` · `total` · `more` · `next_cursor`（`more` 为真时才有；TDLib 给的不透明串，原样给 `--cursor` 接着翻；文字模式在结尾一句里给出）。只读、**不标已读**。收藏夹里的回应是给消息分类用的标签（只有自己点），TDLib 可能不给「谁点的」（报错照 TDLib 的码；未实测）。这条会输出点回应的人名，打码（`--redact`）还没做，所以加了 `--redact` 先报 `not_implemented` | `added_reactions` | T06 |
 | `resend CHAT_ID MSG_ID... [--dry-run]` | 重发失败的消息（同一会话里一条或几条，一张凭据）：先输出一行 `plan`（`messages` 逐条：`message_id` · `drops_reply`（会不会去掉回复关系）· `text`（要重发的正文，不是纯文字的为 `null`）· `hidden_chars`），按闸确认后逐条等结果（每条 30 秒内），成功的回显发出的那条（同 `history`）；全部成功以 `result` 结尾。`items` 逐条：`message_id`（要重发的那条）· `outcome`（`succeeded` 带 `new_message_id`；`failed` 带 `new_message_id`、`code`、`can_resend`；`unknown` 带 `temp_message_id`、`why`；`not_resent` = TDLib 说这条不能重发）；有没成功的以 `error` 结尾，`code` 取有结果未知的就取第一条结果未知的（`send_outcome_unknown`，退出码 10——最要紧的是别重发），否则取第一条没成功的（不能重发 `invalid_input` / 失败按原因），同样带 `items`；说明逐项计数（成功 / 失败 / 结果未知几条），点名结果未知的那几条不要再重发。`--dry-run` 只输出 `plan` 加一行 `result`（`dry_run:true`）。要重发的 id 用 `send` 失败那行 `error` 里的 `message_id`（失败后 TDLib 已给它换了新 id）。加 `--redact` 报 `not_implemented` | `resend_prepare` `resend` | T04 |
 | `show CHAT_ID MSG_ID` | 一条消息的全部细节（含被回复的那条），`speech` 带 `detail`。**不标已读** | `message_get` `replied_message_get` | T06 T07 |
 | `search chats QUERY [-n N]` / `search messages QUERY [--chat CHAT_ID] [-n N] [--cursor C]` | 搜索 | `search_*` | T08 |
@@ -64,7 +66,7 @@
 
 **界面开着时**（P1 人定一开始就做共用）：档案被 GUI（或另一个 CLI）占着时，`atg-cli` 自动经本机接口把命令转给它执行，输出与直跑一样（只有执行方当场生成的时间字段不同），调用方不用改任何参数（例外：直发参数听执行方的——执行方不是直发启动就照常确认，CLI 的 `--unsafe-direct-send` 忽略并在标准错误说明，N1 人定）；`login` / `logout` / `auth *` 不转发（登录交秘密，登出改执行方自己的状态），**`auth state` 除外**（只读一个步骤名，不带秘密）。执行方是 GUI 或常驻的 `atg-cli serve`（Ctrl+C 结束）；协议与细则只在 `config-privacy.md` 第一节第 2 小节。连不上才报 `profile_busy`（退出码 9）。**v0 也不转发 `download`、`play`、`transcribe`**（arch 定 2026-11-13）：档案被占就报 `profile_busy`；以后只转发其中「下载」与 `mark_listened` 这两个后端动作，解码、播放、转写永远在 CLI 本进程（设计 `docs/experiments/exp008-local-stt/design.md` 第一节）。
 
-**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的。
+**最多等多久**（#63 #78）：每次等后端都有期限，到点**不挂着**，报 `network`（内核已故障时报 `disconnected`，`errors.md`），可以重试。起后端（开本地库、交参数）30 秒；登录的每一步（提交 + 等授权线离开这一步）30 秒；查询类请求（取会话、取消息、取一页历史、开关会话、发送前的计划）每次 10 秒；`download` 下载 120 秒。30 秒和 120 秒是暂定（大总管定 2026-11-13），人可推翻。数只在 `src/atg-cli/src/deadlines.rs` 定，这里随它改。**Ctrl+C**：登录这组（`login` · `auth *` · `logout`）装了信号处理，第一次按下停止等待、照常关后端，结尾行 `interrupted`（130）；已交给 TDLib 的登录步骤可能照样生效，以 TDLib 的授权线为准，再跑 `auth state` 看实际走到哪一步。读秘密和登出确认时 Ctrl+C 由终端那边认，结果一样。`chats`、`history`、`links`、`send`、`resend`、`download` 不装信号处理，Ctrl+C 照默认直接结束进程；`watch`、`serve`、`play` 见各自一行；`watch`、`serve` 起后端这一步不看 Ctrl+C，等它起完，起不来（含到点）照实报错——还没开始，没有可收尾的。`react` 准备与 `reactions` 每次都按查询类 10 秒；`react` 交出连同应答 30 秒（同 `send`，到点 `send_outcome_unknown`）。`react` / `reactions` 不装信号处理，Ctrl+C 直接结束（`react` 已交出的回应照样生效）。
 
 **什么时候算数据齐了**：`chats`、`next-unread` 读的是 Store，Store 靠 `chats_load` 之后陆续到的更新填满。这两条命令等到 `chats_load` 完成**且**收到 `sync_done`（超时 10 秒）才输出；`result.data.synced` 说明是不是等到了，`false` 时未读数可能是旧的。**`sync_done` 的定义**（#18 暂定，#53 起由收线程合成成事件，`actions.md` 第一节第 7 小节）：启动或重连后，连接线到 `ready`——服务器把离线期间漏掉的更新补送完，TDLib 把连接状态从 `updating` 报成 `ready`。`chats` 的加载另有 10 秒上限（断网时本地库不够一页，`loadChats` 会转去问服务器、一直没有应答），到点照出已有的，`result.data.load_timed_out` 为真、`more` 为真，且不再另等补发。`history` 也按上面同一个判据、同样 10 秒上限等补发完再定未读落点，`result.data.synced` 同义。
 
@@ -89,11 +91,12 @@
 | `auth` | `{"step":"<AuthStep>"}` |
 | `status` | 三条线原值 + `user_status` + `pending_sends` + `direct_send`（布尔）+ 本次已直发条数；`serve` 起好那一行另带 `listening:true` |
 | `event` | `{"type":"<事件名>", …}`，事件名与字段只登记在 `actions.md` 第一节第 7 小节 |
-| `plan` | `SendPlan`（`actions.md` 第一节第 6 小节） |
+| `plan` | `SendPlan`；`react` 出 `ReactPlan`（`actions.md` 第一节第 6 小节） |
 | `version` | 各版本号 |
 | `link` | `links` 的一行：`index`（从 1 起）· `text` · `url`（隐藏时 `null`）· `hidden`（链接落在剧透里，或链接文字里套着剧透） |
 | `playback` | `play` 的状态：树节点 `playback`（`content-tree.md` 第三节第 1 小节）——`state`（`playing` / `paused`；结束不出这一行，看 `result.reason`）· `position_s` · `duration_s` · `speed`；带 `speech.brief` |
 | `control_rejected` | `play` 播放中拒绝一条控制命令（**不是结尾**，播放照常）：`code`（`invalid_input`）· `message_zh` |
+| `reactor` | `reactions` 的一行：树节点 `reactor`（`content-tree.md` 第三节第 1 小节）——`kind` · `sender` · `outgoing` · `date`；带 `speech.brief` |
 | `result` | 见下 |
 | `error` | 字段只登记在 `errors.md` 第一节第 1 小节「`error.data` 的字段」；CLI 另有三个自有码 `usage`、`interrupted`、`not_implemented` |
 
@@ -237,3 +240,6 @@
 - 2026-11-13 issue #52 自审第 11 轮后（属技术细节）：`send` 写明默认模式下正文只能很短（确认框放不下就拒）；`send` / `resend` 写明加 `--redact` 报 `not_implemented`
 - 2026-11-13 issue #52 codex 016 第 2 轮后（属技术细节）：`resend` 结尾行有结果未知的优先报它，说明逐项计数
 - 2026-11-13 #63 #73 #78（手下 fix，大总管定期限取值 2026-11-13）：加「最多等多久」一段：起后端、登录每步、查询类、`download` 的期限与到点报的码，各命令按 Ctrl+C 的结局；`download` 行指过去
+- 2026-11-14 #9 表情回应（手下 msg2）：加 `react`、`reactions` 两条子命令；两条都能经本机接口转发（`config-privacy.md`）
+- 2026-11-14 #9 自审第 1、2 轮后（手下 msg2）：`react` 加 `--replace`（`reaction_would_replace`）、emoji 照原样抄、`confirm` 取值含义、`--redact` 先拒；kind 表加 `reactor`；「最多等多久」补 `react` / `reactions`；`reactions` 不出直发开场提示
+- 2026-11-14 #9 自审第 3 轮后（手下 msg2）：`react` 先等补发完，拿不准我已点了哪些时拒（`reaction_state_unknown`），两种拒带 `hint_zh`；`reactions` 的 `next_cursor` 只在 `more` 为真时有

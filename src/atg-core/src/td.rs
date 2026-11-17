@@ -30,14 +30,14 @@ mod real {
     use crate::keystore::KeyStore;
     use crate::link::{self, EventStream, Shared, Step};
     use crate::logline::{self, Field};
-    use crate::model::FailedInfo;
+    use crate::model::{AddedReactions, FailedInfo};
     use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
     use crate::model::{ChatTarget, Me};
     use crate::secret::{self, Secret};
-    use crate::send::{Answer, Sealed, SealedKind};
+    use crate::send::{Answer, Sealed};
     use crate::status::{AuthStep, CoreState, NetState};
     use crate::tdjson;
-    use crate::tree::FileRef;
+    use crate::tree::{FileRef, ReactionKind};
     use serde_json::{Value, json};
     use std::future::Future;
     use std::path::{Path, PathBuf};
@@ -46,6 +46,10 @@ mod real {
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
     use tdlib_rs::{enums, functions, types};
+
+    // 交出口（发送、重发、表情回应）与「谁点了回应」：见这两个子模块（从本文件拆出，#60 行数线）
+    mod reactions;
+    mod submit;
 
     /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
     static INSTANCE: AtomicBool = AtomicBool::new(false);
@@ -754,72 +758,17 @@ mod real {
         }
 
         async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
-            let id = self.client_id().ok_or_else(Self::not_started)?;
-            match req.into_kind() {
-                SealedKind::Message { request, preview } => {
-                    // 交给 TDLib 的就是摘要算过的那份 JSON：逐段反序列化成 tdlib-rs 的类型，不另组一份
-                    let bad = || CoreError::Internal {
-                        what: "send_request_shape",
-                    };
-                    let part = |k: &str| request[k].clone();
-                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                    let topic: Option<enums::MessageTopic> =
-                        serde_json::from_value(part("topic_id")).map_err(|_| bad())?;
-                    let reply: Option<enums::InputMessageReplyTo> =
-                        serde_json::from_value(part("reply_to")).map_err(|_| bad())?;
-                    let mut options: types::MessageSendOptions =
-                        serde_json::from_value(part("options")).map_err(|_| bad())?;
-                    options.only_preview = preview;
-                    let content: enums::InputMessageContent =
-                        serde_json::from_value(part("input_message_content")).map_err(|_| bad())?;
-                    logline::info(
-                        "send_submit",
-                        &[Field::Name(
-                            "kind",
-                            if preview { "preview" } else { "send" },
-                        )],
-                    );
-                    let enums::Message::Message(m) = self
-                        .detached(functions::send_message(
-                            chat,
-                            topic,
-                            reply,
-                            Some(options),
-                            content,
-                            id,
-                        ))
-                        .await?;
-                    Self::map_message(m)
-                        .map(Answer::Message)
-                        .ok_or(CoreError::Internal {
-                            what: "td_message_reserialize_failed",
-                        })
-                }
-                SealedKind::Resend { request } => {
-                    // 同发文字：交出去的就是摘要算过的那份，逐字段取，不另组
-                    let bad = || CoreError::Internal {
-                        what: "send_request_shape",
-                    };
-                    let chat = request["chat_id"].as_i64().ok_or_else(bad)?;
-                    let ids: Vec<i64> = serde_json::from_value(request["message_ids"].clone())
-                        .map_err(|_| bad())?;
-                    let quote: Option<types::InputTextQuote> =
-                        serde_json::from_value(request["quote"].clone()).map_err(|_| bad())?;
-                    let paid = request["paid_message_star_count"]
-                        .as_i64()
-                        .ok_or_else(bad)?;
-                    logline::info("send_submit", &[Field::Name("kind", "resend")]);
-                    let enums::Messages::Messages(ms) = self
-                        .detached(functions::resend_messages(chat, ids, quote, paid, id))
-                        .await?;
-                    Ok(Answer::Resent(
-                        ms.messages
-                            .into_iter()
-                            .map(|m| m.and_then(Self::map_message))
-                            .collect(),
-                    ))
-                }
-            }
+            self.submit_sealed(req).await
+        }
+
+        async fn added_reactions(
+            &self,
+            id: MsgId,
+            kind: Option<&ReactionKind>,
+            offset: &str,
+            limit: u32,
+        ) -> Result<AddedReactions, CoreError> {
+            self.added_reactions_impl(id, kind, offset, limit).await
         }
 
         fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

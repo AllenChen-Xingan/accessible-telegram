@@ -80,6 +80,7 @@ pub fn chat_item(store: &Store, chat_id: i64, list: &ChatList) -> Option<ChatIte
             | Doc::Alert(_)
             | Doc::Status(_)
             | Doc::Playback(_)
+            | Doc::Reactor(_)
             | Doc::Unknown(_) => return None,
         }))
     });
@@ -154,6 +155,16 @@ fn live(store: &Store, m: &MMessage) -> Doc {
             reactions: m.reactions.clone(),
             delivery,
         },
+    })
+}
+
+/// 「谁点了回应」的一项 → `Doc::Reactor`（名字从 store 现查；#9）
+pub fn reactor(store: &Store, r: &crate::model::AddedReaction) -> Doc {
+    Doc::Reactor(Reactor {
+        kind: r.kind.clone(),
+        sender: sender(store, &r.sender),
+        outgoing: r.outgoing,
+        date: Time(r.date),
     })
 }
 

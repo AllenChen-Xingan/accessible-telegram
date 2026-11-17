@@ -213,6 +213,7 @@ fn confirm_zh(m: ConfirmMode) -> &'static str {
         ConfirmMode::TestExempt => "测试服务器发收藏夹，不用确认",
         ConfirmMode::HumanAuth => "要你按 Touch ID 或输入系统密码确认",
         ConfirmMode::DirectMode => "直发模式，不确认",
+        ConfirmMode::Unconfirmed => "这类动作不用确认",
     }
 }
 
