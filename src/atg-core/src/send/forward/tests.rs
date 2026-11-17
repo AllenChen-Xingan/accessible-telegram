@@ -292,3 +292,31 @@ fn no_answer_in_time_is_outcome_unknown() {
     let e = once(&mut r, OTHER, &[5], false).unwrap_err();
     assert_eq!(refused(e), SendRefusedReason::DuplicateRecent);
 }
+
+#[test]
+fn null_at_submit_is_not_forwarded_and_others_still_count() {
+    let mut r = rig("null", false);
+    let mut h = friend_history();
+    h[2] = msg(FRIEND, 7, "第7条", json!({"_forward_null": true}));
+    r.b.set_history(FRIEND, h);
+    let (_, out) = once(&mut r, OTHER, &[5, 7], false).unwrap();
+    assert!(matches!(out[0].result, Some((_, Waited::Succeeded(_)))));
+    assert!(out[1].result.is_none());
+}
+
+#[test]
+fn all_null_at_submit_closes_the_record_as_failed() {
+    let mut r = rig("allnull", false);
+    let mut h = friend_history();
+    h[0] = msg(FRIEND, 5, "第5条", json!({"_forward_null": true}));
+    r.b.set_history(FRIEND, h);
+    let (_, out) = once(&mut r, OTHER, &[5], false).unwrap();
+    assert!(out[0].result.is_none());
+    // 一条都没转出：记「失败」收尾，不停在「已提交」——同一批再转不被拦
+    let last = log_lines(&r).pop().unwrap();
+    assert_eq!(last["result"], "failed");
+    let mut h = friend_history();
+    h[0] = msg(FRIEND, 5, "第5条", json!({}));
+    r.b.set_history(FRIEND, h);
+    once(&mut r, OTHER, &[5], false).unwrap();
+}

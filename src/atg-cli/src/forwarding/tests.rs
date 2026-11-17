@@ -174,3 +174,19 @@ fn too_many_is_refused_before_anything() {
     assert_eq!(end["data"]["why"], "forward_too_many");
     assert!(b.submitted().is_empty());
 }
+
+#[test]
+fn partly_not_forwarded_does_not_say_nothing_was_sent() {
+    let b = backend();
+    let mut m7 = msg(7, "第7条");
+    m7["_forward_null"] = json!(true);
+    b.set_history(FRIEND, vec![msg(5, "第5条"), m7]);
+    let r = run(&b, &[fp(&[5, 7], false, false)]);
+    let end = lines(&r[0].1).pop().unwrap();
+    assert_eq!(end["kind"], "error");
+    assert_eq!(end["data"]["why"], "not_forwarded");
+    assert_eq!(end["data"]["items"][1]["outcome"], "not_forwarded");
+    let zh = end["data"]["message_zh"].as_str().unwrap();
+    assert!(zh.contains("成功 1 条"), "{zh}");
+    assert!(!zh.contains("什么都没转"), "{zh}");
+}

@@ -5,7 +5,7 @@
 //! [`forward_and_wait`]（[`forward`]：验凭据 → 交出前逐条重取、和计划比对，变了就拒 → 直发先记账 → 交出；
 //! 之后每条的新临时 id 用 [`wait`] 等、逐条 [`finish`]）。
 //!
-//! 几条定死的（人定 2026-11-17 先按默认，题面在大总管的待定清单）：
+//! 几条暂按默认（2026-11-17 待人定，题面在大总管的待定清单；人改了再改这里）：
 //! - 只做普通转发（带原发送人），不做 `send_copy`（复制会隐去原作者）；`remove_caption` 恒为假
 //! - 一次最多 [`MAX_IDS`] 条（TDLib 上限 100）：误转一大批撤不回，重复提交拦截只拦同一批
 //! - 留痕另记来源会话 id（[`Gated::log_source`]），不记内容
@@ -26,7 +26,7 @@ use crate::tree::Time;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-/// 一次最多转几条（人定默认 B，2026-11-17）
+/// 一次最多转几条（待人定，暂按默认 B，2026-11-17）
 pub const MAX_IDS: usize = 20;
 
 /// 交出前要和计划比对的那部分：内容、临时内容、受限原因、敏感标记、编辑时间、发送人。
@@ -245,11 +245,22 @@ pub async fn forward<B: Backend>(
         },
     };
     match crate::send_limits::submit(b, sealed).await {
-        // TDLib 按请求顺序逐条回（转不了的是 null）；条数对不上就认不出哪条是哪条——按内部错误报，留痕停在「已提交」，
-        // 防重复照样拦着这一批（宁可要人去看一眼，也不让重跑多转一份）
-        Ok(Answer::Resent(ms)) if ms.len() != plan.items.len() => Err(CoreError::Internal {
-            what: "forward_answer_count",
-        }),
+        // TDLib 按请求顺序逐条回（转不了的是 null）；条数对不上就认不出哪条是哪条，可已经交出、有的可能已转出——
+        // 按结果未知记账、报 `send_outcome_unknown`（不许重转，同交出口断线）
+        Ok(Answer::Resent(ms)) if ms.len() != plan.items.len() => Err(submit_failed(
+            b,
+            mode,
+            plan,
+            CoreError::Internal {
+                what: "td_message_reserialize_failed",
+            },
+        )),
+        // 一条都没转出：没有凭条可收尾，这里直接记「失败」——否则防重复停在「已提交」，按结果未知拦 24 小时
+        Ok(Answer::Resent(ms)) if ms.iter().all(Option::is_none) => {
+            b.gate()
+                .after_outcome(mode, plan, 0, None, gate::Outcome::Failed, None);
+            Ok(ms.into_iter().map(|_| None).collect())
+        }
         Ok(Answer::Resent(ms)) => Ok(ms
             .into_iter()
             .map(|m| m.map(|m| Submitted { mode, temp: m.id }))

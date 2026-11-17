@@ -252,7 +252,8 @@ impl FakeBackend {
     }
 
     /// `forwardMessages`（#10）：来源里在、能转（没被 [`FakeBackend::deny`] 关掉转发）的逐条造一条待发的，按剧本推结果；
-    /// 转不了的那条应答里是 `None`（同 TDLib 的 null）。剧本下一步是「拒」时整批拒
+    /// 转不了的那条应答里是 `None`（同 TDLib 的 null）；消息带私有键 `_forward_null` 时也给 `None`（模拟准备时能转、
+    /// 交出时 TDLib 才说转不了）。剧本下一步是「拒」时整批拒
     pub(super) fn forward(&self, request: &Value) -> Result<Answer, CoreError> {
         let chat = request["chat_id"].as_i64().unwrap_or(0);
         let from = request["from_chat_id"].as_i64().unwrap_or(0);
@@ -279,7 +280,8 @@ impl FakeBackend {
                 chat_id: from,
                 message_id: id,
             });
-            let Some(old) = old.filter(|_| fwd.is_ok_and(|c| c.can_forward)) else {
+            let ok = fwd.is_ok_and(|c| c.can_forward);
+            let Some(old) = old.filter(|m| ok && m["_forward_null"] != true) else {
                 out.push(None);
                 continue;
             };

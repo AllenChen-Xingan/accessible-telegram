@@ -121,6 +121,8 @@ pub enum InvalidSendWhy {
     NotForwardable,
     /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
     ForwardTooMany,
+    /// 交出之后 TDLib 说其中有几条转不了（应答里是 null），其余照常转出（#10；区别于准备时整批拒的 `NotForwardable`）
+    NotForwarded,
     /// 要删的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，整批不删（#8）
     Changed,
 }
@@ -407,6 +409,9 @@ impl CoreError {
                     "要转的消息里有不能转发的（来源会话可能禁止转发）；什么都没转"
                 }
                 InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
+                InvalidSendWhy::NotForwarded => {
+                    "有的消息 Telegram 说转不了（见 items 里 not_forwarded 的那几条），其余的已照常转出；不要整批加 --again 重转，那会把转出的再转一遍"
+                }
             },
             Self::DeleteRefused { why } => match why {
                 DeleteRefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",

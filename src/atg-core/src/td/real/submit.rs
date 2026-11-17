@@ -77,12 +77,18 @@ impl TdBackend {
                         requests::resent,
                     )
                     .await?;
-                Ok(Answer::Resent(
-                    ms.messages
-                        .into_iter()
-                        .map(|m| m.and_then(Self::map_message))
-                        .collect(),
-                ))
+                // TDLib 接下了、回序列化却失败的那条不能压成 None（那是「转不了」）：整次报
+                // `td_message_reserialize_failed`，由 `submit_failed` 按结果未知记账（同 `map_message` 的约定）
+                let mut out = Vec::with_capacity(ms.messages.len());
+                for m in ms.messages {
+                    out.push(match m {
+                        None => None,
+                        Some(m) => Some(Self::map_message(m).ok_or(CoreError::Internal {
+                            what: "td_message_reserialize_failed",
+                        })?),
+                    });
+                }
+                Ok(Answer::Resent(out))
             }
             SealedKind::React { request } => {
                 let a = requests::react(request)?;

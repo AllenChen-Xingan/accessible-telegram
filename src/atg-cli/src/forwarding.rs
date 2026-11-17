@@ -166,8 +166,9 @@ fn run_inner<B: Backend>(
         let src = o.source;
         let Some((temp, w)) = o.result else {
             items.push(json!({"message_id": src, "outcome": "not_forwarded"}));
+            // 交出之后才知道转不了：不能借准备时整批拒的说法（那句是「什么都没转」）
             first.get_or_insert(CoreError::InvalidSend {
-                why: atg_core::error::InvalidSendWhy::NotForwardable,
+                why: atg_core::error::InvalidSendWhy::NotForwarded,
             });
             continue;
         };
@@ -250,7 +251,7 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &ForwardPlan) {
 /// 结尾一句：几条、成功几条、失败几条、结果未知的点名（不要再转）
 fn summary_zh(items: &[serde_json::Value]) -> String {
     let count = |o: &str| items.iter().filter(|i| i["outcome"] == o).count();
-    let mut zh = format!("转发了 {} 条，成功 {} 条", items.len(), count("succeeded"));
+    let mut zh = format!("要转 {} 条，成功 {} 条", items.len(), count("succeeded"));
     for (o, word) in [("failed", "失败"), ("not_forwarded", "转不了")] {
         let n = count(o);
         if n > 0 {
