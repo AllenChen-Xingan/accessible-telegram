@@ -84,10 +84,15 @@ pub(super) const ENDS: [char; 10] = ['？', '?', '！', '!', '。', '.', '…', 
 
 /// 「附件说法，正文」：附件说法自己以标点结尾（投票题目「几点出发？」）就不再接逗号
 fn join(label: &str, body: &str) -> String {
-    if label.ends_with(ENDS) {
-        format!("{label}{body}")
+    glue(label, "，", body)
+}
+
+/// 两段拼起来：前一段以标点（[`ENDS`] 或「，」）结尾就直接接，否则加 `sep`。名称、全文、投票共用这一条
+pub(super) fn glue(a: &str, sep: &str, b: &str) -> String {
+    if a.ends_with(ENDS) || a.ends_with('，') {
+        format!("{a}{b}")
     } else {
-        format!("{label}，{body}")
+        format!("{a}{sep}{b}")
     }
 }
 
@@ -269,7 +274,7 @@ fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
         Attachment::Location => "位置".to_owned(),
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
-        // 名称只读题目（第九节：名称只放谁、说了什么、几点）；选项、票数、性质在详情与全文里
+        // 名称只读题目（第九节：名称只放谁、说了什么、几点；说明文字在正文里，照常接在后面）；选项、票数、性质在详情与全文里
         Attachment::Poll { question, .. } => labeled("投票", &spans(question, reveal).0),
         Attachment::Call {
             video,

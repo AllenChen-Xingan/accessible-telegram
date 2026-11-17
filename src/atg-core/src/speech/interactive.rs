@@ -1,12 +1,12 @@
 //! 投票与按钮的读法（#13，只读）。**句子是 AI 草稿，待人实听**（`specs/style/` 没定投票选项与按钮的说法）。
 //! 分层（第九节：名称只放谁、说了什么、几点）：
-//! - 名称（`brief`）：投票只读「投票，题目」（同改动前）；按钮不进名称
+//! - 名称（`brief`）：投票读「投票，题目」，有说明文字的接在后面（说明在正文里，同媒体说明）；按钮不进名称
 //! - 详情（`detail`）：投票几个选项、你投了没有、能不能看结果、性质（匿名、多选、能否改票、测验）、为什么不能投；
 //!   按钮逐个「文字，按下会怎样」
 //! - 全文（`full`）：投票「题目，说明」再逐项「第 1 项，文字，5 票，42%，你选的，正确答案」+ 总人数 + 测验解析；看不到结果时不读各项票数。
 //!   全文不读按钮（按钮在详情里）
 
-use super::content::{ENDS, spans};
+use super::content::{glue, spans};
 use crate::tree::{Attachment, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock};
 
 /// 选项里有没有隐藏内容（剧透）：整条的按键提示要算上
@@ -68,15 +68,6 @@ pub(super) fn poll_full(a: &Attachment, description: &str, reveal: bool) -> Stri
         head = glue(&head, "，", description);
     }
     glue(&head, "；", &items.join("；"))
-}
-
-/// 前一段以标点结尾就直接接，否则加分隔号
-fn glue(a: &str, sep: &str, b: &str) -> String {
-    if a.ends_with(ENDS) || a.ends_with('，') {
-        format!("{a}{b}")
-    } else {
-        format!("{a}{sep}{b}")
-    }
 }
 
 /// 详情要的那几样投票性质
@@ -174,7 +165,7 @@ fn action(a: &ButtonAction) -> String {
         ButtonAction::LoginUrl { .. } => "以你的身份登录网站".to_owned(),
         ButtonAction::WebApp => "打开网页应用".to_owned(),
         ButtonAction::Callback => "通知机器人，聊天里不出现".to_owned(),
-        ButtonAction::CallbackWithPassword => "通知机器人，要输入密码".to_owned(),
+        ButtonAction::CallbackWithPassword => "通知机器人，要输入你账号的两步验证密码".to_owned(),
         ButtonAction::Game => "开游戏".to_owned(),
         ButtonAction::SwitchInline => "在输入框里调用这个机器人".to_owned(),
         ButtonAction::Buy => "付款".to_owned(),
