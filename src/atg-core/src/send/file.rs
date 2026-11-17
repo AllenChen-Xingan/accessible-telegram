@@ -172,7 +172,8 @@ fn file_request(
                 "@type": "inputDocument",
                 "document": file,
                 "thumbnail": null,
-                "disable_content_type_detection": false,
+                // 按文件发就原样按文件发：不让 TDLib 按内容把它改成视频、音频等（codex 034 第 2 轮 #1，`api.tl:6425`）
+                "disable_content_type_detection": true,
             },
             "caption": caption_json(caption),
         }),
@@ -404,7 +405,11 @@ pub fn wait_upload<B: Backend>(
         let deadline = cap_at.min(idle_at);
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return Waited::Unknown(UnknownWhy::Timeout);
+            // 判未知之前把已经排在流里的事件再看一遍：查进度那段时间里到的成败不能漏（codex 034 第 2 轮 #2）
+            return match wait(stream, &[temp], Duration::from_millis(1), on_event).pop() {
+                Some(w @ (Waited::Succeeded(_) | Waited::Failed { .. })) => w,
+                _ => Waited::Unknown(UnknownWhy::Timeout),
+            };
         }
         match wait(stream, &[temp], left.min(poll), on_event).pop() {
             None | Some(Waited::Unknown(UnknownWhy::Timeout)) => {}
@@ -414,7 +419,8 @@ pub fn wait_upload<B: Backend>(
         if left.is_zero() {
             continue;
         }
-        let Some(Ok(Some(u))) = block_on_timeout(b.upload_progress(temp), left) else {
+        // 单次查询最多等一个轮询间隔：查询卡住时也要回头看结果事件，不能一口气占满剩下的时间（codex 034 第 2 轮 #2）
+        let Some(Ok(Some(u))) = block_on_timeout(b.upload_progress(temp), left.min(poll)) else {
             continue;
         };
         // 查询回来时已过了截止：这次的进度不算，不再续等
