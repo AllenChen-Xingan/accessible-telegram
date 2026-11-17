@@ -54,3 +54,4 @@
 | 054 | 2026-11-17 | #60 R7 第六刀：拆 cli `watch.rs`，出口与订阅者进 `watch/hub.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `054_r7-watch-codex.md` |
 | 055 | 2026-11-17 | #60 R3a 第二刀：12 处测试临时目录助手换成 testkit（只动测试与注释；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `055_r3a-testkit-2-codex.md` |
 | 056 | 2026-11-17 | #153 `atg-cli resend` 的 MSG_ID 吞掉后面的选项（去掉可变长参数上的 `allow_hyphen_values`，加 clap 解析测试与结构测试；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `056_153-args-hyphen-codex.md` |
+| 057 | 2026-11-17 | #60 R7 第七刀：拆 core `tdjson.rs`（「消息」整节挪到 `tdjson/message.rs`，只挪不改；codex · diff 类） | 第 1 轮零发现；待第 2 轮 → `057_r7-tdjson-codex.md` |

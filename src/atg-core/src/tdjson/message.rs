@@ -1,5 +1,5 @@
 //! 消息的映射：TDLib `message` 对象 → [`Message`]，连同正文（系统消息 / 普通内容）、发送者、转发来源、带格式文字。
-//! 从 `tdjson` 拆出（#60 R7 行数线，只挪不改）；取字段的小工具、导入都经 `use super::*` 从根上拿
+//! 从 `tdjson` 拆出（#60 R7：单文件 600 行上限，见 `docs/plan/010_complexity-budget.md`；只挪不改）；取字段的小工具、导入都经 `use super::*` 从根上拿
 
 use super::*;
 

@@ -11,7 +11,7 @@
 //!
 //! 一律用 `serde_json::Value` 逐字段取，字段缺了取默认值，不认识的类型落「未知」，绝不 panic。
 //!
-//! 文件分工：根上是 [`World`]、「更新 → 事件」、会话与话题、取字段的小工具；消息与正文（`message`、`formatted`……）在
+//! 文件分工：根上是 [`World`]、「更新 → 事件」、会话与话题、「发送」（[`chat_object`]、[`failed_info`]）、取字段的小工具；消息与正文（`message`、`formatted`……）在
 //! `message.rs`，语音等带文件的附件在 `file.rs`，表情回应在 `react.rs`。
 
 use crate::error::map_td_error;
