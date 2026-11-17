@@ -7,10 +7,11 @@
 - **大总管回（2026-11-16）**：#108 已提交并合了 main（1364105）；codex 第 3 轮跑（已在后台起）。新活先做：解 r3（PR #110）的合并冲突。Cargo.lock 已取 main 那份重新生成，只多 atg-core 自身依赖一行；lib.rs 里遗留的 cfg 已删。已申请名额跑检查。下一刀 ② 暂缓：msg2 在改 tree/** 和 speech/**，msg1 在改 td.rs；① 等 #110 合并
 - ✅ codex 046 第 3 轮通过，满足停止线。抽查「不符」1 条（记录说覆盖了强转发，实际没测）：补了一条测试，变异检验能变红，自测 84 条全过；046 和评审索引都已更新（未提交）
 - ✅ #108 第 3 轮已由大总管提交（beceaa1）。r3（#110）在 0757bb0 上全量检查全绿：fmt、两种 clippy、test 490 过 0 败 5 忽略、no-debug、sources、size。结果已填进 #110 的描述草稿，名额已归还
-- **下一步**：等 #110 合并 → 写 R3a 第二刀计划（15 处换成 testkit）报大总管，确认没有在途线在改那些文件后再动手
+- ✅ #110 已合进 main（0538ffd）。大总管把它合进 r1 后，我解了两处冲突（评审索引、本页），两边内容都保留
+- **下一步**：领名额在 r1 跑全套（testkit 那条应转绿）→ 大总管开 #108 的 PR → 写 R3a 第二刀计划（15 处换成 testkit）报大总管，确认没有在途线在改那些文件后再动手
 - **要人定**：无
 
-- **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是 `token: ConfirmToken` 类型标注）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
+- **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是确认凭据参数的类型标注，不是密钥）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
 - **做到哪**（2026-11-13）：
   - ✅ `scripts/check-file-size.py`（600 行 + 棘轮；`--write-baseline --rev REV` 按某提交记基线，`--tighten` 只降不升）· 基线 `scripts/file-size-baseline.json`（按 main 记 14 个）
   - ✅ `scripts/check-sources.py`（五条检查：error-codes · exit-codes · subcommands · versions · workspace；前四条在 main 与 #52 分支都绿）
@@ -112,6 +113,22 @@
 - **两个 PR**：R1a = core 的 `gate.rs` + `send.rs`（同一族、同一批人审）；R1b = cli `send.rs` 挪测试。每个都只碰 ≤ 4 个实体（闸、发送、重发、测试）
 - 验收：`cargo fmt --check`、`clippy -D warnings`（含 `tdlib-api` 特性）、`cargo test --workspace`、`check-no-debug.sh`（领名额）；`check-file-size.py --tighten` 收紧基线并一起提交；`git diff --stat` 证明是纯挪动（新增行 ≈ 删除行，差额只在 `mod` / `use` 行）；对外 `pub` 名字清单前后一致（`cargo doc` 或 `grep '^pub'` 对比）
 - 前置：#52 合并、本 PR #86 合并（基线在库里）；开工前与 fix 线（#78 动 `link.rs`、`deadlines.rs`）、media 线确认不撞这三个文件
+
+## R3 设计：`atg-core::testkit`（2026-11-14；R3a 第一刀已提交，见下「实际做的」）
+
+依据：main @ 315b388 实查。S11 的「重复造数据」分两类，分两刀：
+
+**R3a：临时目录与档案**（12 份几乎一样，唯一性却有 4 种做法：进程号 + 线程号、进程号 + 计数器、进程号 + 纳秒时间、只有进程号——后两种同一个 tag 用两次会撞）。
+- 新 `src/atg-core/src/testkit.rs`，挂 `#[cfg(any(test, feature = "testkit"))]`，正式构建不带它：
+  - `temp_dir(tag) -> PathBuf`：`系统临时目录/atg-<tag>-<进程号>-<全进程计数>`，先删残留**再建**（实现时改的：原来 4 份里 3 份都建，`Profile::create` 在已有的空目录上也能建；不建的只有 history 那份）
+  - `profile(tag, ServerKind) -> Profile`：在 `temp_dir` 上 `Profile::create(…, "main", kind)`
+- `atg-core` 加特性 `testkit = []`。`atg-cli` 的 dev-dependencies 写 `atg-core = { path = "../atg-core", features = ["testkit"] }`；`atg-core` 的集成测试（`tests/*.rs`）走自身 dev-dependency：`atg-core = { path = ".", features = ["testkit"] }`。`clippy --all-targets` 会编到它，正式构建编不到。
+- 替换处（各删一个 6–10 行的助手，调用点不变或只改一个参数）：core 的 `gate/tests.rs`、`send_limits.rs`（`create_dir_all` 留在调用处）、`tests/config.rs`、`tests/lifecycle.rs`；cli 的 `chats/tests.rs`、`history/tests.rs`、`login/tests.rs`、`session/tests.rs`、`send/tests.rs`、`serve/tests.rs`、`voice/tests.rs`、`watch/tests.rs`。
+- 行为变化只在测试里：临时目录换名、唯一性统一成计数器。
+
+**R3b：造 TDLib JSON 的助手**（`chat` ×4、`msg` ×4，`private`、`group`、`new_msg`、`typing`、`user`、`text`、`position` 各 ×2；签名各不相同）。要先定一套参数形状再逐个换，改动面大，等 R3a 合并、在途线都合并之后再做，单独设计。
+
+**R3a 实际做的（第一刀）**：大总管核了在途线，可写的只有 4 处——core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`，都已换用 testkit。另外 11 处在别的线手上，那条线合并后各补一刀：core `gate/tests.rs`、`send_limits.rs`、`send/tests.rs`（msg1 / msg2）、`ipc.rs` 的测试、`tests/send_limits.rs`；cli `chats/tests.rs`（R2a #105）、`login/tests.rs`、`watch/tests.rs`（fix）、`serve/tests.rs`（media #106）、`voice/tests.rs`（media 3c）、`send/tests.rs`。实查共 15 份（010 原写 5 份，已改）。清单的正本在 `testkit.rs` 头注释。
 
 ## b20 下一刀计划（2026-11-16，按 origin/main @ 719d5d1 重算，没动代码）
 

@@ -11,8 +11,7 @@ pub struct ResendItem {
     pub id: i64,
     /// 重发时 TDLib 会去掉回复关系（`need_drop_reply`）
     pub drops_reply: bool,
-    /// 要重发的正文（确认时给人看全文；凭据也绑它）。不是纯文字的消息（图片、文件……）是 `None`：确认框里
-    /// 展示不了，正式服务器默认模式下拒
+    /// 要重发的正文（`plan` 里给人看全文；凭据也绑它）。不是纯文字的消息（图片、文件……）是 `None`
     pub text: Option<String>,
     /// 重发后仍保留的回复关系（确认时给人看、凭据也绑它；codex 016 第 1 轮 #4）。会被去掉的（`drops_reply`）记 `None`
     pub reply: ResendReply,
