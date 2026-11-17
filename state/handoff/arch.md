@@ -1,5 +1,12 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b20 接手（2026-11-16）
+
+- **手上**：#108（本分支 `chore/108-testkit-gate`，未提交：check-sources.py · test_sources.py · architecture-rules.md 第 10 条 · 未跟踪 docs/reviews/046）。自测 83 条全过；对真仓库 testkit 一条红（「[features] 里没有 testkit」），是故意的锚定，等 #110 合并后转绿。codex 046：第 1 轮 P1×1 已修，第 2 轮全零；第 3 轮提示词已写，没跑
+- **已报大总管**（2026-11-16）：本分支落后 main 2 个（#112 #114），可快进，预计零冲突；PR #110 和新 main 重叠 core `Cargo.toml`（objc2 删行和 testkit 加行相邻，大概率冲突，好解）、`lib.rs`（不相邻）、`Cargo.lock`；main 上 `lib.rs:86` 删 localauth 时残留了 `#[cfg(target_os = "macos")]`，现在套在 `logline` 上（P2，建议开 issue）
+- **下一步**：等大总管合 main → codex 第 3 轮（等大总管定）→ 报提交；同时按新 main 排 R2 / R3 下一刀计划
+- **要人定**：无
+
 - **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是 `token: ConfirmToken` 类型标注）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
 - **做到哪**（2026-11-13）：
   - ✅ `scripts/check-file-size.py`（600 行 + 棘轮；`--write-baseline --rev REV` 按某提交记基线，`--tighten` 只降不升）· 基线 `scripts/file-size-baseline.json`（按 main 记 14 个）
