@@ -5,21 +5,8 @@ use atg_core::error::{CoreError, Holder};
 use atg_core::keystore::{KEY_LEN, KeyStore, MemoryKeyStore};
 use atg_core::logline::{Field, render, safe_td_type};
 use atg_core::secret::{Secret, base64};
+use atg_core::testkit::temp_dir;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
-
-fn temp_root(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "atg-cfg-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
 
 fn mode(p: &std::path::Path) -> u32 {
     std::fs::metadata(p).unwrap().permissions().mode() & 0o777
@@ -27,7 +14,7 @@ fn mode(p: &std::path::Path) -> u32 {
 
 #[test]
 fn profile_dirs_are_private_and_kind_comes_from_marker() {
-    let root = temp_root("dirs");
+    let root = temp_dir("dirs");
     let p = Profile::create(&root, "test", ServerKind::Test).unwrap();
     assert!(p.kind().use_test_dc());
     for d in [p.dir().to_path_buf(), p.db_dir(), p.files_dir()] {
@@ -49,7 +36,7 @@ fn profile_dirs_are_private_and_kind_comes_from_marker() {
 
 #[test]
 fn missing_or_garbled_marker_refuses_to_start() {
-    let root = temp_root("marker");
+    let root = temp_dir("marker");
     assert_eq!(
         Profile::open(&root, "main").err(),
         Some(CoreError::Internal {
@@ -75,7 +62,7 @@ fn create_never_relabels_existing_profile_without_marker() {
     });
     for leftover in ["db/stub", "files/stub", "account-limited"] {
         let sub = leftover.replace('/', "-");
-        let root = temp_root(&format!("relabel-{sub}"));
+        let root = temp_dir(&format!("relabel-{sub}"));
         let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
         std::fs::write(p.dir().join(leftover), "x").unwrap();
         std::fs::remove_file(p.dir().join("server-kind")).unwrap();
@@ -90,7 +77,7 @@ fn create_never_relabels_existing_profile_without_marker() {
 /// 新档案（目录不存在，或里面只有空的 `db/`、`files/`）照常写标记
 #[test]
 fn create_writes_marker_only_for_fresh_profile() {
-    let root = temp_root("fresh");
+    let root = temp_dir("fresh");
     assert_eq!(
         Profile::create(&root, "test", ServerKind::Test)
             .unwrap()
@@ -111,7 +98,7 @@ fn create_writes_marker_only_for_fresh_profile() {
 /// 读不懂的标记不当缺失处理，`create` 也不覆盖它
 #[test]
 fn create_keeps_garbled_marker() {
-    let root = temp_root("garbled");
+    let root = temp_dir("garbled");
     let p = Profile::create(&root, "main", ServerKind::Main).unwrap();
     std::fs::write(p.dir().join("server-kind"), "maybe").unwrap();
     assert_eq!(
@@ -129,7 +116,7 @@ fn create_keeps_garbled_marker() {
 /// `db/` 读不了（不是目录）按「不是新的」处理，宁可拒绝
 #[test]
 fn unreadable_data_dir_is_not_fresh() {
-    let root = temp_root("notdir");
+    let root = temp_dir("notdir");
     let dir = root.join("profiles").join("main");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("db"), "x").unwrap();
@@ -144,7 +131,7 @@ fn unreadable_data_dir_is_not_fresh() {
 
 #[test]
 fn profile_names_cannot_escape() {
-    let root = temp_root("names");
+    let root = temp_dir("names");
     for bad in ["", "../x", "a/b", "Main", "-x", &"a".repeat(33)] {
         assert!(
             Profile::create(&root, bad, ServerKind::Test).is_err(),
@@ -155,7 +142,7 @@ fn profile_names_cannot_escape() {
 
 #[test]
 fn second_lock_is_profile_busy_and_names_holder() {
-    let root = temp_root("lock");
+    let root = temp_dir("lock");
     let p = Profile::create(&root, "test", ServerKind::Test).unwrap();
     let held = p.lock(Holder::Gui).unwrap();
     assert_eq!(
@@ -170,7 +157,7 @@ fn second_lock_is_profile_busy_and_names_holder() {
 
 #[test]
 fn running_marker_reports_unclean_shutdown() {
-    let root = temp_root("unclean");
+    let root = temp_dir("unclean");
     let p = Profile::create(&root, "test", ServerKind::Test).unwrap();
     assert!(!p.previous_unclean());
     p.mark_running().unwrap();
@@ -189,7 +176,7 @@ fn phone_must_match_profile_kind() {
 
 #[test]
 fn env_local_parses_and_errors_carry_no_values() {
-    let root = temp_root("env");
+    let root = temp_dir("env");
     let f = root.join(".env.local");
     std::fs::write(
         &f,

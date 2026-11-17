@@ -16,27 +16,14 @@ use atg_core::model::{CoreEvent, MsgId};
 use atg_core::pump::{Pump, resent_inputs};
 use atg_core::status::{AuthStep, CoreState};
 use atg_core::store::Input;
+use atg_core::testkit::temp_dir;
 use atg_core::tree::UserStatus;
 use serde_json::json;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
-fn temp_root(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "atg-test-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
-
 fn test_profile(tag: &str) -> Profile {
-    Profile::create(&temp_root(tag), "test", ServerKind::Test).unwrap()
+    Profile::create(&temp_dir(tag), "test", ServerKind::Test).unwrap()
 }
 
 /// 把流里的东西取到流结束（故障 / 关闭后流会结束）
