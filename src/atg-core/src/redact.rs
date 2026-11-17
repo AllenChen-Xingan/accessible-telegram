@@ -32,6 +32,8 @@ redacted_debug!(
     "Origin" => t::Origin,
     "Content" => t::Content,
     "Attachment" => t::Attachment,
+    "Transcript" => t::Transcript,
+    "TranscriptSegment" => t::TranscriptSegment,
     "Span" => t::Span,
     "Service" => t::Service,
     "UserRef" => t::UserRef,

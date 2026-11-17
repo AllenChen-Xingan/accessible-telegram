@@ -105,23 +105,6 @@ impl Gated for DeletePlan {
     fn kind(&self) -> &'static str {
         "cancel"
     }
-    fn confirm_text(&self) -> String {
-        // 同发文字：对谁放最前，句子短；每条正文放最后。「若已送达会给所有人撤回」必须说（人按下去可能撤回对方已看到的）
-        let items: Vec<String> = self
-            .items
-            .iter()
-            .map(|i| match &i.text {
-                Some(t) => format!("id {}，{}", i.id, send::confirm_body(t)),
-                None => format!("id {}，不是纯文字", i.id),
-            })
-            .collect();
-        format!(
-            "撤销待发 · {}\n{}\n已送达的全员撤回，刚发出的只删本机\n{}",
-            send::target_zh(&self.target),
-            send::origin_zh(self.origin),
-            items.join("\n"),
-        )
-    }
 }
 
 /// `pending_cancel` 的准备（L0，只查不删）：每条都得是自己发的、还在「待发」；取正文给人确认

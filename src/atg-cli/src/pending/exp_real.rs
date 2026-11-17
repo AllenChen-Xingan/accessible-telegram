@@ -30,7 +30,7 @@ fn exp_pending_cancel() {
     let g = cli.global;
     assert!(!g.test_dc && g.profile == "main");
     let profile = crate::session::open_profile(&g).unwrap_or_else(|_| panic!("档案打不开"));
-    let b = crate::session::td_backend_with(true).unwrap_or_else(|_| panic!("后端起不来"));
+    let b = crate::session::td_backend().unwrap_or_else(|_| panic!("后端起不来"));
     let r = history::with_backend(&b, &profile, Instant::now(), |b, stream, feed| {
         chats::ensure_ready(b)?;
         let saved = crate::send::resolve(b, history::ChatRef::Saved)?;

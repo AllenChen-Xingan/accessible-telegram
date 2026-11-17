@@ -10,9 +10,9 @@
 //! 结尾一行 `result`（`pending_sends`、`resolved`、`synced`）。
 //!
 //! `pending cancel CHAT_ID`（`pending_cancel`，L2，按删除过闸，动作在 [`atg_core::delete`]）：撤这个会话里**此刻**全部
-//! 待发消息——不按 id 选：临时 id 每次启动都重编，上一次运行列出的 id 到这次多半对不上，直发 / 测试豁免下没人看确认框，
+//! 待发消息——不按 id 选：临时 id 每次启动都重编，上一次运行列出的 id 到这次多半对不上，撤销直发、没有确认框，
 //! 旧 id 万一被另一条待发消息复用就会撤错（自审第 2 轮 P1）。所以在同一进程里取 Store 的待发清单再定计划。一行 `plan` →
-//! 确认（同 `send`）→ 交出 `deleteMessages` → 等这几条的下落：临时 id 出现在 `messages_deleted` 里 = 撤下了（`cancelled`）；
+//! 过闸（同 `send`，直发）→ 交出 `deleteMessages` → 等这几条的下落：临时 id 出现在 `messages_deleted` 里 = 撤下了（`cancelled`）；
 //! 先来了 `send_succeeded` = 没赶上、已发出（`already_sent`；若随后它的正式 id 也被删了，是 TDLib 把删除换成了正式 id、
 //! 只从自己这边删掉，报 `sent_deleted_here`，对方那边还在，见 `atg_core::delete`）；`send_failed` = 失败了；都没等到 = 未知。
 //! 「撤下了」也只是尽力：请求已到服务器的照样送达，之后 TDLib 会给所有人撤回（模块 `atg_core::delete` 的文档）。
@@ -24,7 +24,7 @@ use crate::history;
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
 use atg_core::delete::{self, DeletePlan};
-use atg_core::gate::{ConfirmMode, Gated};
+use atg_core::gate::Gated;
 use atg_core::link::EventStream;
 use atg_core::model::{MsgId, SendingState};
 use atg_core::project;
@@ -267,9 +267,6 @@ fn run_cancel<B: Backend>(
         finish(sink, format, data, "只看了计划，没有撤销");
         return Ok(0);
     }
-    if plan.mode() == ConfirmMode::HumanAuth && plan.confirm_fits() {
-        sink.err(CANCEL_AUTH_PROMPT_ZH);
-    }
     let token = b.gate().issue(&plan, false).map_err(Fail::Core)?;
     let mode = bounded(b, delete::cancel(b, &plan, token), QUERY_TIMEOUT).map_err(Fail::Core)?;
     let temps: Vec<MsgId> = plan
@@ -383,10 +380,6 @@ fn note_soft(event: &atg_core::model::CoreEvent, soft: &mut Vec<MsgId>) {
         }));
     }
 }
-
-/// 要人按 Touch ID 前在标准错误说一句（同 `send`）
-const CANCEL_AUTH_PROMPT_ZH: &str =
-    "atg-cli：请在弹出的系统框里按 Touch ID 或输入系统密码，确认这次撤销（60 秒内）";
 
 fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &DeletePlan) {
     match format {

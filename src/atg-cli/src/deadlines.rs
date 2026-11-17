@@ -52,8 +52,8 @@ pub const TOPIC_TIMEOUT: Duration = Duration::from_secs(5);
 /// `send` 的 `saved` 不等它，直接问 `me()`（闸用的也是它），按 [`QUERY_TIMEOUT`] 等、到点报 `network`
 pub const ME_TIMEOUT: Duration = Duration::from_secs(5);
 /// 转发时两帧之间：一条 `chats` 最长约 30 秒（等授权 + 加载 + 等补发各 10 秒），执行方还可能先在处理别人的请求；
-/// `send` 出 `plan` 之前要找会话、取会话、做计划、取被回复的那条（各 10 秒，约 40 秒），出完之后要等人按
-/// Touch ID（最多 60 秒）再等结果（最多 30 秒），中间都没有帧——留足 · `config-privacy.md` 本机接口
+/// `send` 出 `plan` 之前要找会话、取会话、做计划、取被回复的那条（各 10 秒，约 40 秒），出完之后再等结果
+/// （最多 30 秒），中间都没有帧——留足（原先还要留等人按 Touch ID 的 60 秒，已去掉，留余量不缩）· `config-privacy.md` 本机接口
 pub const FRAME_TIMEOUT: Duration = Duration::from_secs(150);
 
 /// 按期限等一个后端请求。外层 `Err` 是没等到：超时 → [`stalled`]，叫停 → `interrupted`；

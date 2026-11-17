@@ -2,11 +2,24 @@
 
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
-- **做到哪**：已报到，等大总管合 main。工作区未提交改动 = codex 029 第 2 轮两条 P2 的修复（清缓存误报撤销成功 → `unknown`/`gone`；待发不占删旧配额），**未编译**
+- **做到哪**：大总管提交 WIP 53088ce 并 merge origin/main；12 个冲突已解（无标记），Touch ID 残留已改直发，**未编译**，已申请名额。之前：已报到。工作区未提交改动 = codex 029 第 2 轮两条 P2 的修复（清缓存误报撤销成功 → `unknown`/`gone`；待发不占删旧配额），**未编译**
 - **合 main 预计冲突**：core `send.rs`（main 拆成子模块，分支改了约 100 行）、`confirm_box.rs`（main 删、分支改：修改/删除冲突）；还有 fake / td / store/mod / error / lib、CLI send / serve / session / args / main / forward / deadlines、契约 actions / cli / errors / config-privacy、reviews/README、文件行数基线
 - **Touch ID 删除波及我的代码**：pending 撤销确认框文字（confirm_box）、`delete.rs` 与其测试里的 HumanAuth / 确认文字、`serve/l2.rs`、`pending.rs`、`exp_real.rs`、CLI session / send 里的 Authenticator 接线 → 全改成直发
 - **下一步**：合完 → 去掉确认、编译测试（领名额）→ codex 029 第 3 轮 → #88
-- **要人定的事**：无
+- **要人定的事**：见下「要人定的事（b20）」
+- **#88 计划（读了 main 的 `send_limits.rs`、`td.rs::detached`、`link::Shared::event`，未动代码）**
+  - 病根两处：①调用方 30 秒等不及丢掉等待 → `Pending` 守卫 drop、标记删了，可 `detached` 线程还在等应答，晚到的受限写盘失败时 `mark_pending` 也写不进（磁盘满）→ 重启放行；②交出成功（进 TDLib 待发队列）后，真正的成败靠 `updateMessageSendFailed` 晚到，那时标记早删了
+  - 修法 A（治①）：`detached` 线程开跑前自己领一个守卫（inflight+1），登记完应答再放；调用方先放也删不掉标记
+  - 修法 B（治②）：交出成功回来的临时 id 各领一个守卫，存进 `SendLimits`；`Shared::event` 收到该 id 的 SendSucceeded / SendFailed（先 note 再放）才放；临时 id 换正式 id 要跟上
+  - 红测试：A——`SendLimits` 层模拟「调用方守卫先放、晚到受限写盘失败、线程守卫后放」→ 重启后 `check` 应拒（现在会放行）；B——假后端：交出成功 → 堵住限制文件 → 推 SendFailed(受限) → 新进程 `load` 应拒
+  - 待定 Q1（见下）
+
+## 要人定的事（b20）
+- **Q1 #88：进程正常退出时还有「交出了、结果没回来」的消息，标记留不留？**
+  - 选项 a：留——最稳，下个进程拒发，要人看过账号状态后手动删标记。代价：断网时等超时这种常见情况也会留人工活，和现在「常见情况自己清」的承诺相反
+  - 选项 b：删——下个进程启动时 TDLib 续发，失败由它自己登记。代价：续发结果回来之前，下个进程可能已经又发了一条（最坏是多一次被拒，不会发错人）
+  - 选项 c：留，但标记里写「正常退出、结果未知」，下个进程看到这种标记先等 TDLib 续发的结果（或等一个期限）再放行。代价：多一个状态、多些代码
+  - 建议 c 太重，先 b，并在契约里写明；默认 b
 
 ## b18 记录（发送这一侧收尾）
 

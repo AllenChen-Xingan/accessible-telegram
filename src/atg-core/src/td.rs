@@ -11,7 +11,8 @@
 //! 用同步 `execute` 把 TDLib 日志降到 0、写到 `~/Library/Logs/atg/tdlib-<档案>.log`（级别 1 也会漏正文，
 //! `MessageContent.cpp:7696`）→ 放「运行中」标记 → 建客户端、起收线程 → `setTdlibParameters`（加密钥匙、
 //! `use_test_dc` 只从档案标记来）→ 显式设 `online = false`。
-//! 客户端建好之后 `start` 再失败（如钥匙不对、网络错）：客户端还在，调用方照常调 `shutdown` 收尾。
+//! 客户端建好之后 `start` 再失败（如钥匙不对、网络错）：客户端还在，调用方照常调 `shutdown` 收尾；例外是收线程起不来，
+//! `start` 自己交一次 `close`、清运行标记、退回没起（#62），调用方不用再收尾。
 //!
 //! tdlib-rs 的 `receive()` 是全进程共用的，内部 `OBSERVER` 是全局单例，所以一个进程只许一个 [`TdBackend`]。
 
@@ -19,7 +20,16 @@
 pub use real::{TdBackend, TdConfig, tdlib_version};
 
 #[cfg(feature = "tdlib-api")]
+mod boot;
+// 纯类型：不开特性时只有单测用它
+#[cfg(any(feature = "tdlib-api", test))]
+#[cfg_attr(not(feature = "tdlib-api"), allow(dead_code))]
+mod lifecycle;
+
+#[cfg(feature = "tdlib-api")]
 mod real {
+    use super::boot;
+    use super::lifecycle::{self, Claim, Run};
     use crate::auth::{self, AuthPrompt};
     use crate::backend::{
         Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
@@ -49,10 +59,6 @@ mod real {
 
     /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
     static INSTANCE: AtomicBool = AtomicBool::new(false);
-
-    // 建客户端之前的两步（日志降级改道、系统语言）
-    mod setup;
-    use setup::{quiet_tdlib_log, system_language};
 
     fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
         m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -85,7 +91,7 @@ mod real {
         cfg: TdConfig,
         shared: Arc<Shared>,
         stream: Mutex<Option<EventStream>>,
-        run: Mutex<Option<Running>>,
+        run: Mutex<Run<Running>>,
         previous_unclean: AtomicBool,
     }
 
@@ -111,22 +117,22 @@ mod real {
                 cfg,
                 shared,
                 stream: Mutex::new(Some(stream)),
-                run: Mutex::new(None),
+                run: Mutex::new(Run::Idle),
                 previous_unclean: AtomicBool::new(false),
             })
         }
 
         /// 本进程**实际**传给 `setTdlibParameters` 的 `use_test_dc`（发送闸只认它；还没起是 `None`）
         pub fn use_test_dc(&self) -> Option<bool> {
-            lock(&self.run).as_ref().map(|r| r.use_test_dc)
+            lock(&self.run).running().map(|r| r.use_test_dc)
         }
 
         fn client_id(&self) -> Option<i32> {
-            lock(&self.run).as_ref().map(|r| r.client_id)
+            lock(&self.run).running().map(|r| r.client_id)
         }
 
         fn kind(&self) -> Option<ServerKind> {
-            lock(&self.run).as_ref().map(|r| r.profile.kind())
+            lock(&self.run).running().map(|r| r.profile.kind())
         }
 
         fn step(&self) -> AuthStep {
@@ -233,7 +239,7 @@ mod real {
         fn drop(&mut self) {
             // 收线程还活着就不放名额：tdlib-rs 的收取是全局的，再建一个会抢同一个 receive()
             let done = lock(&self.run)
-                .as_ref()
+                .running()
                 .is_none_or(|r| r.receiver.as_ref().is_none_or(JoinHandle::is_finished));
             if done {
                 INSTANCE.store(false, Ordering::SeqCst);
@@ -267,11 +273,11 @@ mod real {
             if self.shared.is_faulted() {
                 return Err(CoreError::Disconnected);
             }
-            if lock(&self.run).is_some() {
+            let Some(claim) = Claim::take(&self.run) else {
                 return Err(CoreError::Internal {
                     what: "already_started",
                 });
-            }
+            };
             // 先做纯校验，再占资源（锁、标记、客户端、收线程）
             let db = profile.db_dir();
             let files = profile.files_dir();
@@ -289,7 +295,7 @@ mod real {
             // 直发防重复的指纹密钥：由库钥匙带标签派生，只在内存里（B17-2）
             let guard_key = gate::derive_guard_key(key.expose(), profile.name());
             drop(key);
-            quiet_tdlib_log(&self.cfg.log_dir, profile.name())?;
+            boot::quiet_tdlib_log(&self.cfg.log_dir, profile.name())?;
             profile.mark_running()?;
 
             let use_test_dc = profile.kind().use_test_dc();
@@ -298,8 +304,16 @@ mod real {
                 .gate
                 .set_server(use_test_dc, profile.dir(), guard_key);
             let client_id = tdlib_rs::create_client();
-            let receiver = link::spawn_receiver(self.shared.clone(), source(client_id))?;
-            *lock(&self.run) = Some(Running {
+            let receiver = match link::spawn_receiver(self.shared.clone(), source(client_id)) {
+                Ok(h) => h,
+                Err(e) => {
+                    // 收线程起不来：交一次 close 不等应答（tdlib-rs 1.4.0 首次 poll 即同步交出，`lib.rs:61-68`；升级要核）
+                    let _ = link::block_on_timeout(functions::close(client_id), Duration::ZERO);
+                    lifecycle::release(&mut Some(profile_lock), || profile.mark_clean());
+                    return Err(e);
+                }
+            };
+            claim.commit(Running {
                 client_id,
                 use_test_dc,
                 profile: profile.clone(),
@@ -314,21 +328,12 @@ mod real {
                 ],
             );
 
-            let params = functions::set_tdlib_parameters(
+            let params = boot::parameters(
                 use_test_dc,
-                db.to_owned(),
-                files.to_owned(),
-                key_b64.expose_str().to_owned(),
-                true,
-                true,
-                true,
-                false,
-                creds.api_id,
-                creds.api_hash.expose_str().to_owned(),
-                system_language(),
-                "Mac".to_owned(),
-                String::new(),
-                env!("CARGO_PKG_VERSION").to_owned(),
+                db,
+                files,
+                key_b64.expose_str(),
+                &creds,
                 client_id,
             );
             drop(key_b64);
@@ -817,13 +822,12 @@ mod real {
             let left = deadline.saturating_duration_since(Instant::now());
             if self.shared.wait_closed(left) {
                 let mut run = lock(&self.run);
-                if let Some(r) = run.as_mut() {
+                if let Some(r) = run.running_mut() {
                     if let Some(h) = r.receiver.take() {
                         let _ = h.join();
                     }
-                    r.profile.mark_clean();
-                    // 正常关闭：放掉档案锁（同一进程里可以再开这个档案）
-                    r.lock = None;
+                    // 正常关闭：放掉档案锁（同一进程里可以再开这个档案）；重复关不再动标记
+                    lifecycle::release(&mut r.lock, || r.profile.mark_clean());
                 }
                 logline::info("td_closed", &[]);
                 Ok(())
