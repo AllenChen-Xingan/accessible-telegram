@@ -47,4 +47,10 @@ pub enum Call {
         ids: Vec<i64>,
         revoke: bool,
     },
+    /// `editMessageText`：哪一条、改成什么（只有纯文字）
+    Edit {
+        chat: ChatId,
+        id: i64,
+        text: String,
+    },
 }

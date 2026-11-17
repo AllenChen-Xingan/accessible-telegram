@@ -1,4 +1,4 @@
-//! 交出口（`Backend::submit`）的真实实现：发文字、重发、删除、表情回应（#9）。交给 TDLib 的就是摘要算过的那份 JSON，
+//! 交出口（`Backend::submit`）的真实实现：发文字、重发、删除、表情回应（#9）、编辑（#8 B）。交给 TDLib 的就是摘要算过的那份 JSON，
 //! 由 `td/requests.rs` 逐段反序列化成 tdlib-rs 的类型，不另组一份。从 `td` 拆出（#60 行数线）。
 //! 每种都经 [`TdBackend::detached`] 交出：交出未完成标记盖到应答登记完（#88）；表情回应没有临时 id，登记空列表
 
@@ -58,6 +58,23 @@ impl TdBackend {
                 self.detached(functions::delete_messages(chat, ids, revoke, id), none)
                     .await?;
                 Ok(Answer::Deleted)
+            }
+            // 应答 = 服务器已改完（不像发送先回临时消息），没有要登记的待回结果
+            SealedKind::Edit { request } => {
+                let (chat, message, content) = requests::edit(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "edit")]);
+                let none = |_: &enums::Message| vec![];
+                let enums::Message::Message(m) = self
+                    .detached(
+                        functions::edit_message_text(chat, message, content, id),
+                        none,
+                    )
+                    .await?;
+                Self::map_message(m)
+                    .map(Answer::Message)
+                    .ok_or(CoreError::Internal {
+                        what: "td_message_reserialize_failed",
+                    })
             }
             SealedKind::React { request } => {
                 let a = requests::react(request)?;
