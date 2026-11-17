@@ -19,7 +19,7 @@ const PHOTO_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const PHOTO_MAX_SUM: u64 = 10_000;
 const PHOTO_MAX_RATIO: u64 = 20;
 
-/// 快照留多久：结果未知的那份留给 TDLib 下次启动续发时读，过了这么久就清（`config-privacy.md` `outbox/`）
+/// 快照留多久：结果未知的（TDLib 下次启动续发时读）、失败但能重发的（`resend` 时读）留着，过了这么久就清（对齐 TDLib 待发的续发期限）（`config-privacy.md` `outbox/`）
 pub const OUTBOX_KEEP_S: u64 = 24 * 3600;
 
 /// 许发的路径要对照的几处：家目录（三个许可文件夹在它下面）、一律不许的目录（本应用的数据根与档案目录；TDLib 的库 `db/` 在档案目录里），

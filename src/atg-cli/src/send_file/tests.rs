@@ -169,3 +169,18 @@ fn caption_and_caption_file_are_exclusive() {
     };
     assert!(matches!(params(&a, None), Err(Fail::Usage(_))));
 }
+
+/// 本机就能判的（路径、大小、说明）排在查会话之前：会话不存在时也先报文件的问题（自审第 2 轮 P2：CLI 入口先查会话）
+#[test]
+fn file_problem_is_reported_before_the_chat_is_looked_up() {
+    let e = env("order");
+    let p = e.roots.home.join("notes.txt");
+    std::fs::write(&p, b"x").unwrap();
+    let mut q = sp(p, false);
+    q.chat = "999999".into();
+    let (code, ls) = run(&backend(), &e, &q);
+    assert_ne!(code, 0);
+    let end = ls.last().unwrap();
+    assert_eq!(end["data"]["code"], "invalid_input", "{end}");
+    assert_eq!(end["data"]["why"], "file_not_allowed");
+}

@@ -184,14 +184,16 @@ fn run_inner<B: Backend>(
 ) -> Result<u8, Fail> {
     let chat = chat_ref(&p.chat)?;
     let cx = ctx(p.tz.as_deref())?;
-    chats::ensure_ready(b)?;
-    let chat_id = resolve(b, chat)?;
-    history::load_chat(b, stream, feed, chat_id)?;
     let src = FileSource {
         path: p.path.clone(),
         caption: p.caption.clone(),
         reply_to: p.reply_to,
     };
+    // 文件的问题先报（会话不存在、网络不通时也是；自审第 2 轮）
+    file::precheck(&src, roots).map_err(Fail::Core)?;
+    chats::ensure_ready(b)?;
+    let chat_id = resolve(b, chat)?;
+    history::load_chat(b, stream, feed, chat_id)?;
     let plan = bounded(
         b,
         file::prepare_file(b, chat_id, &src, roots, SendOrigin::Cli),

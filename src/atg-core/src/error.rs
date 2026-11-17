@@ -135,12 +135,12 @@ pub enum InvalidSendWhy {
     EditNotText,
     /// 新的文字和原来一样：本地先拦，不让服务器报 `MESSAGE_NOT_MODIFIED`（#8 B）
     Unchanged,
-    /// 这个文件不许发（#12 人定）：不在「下载」「桌面」「文稿」里（按解析符号链接后的真实路径），文件名像密钥，
-    /// 或在本应用的数据目录里
+    /// 这个文件不许发（#12 人定）：不在「下载」「桌面」「文稿」里（按解析符号链接后的真实路径；这三个文件夹以外的路径
+    /// 不存在也报它），文件名像密钥，在本应用的数据目录里，或有别的硬链接（链接数大于 1）
     FileNotAllowed,
     /// 文件超过 50 MB（#12 人定）
     FileTooLarge,
-    /// 不是普通文件（目录、设备……），或不存在、读不了
+    /// 在三个许可文件夹里，但不是普通文件（目录、设备……）、不存在或读不了（文件夹以外的报 `FileNotAllowed`）
     NotAFile,
     /// 说明文字超过上限（`send::file::CAPTION_MAX`）
     CaptionTooLong,
@@ -443,7 +443,7 @@ impl CoreError {
                     "有的消息 Telegram 说转不了（结尾说明点了是哪几条），别的各有结果；不要整批加 --again 重转，那会把已转出的再转一遍"
                 }
                 InvalidSendWhy::FileNotAllowed => {
-                    "这个文件不许发：只许发「下载」「桌面」「文稿」三个文件夹里的，文件名像密钥（如 .env、id_rsa、.pem）的、有别的硬链接的也不许；什么都没发"
+                    "这个文件不许发：只许发「下载」「桌面」「文稿」三个文件夹里的；文件名像密钥（如 .env、id_rsa、.pem）的、本应用数据目录里的、有别的硬链接的也不许（硬链接的可复制一份到这三个文件夹再发）。路径写错、引号里的 ~ 没展开也会这样报，请写完整路径，如 /Users/你的用户名/Downloads/文件名；什么都没发"
                 }
                 InvalidSendWhy::FileTooLarge => "文件超过 50 MB，本应用不发；什么都没发",
                 InvalidSendWhy::NotAFile => {

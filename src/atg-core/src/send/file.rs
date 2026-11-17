@@ -3,8 +3,8 @@
 //! 1. **许发哪些文件**（人定 2026-11-17）：只许「下载」「桌面」「文稿」里的（按解析符号链接后的真实路径），文件名像密钥的、
 //!    本应用数据目录里的一律不许 → `file_not_allowed`；超 50 MB → `file_too_large`（人定 2026-11-17）。见 `file/local.rs`
 //! 2. **交出的是快照**：准备时复制一份到档案目录 `outbox/<随机>/<原名>` 并算 SHA-256，摘要绑它；交出前重算，变了拒
-//!    （`content_mismatch`）。原文件在确认后被换、被改都不影响发出去的内容。快照在等到成功 / 失败后删；结果未知的留着
-//!    （TDLib 下次启动续发要读它），过 24 小时清
+//!    （`content_mismatch`）。原文件在确认后被换、被改都不影响发出去的内容。快照在成功、失败且不能重发后删；结果未知的
+//!    （TDLib 下次启动续发要读它）、失败但能重发的（`resend` 要读它）留着，过 24 小时清
 //! 3. **上传要等得久**（人定 2026-11-17）：有进度就接着等；连续 60 秒没进度按结果未知；总共最多 10 分钟（[`wait_upload`]）
 //!
 //! 按图片还是按文件发（人定 2026-11-17）：`jpg` `jpeg` `png` `webp` 按图片（会被压缩），按图片发不了的（超 10 MB、太大、太窄、
@@ -39,7 +39,7 @@ pub struct FileSource {
     pub reply_to: Option<i64>,
 }
 
-/// 一份已定稿的文件发送。快照在它被丢掉时删（[`Drop`]），交出后结果未知的除外（[`FilePlan::keep_snapshot`]）
+/// 一份已定稿的文件发送。快照在它被丢掉时删（[`Drop`]），交出后结果未知、失败但能重发的除外（[`FilePlan::keep_snapshot`]）
 #[cfg_attr(test, derive(Debug))]
 pub struct FilePlan {
     target: ChatTarget,
@@ -93,7 +93,7 @@ impl FilePlan {
     pub fn sha256_short(&self) -> String {
         gate::hex(&self.sha256)[..8].to_owned()
     }
-    /// 交出后结果未知：快照留着（TDLib 续发要读），不随计划删
+    /// 交出后结果未知（TDLib 续发要读）、失败但能重发（`resend` 要读）：快照留着，不随计划删
     fn keep_snapshot(&self) {
         self.keep.store(true, Ordering::SeqCst);
     }
@@ -201,6 +201,22 @@ fn digests(
     (digest, intent)
 }
 
+/// 只看本机的检查（说明长度、许不许发、大小），不碰后端：调用方在查会话之前先调它，会话不存在、网络不通时也先报文件的问题
+/// （[`prepare_file`] 里还会再查一次，那次的结果才算数）
+pub fn precheck(src: &FileSource, roots: &FileRoots) -> Result<(), CoreError> {
+    check_caption(&src.caption)?;
+    local::allowed(&src.path, roots).map(drop)
+}
+
+fn check_caption(caption: &str) -> Result<(), CoreError> {
+    if caption.encode_utf16().count() > CAPTION_MAX {
+        return Err(CoreError::InvalidSend {
+            why: InvalidSendWhy::CaptionTooLong,
+        });
+    }
+    Ok(())
+}
+
 /// `send_file_prepare`：只查不发——会话、回复、话题规则同发文字；再判文件许不许发、复制快照、定按图片还是按文件发
 pub async fn prepare_file<B: Backend>(
     b: &B,
@@ -209,11 +225,7 @@ pub async fn prepare_file<B: Backend>(
     roots: &FileRoots,
     origin: SendOrigin,
 ) -> Result<FilePlan, CoreError> {
-    if src.caption.encode_utf16().count() > CAPTION_MAX {
-        return Err(CoreError::InvalidSend {
-            why: InvalidSendWhy::CaptionTooLong,
-        });
-    }
+    check_caption(&src.caption)?;
     // 只看本机就能拒的先拒（路径、大小）：会话不存在、网络不通时也先报文件的问题
     let file = local::allowed(&src.path, roots)?;
     let me = b.me().await?;

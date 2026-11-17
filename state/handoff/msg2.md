@@ -191,3 +191,6 @@
 - 自审第 1 轮（384da95...HEAD）：P0/P1 无；P2×4 P3×11 全修。先红后绿（edges.rs 4 条红：硬链接、外部路径先报不许、本机检查先于查会话、失败能重发留快照）。改法：`local::allowed` 打开时 O_NOFOLLOW + dev/ino 比对 + nlink==1，之后只从句柄读；失败 can_retry 留快照；契约补结果未知下一步、24 小时与收藏夹例外、进度怎么算、photo_fallback 含义、sha256_8 核对法、UTF-16 码元；黑名单正本在代码
 - 验证：676 过 0 败；clippy 两种 0；fmt / no-debug / file-size 过
 - 下一步：大总管提交检查点 → 自审第 2 轮
+- 自审第 2 轮（检查点 702c92a 后）：P0/P1 无 → 连续两轮无 P0/P1，自审收敛。P2×4 P3×9：CLI 入口先查会话（先红后绿，加 `file::precheck`）、文案与契约补写已修；resend 带文件不按进度等 → #158（契约引用）
+- 验证：677 过 0 败；clippy 两种 0；no-debug / file-size 过
+- 下一步：大总管提交 → codex 034（384da95...HEAD）；PR 前合 main（#156 拆 tdjson，`tdjson.rs` 的 `pub mod file;` 会冲突），合时报大总管
