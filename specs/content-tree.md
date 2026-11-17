@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、全文、转写 `speech/content.rs` · 系统消息 `speech/service.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、全文、转写 `speech/content.rs` · 系统消息 `speech/service.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · TDLib JSON 映射 `tdjson.rs`（消息与正文 `tdjson/message.rs`）
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -121,7 +121,7 @@ Message
 | `location` · `venue` · `contact` · `poll` · `call` | 见代码 | `tl:5769` `5772` `5775` `5796` `5832` |
 | `expired` | what: photo / video / video_note / voice | `messageExpired*` `tl:5752-5761` |
 | `restricted` | reason | 消息的 `restriction_info` 原因非空（不是内容类型） |
-| `other` | td_type | **认识、但 v0 没做专门节点**的内容（骰子、Stories、游戏……清单在 `tdjson.rs` 的 `OTHER_CONTENT`） |
+| `other` | td_type | **认识、但 v0 没做专门节点**的内容（骰子、Stories、游戏……清单在 `tdjson/message.rs` 的 `OTHER_CONTENT`） |
 | `unknown` | td_type | `messageUnsupported` `tl:6279`，以及完全不认识的类型 |
 
 `other` 与 `unknown` 分开，是为了让读法区分「我们知道这是什么，只是还没做」和「连我们都不认识」。
