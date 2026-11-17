@@ -107,10 +107,10 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `resend(plan: ResendPlan, token: ConfirmToken)` | 每条一项：`PendingMessage` 或该条的错误 | `send_refused` | **L2** | `resendMessages`（`:13195`）；凭据绑交出的 `resendMessages` 请求（会话 + 这几条 id）、每条重发后的回复关系与**每条的正文**；`plan` 里每条给出正文与回复关系（重发后仍保留的回复对象也进凭据摘要）；重发不进直发的重复提交拦截（第 5 小节）；TDLib 对不能重发的那条返回 null（`:13190`），逐条报告，不当整体失败；交出前重取每条的失败态、正文与回复关系，与人确认过的计划比，变了拒 `send_refused(content_mismatch)`、什么都不交出 |
 | `draft_set(chat: ChatId, text: String, token: ConfirmToken)` · `draft_clear(chat, token)`（第二批） | `Ack` | `send_refused` | **L1，按 L2 同级把关** | `setChatDraftMessage`（`:14488`）；不发给对方，但会同步到你手机的输入框——AI 写进去、人在手机上顺手一按就发了；清掉则会毁掉你手写的草稿。所以与发送用**同一道闸、同一种凭据**（绑会话 + 内容摘要；测试服务器 + 收藏夹免确认）。GUI 输入框里的草稿默认**只存本机、不同步到云端**——「人在打字」同样证明不了是人（computer use 也能打字） |
 | `typing(chat: ChatId)` | `Ack` | — | **L1** | `sendChatAction`（`:14159`）；A2 人定进 MVP：GUI 输入框里打字时发（同官方客户端，`002_roadmap.md` M4.1）；CLI 不发 |
-| `delete_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（删哪几条、给所有人） | `not_found` `forbidden` | L0 | 只查不发；逐条按 `message_properties` 的「能否删除（双方）」检查，不能的拒。⚠️ 收藏夹里的消息不能给所有人删（`MessagesManager.cpp:8346`），必拒 |
+| `delete_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（删哪几条、给所有人，每条带能给人看的正文） | `not_found` `forbidden`（`why`） | L0 | 只查不发；**只许自己发的**（大总管定 2026-11-17，待人看：放开就是替管理员删别人的消息），否则 `why:"not_own"`；还没发出的（待发、失败）`why:"not_sent"`——TDLib 对还没发出的说能给所有人删（`MessagesManager.cpp:8352-8354`），但待发那条恰好发出时删除会被换成正式 id，所以待发的只许走 `pending_cancel`（`revoke=false`）；逐条按 `message_properties.can_be_deleted_for_all_users` 检查（时间窗等全由 TDLib 判，不自己算），不能的 `why:"not_revocable"`。⚠️ 收藏夹里的消息不能给所有人删（`MessagesManager.cpp:8346`），必拒，`why:"saved"` |
 | `pending_cancel_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（撤哪几条、每条正文） | `not_found` · `invalid_input`：`why:"not_pending"`（不是自己的待发消息）；id 为空或超过 100 条时不带 `why` | L0 | 只查不删；逐条 `getMessage` 查「自己发的、还在待发」（见下「待发出的消息」）。临时 id 只在同一进程里有效（续发会重编），CLI 在同一进程里从 Store 的 `pending_sends` 取这个会话的全部待发再调它 |
 | `pending_cancel(plan, token: ConfirmToken)` | `Ack`；撤没撤下经事件（临时 id 出现在 `messages_deleted` = 撤销了；先来 `send_succeeded` = 没赶上，随后正式 id 也被删 = 只从自己这边删掉了） | `send_refused` `invalid_input`（`not_pending`：交出前再查，已发出或正文变了） | **L2** | `deleteMessages`（`:13226`）**`revoke=false`**（见下「待发出的消息」）；凭据绑会话 + 这几条 id + 每条正文；只是尽力撤销 |
-| `delete(plan, token: ConfirmToken)` | `Ack`；结果经 `messages_deleted` | `send_refused` `forbidden` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表 |
+| `delete(plan, token: ConfirmToken)` | `Ack`：TDLib 应答 `ok` 即算完成（本机已删，给服务器的删除 TDLib 在后台做完）；随后的 `messages_deleted` 只作旁证，不等 | `send_refused` `forbidden`（`why`） `invalid_input`（`changed`） `not_found` `send_outcome_unknown` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表（+ 每条正文）；交出前逐条再查一遍，不再能删的照 `delete_prepare` 拒，准备计划之后被编辑过的 `invalid_input`（`why:"changed"`；不用 `send_refused(content_mismatch)`：那条的说明讲的是发送），都是整批不删。不进直发防重复（同一条删两次，第二次 `not_found`） |
 
 **表情回应（#9）**
 
@@ -358,3 +358,5 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-16 #9 codex 032 第 2 轮后（手下 msg2）：`react` 交出前复核看当前连接线、`replace` 也刷新留痕、到点放弃的那条消息之后按拿不准拒
 - 2026-11-17 #9 codex 032 第 3、4 轮后（手下 msg2）：`react` 放弃了的请求槽位一直留着、断线按结果未知也留；有放弃了的请求时 `replace` 放行但留痕记 `null`；第二节第 3 条依据改为现行的「过闸」，intent 原句与 #113 冲突待人改
 - 2026-11-17 #9 codex 032 第 5 轮后（手下 msg2）：第二节第 3 条依据随 #133（intent 改为一律过闸、直发）去掉「待人改」括注；验收表「只认启动参数」改为「没有开关」
+- 2026-11-17 #8 A（msg1，大总管定 2026-11-17）：`delete_prepare` 只许自己发的、`forbidden.why`（`saved` / `not_own` / `not_revocable`）；`delete` 交出前复查与 `changed`
+- 2026-11-17 #8 A 自审（msg1）：还没发出的（待发、失败）自己拦 `forbidden why:not_sent`（TDLib 对它们说能给所有人删）；`changed` 措辞改为「列出计划之后、交出之前」；成功即本机已删、服务器在后台补做

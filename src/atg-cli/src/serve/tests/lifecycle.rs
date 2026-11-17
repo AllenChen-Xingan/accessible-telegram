@@ -9,11 +9,11 @@ fn secrets_and_unknown_commands_are_not_executed() {
     let (code, f) = s.ask(Format::Json, "auth", &json!({"sub": "code"}));
     assert_eq!(code, 2);
     assert!(f.out[0].contains("\"usage\""));
-    let (code, f) = s.ask(Format::Json, "delete", &json!({}));
+    let (code, f) = s.ask(Format::Json, "show", &json!({}));
     assert_eq!(code, 1);
     let v: Value = serde_json::from_str(&f.out[0]).unwrap();
     assert_eq!(v["data"]["code"], "not_implemented");
-    assert_eq!(v["data"]["command"], "delete");
+    assert_eq!(v["data"]["command"], "show");
     // 发送的参数形状不对：不执行
     let (code, f) = s.ask(Format::Json, "send", &json!({}));
     assert_eq!(code, 1);

@@ -25,6 +25,7 @@ mod chats;
 // 期限有的只在真实后端路径上用；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod deadlines;
+mod delete;
 mod download;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
@@ -126,6 +127,7 @@ fn main() -> ExitCode {
         Command::React(a) => react::run(&cli.global, format, &a, started),
         Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),
         Command::Pending(a) => run_pending(&cli.global, format, a, started),
+        Command::Delete(a) => delete::run(&cli.global, format, a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),
         Command::Play(a) => play::run(&cli.global, format, &a, started),
