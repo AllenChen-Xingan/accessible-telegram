@@ -12,6 +12,7 @@
 
 pub mod mask;
 mod media;
+mod reaction;
 pub mod text;
 mod time;
 mod top;
@@ -20,6 +21,7 @@ pub use media::{
     Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
     TranscriptSource, Transcription,
 };
+pub use reaction::{Reaction, ReactionKind, Reactor};
 pub use top::{Status, UserStatus};
 
 use serde::Serialize;
@@ -61,6 +63,8 @@ pub enum Doc {
     Status(Status),
     /// 语音播放状态（`play`，M2.6）
     Playback(Playback),
+    /// 谁点了哪个表情回应（`reactions`，#9）
+    Reactor(Reactor),
     /// `transcribe` 这一次的结果（#59）
     Transcription(Transcription),
     /// 不认识的顶层对象
@@ -305,32 +309,6 @@ pub struct Tail {
     /// 只有自己发的才有
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<Delivery>,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(Debug))]
-pub struct Reaction {
-    pub kind: ReactionKind,
-    pub count: u32,
-    /// 我自己点了没有
-    pub chosen: bool,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(Debug))]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ReactionKind {
-    Emoji {
-        emoji: String,
-    },
-    /// int64，JSON 里写字符串
-    CustomEmoji {
-        custom_emoji_id: String,
-    },
-    Paid,
-    Unknown {
-        td_type: String,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

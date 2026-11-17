@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs` · `transcribe` 的结果 `speech/transcription.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、转写 `speech/content.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · 夹具输入 `tdjson.rs`
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -67,6 +67,7 @@
 | `status` | 用户状态（T10）：内核、授权、连接三条线合成的一个值 | 合成规则归 `specs/contracts/errors.md` 第一节第 3 小节；连接一线来自 `updateConnectionState` `tl:11818` |
 | `playback` | 语音播放状态（`play` 每次状态变化一行，M2.6）：`state`（`playing` / `paused`）· `position_s` · `duration_s` · `speed`；句子由 `speech` 出（AI 草稿，待人实听） | 本项目播放器（`atg-audio`） |
 | `transcription` | `transcribe` 这一次的结果（#59）：`id`（这条语音**现在的** id）· `sensitive` · `outcome`（`{type:"text", lang, source, segments}` 有字 / `{type:"no_speech"}` 没听出内容 / `{type:"hidden"}` 18+ 遮挡没展开，文字不输出）。是「本次结果」，不是转写表里的那份：重转为空时本次是 `no_speech`，消息上的 `transcript` 不动。读法：有字读全文（片段间补「，」），空读「没有听出内容」，遮着读「隐藏内容」（AI 草稿，待人实听） | 本机转写（`atg-audio` 的 `stt`） |
+| `reactor` | 谁点了哪个表情回应（`reactions` 一行一个，#9）：`kind`（同消息尾部回应的种类）· `sender`（同发送人节点，名字投影时填）· `outgoing`（是不是我）· `date`；句子由 `speech` 出（「林小雨，👍，19:33」，AI 草稿，待人实听） | `addedReaction` `tl:7927`（`getMessageAddedReactions` 的应答） |
 | `unknown` | 不认识的顶层对象 | 任何别的 |
 
 **以后加**（api 清单「五」）：**未读分隔**（api 升为 M：进会话的落点要用，下一个加）、日期分隔、登录步骤、发送结果、服务通知。分隔不是 TDLib 对象，由投影按 `chat.last_read_inbox_message_id` 和日期插进消息序列，形状预定为 `divider{kind: unread | date, …}`，自己没有消息身份，不进焦点顺序还是进，交 GUI 阶段定。登录步骤与发送结果和 infra 的 CLI 契约（`prompt` / `result`）交界，等那份定了再加。
@@ -156,7 +157,7 @@ Message
 
 ### 7. 正式类型名（给别的规约引用）
 
-Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Unknown` ↔ `unknown`；零件：`MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
+Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Reactor` ↔ `reactor` · `Unknown` ↔ `unknown`；零件：`Reaction`（消息尾部的回应汇总）· `ReactionKind`（回应种类，判别字段叫 `type`）· `MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
 
 ## 四、建树规则：「纯文本 + 实体」→ 行内树
 
@@ -258,6 +259,7 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 
 - 自己发的读「我」；名字查不到**分场合**（V18 人定）：消息发送人与撤回占位读「未知发送人」，系统消息的操作人读「有人」，系统消息里被添加、被移出的人读「未知用户」；不认识或没做读法的内容一律读「暂不支持的消息」，**系统消息例外**读「暂不支持的系统消息」（V19 人定）——**英文类型名不读**，只进 JSON
 - 格式（粗斜下删）不读；**剧透、18+ 遮挡统一读「隐藏内容，按 D 展开」**（R1 人定），两边用逗号隔开（VoiceOver 不念括号）；键由调用方给（同提醒的「按 M 收听」），没有键的调用方（CLI）只读「隐藏内容」；**按键提示每条只说一次，放在整条末尾、钟点前**，各处遮挡只读「隐藏内容」（V13 人定；单处遮挡同样放末尾，如「图片，隐藏内容，山顶的风景，按 D 展开，19:33」，待人确认）；D 是否就是详情键，GUI 阶段定键位时一并定；链接只读文字不读地址，链接文字里只要有一段是剧透就整条只读「隐藏内容」（与 `data`、`links` 同一判定 `text::link_hidden`，#70）；置顶带的内容、投票题目里的隐藏内容同样算进整条的按键提示（#68）；代码照读文字
+- **「谁点了回应」一行**（`reactor`，#9；AI 草稿待人实听）：「名字，emoji，钟点」，如「林小雨，👍，19:33」；自己点的读「我」，名字查不到读「未知发送人」（同消息发送人，V18），已注销读「已注销的账号」；自定义表情读「自定义表情」、付费的读「星星」、不认识的种类读「暂不支持的回应」
 - **时间只读钟点**（R3）：日期进 `detail`。**回复谁、转发自谁**（R4）、**已编辑、表情回应**（R5）都不进 `brief`，进 `detail`
 - **相册每张一项**（R6），GUI 阶段再看
 - **撤回占位**（R7）：句式「〈发送人〉撤回了一条消息，〈钟点〉」，与消息句同形——发送人、时间取撤回前记下的（第三节第 1 小节），发送人沿用「我」「未知发送人」的规则（记不到发送人读「未知发送人撤回了一条消息，〈钟点〉」）。读的是**原作者**——TDLib 不给删除人，管理员删别人的消息也读成原作者撤回，接受；**会话项**里的占位不带时间（同会话项最后一条的规则）。实听再定（N8 人定）
@@ -295,3 +297,5 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-11-13 #59 3b（手下 media）：消息加可选字段 `transcript`（`Transcript`，类型放 `tree/media.rs`）；`v` 不加一。挂在消息上而不是 `voice` 附件里：附件属于存下来的 `content`，转写不是（第二节）
 - 2026-11-14 #59 3c（手下 media；18+ 口径大总管定 2026-11-14）：顶层加 `transcription`（类型放 `tree/media.rs`，读法 `speech/transcription.rs`）；18+ 遮挡没展开时 `outcome` 换成 `hidden`（第八节同一条）；`v` 不加一（新增节点种类）
 - 2026-11-16 #59 3c 自审：第三节第 7 小节正式类型名补 `Playback`、`Transcription` 与零件 `Outcome`、`Transcript`
+- 2026-11-14 #9 表情回应（手下 msg2；同 M2.6 `playback` 的做法：要读出来的都先成树）：顶层加 `reactor`；`v` 不加一（新增节点种类）；`Reaction` / `ReactionKind` / `Reactor` 放 `tree/reaction.rs`
+- 2026-11-14 #9 自审第 1 轮后（手下 msg2）：文首代码清单、第三节第 7 小节类型名补 `reaction.rs` / `Playback` / `Reactor` / `Reaction` / `ReactionKind`；第九节加 `reactor` 的句式

@@ -28,13 +28,13 @@ use crate::config::{Profile, ProfileLock, ServerKind};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::FailedInfo;
+use crate::model::{AddedReactions, FailedInfo};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
-use crate::send::{Answer, Sealed, SealedKind};
+use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, CoreState, NetState};
-use crate::tree::FileRef;
+use crate::tree::{FileRef, ReactionKind};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -956,63 +956,17 @@ impl Backend for FakeBackend {
     }
 
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
-        self.started()?;
-        self.ready_or_401("submit").await?;
-        match req.into_kind() {
-            SealedKind::Message { request, preview } => {
-                let chat = request["chat_id"].as_i64().unwrap_or(0);
-                lock(&self.calls).push(Call::Submit {
-                    chat,
-                    preview,
-                    resend: false,
-                });
-                if !lock(&self.chat_info).contains_key(&chat) {
-                    return Err(CoreError::NotFound {
-                        what: "chat",
-                        td: None,
-                    });
-                }
-                if preview {
-                    let hook = lock(&self.preview_hook).take();
-                    if let Some(hook) = hook {
-                        hook();
-                    }
-                    let mut r = request.clone();
-                    if lock(&self.preview_drops).pop_front().unwrap_or(false) {
-                        r["reply_to"] = Value::Null;
-                    }
-                    let m = self.own_message(chat, 0, &r, Value::Null);
-                    return Ok(Answer::Message(crate::tdjson::message(&m)));
-                }
-                let rejected = {
-                    let mut script = lock(&self.send_script);
-                    match script.front() {
-                        Some(FakeSend::Reject(e)) => {
-                            let e = e.clone();
-                            script.pop_front();
-                            Some(e)
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(e) = rejected {
-                    return Err(e);
-                }
-                lock(&self.submitted).push(request.clone());
-                let temp = self.new_id();
-                let pending = self.own_message(
-                    chat,
-                    temp,
-                    request,
-                    json!({"@type": "messageSendingStatePending", "sending_id": request["options"]["sending_id"].clone()}),
-                );
-                self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
-                self.play_send(chat, temp, request);
-                Ok(Answer::Message(crate::tdjson::message(&pending)))
-            }
-            SealedKind::Resend { request } => Ok(self.resend(request)),
-            SealedKind::Delete { request } => self.delete(request).await,
-        }
+        self.do_submit(req).await
+    }
+
+    async fn added_reactions(
+        &self,
+        id: MsgId,
+        kind: Option<&ReactionKind>,
+        offset: &str,
+        limit: u32,
+    ) -> Result<AddedReactions, CoreError> {
+        self.do_added_reactions(id, kind, offset, limit).await
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {

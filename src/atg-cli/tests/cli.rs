@@ -18,6 +18,8 @@ const DONE: &[&str] = &[
     "serve",
     "download",
     "play",
+    "react",
+    "reactions",
     "transcribe",
     "pending",
 ];
@@ -470,6 +472,9 @@ fn send_usage_paths() {
         &["send", "777", "--text-file", bin][..],
         &["send", "abc", "--text", "好的"][..],
         &["resend", "777"][..],
+        &["react", "abc", "5", "👍"][..],
+        &["react", "777", "5"][..],
+        &["reactions", "777", "5", "-n", "0"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);
@@ -480,6 +485,8 @@ fn send_usage_paths() {
     for args in [
         &["--fake", "x", "send", "777", "--text", "好的"][..],
         &["--fake", "x", "resend", "777", "5"][..],
+        &["--fake", "x", "react", "777", "5", "👍"][..],
+        &["--fake", "x", "reactions", "777", "5"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);

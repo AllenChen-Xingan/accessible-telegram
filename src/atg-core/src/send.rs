@@ -29,9 +29,9 @@
 //! 代号：「发N」「B17-2」见 `docs/research/003_send-receive-prior-art/`；「M2.1」等是 `docs/plan/002_roadmap.md` 的块，
 //! 「T04」是 `specs/tasks.md` 的任务（发消息）。
 //!
-//! 文件分工：本文件放各步共用的底座（凭条 [`Submitted`]、确认框里的说明句、交出失败 / 超时按「结果未知」记账、
+//! 文件分工：本文件放各步共用的底座（凭条 [`Submitted`]、给人看的会话说法、交出失败 / 超时按「结果未知」记账、
 //! 计划行的目标部分）；`send/text.rs` 发文字（准备 → 交出 → 等结果的全程）；`send/outcome.rs` 等结果与记账
-//! （[`fn@wait`]、[`finish`]）；`send/resending.rs` 重发。计划行（`plan_json` / `resend_plan_json`）各随自己的计划类型，R6 时一起换成 `Doc::Plan`
+//! （[`fn@wait`]、[`finish`]）；`send/resending.rs` 重发；`send/react.rs` 表情回应。计划行（`plan_json` / `resend_plan_json`）各随自己的计划类型，R6 时一起换成 `Doc::Plan`
 
 use crate::backend::Backend;
 use crate::config::ServerKind;
@@ -43,10 +43,12 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 mod outcome;
+pub mod react;
 pub(crate) mod resending;
 mod text;
 
 pub use outcome::{Waited, finish, wait};
+pub use react::react_plan_json;
 pub use resending::{
     Fed, ResendItem, ResendOutcome, ResendPlan, ResendReply, prepare_resend, resend,
     resend_and_wait, resend_plan_json,
@@ -101,6 +103,8 @@ pub(crate) enum SealedKind<'a> {
     Message { request: &'a Value, preview: bool },
     /// `resendMessages`：请求 JSON（TDLib 形状；摘要算过的就是它）
     Resend { request: &'a Value },
+    /// `addMessageReaction` / `removeMessageReaction`（看请求的 `@type`）：请求 JSON，摘要算过的就是它
+    React { request: &'a Value },
     /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
     Delete { request: &'a Value },
 }
@@ -112,6 +116,8 @@ pub enum Answer {
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
+    /// 应答只有 `ok` 的（表情回应）
+    Done,
     /// `deleteMessages`：TDLib 回了 `ok`
     Deleted,
 }

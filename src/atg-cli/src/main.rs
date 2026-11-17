@@ -38,6 +38,9 @@ mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod play;
+// 表情回应的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod react;
 // 待发消息与发送的流程只有真实后端与单测调
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod pending;
@@ -120,6 +123,8 @@ fn main() -> ExitCode {
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Send(a) => run_send(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
+        Command::React(a) => react::run(&cli.global, format, &a, started),
+        Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),
         Command::Pending(a) => run_pending(&cli.global, format, a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),

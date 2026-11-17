@@ -60,6 +60,36 @@ pub(super) fn delete(request: &Value) -> Result<(i64, Vec<i64>, bool), CoreError
     ))
 }
 
+/// `addMessageReaction` / `removeMessageReaction`（看 `@type`）：（会话、消息 id、种类、去不去掉、`is_big`、
+/// `update_recent_reactions`）。去掉时后两个不看、给假
+pub(super) struct ReactArgs {
+    pub chat: i64,
+    pub message: i64,
+    pub kind: enums::ReactionType,
+    pub remove: bool,
+    pub big: bool,
+    pub recent: bool,
+}
+
+pub(super) fn react(request: &Value) -> Result<ReactArgs, CoreError> {
+    let remove = request["@type"] == "removeMessageReaction";
+    let flag = |k: &str| {
+        if remove {
+            Ok(false)
+        } else {
+            request[k].as_bool().ok_or_else(bad)
+        }
+    };
+    Ok(ReactArgs {
+        chat: request["chat_id"].as_i64().ok_or_else(bad)?,
+        message: request["message_id"].as_i64().ok_or_else(bad)?,
+        kind: part(request, "reaction_type")?,
+        remove,
+        big: flag("is_big")?,
+        recent: flag("update_recent_reactions")?,
+    })
+}
+
 // ───── 应答里交出成功、成败还要等的消息（`TdBackend::detached` 登记，#88）─────
 
 fn msg_id(m: &types::Message) -> MsgId {

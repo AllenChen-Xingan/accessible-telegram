@@ -97,6 +97,27 @@ pub enum SendingState {
     Failed,
 }
 
+/// 谁点了哪个表情回应（`addedReaction`，`td_api.tl:7927`）：只放 id，名字投影时填（[`crate::project::reactor`]）
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct AddedReaction {
+    pub kind: crate::tree::ReactionKind,
+    pub sender: SenderId,
+    /// 是不是我自己点的
+    pub outgoing: bool,
+    /// Unix 秒
+    pub date: i64,
+}
+
+/// 一页「谁点了回应」（`addedReactions`，`td_api.tl:7933`）。`next_offset` 为空 = 没有更多
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct AddedReactions {
+    pub total: u32,
+    pub items: Vec<AddedReaction>,
+    pub next_offset: String,
+}
+
 /// 失败消息的发送状态（`messageSendingStateFailed`，`td_api.tl:3458-3465`）：`resend` 准备时逐项查
 #[derive(Debug, Clone, PartialEq)]
 pub struct FailedInfo {
