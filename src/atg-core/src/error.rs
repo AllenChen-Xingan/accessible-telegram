@@ -358,9 +358,20 @@ impl CoreError {
                 }
             },
             Self::Cancelled => "已取消",
-            Self::SttUnavailable { .. } => {
-                "本机语音转文字用不了：请在系统设置里装好中文、英文的语言模型；开发时先跑 src/atg-audio/stt-helper/build.sh"
-            }
+            // 按 `what` 给修法（码的正本在 `errors.md` 的 `stt_unavailable` 行；写法由 `atg-audio` 的 `stt::locate` 出）
+            Self::SttUnavailable { what } => match *what {
+                "helper_not_found" => {
+                    "找不到本机转写程序 atg-stt：开发时先跑 src/atg-audio/stt-helper/build.sh；不在仓库里运行时设环境变量 ATG_STT_HELPER 指向它"
+                }
+                "helper_env_invalid" => "环境变量 ATG_STT_HELPER 指的不是能执行的文件，请改正或去掉它",
+                "helper_not_runnable" => "找到的 atg-stt 不是能执行的文件，请重跑 src/atg-audio/stt-helper/build.sh",
+                "helper_unsafe" => {
+                    "atg-stt 不属于你，或别人能改它，为安全不执行：确认是自己编的后 chmod 755 它"
+                }
+                _ => {
+                    "本机语音转文字用不了：请在系统设置的「键盘 › 听写」里加上中文、英文；仍不行就重跑 src/atg-audio/stt-helper/build.sh"
+                }
+            },
             Self::Internal { .. } => "程序内部出错",
             Self::Unknown { .. } => "出现了无法识别的错误",
         }

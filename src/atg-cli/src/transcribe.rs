@@ -13,7 +13,7 @@ use crate::args::{Format, Global, Lang, TranscribeArgs};
 use crate::history;
 use crate::out::{self, Sink, Stdio, emit_to, envelope};
 use atg_core::speech::{self, SpeechCtx};
-use atg_core::tree::{Doc, Outcome, Transcription};
+use atg_core::tree::{Doc, Transcription};
 use serde_json::json;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -56,8 +56,7 @@ pub fn render(
     t: Transcription,
     started: Instant,
 ) -> u8 {
-    let hidden = t.sensitive && !cx.reveal;
-    let (id, kind) = (t.id, outcome_kind(&t.outcome, hidden));
+    let (id, hidden) = (t.id, t.hidden(cx.reveal));
     let doc = Doc::Transcription(t);
     if hidden {
         sink.err("atg-cli transcribe: 这条语音被标为敏感内容，转写没有输出；要读出来加 --reveal");
@@ -68,6 +67,8 @@ pub fn render(
             if let Some(o) = line.as_object_mut() {
                 o.insert("at".into(), json!(out::now_rfc3339_ms()));
             }
+            // 结尾行的 `outcome` 就取节点（遮过之后）的 `outcome.type`：只一处正本
+            let kind = line["data"]["outcome"]["type"].clone();
             emit_to(sink, &line);
             emit_to(
                 sink,
@@ -86,16 +87,6 @@ pub fn render(
         Format::Text => sink.out(&speech::brief(&doc, cx)),
     }
     0
-}
-
-/// 结尾行里的 `outcome`（同节点里 `outcome.type`，遮着的是 `hidden`）
-fn outcome_kind(o: &Outcome, hidden: bool) -> &'static str {
-    match o {
-        _ if hidden => "hidden",
-        Outcome::Text(_) => "text",
-        Outcome::NoSpeech => "no_speech",
-        Outcome::Hidden => "hidden",
-    }
 }
 
 #[cfg(test)]

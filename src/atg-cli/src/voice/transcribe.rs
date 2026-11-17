@@ -2,7 +2,8 @@
 //! 正本 `docs/experiments/exp008-local-stt/design.md` 第二节第 3 条、第三节第 1、4、6 条。顺序：
 //! 1. 认会话 → **先要租约**（`lease::Guard`：超级群、频道只有打开的会话才推更新，提交前的核对才看得到撤回、替换；
 //!    所有退出路径都放）
-//! 2. 取消息、放进 store → **从 store 取凭据**（消息 id + 语音文件 id），贯穿下载、解码、转写、提交
+//! 2. 取消息、放进 store → **从 store 取转写凭据**（`store::TranscriptTicket` = 消息 id + 语音文件 id，判结果还作不作数；
+//!    与发送闸的确认凭据 `ConfirmToken` 无关，没有时限、不是一次性），贯穿下载、解码、转写、提交
 //! 3. 下载凭据里那个文件 → 解码 → 本机转写（`atg-audio` 的 `stt`）
 //! 4. 提交前先把这期间收到的更新全部喂进 store，再用同一个裁决函数判：作数才输出；有字才写表
 //!
@@ -74,11 +75,14 @@ pub fn transcribe<B: Backend>(
     let leases = feed.hub.leases().clone();
     let _lease = Guard::take(b, leases, id.chat_id, "atg-cli transcribe").map_err(Fail::Core)?;
     let f = after_step(cancel, find_in(b, stream, feed, id, cancel))?;
-    // 凭据在从 store 读出这条语音的那一刻取（find_in 已把它放进 store、喂完了之前到的更新）
-    let ticket = feed
-        .store()
-        .transcript_ticket(f.id)
-        .ok_or(Fail::Core(CoreError::InvalidInput { td: None }))?;
+    // 转写凭据在从 store 读出这条语音的那一刻取（find_in 已把它放进 store、喂完了之前到的更新）。
+    // 取来时是语音、喂完更新就不是了：同提交时作废一样报（消息没了 / 内容变了），不报「不是语音」
+    let ticket = feed.store().transcript_ticket(f.id).ok_or_else(|| {
+        stale_fail(match feed.store().message(f.id) {
+            None => Stale::Gone,
+            Some(_) => Stale::Changed,
+        })
+    })?;
     let found = Found {
         file: ticket.file,
         ..f

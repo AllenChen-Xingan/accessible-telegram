@@ -81,6 +81,13 @@ pub struct Transcription {
     pub outcome: Outcome,
 }
 
+impl Transcription {
+    /// 这一次要不要遮住文字（18+ 遮挡、没展开）：遮挡（`mask`）、读法、CLI 的提示都只按它判
+    pub fn hidden(&self, reveal: bool) -> bool {
+        self.sensitive && !reveal
+    }
+}
+
 /// 这一次转出了什么
 #[derive(Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(Debug))]

@@ -11,7 +11,7 @@ use crate::tree::{Outcome, Transcription};
 const NO_SPEECH: &str = "没有听出内容";
 
 pub(super) fn brief(t: &Transcription, reveal: bool) -> String {
-    if t.sensitive && !reveal {
+    if t.hidden(reveal) {
         return HIDDEN.to_owned();
     }
     match &t.outcome {

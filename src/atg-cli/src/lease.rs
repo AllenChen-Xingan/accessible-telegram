@@ -1,6 +1,6 @@
 //! 会话租约：同一进程里「替谁开着会话」的引用计数（`docs/experiments/exp008-local-stt/design.md` 第二节第 3 条）。
 //!
-//! 超级群、频道只有打开的会话才推新消息，所以 `watch --chat`、将来的 `transcribe` 都要 `chat_open`。
+//! 超级群、频道只有打开的会话才推新消息，所以 `watch --chat`、`transcribe` 都要 `chat_open`。
 //! 同一会话可能同时有几个使用者（几个 `watch` 订阅者、几项转写）：**第一份要的真开，最后一份放的真关**。
 //! 计数 [`Leases`] 只数，不碰后端（同 [`crate::watch::Hub::reap`] 的形状：回要关的，调用方去关）；
 //! 「第一份真开、开失败退掉」「最后一份真关、出错只记」写在旁边的 [`open`] / [`close`] 一处。

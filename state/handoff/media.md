@@ -1,5 +1,18 @@
 # 交接 · 手下 media · #4 听语音 + #59 语音转文字
 
+
+## b20 接手（2026-11-16）
+
+> 交代 MAIN `_tmp/20261116-b20/media.md` · 大总管 `allenchen-37` · 分支 `feat/59-transcribe`（e77a200 WIP + 9 个文件未提交）
+
+- 手上：3c `transcribe` 命令（codex 039）。旧进度：全部写完、**从未编译**；下一步本是领名额编译 → atg-review → codex 039
+- 未提交 9 个文件（+44/−28）：`stt_unavailable` 按 `what` 分四种修法提示、`FakeBackend::settle` 改 pub 做测试屏障、build.sh、transcribe 外壳收窄、mask/media/transcription 小改。看着是收尾小修，完整性要编译才知道
+- lease.rs 对 `origin/feat/59-lease`（PR #106）：本分支多出 `Guard`（转写用）+ 注释两处，其余同一份；即 #106 + 3c 增量
+- 合 main 预计冲突（`git merge-tree` 试算）：`docs/reviews/README.md`、`scripts/file-size-baseline.json`、`specs/contracts/{actions,cli,errors}.md`、`src/atg-cli/src/watch.rs`。自动合并：args/main/send/serve/session/watch/tests、error.rs、config-privacy.md
+- 未提交的 `error.rs`、`fake.rs` 与 main 也改了同文件（不同段）：合前需先把 WIP 提交，否则 git merge 拒绝
+- Touch ID 删除对我的影响：我新写的 transcribe 代码不用被删的东西；本分支改过的 send.rs（`send::remember` 抽出）、session.rs、serve.rs、args.rs 与 main 删确认的段落相邻，合后要编译核对
+- 状态：已报到，等大总管合 main
+
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 
 ## 做到哪
