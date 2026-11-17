@@ -115,3 +115,60 @@ fn photo_request_has_the_tdlib_shape() {
     let keys: Vec<&String> = c.as_object().unwrap().keys().collect();
     assert_eq!(keys.len(), 6, "{keys:?}");
 }
+
+/// 同一个文件改了扩展名（`.png` → `.bin`）：一个按图片发、一个按文件发，请求形状不同，但内容、说明、回复都一样，
+/// 照样算同一意图被拦（codex 034 第 1 轮 #2）
+#[test]
+fn renaming_the_extension_does_not_escape_the_guard() {
+    let mut r = rig("ext");
+    let a = r.put("Downloads/a.png", &png(10, 10));
+    let b = r.put("Desktop/a.bin", &png(10, 10));
+    let plan = r.prepare(&a, "").unwrap();
+    assert!(matches!(plan.send_as(), SendAs::Photo { .. }));
+    r.send(&plan, false).unwrap();
+    let plan2 = r.prepare(&b, "").unwrap();
+    assert!(matches!(plan2.send_as(), SendAs::Document { .. }));
+    let e = r.send(&plan2, false).unwrap_err();
+    assert!(
+        matches!(
+            e,
+            CoreError::SendRefused {
+                reason: SendRefusedReason::DuplicateRecent,
+                ..
+            }
+        ),
+        "{e:?}"
+    );
+}
+
+/// 等结果的总上限不被进度查询拖过头：一直有进度时，到总上限就收（codex 034 第 1 轮 #3）
+#[test]
+fn upload_wait_stops_at_the_cap() {
+    let mut r = rig("capedge");
+    let p = r.put("Downloads/a.bin", b"data");
+    let plan = r.prepare(&p, "").unwrap();
+    r.b.script_sends(vec![FakeSend::Silent]);
+    r.b.set_uploads(
+        (1..=2000)
+            .map(|n| Upload {
+                uploaded: n,
+                done: false,
+            })
+            .collect(),
+    );
+    let t = Instant::now();
+    let (_, _, w) = r
+        .send_with(
+            &plan,
+            false,
+            Duration::from_millis(200),
+            Duration::from_millis(300),
+        )
+        .unwrap();
+    assert!(matches!(w, Waited::Unknown(UnknownWhy::Timeout)));
+    let el = t.elapsed();
+    assert!(
+        el >= Duration::from_millis(300) && el < Duration::from_millis(450),
+        "{el:?}"
+    );
+}

@@ -189,15 +189,20 @@ fn digests(
 ) -> ([u8; 32], [u8; 32]) {
     let sha = gate::hex(sha);
     let digest = gate::digest(&json!({"request": request, "sha256": sha}), me, server);
-    let mut stable = request.clone();
-    stable["options"]["sending_id"] = json!(0);
-    let c = &mut stable["input_message_content"];
-    for p in ["/photo/photo/path", "/document/document/path"] {
-        if let Some(v) = c.pointer_mut(p) {
-            *v = json!("");
-        }
-    }
-    let intent = gate::digest(&json!({"request": stable, "sha256": sha}), me, server);
+    // 防重复只看「发给谁、哪个文件内容、说什么、回复哪条」：不装请求的媒体结构——同一个文件改个扩展名，
+    // 按图片还是按文件发就变了，请求形状跟着变，但还是同一意图（codex 034 第 1 轮 #2）；路径与 `sending_id` 也不装
+    let intent = gate::digest(
+        &json!({
+            "@type": "atg.send_file.intent.v1",
+            "chat_id": request["chat_id"],
+            "topic_id": request["topic_id"],
+            "reply_to": request["reply_to"],
+            "caption": request["input_message_content"]["caption"]["text"],
+            "sha256": sha,
+        }),
+        me,
+        server,
+    );
     (digest, intent)
 }
 
@@ -390,37 +395,40 @@ pub fn wait_upload<B: Backend>(
     cap: Duration,
     on_event: &mut dyn FnMut(Envelope),
 ) -> Waited {
-    let start = Instant::now();
-    let mut moved = start;
+    // 绝对截止时刻：事件等待与进度查询共用剩下的时间，不各算一份（codex 034 第 1 轮 #3）
+    let cap_at = Instant::now() + cap;
+    let mut idle_at = Instant::now() + idle;
     let mut last: Option<Upload> = None;
     let poll = (idle / 10).clamp(Duration::from_millis(10), Duration::from_secs(2));
     loop {
-        let now = Instant::now();
-        let left = cap
-            .saturating_sub(now - start)
-            .min(idle.saturating_sub(now - moved));
+        let deadline = cap_at.min(idle_at);
+        let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Waited::Unknown(UnknownWhy::Timeout);
         }
-        let slice = left.min(poll);
-        match wait(stream, &[temp], slice, on_event).pop() {
+        match wait(stream, &[temp], left.min(poll), on_event).pop() {
             None | Some(Waited::Unknown(UnknownWhy::Timeout)) => {}
             Some(w) => return w,
         }
-        let got = block_on_timeout(
-            b.upload_progress(temp),
-            slice.max(Duration::from_millis(10)),
-        );
-        if let Some(Ok(Some(u))) = got {
-            let progressed = match last {
-                None => u.uploaded > 0 || u.done,
-                Some(l) => u.uploaded > l.uploaded || (u.done && !l.done),
-            };
-            if progressed {
-                moved = Instant::now();
-            }
-            last = Some(u);
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            continue;
         }
+        let Some(Ok(Some(u))) = block_on_timeout(b.upload_progress(temp), left) else {
+            continue;
+        };
+        // 查询回来时已过了截止：这次的进度不算，不再续等
+        if Instant::now() >= deadline {
+            continue;
+        }
+        let progressed = match last {
+            None => u.uploaded > 0 || u.done,
+            Some(l) => u.uploaded > l.uploaded || (u.done && !l.done),
+        };
+        if progressed {
+            idle_at = Instant::now() + idle;
+        }
+        last = Some(u);
     }
 }
 

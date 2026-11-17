@@ -124,6 +124,11 @@ pub(super) fn allowed(p: &Path, roots: &FileRoots) -> Result<Allowed, CoreError>
         .custom_flags(libc::O_NOFOLLOW)
         .open(&real)
         .map_err(|_| not_allowed())?;
+    // 判许可之后、打开之前，中间某级文件夹可能被换成指向别处的链接（O_NOFOLLOW 只管最后一级）：按打开的这个句柄
+    // 取它此刻的真实路径，再判一次（codex 034 第 1 轮 #1，构造时序）
+    if !opened_path(&file).is_some_and(|o| path_ok(&o, roots)) {
+        return Err(not_allowed());
+    }
     let meta = file.metadata().map_err(|_| bad(InvalidSendWhy::NotAFile))?;
     if meta.dev() != seen.dev() || meta.ino() != seen.ino() || meta.nlink() != 1 {
         return Err(not_allowed());
@@ -139,6 +144,27 @@ pub(super) fn allowed(p: &Path, roots: &FileRoots) -> Result<Allowed, CoreError>
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or(bad(InvalidSendWhy::NotAFile))?;
     Ok(Allowed { name, file })
+}
+
+/// 打开的这个文件此刻的路径（macOS `F_GETPATH`；Linux 只为 CI 编译，读 `/proc/self/fd`）。取不到回 `None`（按不许处理）
+fn opened_path(f: &fs::File) -> Option<PathBuf> {
+    use std::os::unix::io::AsRawFd;
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let mut buf = vec![0u8; usize::try_from(libc::PATH_MAX).ok()?];
+        // SAFETY: fd 在 `f` 活着期间有效；F_GETPATH 往缓冲区写至多 PATH_MAX 字节（含结尾的 0），缓冲区正是这么大
+        let r = unsafe { libc::fcntl(f.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) };
+        if r == -1 {
+            return None;
+        }
+        let n = buf.iter().position(|&b| b == 0)?;
+        Some(PathBuf::from(std::ffi::OsStr::from_bytes(&buf[..n])))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        fs::read_link(format!("/proc/self/fd/{}", f.as_raw_fd())).ok()
+    }
 }
 
 /// 像密钥、凭据或 Telegram 本地库的名字（不分大小写；文件名与它所在的各级文件夹名都查）。这份名单是正本，契约只举例、指向这里

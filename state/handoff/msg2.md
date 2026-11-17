@@ -194,3 +194,5 @@
 - 自审第 2 轮（检查点 702c92a 后）：P0/P1 无 → 连续两轮无 P0/P1，自审收敛。P2×4 P3×9：CLI 入口先查会话（先红后绿，加 `file::precheck`）、文案与契约补写已修；resend 带文件不按进度等 → #158（契约引用）
 - 验证：677 过 0 败；clippy 两种 0；no-debug / file-size 过
 - 下一步：大总管提交 → codex 034（384da95...HEAD）；PR 前合 main（#156 拆 tdjson，`tdjson.rs` 的 `pub mod file;` 会冲突），合时报大总管
+- 合 main 注意：#156（tdjson.rs `pub mod file;`）、#157 fe8d1ec（gate/tests.rs 我加的 `mod file_log;` 挨着它换的 temp_dir）可能冲突；合后申请名额编译验证
+- codex 034 第 1 轮：P2×3 全属实已改（句柄路径再判许可、意图摘要不装媒体结构、等进度用绝对截止）；679 过；记录 docs/reviews/034_send-file-12-codex.md
