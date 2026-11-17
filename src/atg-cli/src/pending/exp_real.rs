@@ -96,5 +96,13 @@ fn exp_pending_cancel() {
         eprintln!("收藏夹最近 20 条里留着的实验消息：{left} 条（共发 {ROUNDS} 条）");
         Ok(())
     });
-    assert!(r.is_ok(), "实测中途出错");
+    if let Err(e) = r {
+        let code = match &e {
+            Fail::Core(atg_core::error::CoreError::Internal { what }) => format!("internal {what}"),
+            Fail::Core(c) => c.code().to_string(),
+            Fail::Usage(u) => format!("usage: {u}"),
+            _ => "other".to_owned(),
+        };
+        panic!("实测中途出错：{code}");
+    }
 }
