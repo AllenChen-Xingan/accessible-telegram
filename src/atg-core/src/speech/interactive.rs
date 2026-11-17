@@ -138,9 +138,10 @@ fn blocked(b: &VoteBlock) -> &'static str {
 /// 详情里的按钮：「按钮 4 个：」再逐个「文字，按下会怎样」（按钮之间「；」），网址按钮读出地址（按钮文字常说不清去哪，
 /// 是「链接只读文字」的例外，第九节写明）
 pub(super) fn buttons_detail(k: &Keyboard) -> String {
-    let head = match k.kind {
+    let head = match &k.kind {
         KeyboardKind::Inline => "按钮",
         KeyboardKind::Reply => "键盘按钮",
+        KeyboardKind::Unknown { .. } => return "有暂不支持的按钮".to_owned(),
     };
     let list: Vec<String> = k
         .rows

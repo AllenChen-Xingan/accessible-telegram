@@ -487,3 +487,35 @@ fn poll_option_spoiler_is_masked() {
     assert!(speech::full(poll, &revealed()).contains("庚辛"));
     assert!(json::line(poll, &revealed()).contains("庚辛"));
 }
+
+/// 票数变化对用户账号走 `updateMessageContent`（`updatePoll` 只给机器人，`td_api.tl:12058`；TDLib
+/// `PollManager::notify_on_poll_update` 对普通账号调 `on_external_update_message_content`）：store 整块换内容，
+/// 投票跟着读全，不用再取那条消息（#13 自审第 5 轮）
+#[test]
+fn poll_counts_follow_update_message_content() {
+    let src = std::fs::read_to_string(format!(
+        "{}/fixtures/speech/interactive.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let mut events: Vec<serde_json::Value> = serde_json::from_str(&src).unwrap();
+    let mut content =
+        events.iter().find(|e| e["message"]["id"] == 4001).unwrap()["message"]["content"].clone();
+    content["poll"]["options"][0]["voter_count"] = serde_json::json!(9);
+    content["poll"]["options"][0]["vote_percentage"] = serde_json::json!(90);
+    content["poll"]["total_voter_count"] = serde_json::json!(10);
+    events.push(
+        serde_json::json!({"@type": "updateMessageContent", "chat_id": -1001,
+        "message_id": 4001, "new_content": content}),
+    );
+    let docs = World::from_json(&serde_json::to_string(&events).unwrap())
+        .unwrap()
+        .docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 4001))
+        .unwrap();
+    let full = speech::full(poll, &cx());
+    assert!(full.contains("七点，9 票，90%"), "{full}");
+    assert!(full.contains("共 10 人投票"), "{full}");
+}

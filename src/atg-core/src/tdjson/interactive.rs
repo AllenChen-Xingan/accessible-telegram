@@ -92,7 +92,17 @@ pub(super) fn keyboard(m: &Value) -> Option<Keyboard> {
     let (kind, button): (KeyboardKind, fn(&Value) -> ButtonAction) = match ty(r) {
         "replyMarkupInlineKeyboard" => (KeyboardKind::Inline, inline_action),
         "replyMarkupShowKeyboard" => (KeyboardKind::Reply, reply_action),
-        _ => return None,
+        // 认识、但没有按钮的两种：不建
+        "" | "replyMarkupRemoveKeyboard" | "replyMarkupForceReply" => return None,
+        // 不认识的：留下类型名，按钮读不出（开放集合的兜底，第一节硬规矩 2）
+        other => {
+            return Some(Keyboard {
+                kind: KeyboardKind::Unknown {
+                    td_type: other.to_owned(),
+                },
+                rows: vec![],
+            });
+        }
     };
     let rows: Vec<Vec<Button>> = arr(r, "rows")
         .iter()

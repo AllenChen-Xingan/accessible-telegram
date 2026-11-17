@@ -59,13 +59,16 @@ pub struct Keyboard {
     pub rows: Vec<Vec<Button>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// 开放集合（`ReplyMarkup`，`td_api.tl:4294-4314`）：认不出的带按钮种类进 `Unknown`（按钮读不出，只说有）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum KeyboardKind {
     /// `replyMarkupInlineKeyboard`：消息下面的按钮
     Inline,
     /// `replyMarkupShowKeyboard`：机器人换掉输入框的键盘，按下就是发那句文字（或交出手机号、位置……）
     Reply,
+    /// 不认识的 `ReplyMarkup` 子类（TDLib 以后加的）；`rows` 为空
+    Unknown { td_type: String },
 }
 
 impl Keyboard {

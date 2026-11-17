@@ -305,7 +305,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
     },
     "tail": {},
     "buttons": {
-      "kind": "inline",
+      "kind": {
+        "type": "inline"
+      },
       "rows": [
         [
           {
@@ -372,7 +374,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
     },
     "tail": {},
     "buttons": {
-      "kind": "reply",
+      "kind": {
+        "type": "reply"
+      },
       "rows": [
         [
           {
