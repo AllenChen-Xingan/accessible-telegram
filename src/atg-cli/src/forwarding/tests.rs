@@ -254,3 +254,29 @@ fn unknown_at_hand_over_still_lists_every_item() {
     assert!(items.iter().all(|i| i["outcome"] == "unknown"));
     assert_eq!(end["data"]["from_chat_id"], FRIEND);
 }
+
+/// 代跑途中断开：forward 的错误行也逐条列 unknown、带来源会话（codex 033 第 2 轮 #1）
+#[test]
+fn executor_gone_lists_every_item_as_unknown() {
+    let params = serde_json::to_value(fp(&[7, 5, 7], false, false)).unwrap();
+    let extra = gone_extra(&params, "替你执行的进程中途断了");
+    let mut cap = Cap::default();
+    let code = crate::out::emit_send_unknown(&mut cap, Format::Json, Some(OTHER), "断了", extra);
+    assert_eq!(code, 10);
+    let end = lines(&cap).pop().unwrap();
+    assert_eq!(end["data"]["code"], "send_outcome_unknown");
+    assert_eq!(end["data"]["from_chat_id"], FRIEND);
+    let ids: Vec<i64> = end["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["message_id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![5, 7]);
+    assert!(
+        end["data"]["message_zh"]
+            .as_str()
+            .unwrap()
+            .contains("不要再转")
+    );
+}

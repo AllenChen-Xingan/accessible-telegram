@@ -282,6 +282,27 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &ForwardPlan) {
     }
 }
 
+/// 代跑途中执行方断了（发起方这头，`forward.rs`）：执行方可能已经交出，按请求里的 id（去重、从小到大，同准备时）
+/// 每条列 `unknown`，带来源会话；`message_zh` 点名这几条
+pub fn gone_extra(params: &serde_json::Value, why_zh: &str) -> serde_json::Value {
+    let mut ids: Vec<i64> = params["ids"]
+        .as_array()
+        .map(|a| a.iter().filter_map(serde_json::Value::as_i64).collect())
+        .unwrap_or_default();
+    ids.sort_unstable();
+    ids.dedup();
+    let items: Vec<serde_json::Value> = ids
+        .iter()
+        .map(|id| json!({"message_id": id, "outcome": "unknown", "temp_message_id": 0, "why": "disconnected"}))
+        .collect();
+    let from = params["from"].as_str().and_then(|c| c.parse::<i64>().ok());
+    json!({
+        "message_zh": format!("{}；{why_zh}", summary_zh(&items)),
+        "from_chat_id": from,
+        "items": items,
+    })
+}
+
 /// 结尾一句：几条、成功几条、失败几条、结果未知的点名（不要再转）
 fn summary_zh(items: &[serde_json::Value]) -> String {
     let ids = |o: &str| -> Vec<String> {

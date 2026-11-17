@@ -310,6 +310,17 @@ fn claim_all_is_all_or_nothing() {
     assert!(s.hit(1005, 777, "c").unwrap().is_some());
 }
 
+/// 同一指纹上较早的「结果未知」不被后来 --again 的「已发出」盖住（codex 033 第 2 轮 #2）
+#[test]
+fn worst_hit_sees_older_unknown_under_newer_success() {
+    let dir = temp_dir("worst-older");
+    let s = GuardStore::new(dir.join(GUARD_FILE));
+    s.record(1000, 777, "a", Outcome::Unknown).unwrap();
+    s.record(1100, 777, "a", Outcome::Succeeded).unwrap();
+    let hit = s.hit_any(1200, 777, &["a".to_owned()]).unwrap().unwrap();
+    assert_eq!(hit.state, Outcome::Unknown);
+}
+
 #[test]
 fn clock_turned_back_does_not_lift_the_guard() {
     // codex 016 第 1 轮 #1：时钟往回拨，比「现在」还晚的记录照样拦，等时钟追上再过期

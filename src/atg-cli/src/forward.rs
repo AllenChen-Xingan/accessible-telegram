@@ -302,7 +302,19 @@ pub fn forward(
                 // 目标会话：forward 的在 `to`（`chat` 是别的发送类命令的）
                 let key = if command == "forward" { "to" } else { "chat" };
                 let chat = params[key].as_str().and_then(|c| c.parse::<i64>().ok());
-                return crate::out::emit_send_unknown(sink, format, chat, EXECUTOR_GONE_SEND_ZH);
+                // forward：照直跑时的结尾逐条列 unknown、带来源会话（补转时才知道哪几条不能列，codex 033 第 2 轮 #1）
+                let extra = if command == "forward" {
+                    crate::forwarding::gone_extra(params, EXECUTOR_GONE_SEND_ZH)
+                } else {
+                    json!({})
+                };
+                return crate::out::emit_send_unknown(
+                    sink,
+                    format,
+                    chat,
+                    EXECUTOR_GONE_SEND_ZH,
+                    extra,
+                );
             }
             Err(e) => {
                 let msg = match e {

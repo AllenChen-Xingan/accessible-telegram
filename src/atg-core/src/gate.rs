@@ -244,8 +244,11 @@ pub(crate) fn worst_hit<'a>(
     chat: ChatId,
     fps: &[String],
 ) -> Option<&'a GuardEntry> {
-    fps.iter()
-        .filter_map(|fp| latest_hit(entries, chat, fp))
+    // 看全部还算数的匹配记录：同一个指纹上，较早的「结果未知」可能被后来 --again 的「已发出」压在下面，
+    // 只取每个指纹最新的那条就会把它漏掉（codex 033 第 2 轮 #2）
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.state != Outcome::Failed && fps.contains(&e.fp))
         .max_by_key(|e| {
             (
                 matches!(e.state, Outcome::Unknown | Outcome::Submitted),
