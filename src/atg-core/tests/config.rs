@@ -245,8 +245,7 @@ fn log_fields_are_whitelisted() {
 #[test]
 fn test_phone_only_from_env_file_and_only_test_numbers() {
     use atg_core::config::load_test_phone;
-    let dir = std::env::temp_dir().join(format!("atg-test-phone-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp_dir("test-phone");
     let f = dir.join("env");
     std::fs::write(
         &f,

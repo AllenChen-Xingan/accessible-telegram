@@ -15,7 +15,6 @@ use crate::fake::{FakeAuth, FakeBackend, FakeSend};
 use crate::gate::Gate;
 use crate::link::block_on;
 use crate::status::AuthStep;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
@@ -41,7 +40,6 @@ struct Rig {
 }
 
 fn rig(tag: &str, test_dc: bool) -> Rig {
-    static N: AtomicU32 = AtomicU32::new(0);
     let gate = Gate::new(Holder::Cli);
     let b = FakeBackend::with_gate(gate).unwrap();
     b.set_auth(FakeAuth {
@@ -91,12 +89,7 @@ fn rig(tag: &str, test_dc: bool) -> Rig {
             json!({"@type": "messageTopicForum", "forum_topic_id": 3}),
         )],
     );
-    let root = std::env::temp_dir().join(format!(
-        "atg-send-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = crate::testkit::temp_dir(&format!("send-{tag}"));
     let kind = if test_dc {
         ServerKind::Test
     } else {

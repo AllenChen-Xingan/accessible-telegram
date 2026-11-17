@@ -32,7 +32,7 @@
 //! 那种被换成正式 id、只从自己这边删掉了（调用方要接着看一小会儿，见 CLI `pending`）。
 
 use crate::backend::Backend;
-use crate::error::{CoreError, DeleteRefusedWhy, InvalidSendWhy};
+use crate::error::{CoreError, InvalidSendWhy, RefusedWhy};
 use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
 use crate::model::{Body, ChatId, ChatTarget, MsgId, SendingState, Time};
 use crate::send::{self, Answer, Sealed, SendOrigin};
@@ -189,8 +189,8 @@ async fn prepare<B: Backend>(
     let mut target = b.chat_target(chat).await?;
     target.saved = target.id == me.saved_chat_id;
     if action == Action::Delete && target.saved {
-        return Err(CoreError::DeleteRefused {
-            why: DeleteRefusedWhy::Saved,
+        return Err(CoreError::ActionRefused {
+            why: RefusedWhy::Saved,
         });
     }
     let mode = b.gate().mode_for(target.id)?;
@@ -249,16 +249,16 @@ async fn load_revocable<B: Backend>(
         // （`MessagesManager.cpp:8352-8354`），可待发那条恰好发出时删除会被换成正式 id、`revoke=true` 就给所有人删了
         // ——待发的只许走 `pending cancel`（`revoke=false`，见模块文档；自审 #8 A P1）
         let why = if !m.outgoing {
-            Some(DeleteRefusedWhy::NotOwn)
+            Some(RefusedWhy::NotOwn)
         } else if m.sending != SendingState::Sent {
-            Some(DeleteRefusedWhy::NotSent)
+            Some(RefusedWhy::NotSent)
         } else if !b.message_caps(mid).await?.can_delete_for_all {
-            Some(DeleteRefusedWhy::NotRevocable)
+            Some(RefusedWhy::NotRevocable)
         } else {
             None
         };
         if let Some(why) = why {
-            return Err(CoreError::DeleteRefused { why });
+            return Err(CoreError::ActionRefused { why });
         }
         let text = send::resending::confirmable_text(&m);
         items.push(DeleteItem {

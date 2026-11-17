@@ -4,7 +4,6 @@ use atg_core::config::{Profile, ServerKind};
 use atg_core::fake::{FakeAuth, FakeBackend};
 use atg_core::model::{Message, SenderId};
 use atg_core::store::Input;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Default)]
 struct Cap {
@@ -21,13 +20,7 @@ impl Sink for Cap {
 const ME: i64 = 4242;
 
 fn profile() -> Profile {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "atg-cli-pending-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = atg_core::testkit::temp_dir("cli-pending");
     Profile::create(&root, "p", ServerKind::Test).unwrap()
 }
 

@@ -16,13 +16,7 @@ const T0: i64 = 1_793_014_200;
 const FILE: i32 = 42;
 
 fn profile(tag: &str) -> Profile {
-    let d = std::env::temp_dir().join(format!(
-        "atg-cli-voice-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    Profile::create(&d, "main", ServerKind::Main).unwrap()
+    atg_core::testkit::profile(&format!("cli-voice-{tag}"), ServerKind::Main)
 }
 
 fn voice(file_id: i32) -> Value {

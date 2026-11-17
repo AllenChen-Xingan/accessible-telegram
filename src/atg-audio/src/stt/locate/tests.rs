@@ -4,7 +4,7 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
 
-/// 每条测试一个干净的临时目录
+/// 每条测试一个干净的临时目录。不用 `atg_core::testkit`：atg-audio 不依赖 atg-core
 fn scratch(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("atg-stt-locate-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);

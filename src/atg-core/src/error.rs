@@ -117,22 +117,30 @@ pub enum InvalidSendWhy {
     NotText,
     /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
     TooMany,
-    /// 要删的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，整批不删（#8）
+    /// 要删 / 要改的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，什么都不动（#8）
     Changed,
+    /// 要改的不是纯文字消息（带附件）：说明文字的编辑（`editMessageCaption`）第二批再做（#8 B，大总管定 2026-11-17）。
+    /// 机读码与撤销的同名（`not_text`），说明不同
+    #[serde(rename = "not_text")]
+    EditNotText,
+    /// 新的文字和原来一样：本地先拦，不让服务器报 `MESSAGE_NOT_MODIFIED`（#8 B）
+    Unchanged,
 }
 
-/// 不能给所有人删（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`，#8）
+/// 不能删 / 不能改（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`、`edit_prepare`，#8）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DeleteRefusedWhy {
+pub enum RefusedWhy {
     /// 收藏夹里的消息 TDLib 不许给所有人删（`MessagesManager.cpp:8346`）
     Saved,
-    /// 不是自己发的：本应用只删自己的（大总管定 2026-11-17，待人看）
+    /// 不是自己发的：本应用只删、只改自己的（大总管定 2026-11-17，待人看）
     NotOwn,
-    /// 还没发出（待发或发送失败）：待发的用 `pending cancel`；失败的没送到对方，不用给所有人删
+    /// 还没发出（待发或发送失败）：待发的用 `pending cancel`；失败的没送到对方，不用给所有人删，也改不了
     NotSent,
-    /// TDLib 说这条不能给所有人删（还在待发、过了时限、会话不许等）
+    /// TDLib 说这条不能给所有人删（过了时限、会话不许等）
     NotRevocable,
+    /// TDLib 说这条不能改（`can_be_edited` 为假：过了编辑时限、转发来的、带键盘等，#8 B）
+    NotEditable,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -228,9 +236,9 @@ pub enum CoreError {
     InvalidSend {
         why: InvalidSendWhy,
     },
-    /// 机读码 `forbidden`：这条不能给所有人删，带 `why`
-    DeleteRefused {
-        why: DeleteRefusedWhy,
+    /// 机读码 `forbidden`：这条不能删 / 不能改，带 `why`
+    ActionRefused {
+        why: RefusedWhy,
     },
     Cancelled,
     /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
@@ -261,7 +269,7 @@ impl CoreError {
             Self::RateLimited { .. } => "rate_limited",
             Self::AccountLimited { .. } => "account_limited",
             Self::NotFound { .. } => "not_found",
-            Self::Forbidden { .. } | Self::DeleteRefused { .. } => "forbidden",
+            Self::Forbidden { .. } | Self::ActionRefused { .. } => "forbidden",
             Self::InvalidInput { .. } | Self::InvalidSend { .. } => "invalid_input",
             Self::Network { .. } => "network",
             Self::Disconnected => "disconnected",
@@ -304,7 +312,7 @@ impl CoreError {
             | Self::SendRefused { .. }
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
-            | Self::DeleteRefused { .. }
+            | Self::ActionRefused { .. }
             | Self::Cancelled
             | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
@@ -380,7 +388,13 @@ impl CoreError {
                     "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
                 }
                 InvalidSendWhy::Changed => {
-                    "要删的消息在列出计划之后、真正删之前被编辑过，计划里的正文已经不对；什么都没删，请重新发起"
+                    "那条消息在列出计划之后、真正动手之前被编辑过，计划里的正文已经不对；什么都没动，请重新发起"
+                }
+                InvalidSendWhy::EditNotText => {
+                    "这条不是纯文字消息（带附件），本应用暂时只改纯文字消息的正文；什么都没改"
+                }
+                InvalidSendWhy::Unchanged => {
+                    "新的文字和原来一样，不用改（本应用只改文字，不能只去掉格式）；什么都没改"
                 }
                 InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
                 InvalidSendWhy::NeedsOther => {
@@ -400,14 +414,17 @@ impl CoreError {
                     "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
                 }
             },
-            Self::DeleteRefused { why } => match why {
-                DeleteRefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
-                DeleteRefusedWhy::NotOwn => "只能删自己发的消息；什么都没删",
-                DeleteRefusedWhy::NotSent => {
-                    "这条还没发出：待发的请用 pending cancel 撤销，发送失败的没送到对方、不用给所有人删；什么都没删"
+            Self::ActionRefused { why } => match why {
+                RefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
+                RefusedWhy::NotOwn => "只能删或改自己发的消息；什么都没动",
+                RefusedWhy::NotSent => {
+                    "这条还没发出：待发的可等它发出后再删或再改，或用 pending cancel 撤销后重发；发送失败的没送到对方，不用给所有人删，也改不了，可 resend 或重发；什么都没动"
                 }
-                DeleteRefusedWhy::NotRevocable => {
+                RefusedWhy::NotRevocable => {
                     "Telegram 说这条不能给所有人删（可能过了 Telegram 定的能删时限，或这个会话不许）；什么都没删"
+                }
+                RefusedWhy::NotEditable => {
+                    "Telegram 说这条不能改（可能过了 Telegram 定的能改时限，一般是发出后 48 小时；或是转发来的）；什么都没改"
                 }
             },
             Self::Cancelled => "已取消",

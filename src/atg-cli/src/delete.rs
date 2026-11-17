@@ -52,16 +52,19 @@ pub fn run(
     if let Some(f) = crate::no_redact(g, "delete") {
         return out::fail_with(format, &f);
     }
-    let params = json!(DeleteParams {
+    let p = DeleteParams {
         chat: a.chat,
         ids: a.ids,
         dry_run: a.dry_run,
         tz: g.tz.clone(),
-    });
-    if let Some(code) = crate::forward::try_forward(g, format, "delete", &params) {
+    };
+    if let Some(code) = crate::forward::try_forward(g, format, "delete", &json!(p)) {
         return std::process::ExitCode::from(code);
     }
-    std::process::ExitCode::from(crate::session::delete(g, format, &params, started))
+    let code = crate::session::l2_run(g, format, "delete", started, &mut |b, st, fe, sink| {
+        execute_delete(b, st, fe, &p, sink, format, started)
+    });
+    std::process::ExitCode::from(code)
 }
 
 /// 在已起好的后端上删除（直跑与执行方共用）

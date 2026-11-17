@@ -501,33 +501,6 @@ pub fn pending(
     })
 }
 
-/// `delete` 直跑（L2，直发）
-pub fn delete(
-    g: &Global,
-    format: crate::args::Format,
-    params: &serde_json::Value,
-    started: std::time::Instant,
-) -> u8 {
-    l2_run(
-        g,
-        format,
-        "delete",
-        started,
-        &mut |b, stream, feed, sink| match serde_json::from_value::<crate::delete::DeleteParams>(
-            params.clone(),
-        ) {
-            Ok(p) => crate::delete::execute_delete(b, stream, feed, &p, sink, format, started),
-            Err(_) => crate::out::fail_with_to(
-                sink,
-                format,
-                &crate::out::Fail::Core(atg_core::error::CoreError::Internal {
-                    what: "ipc_bad_request",
-                }),
-            ),
-        },
-    )
-}
-
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
 #[cfg(feature = "tdlib")]
 pub(crate) type L2Body<'a> = dyn FnMut(
@@ -548,7 +521,7 @@ pub(crate) type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`，以及同一外壳的 `pending` 列表、`reactions`）的
+/// 发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`、`edit`，以及同一外壳的 `pending` 列表、`reactions`）的
 /// 直跑外壳：选档案 → 起真实后端 → 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
 pub(crate) fn l2_run(
     g: &Global,

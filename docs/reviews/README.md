@@ -34,6 +34,7 @@
 | 029 | 2026-11-16 | #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex） | 第 1 轮 P1×3 P2×1、第 2 轮 P2×2、第 3 轮（范围改 `origin/main...HEAD`，停止线重数）P1×2 P2×1、第 4 轮 P1×1，全部属实已修；#109 并入修掉；第 5、6 轮通过，收敛 → `029_pending-57-codex.md` |
 | 027 | 2026-11-14 | #62 #64 #95 第三批：td 起停收尾、用法错误不回显原文、auth 死路统一判、watch 出 status 前 Ctrl+C（codex · 两轮） | 第一轮 P2×2 全部属实已修；第二轮无发现；两轮无 P0/P1，收敛 → `027_batch3-62-64-95-codex.md` |
 | 030 | 2026-11-17 | #8 A 段给所有人删除（atg-cli delete、atg-core delete_prepare / delete）（codex · diff） | 第 1 轮 P2×1（附件改说明 / 换图复查不出）已修；第 2 轮 P2×1（同一秒再换图仍靠编辑时间认）开 issue；两轮无 P0/P1，收敛 → `030_delete-8a-codex.md` |
+| 031 | 2026-11-17 | #8 B 段编辑自己发的消息（atg-cli edit、atg-core edit_prepare / edit_text）（codex · diff） | 第 1 轮 P2×2（实测失败仍通过、交出报错留痕不记 id）已修；第 2、3 轮（换身份 `edit-8b-r`）通过，收敛 → `031_edit-8b-codex.md` |
 | 038 | 2026-11-14 | #60 R2a 挪出 `chats.rs`、`notify.rs` 行内测试（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `038_r2a-move-tests-codex.md` |
 | 045 | 2026-11-16 | #97 #98 #100 #40 第四批：标记原子发布、tty 读看停止标志、内核故障即报断开、密码缓冲区按容量清零（codex · diff 类） | 四轮：P1×5 属实已修、P2 留 #116；第 3、4 轮无 P0/P1，收敛 → `045_batch4-97-98-100-40-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
@@ -47,4 +48,8 @@
 | 049 | 2026-11-17 | #60 R7 第一刀：拆 `tree/text.rs`，遍历部分挪进 `tree/text/walk.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（记录里的行数是旧数）已改 → `049_r7-tree-text-codex.md` |
 | 050 | 2026-11-17 | #60 R7 第二刀：拆 `speech.rs`，系统消息进 `speech/service.rs`，全文渲染与正文附件读法并进 `speech/content.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1 轮 P2×1（交接页进度写的是中间版本）属实已改；第 2 轮零发现，收敛 → `050_r7-speech-codex.md` |
 | 051 | 2026-11-17 | #60 R7 第三刀：拆 `store/mod.rs`，改状态的私有方法挪进 `store/write.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（交接页计数笔误）已改 → `051_r7-store-codex.md` |
+| 052 | 2026-11-17 | #60 R7 第四刀：拆 `tests/reducer.rs`，改成 `tests/reducer/` 下 9 个文件、按主题分（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；77 = 77 → `052_r7-tests-reducer-codex.md` |
+| 053 | 2026-11-17 | #60 R7 第五刀：拆 cli `history.rs`，links 进 `history/links.rs`、读法与渲染进 `history/render.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1、2 轮各 P2×1（010、交接页里导出个数与行数写错），都属实已改；两轮无 P0/P1，收敛 → `053_r7-history-codex.md` |
+| 054 | 2026-11-17 | #60 R7 第六刀：拆 cli `watch.rs`，出口与订阅者进 `watch/hub.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `054_r7-watch-codex.md` |
+| 055 | 2026-11-17 | #60 R3a 第二刀：12 处测试临时目录助手换成 testkit（只动测试与注释；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `055_r3a-testkit-2-codex.md` |
 | 056 | 2026-11-17 | #153 `atg-cli resend` 的 MSG_ID 吞掉后面的选项（去掉可变长参数上的 `allow_hyphen_values`，加 clap 解析测试与结构测试；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `056_153-args-hyphen-codex.md` |

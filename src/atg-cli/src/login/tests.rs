@@ -58,13 +58,7 @@ impl Prompter for Script {
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "atg-cli-login-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    d
+    atg_core::testkit::temp_dir(&format!("cli-login-{tag}"))
 }
 
 fn account() -> FakeAuth {
