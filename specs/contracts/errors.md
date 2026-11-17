@@ -26,7 +26,7 @@
 | `forbidden` | 没权限（TDLib 403，`CHAT_WRITE_FORBIDDEN`、被拉黑、频道只读等）；`delete` 准备与交出前复查时本地判定不能给所有人删 | `why`（只在 `delete`：`saved` 收藏夹里的 · `not_own` 不是自己发的 · `not_sent` 还没发出（待发、失败） · `not_revocable` TDLib 说不能给所有人删） | 否 |
 | `invalid_input` | 其他参数错误（TDLib 400 的其余情况、本地校验失败） | — | 否 |
 | `network` | 请求超时、网络不可用时请求失败。另：`send` / `resend` / `forward` 还卡在交出前的复核（要等 TDLib 回预览比对、重取失败态、重取要转的消息）里就到了上限——什么都没发，可以重跑，不登记防重复（#80）。`delete` 不分：交出前复查里到点也按 `send_outcome_unknown` 报（偏保守，见那一行） | — | 是，连接恢复后 |
-| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`、`react`、`forward`、`pending cancel`、`delete`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；经本机接口转发途中断开（不是发送类命令）时调用方可以再跑一次 |
+| `disconnected` | 收线程已故障（架构方案第一节第 4 小节）；之后一切请求都直接回这个。**另**：经本机接口转发时，连上了执行方却没等到结尾就断了（执行方中途退出），或 150 秒没回话（流式的 `watch` 不用这条超时），发起方也报它，说明换成「替你执行的进程中途退出了」或「150 秒没回话」，退出码同为 4；**发送类命令（`send`、`resend`、`react`、`forward`、`pending cancel`、`delete`）例外**：执行方可能已经交出，改报 `send_outcome_unknown`（`why:"disconnected"`，退出码 10，不许重发）；`watch` 订阅时执行方给它写一帧 60 秒写不出去就摘掉它，发起方看到的也是这个（`config-privacy.md` 第一节第 2 小节） | — | 否（不自动重试）：收线程故障要重启内核；经本机接口代跑途中断开（命令不是发送类时；这里的「转发」指把命令交给执行方进程，不是转发消息的 `forward`）调用方可以再跑一次 |
 | `profile_busy` | 同一个本地库已被另一个进程占用，且这条命令没法经本机接口转过去（见 `config-privacy.md`「一库一进程」「本机接口」）。说明按场景换：占着的是一次性命令 →「稍后重试，或先开着 atg-cli serve」；占着的是常驻执行方而命令不转（登录、登出）→「请先停掉它再跑」；又起一个 `serve` →「已经有常驻进程在服务」 | `holder`：能查到就写是 CLI 还是 GUI | 否（不自动重试；要不要稍后再跑由调用方按说明定） |
 | `db_key_invalid` | 本地库的加密钥匙不对或取不到（TDLib 401 `Wrong database encryption key`，`TdDb.cpp:184`；或钥匙串拒绝） | `source`：`keychain_denied` / `wrong_key` | 否，见 `config-privacy.md`「钥匙丢了怎么办」 |
 | `send_refused` | 发送闸拒绝：没凭据、凭据与目标或内容不符、凭据过期或已用过、非交互环境 | `reason`（见下） | 否 |
@@ -198,3 +198,4 @@
 - 2026-11-17 #10 自审第 2 轮后（手下 msg2）：`disconnected` 例外与 `send_outcome_unknown` 时限、`temp_message_id` 补 `forward`；`not_forwarded` 写明不是输入错
 - 2026-11-17 #10 自审第 3 轮后（手下 msg2）：`not_forwardable` 定义扩成两种时机；`send_outcome_unknown` 补 `forward` 的下一步与 `why:disconnected` 在应答认不出时的含义
 - 2026-11-17 #10 合 #143、自审第 4 轮后（手下 msg2）：`invalid_input.why` 加 `forward_to_secret_chat`；`network` 与 `send_outcome_unknown` 的「交出前到点」补 `forward`；`disconnected` 最后一列写明「经本机接口转发」
+- 2026-11-17 #10 自审第 5 轮后（手下 msg2）：`disconnected` 最后一列分清「经本机接口代跑」与转发消息的 `forward`

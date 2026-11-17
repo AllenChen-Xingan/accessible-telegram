@@ -285,16 +285,18 @@ impl Gate {
             && let Some(key) = f.guard_key.as_ref()
         {
             let fps = fingerprints(key, plan);
-            // 指纹与 `log_items` 一一对应：找到这条就只改它；对不上（不该发生）就全改，宁可多拦
+            // 指纹与 `log_items` 一一对应：找到这条就只改它。对不上（不该发生）就一个都不改——都停在「已提交」，
+            // 按结果未知拦 24 小时（宁可多拦；拿这一条的结果去改全部，失败时反倒会把别条的拦截解掉）
             let mine = plan
                 .log_items()
                 .iter()
                 .position(|&o| o == old_id)
                 .filter(|_| fps.len() == plan.log_items().len())
-                .map_or(fps.clone(), |i| vec![fps[i].clone()]);
-            if GuardStore::new(dir.join(GUARD_FILE))
-                .settle_all(now, plan.target(), &mine, outcome)
-                .is_err()
+                .map(|i| vec![fps[i].clone()]);
+            if let Some(mine) = mine
+                && GuardStore::new(dir.join(GUARD_FILE))
+                    .settle_all(now, plan.target(), &mine, outcome)
+                    .is_err()
             {
                 logline::warn("send_guard_update_failed", &[]);
             }
@@ -364,18 +366,16 @@ impl Gate {
         };
         let store = GuardStore::new(dir.join(GUARD_FILE));
         let now = unix_now();
-        for fp in fingerprints(key, plan) {
-            // 读不了记录：宁可拒（直发撤不回）
-            let hit = store
-                .hit(now, plan.target(), &fp)
-                .map_err(|_| CoreError::Internal {
-                    what: "send_guard_unreadable",
-                })?;
-            if let Some(e) = hit {
-                return Err(duplicate(now, &e));
-            }
+        // 读不了记录：宁可拒（直发撤不回）。好几个指纹都命中时报拦得最久的那条（同交出前的认领）
+        let hit = store
+            .hit_any(now, plan.target(), &fingerprints(key, plan))
+            .map_err(|_| CoreError::Internal {
+                what: "send_guard_unreadable",
+            })?;
+        match hit {
+            None => Ok(()),
+            Some(e) => Err(duplicate(now, &e)),
         }
-        Ok(())
     }
 }
 
@@ -432,7 +432,7 @@ struct DirectLogLine {
     /// 转发的来源会话（[`Gated::log_source`]，#10）；只记 id
     #[serde(skip_serializing_if = "Option::is_none")]
     from_chat_id: Option<ChatId>,
-    /// 批量重发里这一行说的是哪条（重发前的旧 id；[`Gated::log_items`]，#83）
+    /// 批量计划里这一行说的是哪条（[`Gated::log_items`]）：重发是重发前的旧 id（#83），转发是来源里那条的 id（#10）
     #[serde(skip_serializing_if = "Option::is_none")]
     old_id: Option<i64>,
 }

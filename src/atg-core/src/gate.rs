@@ -1,7 +1,7 @@
 //! `gate`：发送闸——L2 动作（发送、重发……）的唯一入口。规约正本：`specs/contracts/actions.md` 第一节第 4、5 小节。
 //!
 //! 等级（`actions.md` 第一节第 2 小节）：**L0** = 只读或只影响本机，随便调（发送前的准备、预览都是）；**L2** = 发给
-//! 别人（发送、重发、删除、表情回应；除表情回应外都撤不回），只能凭一次性凭据交出，且绝不自动重试。
+//! 别人（发送、重发、删除、表情回应、转发；除表情回应外都撤不回），只能凭一次性凭据交出，且绝不自动重试。
 //!
 //! - **凭据** [`ConfirmToken`] 只能由 [`Gate::issue`] 开出：构造函数不公开，不实现 `Clone` / `Copy` /
 //!   `Serialize` / `Deserialize`，后端发送时按值吃掉它；60 秒（单调时钟：不受人改系统时间影响，改时间续不了期）；每张凭据带一个随机数，验过就记进本进程的「已用」表，同一张不能用两次；凭据本身**绝不交给
@@ -15,9 +15,10 @@
 //!   开凭据时查一次，交出前（[`Gate::verify`]）再查一次
 //! - **摘要**：交给 TDLib 那份请求的 JSON 字节 + 自己的账号 id + 服务器类别，SHA-256（[`digest`]）。凭据绑目标 + 摘要。
 //!   账号与服务器也算进去：开凭据之后换了号或换了服务器，旧凭据就对不上，不会被拿去替另一个账号发
-//! - **直发防重复**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A）：见 [`GuardStore`]
+//! - **直发防重复**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A）：见 [`GuardStore`]。一份计划可以带
+//!   好几个指纹（[`Gated::intents`]，转发每条一个，#10）：任一命中整份拒，整份一起认领；按条的结果只改那一条的指纹
 //! - **直发留痕**：档案目录 `direct-send.log`，一条直发一行（时间、进程种类、进程号、会话 id、临时与最终消息 id、
-//!   类型、结果；表情回应另记消息 id 与可能挤掉几个），不记内容与名字，保留 30 天；写不进去就拒绝直发
+//!   类型、结果；表情回应另记消息 id 与可能挤掉几个；批量重发、转发按条记、带 `old_id`，转发另记来源会话 id），不记内容与名字，保留 30 天；写不进去就拒绝直发
 //!
 //! 威胁边界同规约：闸防「走正规接口时出错或越权」，防不了能改本仓代码的程序。
 //!
@@ -166,7 +167,8 @@ pub trait Gated: Sealed {
     fn log_source(&self) -> Option<ChatId> {
         None
     }
-    /// 一次请求动好几条时（批量重发），各条的旧 id：留痕按条记，每条一行、带 `old_id`（#83）。单条的计划是空表
+    /// 一次请求动好几条时各条的 id：批量重发是重发前的旧 id（#83），转发是来源会话里那条的 id（#10）。留痕按条记，每条一行、
+    /// 带 `old_id`；有多个 [`Gated::intents`] 时与它一一对应、同序（按条记账靠位置对上）。单条的计划是空表
     fn log_items(&self) -> Vec<i64> {
         Vec::new()
     }
@@ -233,6 +235,23 @@ fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&
         .max_by_key(|e| e.at)
 }
 
+/// 多指纹计划（#10）命中好几条时报哪条：拦得最久的优先（结果未知 / 已提交 24 小时，先于已发出的 10 分钟），同类取最新。
+/// 报文里的「几秒前、什么结果」是人决定等一等还是加 `--again` 的依据，报成已发出会把结果未知的那条也放过去
+pub(crate) fn worst_hit<'a>(
+    entries: &'a [GuardEntry],
+    chat: ChatId,
+    fps: &[String],
+) -> Option<&'a GuardEntry> {
+    fps.iter()
+        .filter_map(|fp| latest_hit(entries, chat, fp))
+        .max_by_key(|e| {
+            (
+                matches!(e.state, Outcome::Unknown | Outcome::Submitted),
+                e.at,
+            )
+        })
+}
+
 /// 一条防重复记录：时间、会话、指纹、状态。**不记内容、不记名字**
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardEntry {
@@ -283,24 +302,24 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim`]）
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（开凭据时早拒用；交出前那次见 [`Self::claim_all`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
         Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
     }
 
-    /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。
-    /// 命中返回 `Ok(Err(那条))`，什么都不写。调用方攥着闸的锁调（进程内不交错；跨进程有档案锁）
-    pub fn claim(
+    /// [`Self::hit`] 的多指纹版：命中好几条时报 [`worst_hit`]
+    pub fn hit_any(
         &self,
         now: i64,
         chat: ChatId,
-        fp: &str,
-        again: bool,
-    ) -> std::io::Result<Result<(), GuardEntry>> {
-        self.claim_all(now, chat, &[fp.to_owned()], again)
+        fps: &[String],
+    ) -> std::io::Result<Option<GuardEntry>> {
+        Ok(worst_hit(&Self::live(now, self.load()?), chat, fps).cloned())
     }
 
-    /// [`Self::claim`] 的多指纹版（#10）：先查全部，任一命中就整个不认领、什么都不写；都没命中才一起记「已提交」
+    /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。一份计划可能带好几个
+    /// 指纹（#10）：先查全部，任一命中就整个不认领、什么都不写，返回 `Ok(Err(那条))`（[`worst_hit`]）；都没命中才一起记。
+    /// 调用方攥着闸的锁调（进程内不交错；跨进程有档案锁）
     pub fn claim_all(
         &self,
         now: i64,
@@ -309,7 +328,7 @@ impl GuardStore {
         again: bool,
     ) -> std::io::Result<Result<(), GuardEntry>> {
         let mut entries = Self::live(now, self.load()?);
-        if !again && let Some(hit) = fps.iter().find_map(|fp| latest_hit(&entries, chat, fp)) {
+        if !again && let Some(hit) = worst_hit(&entries, chat, fps) {
             return Ok(Err(hit.clone()));
         }
         for fp in fps {

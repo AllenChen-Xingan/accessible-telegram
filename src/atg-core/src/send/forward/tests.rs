@@ -406,3 +406,28 @@ fn failed_item_can_be_forwarded_alone() {
     let e = once(&mut r, OTHER, &[5], false).unwrap_err();
     assert_eq!(refused(e), SendRefusedReason::DuplicateRecent);
 }
+
+/// 好几条都命中时报拦得最久的那条：结果未知的不能被同批已转出的那条盖住（自审第 5 轮）
+#[test]
+fn duplicate_report_prefers_the_unknown_item() {
+    let mut r = rig("worst", false);
+    r.b.script_sends(vec![FakeSend::Succeed, FakeSend::Silent]);
+    let plan = prepare(&r, OTHER, &[5, 7]).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    forward_and_wait(
+        &r.b,
+        &plan,
+        token,
+        &mut r.stream,
+        Duration::from_millis(300),
+        &mut |_| {},
+    )
+    .unwrap();
+    match once(&mut r, OTHER, &[5, 7], false).unwrap_err() {
+        CoreError::SendRefused {
+            reason: SendRefusedReason::DuplicateRecent,
+            last: Some(last),
+        } => assert_eq!(last.outcome, crate::gate::Outcome::Unknown),
+        other => panic!("{other:?}"),
+    }
+}
