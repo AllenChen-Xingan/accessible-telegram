@@ -16,6 +16,7 @@ const DONE: &[&str] = &[
     "send",
     "resend",
     "forward",
+    "send-file",
     "serve",
     "download",
     "play",

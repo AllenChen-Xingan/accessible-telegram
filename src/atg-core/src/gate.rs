@@ -173,6 +173,11 @@ pub trait Gated: Sealed {
     fn log_items(&self) -> Vec<i64> {
         Vec::new()
     }
+    /// 留痕里另记的文件（`file`）：按图片还是按文件发（`photo` / `document`）与字节数。只有发文件有（#12）；
+    /// 不记路径、文件名、说明文字
+    fn log_file(&self) -> Option<(&'static str, u64)> {
+        None
+    }
 }
 
 /// 摘要：请求 JSON 的字节（不做 Unicode 规范化）+ 自己的账号 id + 服务器类别，SHA-256

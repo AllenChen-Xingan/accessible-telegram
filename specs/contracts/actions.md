@@ -121,6 +121,13 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `forward_prepare(to: ChatId, from: ChatId, ids: Vec<i64>)` | `ForwardPlan`：目标与来源会话（类型、名字、id）、每条的 id 与纯文字正文（带附件、系统消息为空）、发起方、开法、摘要 | `not_found` `invalid_input`（`why`：`forward_too_many` 一次超过 20 条，不截断、不分批；`not_forwardable` 有一条不能转，如来源会话禁止转发，整批不转；`forward_to_secret_chat` 目标是加密聊天——TDLib 会改成复制、不带原作者，与「带原发送人」相反）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → 来源会话 → 逐条 `getMessage`（在不在）+ `getMessageProperties.can_be_forwarded` → 组请求、算摘要。id 去重、按从小到大排（TDLib 要严格递增）。目标是论坛群时不带话题，落进「General」（计划行写明）。只做普通转发（带原发送人），不做复制（`send_copy`，会隐去原作者）；20 条与「不做复制」是人定前的默认（2026-11-17，待人定） |
 | `forward(plan, token)` | 每条一项：`PendingMessage`（目标会话里的临时 id）或「转不了」（TDLib 应答里是 null） | `send_refused` `forbidden` `send_outcome_unknown` `network`（交出前复核卡到时限，什么都没转）；之后逐条的下落里另有 `invalid_input`（`why`：`not_forwarded` 个别条交出后转不了；全都转不了为 `not_forwardable`） | **L2，直发** | `forwardMessages`（`:13180`，`options` 为空即默认、`send_copy=false`、`remove_caption=false`）。和其他 L2 一样直发（#113）。**交出前复核**：逐条重取，和计划比（内容、临时内容（如阅后即焚换上的那份）、受限原因、敏感内容标记、编辑时间、发送人；即 `model::Message` 里决定「转出去是什么」的几项）；准备到交出之间被编辑、删掉、变得不能转的，`send_refused(content_mismatch)`、什么都不交出。每条之后照 `send` 等结果（整批共用 30 秒，连同交出），到点 `send_outcome_unknown`；应答条数对不上、形状不对，或 TDLib 回的消息本应用解析不了，也按结果未知报（已交出，可能已转出；`why` 记 `disconnected`）。应答里个别条是 null（交出时才转不了）的，其余照常等；全是 null 的直接记「失败」收尾（留痕带码 `invalid_input`，不停在「已提交」，同一批再转不被拦），对外报 `invalid_input`，`why:"not_forwardable"`（一条都没转出）。**进重复提交拦截**（第 5 小节）：同一批转两次对方就收到两份。**留痕**另记来源会话 `from_chat_id`（只记 id） |
 
+**发文件 / 图片（#12）**
+
+| 动作 | 返回 | 额外错误 | 等级 | TDLib |
+|---|---|---|---|---|
+| `send_file_prepare(target: ChatId, path, caption: String, reply_to: Option<MessageId>)` | `FilePlan`（第 6 小节） | `not_found` `invalid_input`（`why`：`file_not_allowed` · `file_too_large` · `not_a_file` · `caption_too_long`，以及同 `send_text_prepare` 的 `forum_needs_reply` / `reply_not_allowed`）`send_refused(test_dc_saved_only)` | L0 | 只查不发：`me` → 目标会话 → 被回复那条（同 `send_text_prepare` 的话题规则）→ **许不许发**（人定 2026-11-17）：解析符号链接后的真实路径要是普通文件、在家目录的「下载」「桌面」「文稿」（`~/Downloads` `~/Desktop` `~/Documents`）之一里、不在本应用数据根与档案目录里，且许可文件夹以下每一级名字都不像密钥（不分大小写：`.env*` `id_rsa*` `id_dsa*` `id_ecdsa*` `id_ed25519*` `credentials*` · `*.pem` `*.key` `*.p12` `*.pfx` `*.keystore` `*.jks` `*.session` `*.binlog` `*.kdbx` · `.netrc` `.pgpass` `.ssh` `.gnupg` `tdata` `tdlib_db`），否则 `file_not_allowed` → 大小 ≤ 50 MB（人定），否则 `file_too_large` → **复制一份快照**到档案目录 `outbox/<随机>/<原文件名>`（目录 0700、文件 0600），边复制边算 SHA-256（复制时读到超过 50 MB 照样拒）→ 定按图片还是按文件发（人定：`jpg` `jpeg` `png` `webp` 按图片 `inputMessagePhoto`，会被压缩；超 10 MB、宽 + 高超 10000、长宽比超 20、读不出宽高的退回按文件发，计划写明原因；其余按文件 `inputMessageDocument`）→ 组请求（文件给快照路径）、算摘要。说明文字超过 1024 个字符（UTF-16 码元，普通号的 `message_caption_length_max`）→ `caption_too_long`；不做预览比对（预览带本地文件，回复对象改在交出前自己再查） |
+| `send_file(plan: FilePlan, token)` | `PendingMessage`；最终结果经事件，同 `send_text` | `send_refused`（含 `content_mismatch`：快照被换）`forbidden` `invalid_input` `network` `send_outcome_unknown` | **L2，直发** | `sendMessage`（`:13143`）+ `inputMessageDocument`（`:6700`）/ `inputMessagePhoto`（`:6716`），文件为 `inputFileLocal`（快照路径）；其余请求字段同 `send_text`。**交出前复核**：被回复那条还在、还能回复；重算快照的 SHA-256，与计划不符 `send_refused(content_mismatch)`、不交出。**等结果按上传进度**（人定 2026-11-17）：隔一会儿 `getMessage` 看待发那条的文件 `remote.uploaded_size` / `is_uploading_completed`，有进度就接着等；**连续 60 秒没进度**或**交出后总共 10 分钟**按 `send_outcome_unknown`（`timeout`）报；交出本身（验凭据、复核、等应答）另有 30 秒上限，规则同 `send_text`（#80）。**快照**：等到成功 / 失败就删；结果未知的留着（TDLib 下次启动续发要读它），过 24 小时清（每次准备时顺手清）；只看计划（`--dry-run`）、没交出就出错的随计划删。**进重复提交拦截**（第 5 小节；指纹不含路径）。**留痕**另记 `file`：`kind`（`photo` / `document`）与 `size`（字节），不记路径、文件名、说明文字 |
+
 **表情回应（#9）**
 
 | 动作 | 返回 | 额外错误 | 等级 | TDLib |
@@ -139,7 +146,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | 动作 | 等级 | 说明 |
 |---|---|---|
 | `delete(ids, revoke=false)` | L0 但本机不可逆 | 只删自己这边；要人当场确认（给所有人的已进 MVP，见上表） |
-| `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
+| `send_voice` | L2 | `sendMessage` + `inputMessageVoiceNote`（`:6738`）（`send_file` 已做，#12，见上「发文件 / 图片」） |
 | `speech_to_text` | L0 | **本机转写**（#59 取代 F4）：`atg-audio` 的 `stt` 起本机辅助程序、用 Apple 端侧模型（SpeechAnalyzer），音频经管道喂、不落盘、不外发（以 Apple 端侧说明为据，**断网未实测**，待人验证）；不调 `recognizeSpeech`（`:13121`，那是 Telegram 服务器识别、要 Premium）。CLI `transcribe`；结果只在内存（转写表），不标已听 |
 | `mark_unread` | L0 | `toggleChatIsMarkedAsUnread`（`:14514`） |
 
@@ -184,7 +191,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 - **怎么进入**：不用进入——**直发是唯一方式**（人定 2026-11-16「我完全不需要 touch id」#111、「touch id 这个功能彻底关掉以及完全不用」#113）。`--unsafe-direct-send` 留着只为旧脚本不报错，加不加一样（帮助里不显示）
 - **管多久**：一直如此，没有开关。测试服务器只许发收藏夹（第一节第 4 小节第 2 条）照旧
-- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），`react` / 去掉回应、`forward`，`edit_text`，以及将来的 `send_file` / `send_voice`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
+- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），`react` / 去掉回应、`forward`，`edit_text`，`send_file`，以及将来的 `send_voice`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
 - **不免什么**（这些不是「确认」，是防误发与防封号，不增加摩擦）：摘要与目标校验照做（防「确认 A 发 B」那类程序错误）；L2 不自动重试；限流与 `account_limited` 照旧；**重复提交拦截**（下一条）。`logout` 的当场确认不是 L2，照旧
 - **重复提交拦截**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A「拦下」）：一次性凭据只防同一张凭据被重放，直发模式下闸每次自动开新凭据，双击、界面重复触发、AI 在「结果未知」后重跑都会发出第二条，撤不回。所以：
   - **管谁**：只管 `direct_mode` 凭据（含转给以直发启动的执行方的命令）。`test_exempt` 不拦（回归测试要反复发固定文本）
@@ -192,13 +199,14 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
   - **记在哪**：档案目录 `send-guard.json`（`config-privacy.md` 第一节第 1 小节）。交给 TDLib **之前**写「已提交」（写不进去就拒直发，同留痕），等到结果改成「已发出 / 失败 / 未知」；进程中途死掉，「已提交」照样算数。记录文件读不了（含文件坏了）就不写、拒直发——拿空表覆盖会抹掉别的发送的记录；坏了要人删掉它才恢复
   - **何时查**：开凭据时查一次，只为早拒、人少等；**以交出前那次为准**——查重与写「已提交」在交给 TDLib 之前一步做完（进程内攥着闸的锁，跨进程靠档案锁），凭据开出之后别的同内容发送先交出了，这次照样拦（#77）
   - **何时拦**：同会话同指纹、上次是「已发出」且在 **10 分钟内**，或上次是「未知 / 已提交（没收尾）」且在 **24 小时内** → `send_refused(duplicate_recent)`，`error.data` 带 `last_at`、`last_ago_s`、`last_outcome`，说明写清「几秒前、什么结果」。上次是「失败」（服务器明确没收）不拦——失败的用 `resend`。10 分钟要长过「结果未知」的 30 秒，又不把同一句话长久拦死。结果未知的另留 24 小时：那条可能还在 TDLib 的本地待发队列里，下次任何一条命令启动 TDLib 都会自动续发（003 发8），断网几小时后才发出也有可能，10 分钟后放行就会发两条（自审第 2 轮）；仍有期限，不永远拦（B17-2「到期作废」）。每次写时删掉过期的。时间比「现在」还晚的记录（本机时钟被往回拨过）照样算数，等时钟追上再过期——丢掉就等于回拨时钟能解除拦截
-  - **放行**：`send --again` / `forward --again`（只这一次；经本机接口代跑时随参数过去）。放行的那次照样记一条。`--again` 绑在开出的那张凭据上：只放行用这张凭据交出的那一次；别的凭据（哪怕同一份计划）拿不走，也清不掉它（#77）
+  - **放行**：`send --again` / `forward --again` / `send-file --again`（只这一次；经本机接口代跑时随参数过去）。放行的那次照样记一条。`--again` 绑在开出的那张凭据上：只放行用这张凭据交出的那一次；别的凭据（哪怕同一份计划）拿不走，也清不掉它（#77）
   - `forward` **进**这套，而且**每条一个指纹**（意图摘要里装着目标 + 来源会话 + 那条 id）：一批里任一条在拦截期就整批拒；每条的结果各改各的指纹，所以结果未知的那条换一批、单转它也拦得住，失败的那条可以单独补转。`forward --again` 对这一批每一条都放行
+  - `send_file` **进**这套（#12）：意图摘要里装的是请求（`sending_id` 记 0、**快照路径记空**）+ 文件的 SHA-256——同目标 + 同一个文件内容 + 同说明 + 同回复 = 同指纹；文件换个地方、换个名字再发也拦。`send-file --again` 放行
   - `react` 不进这套：同一个回应点两次 Telegram 那边不会多出一个
   - `resend` 不进这套：重发对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
 - **测试档案**：仍然**只许发收藏夹**（`test_dc_saved_only`），外加第 4 小节第 2 条的第二个测试号私聊（N7）。测试服务器上的号谁都能登，可能是真人；`CLAUDE.md` 第五节「测试绝不向真实联系人发消息」
 - **启动时不提示**：直发是唯一方式，CLI 不出开场 `status` 行与醒目提示，GUI 标题不加「直发模式」、不播报（原规定随 #113 删除）
-- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行；批量重发按条记：每条各一行「已提交」、各一行结果，带 `old_id`（重发前的旧 id），TDLib 说不能重发的那条记 `failed`、`error` 记 `not_resent`（与 CLI `resend` 的 `items` 同名；只在留痕里，不是 `errors.md` 的错误码），请求整个失败或到点时每条各一行，#83）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 转发另有 `from_chat_id`（来源会话 id），也按条记：每条各一行「已提交」、各一行结果，`old_id` 是来源里那条的 id，交出后 TDLib 说转不了的那条记 `failed`、`error` 记 `not_forwarded`（#10）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
+- **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行；批量重发按条记：每条各一行「已提交」、各一行结果，带 `old_id`（重发前的旧 id），TDLib 说不能重发的那条记 `failed`、`error` 记 `not_resent`（与 CLI `resend` 的 `items` 同名；只在留痕里，不是 `errors.md` 的错误码），请求整个失败或到点时每条各一行，#83）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 转发另有 `from_chat_id`（来源会话 id），也按条记：每条各一行「已提交」、各一行结果，`old_id` 是来源里那条的 id，交出后 TDLib 说转不了的那条记 `failed`、`error` 记 `not_forwarded`（#10）· 发文件另有 `file`（`kind`：`photo` / `document`；`size`：字节数；#12，旧行没有这个字段）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
 - **建议**（都不增加摩擦）：`plan` 行照常输出（AI 和人事后都能看到发了什么）；退出时汇总「本次直发 N 条」；`status` 显示本次已直发条数；`direct-send.log` 写不进去就拒绝直发（留痕是条件，不是可选）
 - 人已明确知道并接受：AI 能直接发；收到的消息里藏的指令可能诱导 AI 发错。本契约**不**为它加确认、白名单之类的门槛
 
@@ -209,6 +217,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值（删除用 `DeletePlan`，见下一行） |
 | `DeletePlan` | 目标（同 `SendPlan`）· 每条 `temp_message_id` 与能给人确认的正文（不是纯文字为空）· `hidden_chars` · 发起方 · 确认方式 · 摘要 · `note_zh`（「只是尽力撤销」）。`action` 现在只有 `pending_cancel`（交出 `revoke=false`）；M2.7 再加「给所有人」（`revoke=true`）一项；`docs/plan/002_roadmap.md` M2.7「删除（给所有人）」也用它（那时 id 叫 `message_id`） |
 | `ForwardPlan` | 目标与来源会话（类型、名字、id）· 每条 `message_id` 与纯文字正文（不是纯文字为空）· `hidden_chars` · `topic`（恒为空：论坛群落「General」）· 发起方 · 开法 · 摘要 · `note_zh`（「若网络中断，恢复后仍会发出」，同 `send`） |
+| `FilePlan` | 目标（同 `SendPlan`）· `file_name`（原文件名，对方看到的也是它）· `size`（字节）· `sha256_8`（SHA-256 前 8 个十六进制字符，给人核对）· `send_as`（`photo` / `document`）· `photo_fallback`（本该按图片发、退回按文件发的原因：`photo_too_large` / `photo_too_big` / `photo_too_narrow` / `photo_unreadable`；否则空）· 按图片发时的 `width` / `height` · 说明文字 `caption` · `hidden_chars`（说明与文件名里看不见的字符数）· 回复的那条 · 最终话题 · 发起方 · 确认方式 · 摘要 · `note_zh`（同 `send`）。**不带路径**（原路径、快照路径都不给） |
 | `EditPlan` | 目标（同 `SendPlan`）· `message_id` · 原文 `old_text` · 新文 `text` · `hidden_chars` · `formatting_dropped` · 发起方 · 确认方式 · 摘要 · `note_zh`（改的是已发出的消息、对方那边也跟着变） |
 | `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 可能挤掉的我原先点的回应 · 这份名单拿不拿得准（`replaces_known`）· 发起方 · 开法 · 摘要值 |
 | `AddedReactions` | `total` · 这一页每项（回应种类 · 谁（发送人 id）· 是不是我 · 时间）· `next_offset`（空 = 没有更多） |
@@ -385,3 +394,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-17 #8 B（msg1，大总管定 2026-11-17）：「发送」表加 `edit_prepare` / `edit_text` 两行（只许自己发的、已发出的纯文字；`not_editable` / `unchanged`；带格式照改标 `formatting_dropped`，待人看），第二批留位去掉 `edit_text`；第 6 小节加 `EditPlan`；第 4 小节第 7 条清单补 `edit_message_text`
 - 2026-11-17 #8 B 自审（msg1）：链接预览按默认重新生成写进说明（留 issue）；签名 `text: String`、事件名、`forbidden.why` 限定词、转发 `tz` 清单等措辞对齐
 - 2026-11-17 #8 B codex 031 第 1 轮（msg1）：`edit_text` 失败、结果未知时留痕也记 `final_id`
+- 2026-11-17 #12 发文件 / 图片（手下 msg2；人定：只许下载 / 桌面 / 文稿 + 密钥名黑名单、50 MB、按扩展名自动按图片发、按进度等 60 秒 / 10 分钟）：动作表加「发文件 / 图片」一组（`send_file_prepare` · `send_file`），第二批留位去掉 `send_file`；第 5 小节写明 `send_file` 进重复提交拦截（指纹不含路径）、留痕另记 `file{kind,size}`（**闸只加留痕字段，一级评审**）；第 6 小节加 `FilePlan`

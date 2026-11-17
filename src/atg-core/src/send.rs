@@ -43,6 +43,7 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+pub mod file;
 pub mod forward;
 mod outcome;
 pub mod react;

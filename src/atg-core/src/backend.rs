@@ -133,6 +133,11 @@ pub trait Backend {
     /// 文件 id 为 0 / TDLib 找不到 → `not_found{what:"file"}`；回来了却没下完 → `internal{what:"download_incomplete"}`
     async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError>;
 
+    /// 一条带文件的待发消息上传到哪了（L0；#12 等结果时按进度续等）。消息不在、不带文件、后端不知道 → `None`
+    async fn upload_progress(&self, _id: MsgId) -> Result<Option<Upload>, CoreError> {
+        Ok(None)
+    }
+
     /// 标已听 / 已看（`openMessageContent`，**L1**：对方会看到；`actions.md` `mark_listened`）。只从 `play --mark-listened`
     /// 与以后 GUI 的播放调。**阅后即焚按 L2，本函数不管**：调用方先查 `Message::self_destruct`，L2 确认没做之前不许调
     async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError>;
@@ -226,6 +231,13 @@ impl HistoryReq {
 pub struct Downloaded {
     pub path: PathBuf,
     pub size: u64,
+}
+
+/// [`Backend::upload_progress`] 的结果：已上传的字节数（`remoteFile.uploaded_size`）、传完了没有（`is_uploading_completed`）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Upload {
+    pub uploaded: u64,
+    pub done: bool,
 }
 
 /// [`Backend::chats_load`] 的结果

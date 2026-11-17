@@ -179,3 +179,11 @@
 ### 开工
 等 #154 合进 main 后从 main 新开分支（大总管开工作副本）；动 `send.rs`、`gate/**` 之前先报大总管。
 - 2026-11-17 大总管：#12 计划照此做；`--as-file` 先不加（人选 B），进待定清单下次问人；开工等 #154 合
+
+## #12 发文件 · 开工（2026-11-17，工作副本 msg2-12，分支 feat/12-send-file，codex 034）
+- 大总管许：send.rs 只加 `pub mod file;`；gate 只加留痕字段（`Gated::log_file` 默认 None、`DirectLogLine.file{kind,size}`），拦截逻辑不动；td/fake 改动集中
+- 基线放宽（大总管定 A）：td.rs 797→802、fake.rs 1014→1021，单独提交，arch 拆 fake/td 时收回；PR 说明单列「基线放宽」
+- 写好（未编译）：core `send/file.rs` + `send/file/local.rs`（许发路径、快照、图片头）+ `send/file/tests.rs`；`backend.rs` `Upload` + `upload_progress`（默认 None）；`td/real/upload.rs`、`fake/upload.rs`；`tdjson/file.rs::upload`（`tdjson::file` 改 pub）；`error.rs` 4 个 why；`gate/tests/file_log.rs`；`config::home` 改 pub(crate)；CLI `send_file.rs` + tests、`args.rs` / `main.rs` / `tests/cli.rs` 登记
+- 契约：actions（表、第 5、6 小节、留痕）、cli（`send-file` 行）、errors（4 个 why、profile_busy 场景）、config-privacy（`outbox/`、留痕、不代跑）
+- 与计划不同处：读不出图片宽高的退回按文件发（`photo_unreadable`），不按图片发 0×0；v0 不出上传进度行
+- 下一步：等名额 → test + clippy 两种 → 自审 → codex 034 → 真机只发收藏夹
