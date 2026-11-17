@@ -186,16 +186,7 @@ impl Profile {
             }
             // #61：只有新档案才补写标记；留着数据却缺标记（标记被删、写标记前就中断……），
             // 按契约拒绝启动，绝不按调用方猜种类
-            Err(MarkerError::Missing) if is_fresh(&dir) => {
-                ensure_private_dir(&root.join("profiles"))?;
-                ensure_private_dir(&dir)?;
-                write_marker(&dir, kind)?
-            }
-            Err(MarkerError::Missing) => {
-                return Err(CoreError::Internal {
-                    what: "profile_marker_missing",
-                });
-            }
+            Err(MarkerError::Missing) => on_missing(root, &dir, kind)?,
             Err(MarkerError::Unreadable) => {
                 return Err(CoreError::Internal {
                     what: "profile_marker_unreadable",
@@ -375,6 +366,26 @@ fn read_marker(dir: &Path) -> Result<ServerKind, MarkerError> {
     }
 }
 
+/// 刚读到标记缺失之后：新档案就写标记；不新的再读一次标记——判新旧之前，别的进程可能已建好这个档案、
+/// 又拿了锁或写了别的文件（`atg.lock`……），这时标记已在，按它走（随后 `open` 核种类）；仍然缺才报 missing
+/// （#97，codex 045 第 1 轮 #3）
+fn on_missing(root: &Path, dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
+    if is_fresh(dir) {
+        ensure_private_dir(&root.join("profiles"))?;
+        ensure_private_dir(dir)?;
+        return write_marker(dir, kind);
+    }
+    match read_marker(dir) {
+        Ok(_) => Ok(()),
+        Err(MarkerError::Missing) => Err(CoreError::Internal {
+            what: "profile_marker_missing",
+        }),
+        Err(MarkerError::Unreadable) => Err(CoreError::Internal {
+            what: "profile_marker_unreadable",
+        }),
+    }
+}
+
 /// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 和标记本身什么都没有（标记见下面行内注释，#97）。
 /// 不只看 TDLib 的库：`send-guard.json`、`account-limited`、`send-pending` 这类落盘状态
 /// （`config-privacy.md` 第一节第 1 小节）也跟着档案种类走，留着任何一样都不算新。读目录出错也算不新，宁可拒绝
@@ -446,4 +457,44 @@ fn write_private(path: &Path, content: &str) -> Result<(), CoreError> {
         .map_err(|_| CoreError::Internal {
             what: "profile_dir_io",
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("atg-cfg-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("profiles").join("p")).unwrap();
+        root
+    }
+
+    /// 读到「缺」之后、判新旧之前，别的进程建好了档案并拿了锁：不报 missing，按落盘的标记走（codex 045 第 1 轮 #3）
+    #[test]
+    fn marker_published_with_lock_after_missing_is_not_missing() {
+        let root = scratch("raced");
+        let dir = root.join("profiles").join("p");
+        fs::write(dir.join(MARKER), "main").unwrap();
+        fs::write(dir.join(LOCK), "").unwrap();
+        assert!(on_missing(&root, &dir, ServerKind::Main).is_ok());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 真缺标记、目录里有别的东西：仍报 missing，且不补写（#61）
+    #[test]
+    fn data_without_marker_is_still_missing() {
+        let root = scratch("missing");
+        let dir = root.join("profiles").join("p");
+        fs::write(dir.join(LOCK), "").unwrap();
+        let e = on_missing(&root, &dir, ServerKind::Main);
+        assert!(matches!(
+            e,
+            Err(CoreError::Internal {
+                what: "profile_marker_missing"
+            })
+        ));
+        assert!(!dir.join(MARKER).exists());
+        let _ = fs::remove_dir_all(&root);
+    }
 }

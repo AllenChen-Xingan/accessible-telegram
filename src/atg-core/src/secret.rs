@@ -51,17 +51,16 @@ pub fn wipe(bytes: &mut [u8]) {
     std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 
-/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）
+/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）。
+/// 容量区（len..cap）可能从没写过，不能把长度拉长后当 `&mut [u8]` 借出来（`set_len` 要求那段已初始化，
+/// codex 045 第 1 轮 #1）；按 `MaybeUninit<u8>` 一格格写 0，长度不动
 fn wipe_all(v: &mut Vec<u8>) {
-    let (len, cap) = (v.len(), v.capacity());
-    // 容量区（len..cap）不算 Vec 已有的元素，不能当 `&mut [u8]` 借出来；先把长度设成整个容量，
-    // 让 [`wipe`] 一并写满，写完再把长度设回原值
-    // SAFETY: 0..cap 都在这块分配之内；设长之后马上整块写 0，没有读到未初始化字节；之后长度恢复成原值
-    unsafe {
-        v.set_len(cap);
-        wipe(v.as_mut_slice());
-        v.set_len(len);
+    wipe(v.as_mut_slice());
+    for b in v.spare_capacity_mut() {
+        // SAFETY: b 是这块分配里有效、对齐的一格；写入 MaybeUninit 不要求它原先已初始化
+        unsafe { std::ptr::write_volatile(b, std::mem::MaybeUninit::new(0)) };
     }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 
 impl fmt::Debug for Secret {

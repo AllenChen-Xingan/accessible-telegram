@@ -1,7 +1,12 @@
 //! Ctrl+C / SIGTERM → 退出标志（`serve`、`watch`、`play`、登录这组命令共用）。第一次只立标志、正常收尾；第二次立刻以 130 退出、不出结尾行。
 //!
-//! 读秘密时终端被切成不回显（`tty.rs`）：第二次信号 `_exit` 会跳过恢复，所以读之前先把终端 fd 和原设置登记到这里
-//! （[`arm_tty`]，读完 [`disarm_tty`] 撤销登记），处理函数 `_exit` 之前先放回去（#98）。
+//! 读秘密时终端被切成不回显（`tty.rs`）：第二次信号 `_exit` 会跳过恢复，所以切之前先把终端 fd 和原设置登记到这里
+//! （[`arm_tty`]，放回时 [`disarm_tty`] 撤销登记），处理函数 `_exit` 之前先放回去（#98）。
+//!
+//! 信号可能落在任何一个线程（TDLib、收线程……）。「登记 + 切」与「放回 + 撤销」各是一段，攥着 [`TTY_LOCK`] 做、
+//! 且做的时候本线程挡住 SIGINT / SIGTERM；第二次信号的处理函数也先抢这把锁再放回终端。这样别的线程上的处理函数
+//! 要么等这一段做完（切好了再放回、不会被随后的「切」盖掉），要么先做完（这一段抢不到锁，进程随即退出）；
+//! 本线程上的处理函数不会撞上自己攥着的锁（那时信号挡着）。处理函数抢到锁就不再放：马上 `_exit`（codex 045 第 1 轮 #2）
 
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
@@ -20,9 +25,44 @@ unsafe impl Sync for Saved {}
 
 static SAVED: Saved = Saved(UnsafeCell::new(MaybeUninit::uninit()));
 
+/// 登记、切换、放回、撤销与处理函数的放回互斥（见模块头）
+static TTY_LOCK: AtomicBool = AtomicBool::new(false);
+
+fn spin_lock() {
+    // 只用原子量与 spin_loop：处理函数里也调，要异步信号安全
+    while TTY_LOCK
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        std::hint::spin_loop();
+    }
+}
+
+/// 本线程挡住 SIGINT / SIGTERM、攥着 [`TTY_LOCK`] 做 `f`，做完放锁、恢复信号屏蔽（挡着时来的信号随即送达）
+fn locked<R>(f: impl FnOnce() -> R) -> R {
+    // SAFETY: sigset_t 是纯数据，全零后由 sigemptyset 设好；pthread_sigmask 只改本线程
+    let old = unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        let mut old: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+        libc::pthread_sigmask(libc::SIG_BLOCK, &set, &mut old);
+        old
+    };
+    spin_lock();
+    let r = f();
+    TTY_LOCK.store(false, Ordering::SeqCst);
+    // SAFETY: 放回进来时的屏蔽
+    unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut()) };
+    r
+}
+
 extern "C" fn on_signal(_: libc::c_int) {
     // 每一步都是异步信号安全的（原子量、tcsetattr、_exit）
     if STOP.swap(true, Ordering::SeqCst) {
+        // 等正在做的「登记 + 切 / 放回 + 撤销」做完再看；抢到就不放了，下面直接退出
+        spin_lock();
         let fd = TTY_FD.load(Ordering::SeqCst);
         if fd >= 0 {
             // 用 TCSANOW 立刻生效：马上就 `_exit` 了，不等输出排空（正常恢复用 TCSAFLUSH，丢掉没读的输入）
@@ -45,19 +85,30 @@ pub fn install() {
     }
 }
 
-/// 登记恢复信息（切终端之前调）：第二次信号退出前把 `fd` 放回 `orig`。已登记着就不动（同一时刻只读一处输入）
-pub fn arm_tty(fd: i32, orig: &libc::termios) {
-    if fd < 0 || TTY_FD.load(Ordering::SeqCst) >= 0 {
-        return;
-    }
-    // SAFETY: 还没发布（TTY_FD == -1），处理函数不读 SAVED；读输入只在主线程，没有并发的写
-    unsafe { (*SAVED.0.get()).write(*orig) };
-    TTY_FD.store(fd, Ordering::SeqCst);
+/// 登记恢复信息并切终端（`switch` 真切，成功回真），一段做完：第二次信号退出前把 `fd` 放回 `orig`。
+/// 已登记着就不再登记（同一时刻只读一处输入）；`switch` 失败就撤销登记
+pub fn arm_tty(fd: i32, orig: &libc::termios, switch: impl FnOnce() -> bool) -> bool {
+    locked(|| {
+        let fresh = fd >= 0 && TTY_FD.load(Ordering::SeqCst) < 0;
+        if fresh {
+            // SAFETY: 攥着锁且没发布（TTY_FD == -1）：处理函数此刻不读 SAVED
+            unsafe { (*SAVED.0.get()).write(*orig) };
+            TTY_FD.store(fd, Ordering::SeqCst);
+        }
+        let ok = switch();
+        if !ok && fresh {
+            TTY_FD.store(-1, Ordering::SeqCst);
+        }
+        ok
+    })
 }
 
-/// 终端已放回：撤销登记
-pub fn disarm_tty() {
-    TTY_FD.store(-1, Ordering::SeqCst);
+/// 放回终端（`restore`）并撤销登记，一段做完
+pub fn disarm_tty(restore: impl FnOnce()) {
+    locked(|| {
+        restore();
+        TTY_FD.store(-1, Ordering::SeqCst);
+    });
 }
 
 #[cfg(test)]
@@ -66,14 +117,32 @@ mod tests {
 
     /// 登记 / 撤销只改状态位；真发信号会让测试进程 `_exit`，不测
     #[test]
-    fn arm_and_disarm() {
+    fn arm_disarm_and_lock() {
         // SAFETY: termios 全零是合法值
         let t: libc::termios = unsafe { std::mem::zeroed() };
-        arm_tty(7, &t);
+        assert!(arm_tty(7, &t, || true));
         assert_eq!(TTY_FD.load(Ordering::SeqCst), 7);
-        arm_tty(8, &t);
+        assert!(arm_tty(8, &t, || true));
         assert_eq!(TTY_FD.load(Ordering::SeqCst), 7, "武装着不换");
-        disarm_tty();
+        disarm_tty(|| {});
         assert_eq!(TTY_FD.load(Ordering::SeqCst), -1);
+        assert!(!arm_tty(9, &t, || false), "切不成就撤销登记");
+        assert_eq!(TTY_FD.load(Ordering::SeqCst), -1);
+
+        // 锁被占着（处理函数正在放回）时，登记 + 切这一段等它放开才做，不会插进中间（codex 045 第 1 轮 #2）。
+        // 和上面放在同一条测试里：几条测试并行跑会抢同一把静态锁
+        use std::time::{Duration, Instant};
+        spin_lock();
+        let t0 = Instant::now();
+        let h = std::thread::spawn(move || {
+            // SAFETY: termios 全零是合法值
+            let t: libc::termios = unsafe { std::mem::zeroed() };
+            arm_tty(-1, &t, || true);
+            t0.elapsed()
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        TTY_LOCK.store(false, Ordering::SeqCst);
+        let waited = h.join().unwrap_or_default();
+        assert!(waited >= Duration::from_millis(150), "{waited:?}");
     }
 }

@@ -2,7 +2,9 @@
 - 手上：先收第四批 #97 #98 #100 #40（c281455 + 自审修复未提交未编译）；再做发送闸 #77 #80 #83 #109（直发是唯一方式，改 gate/** send/** 前先报大总管，msg1 在同片做 #57 #88）
 - 做到哪：已向大总管 allenchen-37 报到。合 main 冲突预测：docs/reviews/README.md、scripts/file-size-baseline.json、specs/contracts/cli.md、errors.md、本页
 - 2026-11-16 大总管提交 WIP 8ecdea6、merge origin/main；我解了 5 处冲突（README/errors/baseline 取 main；cli.md 正文取本分支含 #98 的一句、变更记录两边都留；本页取本分支），未 commit。codex：第四批 045，发送闸组 048
-- 下一步：领名额复跑 → codex 045 → 发送闸一组（048）
+- 2026-11-16 复跑全过（468 过）；codex 045 第 1 轮 P1×3 属实已改（secret 容量区按 MaybeUninit 清、signals 加 TTY_LOCK + 线程屏蔽、config on_missing 再读标记），P2 #4 → issue #116；记录 docs/reviews/045_*（第 1 轮）。未编译
+- 大总管定：#83 等 msg2 #9 合后加 old_id；#80 交出前到点报 network 属技术细节；#109 交 msg1 在 #57 修；发送闸组等 #9 #57 合 main 后另开分支，现在只写测试计划与契约改法
+- 下一步：等名额（排第四）→ fmt/clippy/test → codex 045 第 2 轮 → PR
 - 要人定的事：无
 
 # fix 现状页（批次 b18）
@@ -259,3 +261,44 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 - 大总管已提交 c281455。实现与上面设计的出入（以这里为准）：临时文件名 `<pid>.<序号>`（同进程多线程不重名，设计写的纳秒会撞）；`read_raw_line` 沿用 `Read`，源交出 `ErrorKind::Interrupted` 即「停止标志立起」（`Polled` 文档写明约定）；清零正本 `atg_core::secret::wipe`，`Secret::drop` 用私有 `wipe_all` 按容量清，tty 的 `wipe_from` 调 `wipe`；#100 测试是两条新测（等之前已故障、等的途中故障），没改旧测。
 - atg-review：P1×1 属实——macOS 的 `poll` 不支持 `/dev/tty`（一调就 `POLLNVAL`、不等；本机伪终端实测，`select` 按期等满 300 ms），切片形同虚设；改 `select`，补真终端测试（无控制终端时跳过）。P2×5（「内核」两义、`is_fresh` 定义与 `config-privacy.md` 落盘清单 / 第 2 小节 / 变更记录、`cli.md` #98 一句 + 变更记录、本节交接）、P3×10 照改（登记恢复信息挪到切终端之前、TCSANOW 理由、SA_RESTART 写在 `install`、pid 复用、`set_len` 理由、清零只留一份……）。
 - 下一步：领名额复跑 → 请大总管提交 → codex 045（范围 `origin/fix/62-64-95...HEAD`，只看第四批）。
+
+# 发送闸一组修法设计（#77 + #80 + #83 + #109）· 2026-11-16 · 只设计，未动代码
+codex 048。行号按 7f69de0。直发是唯一方式（正式服务器全走 DirectMode）。
+
+## #77 查重与登记分两步（`gate/check.rs` `issue`:93 查、`before_submit`:147 记）
+- 现状：`issue` 开凭据时 `check_duplicate`（读 send-guard.json），之后 `verify` → `preview_check`（await）→ `before_submit` 才 `record(Submitted)`。中间同进程两条同内容发送都能过查重
+- 修法：`GuardStore` 加 `claim(now, chat, fp, again) -> Result<(), Claim>`：一次 load → 不是 again 就查命中 → push Submitted → save；`before_submit` 在已持有的 `facts` 锁里调它（进程内原子；跨进程有档案锁，同档案只一个进程）。`issue` 里的查重留着当提前拒（人少等），以 `claim` 为准。`again` 要从凭据带到交出：`ConfirmToken` 加 `again`，`verify` 返回 `Verified { mode, again }`，`before_submit(&Verified, plan)`
+- 测：同一 Gate 两份同内容计划都拿到凭据，按序 before_submit：第二份报 `duplicate_recent`；带 again 的放行
+- 动的文件：`gate.rs`（GuardStore::claim、ConfirmToken）、`gate/check.rs`（issue / verify / before_submit / check_duplicate 共用命中判定）、`send/text.rs`、`send/resending.rs`、`send.rs`（签名跟着改）、`gate/tests.rs`
+
+## #80 交出前就超时也报结果未知、拦 24 小时（`send.rs` `submit_within`:195）
+- 现状：期限包住「验凭据 → 预览复核（await，可能慢）→ before_submit → 交给 TDLib」全程；到点一律 `after_outcome(Unknown)` → 防重复补一条 Unknown（24 小时）+ 报 `send_outcome_unknown`
+- 修法：`send_text` / `resend` 收一个 `&AtomicBool handed`，`before_submit` 成功、调 `send_limits::submit` 之前置真（tdlib-rs 首次 poll 就同步交出，置在这里偏保守）。`submit_within` 到点：`handed` 为假 → 不记账、不写留痕，报 `network`（可重跑，凭据已吃掉要重新 prepare）；为真 → 照旧结果未知
+- 契约：`actions.md` 第一节第 5 小节、`cli.md` send 一行、`errors.md` 补一句「交出前到点 → network，不登记防重复」——**改了一种情况的错误码，报大总管定是否属技术细节**
+- 测：假后端预览请求挂住（`FakeBackend::HANG` 同款）→ `network`、guard 无记录、留痕无行；交出后挂住 → 仍 `send_outcome_unknown`
+
+## #83 批量重发留痕按请求记（`gate/check.rs` `before_submit` / `after_outcome`、`send/resending.rs`）
+- 现状：`before_submit` 一次请求写一行 `submitted`（temp 0）；`finish` 按条写结果行（只有 TDLib 给了新 id 的条）；不能重发（应答 null）的条不写；请求级失败 / 超时只写一行 temp 0
+- 修法：`Gated` 加 `fn items(&self) -> Vec<i64>`（文字发送空表；重发为各条旧 id）。`DirectLogLine` 加 `old_id: Option<i64>`（skip_none）。交出前每条一行 submitted；结果每条一行：有新 id 的照 finish；null 的写 `failed` + `error:"not_resendable"`（或 unknown，待定，倾向 failed——TDLib 明确说不能重发=没发）；请求级失败 / 超时每条一行
+- ⚠ **和 msg2 撞**：msg2 要在 `DirectLogLine` 加 `target` 字段。我加 `old_id`，同一个结构体两个新字段，建议 msg2 先合、我在它之上加；或我顺带加，请大总管定
+- 契约：`actions.md`:180、`config-privacy.md`:25「每条直发两行」改「重发按条记」
+- 测：重发三条（一条 null）→ 留痕 3 行 submitted + 3 行结果，old_id 对得上
+
+## #109 pending cancel 交出后超时报 network
+- **代码不在本分支、也不在 main**：`pending` 是 #57（OPEN，msg1 在做）。#109 只能在 #57 合并后、或由 msg1 在 #57 里一并改。建议：交给 msg1 在 #57 里顺手修（口径照 `send_outcome_unknown`：撤销交出后到点报「结果未知」，提示去会话里看），或 #57 合后我再做。请大总管定
+
+## 顺序
+#77 → #80（都改 submit 链的签名，一起改一次）→ #83（等和 msg2 对齐）→ #109（看定）。一个分支一个 PR（大总管开分支，从 main）
+
+## 发送闸组：大总管定（2026-11-16）与测试计划 / 契约改法（等 #9 #57 合 main 后开新分支再动代码）
+- 定：#83 在 msg2 的 `target` 字段之上加 `old_id`；#80 报 `network` 属技术细节；#109 交 msg1（#57 里修），本组不做
+- **测试计划**（先写会红的，都在 `gate/tests.rs`、`send/tests/*.rs`，假后端）
+  - #77：同一 Gate、两份同内容文字计划先后 `issue` 都拿到凭据（查重时都还没登记）→ 第一份 `send_text` 过；第二份在 `before_submit` 报 `send_refused(duplicate_recent)`，TDLib 只收到一次请求，`send-guard.json` 一条 submitted。带 `again` 的第二份放行、记两条。修前：第二份也交出（红）
+  - #80 ①预览请求挂住（`FakeBackend::HANG`）→ 期限到报 `network`；`send-guard.json` 无记录、`direct-send.log` 无行；随后不带 `--again` 重跑能发。修前：`send_outcome_unknown` + 24 小时拦（红）②交出请求挂住 → 仍 `send_outcome_unknown(timeout)`、拦 24 小时（回归）③重发路径同样两条
+  - #83：重发 3 条、TDLib 应答 `[m, null, m]` → 留痕 3 行 submitted（各带 old_id）+ 3 行结果（中间那条 failed / `not_resendable`），temp/final id 对得上；请求级失败（`submit_failed`）与交出后超时 → 每条一行 unknown。修前：1 行 submitted + 2 行结果（红）
+- **契约改法**（同一 PR，变更记录各一行「手下 fix，属技术细节 / 大总管定」）
+  - `actions.md` 第一节第 5 小节「重复提交拦截」：查重与登记在交出前一步做完（凭据开出时先查一次只为早拒，以交出前那次为准）；「交出前就到点」：没交出、不登记、报 `network`，可重跑
+  - `actions.md`:180「本地留痕」：重发按条记，每条带 `old_id`；TDLib 说不能重发的那条记 `failed`、错误码 `not_resendable`
+  - `config-privacy.md`:25：「每条直发两行」后补「重发按条记」
+  - `cli.md` send / resend 行：到点分两种——交出前到点 → `network`（退出码同 network，可重跑）；交出后 → `send_outcome_unknown`（不变）
+  - `errors.md` `send_outcome_unknown` 一段补「只在已交出后」；`not_resendable` 只出现在留痕的 `error` 里，不是对外错误码——若 errors.md 要求留痕错误码也登记，就登记在「`direct-send.log` 的 error 取值」处（开工时核）

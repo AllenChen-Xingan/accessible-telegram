@@ -50,12 +50,13 @@ struct Restore {
 
 impl Drop for Restore {
     fn drop(&mut self) {
-        // SAFETY: fd 是本进程打开着的 /dev/tty；orig 是 tcgetattr 填好的
-        unsafe {
-            libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.orig);
-        }
-        // 先放回再解除：中间来第二次信号，处理函数再放一次也无妨
-        crate::signals::disarm_tty();
+        // 放回与撤销登记一段做完（`signals` 模块头）
+        crate::signals::disarm_tty(|| {
+            // SAFETY: fd 是本进程打开着的 /dev/tty；orig 是 tcgetattr 填好的
+            unsafe {
+                libc::tcsetattr(self.fd, libc::TCSAFLUSH, &self.orig);
+            }
+        });
     }
 }
 
@@ -101,15 +102,16 @@ impl Tty {
         if unsafe { libc::tcgetattr(fd, &mut orig) } != 0 {
             return (Vec::new(), Err(ReadEnd::Cancelled));
         }
-        // 先登记再切：切好之后、登记之前来第二次信号也不会把终端留在不回显（用原设置登记无害）
-        crate::signals::arm_tty(fd, &orig);
+        // 登记与切换一段做完（`signals` 模块头）：第二次信号要么在这之前退出（终端还没切），要么等切好再放回
         let mut raw = orig;
         raw.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
         raw.c_cc[libc::VMIN] = 1;
         raw.c_cc[libc::VTIME] = 0;
         // SAFETY: 同上
-        if unsafe { libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) } != 0 {
-            crate::signals::disarm_tty();
+        let switched = crate::signals::arm_tty(fd, &orig, || unsafe {
+            libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) == 0
+        });
+        if !switched {
             return (Vec::new(), Err(ReadEnd::Cancelled));
         }
         let guard = Restore { fd, orig };
