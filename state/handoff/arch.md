@@ -309,4 +309,19 @@
   - 几个 PR 合 main 的冲突，大总管一次性交来（基线、评审索引、交接页、010）
   - R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`：等 #149（#8 编辑）、#10 合并后再排
   - R3a 余下 4 处：core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`，等在途线合并
+
+## #153：resend 的 MSG_ID 吞掉后面的选项（2026-11-17，工作副本 `atg-wt/arch-153`，分支 `fix/153-args-hyphen`，从 8a98ab3 开；codex 编号 056）
+
+- 先写会红的测试：新文件 `src/atg-cli/src/args/tests.rs`（7 条，只测 clap 解析，不起后端、不连 Telegram），`args.rs` 末尾挂 `#[cfg(test)] mod tests;`
+- main 上实测红 3 条：`resend 777 5 --dry-run`、`resend -1001234567 5 --dry-run`、`resend 777 5 --format text --dry-run`，都报「invalid value '--dry-run'（或 '--format'）for '<MSG_ID>...'」。实际后果是用法错误（退出码 2），不会真重发，大总管已把 #153 降为 P2
+- 修：`args.rs` `ResendArgs.ids` 去掉 `allow_hyphen_values`；会话 id 照旧收负数（测试覆盖）。`delete` 的 MSG_ID 本来就没开，测试留着防回退。说明写成普通注释 `//`，不进 `--help` 文字
+- 检查：7 条全过；fmt、两种 clippy、`test --workspace`（633 过 0 败 5 忽略）、no-debug 全过；改注释后复跑 fmt、默认 clippy、`test -p atg-cli`（233 过）
+- 下一步：请大总管提交检查点 → 自审（按提交范围）→ codex 056
+- 自审 1 轮（按 `8a98ab3...HEAD`）：P0/P1 零。P2 两条：①测试头注释写「会变成真重发」和实测不符，已改成「报用法错误，按契约的写法用不了只看计划」；②这个分支的交接页带进了别的线的内容，改成只在 8a98ab3 那份后面加本节。P3：`args.rs` 的注释说明了 `allow_hyphen_values` 是什么、为什么会话 id 要开；测试头注释写明 delete、send 那几条各防什么；**新增一条结构测试** `no_variadic_positional_swallows_options`：遍历全部子命令，能收多个值的位置参数都不许开 `allow_hyphen_values`（只放过占位 `Rest` 的 `args`），以后哪个命令再犯同样的错都会红。复编与变异检验已做（2026-11-17）：8 条全过；把 resend 那行临时加回 `allow_hyphen_values`，红 4 条（resend 3 条，加上结构测试报 `["atg-cli resend ids"]`），复原后全套过（fmt、两种 clippy、`test --workspace` 634 过、no-debug）。codex 056 第 1 轮零发现
+- ✅ codex 056 两轮零发现，收敛，记录在 `docs/reviews/056_153-args-hyphen-codex.md`，索引已加。等大总管提交、开 PR（Closes #153）
+
+## 待命（2026-11-17，接在 #153 之后）
+
+- #153 → PR #155，等人合并。顺手修了 PR #149 的 check-no-debug（`edit/exp_real.rs` 一行 `assert_eq!` 改成 `assert!`），大总管已推送
+- 等大总管叫：R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`；R3a 余下 4 处（core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`）。都等 #149、#154 合并
 - 要人定的事：无
