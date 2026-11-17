@@ -258,3 +258,15 @@
 - codex 053 第 1 轮：P2×1 属实：010 写「8 个公开名字」，实际公开导出 7 个（`UNREAD_BELOW` 改成只在测试时导入以后，就不算对外导出了）；`render.rs` 写成 130，实际 131。010 和本页都已改。这些是工作区改动，请大总管提交检查点后再起第 2 轮
 
 - codex 053 第 2 轮：P2×1 属实：本节计划段还写着 `pub use render::{UNREAD_BELOW, …}` 和「8 个公开名字」，已改成定稿的写法。连续两轮无 P0/P1，按停止线收敛，没有留作 issue 的 P2
+
+## R7 第六刀：拆 cli `watch.rs`（2026-11-17，只出计划；codex 编号 054；分支等计划定了由大总管从 main 开）
+
+- **实查**（origin/main）：`src/atg-cli/src/watch.rs` 837 行。测试已经在 `watch/tests.rs` 和 `watch/tests/{ctrl_c,hub,topics}.rs`；已有子模块 `end`、`topics`。分节：常量、`now_ms`、`query`（1–86）· 出口与订阅者（`LineOut`、`StdoutLines`、`Watcher`、`Sub`、`Hub`，87–410，约 324 行）· 事件 → JSON（`event_name`、`event_data` 等，411–627，约 217 行）· `status_line`、`resolve`、`run`、`watch_loop` 等（629–830）
+- **拆法（建议，只挪一节）**：「出口与订阅者」整节 → 新文件 `watch/hub.rs`；根剩约 513 行，超线文件减一个
+  - 只挪「事件 → JSON」不够：837 − 217 ≈ 620，还在线上
+  - 两节都挪也行（根约 300 行），但「事件 → JSON」里 `event_name` 只有测试用，要另加一行 `#[cfg(test)] use`，`event_data` 要改成 `pub(super)`；收益不大，先不做
+- **为了编得过、路径不变**：
+  - 根上 `mod hub; pub use hub::{Hub, LineOut, StdoutLines, Sub, Watcher};`。外面的 `crate::watch::{LineOut, Sub, Watcher}`（serve）、`watch::Hub`、`watch::StdoutLines` 一行不改；`end.rs` 的 `use super::{LineOut, Watcher}` 照样能用
+  - `hub.rs` 开头 `use super::*;`：它调用的 `event_data`（根上私有）、常量和导入都从根上拿，不用改可见性
+  - **要放宽 1 处可见性**：`watch/tests.rs` 第 358 行直接读 `Watcher` 的私有字段 `alerts`。挪进 `hub.rs` 以后，测试就看不到它了，所以 `alerts` 改成 `pub(super)`（只对 `watch` 模块和它下面的测试可见，对外不变）。别的私有字段、私有方法只在这一节里用
+- **验收**：fmt、两种 clippy、`test --workspace`（watch 的测试和快照兜底，快照一条不能变）；逐行比对（只多 mod / pub use / 头注释 / use super::* / 1 个 pub(super)）；`--tighten`；自审 + codex 054（按提交范围取 diff，规矩第 17 条）
