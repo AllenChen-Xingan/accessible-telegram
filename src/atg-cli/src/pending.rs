@@ -164,8 +164,9 @@ fn fate(store: &Store, old: MsgId) -> Option<Value> {
         },
         // 换了 id 的正式消息不在了：可能只是被删旧，证明不了删过，不报（codex 029 #2）
         None if cur != old => return None,
-        // 待发的不参与删旧（`store::table::prunable`），没换 id 就不在了 = 真被删了
-        _ => ("deleted", None),
+        // 没换 id 就不在了：被删掉（自己撤销、别的设备删了、TDLib 放弃），也可能只是清了缓存——分不清，报 `gone`
+        // （待发的不参与删旧，`store::table::prunable`；codex 029 第 2 轮 #1）
+        _ => ("gone", None),
     };
     Some(
         json!({"chat_id": old.chat_id, "temp_message_id": old.message_id, "outcome": outcome, "message_id": id}),
@@ -180,10 +181,10 @@ fn summary_zh(n: usize, resolved: &[Value], synced: bool) -> String {
     } else {
         format!("待发出 {n} 条（之后每次启动都会自动续发；待发超过 24 小时的不再续发、变成失败）")
     };
-    let (ok, failed, gone) = (count("succeeded"), count("failed"), count("deleted"));
+    let (ok, failed, gone) = (count("succeeded"), count("failed"), count("gone"));
     if ok + failed + gone > 0 {
         s.push_str(&format!(
-            "；这次启动后已有着落：发出 {ok} 条，失败 {failed} 条，被删掉 {gone} 条（自己撤销、别的设备上删了或 Telegram 放弃）"
+            "；这次启动后已有着落：发出 {ok} 条，失败 {failed} 条，不在了 {gone} 条（被删掉或只是清了缓存，分不清；去会话里看）"
         ));
     }
     if !synced {
@@ -279,7 +280,13 @@ fn run_cancel<B: Backend>(
             message_id: i.id,
         })
         .collect();
-    let waited = atg_core::send::wait(stream, &temps, CANCEL_WAIT, &mut |env| feed.apply(env));
+    // `send::wait` 不看删除的标志：只有永久删除（`is_permanent && !from_cache`）才算撤下，清缓存、暂时不可访问的
+    // 另记下来，按未知报（codex 029 第 2 轮 #1）
+    let mut soft: Vec<MsgId> = Vec::new();
+    let waited = atg_core::send::wait(stream, &temps, CANCEL_WAIT, &mut |env| {
+        note_soft(&env.event, &mut soft);
+        feed.apply(env);
+    });
     // 没赶上、已发出的：TDLib 可能把删除换成了它的正式 id（`atg_core::delete` 模块文档）。那条删除多半和发出成功
     // 落在同一批、已被上面喂进 store（自审第 4 轮 P1），所以下落一律看 store；还活着的再给晚到的更新留一小会儿
     let still_live = |feed: &Feed| {
@@ -296,13 +303,16 @@ fn run_cancel<B: Backend>(
                 _ => None,
             })
             .collect();
-        atg_core::send::wait(stream, &live, CANCEL_RACE_WAIT, &mut |env| feed.apply(env));
+        atg_core::send::wait(stream, &live, CANCEL_RACE_WAIT, &mut |env| {
+            note_soft(&env.event, &mut soft);
+            feed.apply(env);
+        });
     }
     let items: Vec<Value> = temps
         .iter()
         .zip(&waited)
         .map(|(t, w)| {
-            let (outcome, id) = cancel_outcome(feed.store(), w);
+            let (outcome, id) = cancel_outcome(feed.store(), w, soft.contains(t));
             json!({"temp_message_id": t.message_id, "outcome": outcome, "message_id": id})
         })
         .collect();
@@ -341,8 +351,10 @@ fn run_cancel<B: Backend>(
 
 /// 撤销之后一条待发消息的下落（`cli.md` `pending` 行的 `outcome`）。没赶上、已发出的，看 store 里它的正式 id 还在不在：
 /// 不在了（被删成墓碑或拿掉）= TDLib 把删除换成了正式 id、只删了自己这边（`sent_deleted_here`）
-fn cancel_outcome(store: &Store, w: &Waited) -> (&'static str, Option<i64>) {
+/// `soft`：这条临时 id 的删除不是永久删除（清缓存 / 暂时不可访问），证明不了撤下
+fn cancel_outcome(store: &Store, w: &Waited, soft: bool) -> (&'static str, Option<i64>) {
     match w {
+        Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted) if soft => ("unknown", None),
         Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted) => ("cancelled", None),
         // 只认删除留下的墓碑；store 里没有了（被删旧、清缓存）证明不了删过，按未知报（codex 029 #2）
         Waited::Succeeded(m) => match store.entry(m.id) {
@@ -352,6 +364,23 @@ fn cancel_outcome(store: &Store, w: &Waited) -> (&'static str, Option<i64>) {
         },
         Waited::Failed { message, .. } => ("failed", Some(message.id.message_id)),
         Waited::Unknown(_) => ("unknown", None),
+    }
+}
+
+/// 记下不是永久删除的那些 id（`messages_deleted` 的 `is_permanent` 为假或 `from_cache` 为真）
+fn note_soft(event: &atg_core::model::CoreEvent, soft: &mut Vec<MsgId>) {
+    if let atg_core::model::CoreEvent::MessagesDeleted {
+        chat_id,
+        message_ids,
+        is_permanent,
+        from_cache,
+    } = event
+        && (!is_permanent || *from_cache)
+    {
+        soft.extend(message_ids.iter().map(|&message_id| MsgId {
+            chat_id: *chat_id,
+            message_id,
+        }));
     }
 }
 

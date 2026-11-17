@@ -1,10 +1,20 @@
-//! Store 的纯查询（不改状态、不联网）：会话列表顺序、下一个有未读的会话、待发出的消息。
+//! Store 的纯查询（不改状态、不联网）：消息现在的 id、受限与否、会话列表顺序、下一个有未读的会话、待发出的消息。
 //! 契约：`specs/contracts/actions.md` 第一节第 3 小节「会话」表的 Store 行与「待发出的消息」。
 
 use super::Store;
 use crate::model::*;
 
 impl Store {
+    /// 消息现在的 id：换过 id 的旧 id 给最终的新 id（回复、置顶里引用的可能还是旧 id）
+    pub fn current_id(&self, id: MsgId) -> MsgId {
+        self.table.current(id)
+    }
+
+    /// 消息是否已知受限（不论它还在不在缓存里、有没有被撤回）
+    pub fn is_restricted(&self, id: MsgId) -> bool {
+        self.table.is_restricted(id)
+    }
+
     /// 某个列表当前的会话顺序：按 (order, 会话 id) 从大到小；order 为 0 的不在列表里
     pub fn chat_list(&self, list: &ChatList) -> Vec<ChatId> {
         let mut v: Vec<(i64, ChatId)> = self
@@ -35,7 +45,7 @@ impl Store {
     /// 待发出的消息（`actions.md`「待发出的消息」）：store 里活着、发送状态还是「待发」的，按（会话 id, 消息 id）排。
     /// 来源是 TDLib 推的新消息：本进程交出的，和启动时 TDLib 从本地库续发的上次留下的（续发时临时 id 与时间都重编，
     /// TDLib 1.8.69 `MessagesManager.cpp:35851-35856`，所以与上一个进程报过的临时 id 对不上）。
-    /// 非当前会话超过 `keep_per_chat` 被删旧的不在其内（待发的总是最新的几条，实际碰不到）
+    /// 待发的不参与删旧、也不占配额（`table::prunable`），所以一条不漏
     pub fn pending_sends(&self) -> Vec<MsgId> {
         let mut v: Vec<MsgId> = self
             .table

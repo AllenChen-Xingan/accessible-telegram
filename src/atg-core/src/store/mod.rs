@@ -413,16 +413,6 @@ impl Store {
         self.window.as_ref().is_some_and(|w| w.stale)
     }
 
-    /// 消息现在的 id：换过 id 的旧 id 给最终的新 id（回复、置顶里引用的可能还是旧 id）
-    pub fn current_id(&self, id: MsgId) -> MsgId {
-        self.table.current(id)
-    }
-
-    /// 消息是否已知受限（不论它还在不在缓存里、有没有被撤回）
-    pub fn is_restricted(&self, id: MsgId) -> bool {
-        self.table.is_restricted(id)
-    }
-
     // ───── 更新 ─────
 
     fn update(&mut self, seq: u64, event: CoreEvent) {
@@ -614,10 +604,14 @@ impl Store {
         let Some(ids) = self.by_chat.get(&chat_id) else {
             return;
         };
-        if ids.len() <= keep {
+        // 超额只按能删的算：待发的不占配额，否则一堆待发会把随后的普通消息挤掉（codex 029 第 2 轮 #2）
+        let excess = ids
+            .iter()
+            .filter(|&&m| self.table.prunable(chat_id, m, None))
+            .count();
+        let Some(excess) = excess.checked_sub(keep).filter(|&e| e > 0) else {
             return;
-        }
-        let excess = ids.len() - keep;
+        };
         let victims: Vec<i64> = ids
             .iter()
             .copied()

@@ -72,3 +72,20 @@ fn pending_survive_pruning() {
     let s = feed((1..=60).map(|i| new(pending(CHAT, 1_000_000 + i))));
     assert_eq!(s.pending_sends().len(), 60);
 }
+
+/// 待发的也不占配额：60 条待发 + 普通消息，普通的照样留到 `keep_per_chat`（codex 029 第 2 轮 #2）
+#[test]
+fn pending_do_not_eat_the_quota() {
+    let s = feed(
+        (1..=60)
+            .map(|i| new(pending(CHAT, 1_000_000 + i)))
+            .chain((1..=10).map(|i| new(msg(CHAT, i, text("普通"))))),
+    );
+    assert_eq!(s.pending_sends().len(), 60);
+    for i in 1..=10 {
+        assert!(
+            s.message(id(CHAT, i)).is_some(),
+            "第 {i} 条普通消息被挤掉了"
+        );
+    }
+}

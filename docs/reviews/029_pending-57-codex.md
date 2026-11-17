@@ -1,9 +1,28 @@
 # 评审 029 · #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）（codex · gpt-6-astra · read-only）
 
-> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 1 轮（2026-11-14）· 总评「修改」· 待第 2 轮**。
+> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 2 轮（2026-11-14）· 总评「修改」（仅 P2）· 连续第 1 轮无 P0/P1，待第 3 轮确认**。
 > 之前：atg-review 自审 4 轮，每轮各有 P1、均已修；「撤销之后报下落」这一处同类 P1 第三次出现时按共同规矩第 12 条停下报大总管，**人定 A（2026-11-14）：就此收住**，不再自审。大总管转达口径：此后 P1 若又落在撤销下落时序上，降级记 P2、写明理由。
 > 第 1 轮由大总管代跑（隐私扫描把 6 处 `token: ConfirmToken` 类型标注认成密钥赋值，按共同规矩第 13 条经人确认后加 `--force-secrets`）。
-> 累计处理：P1×3、P2×1 逐条回源码核实，属实 4、驳回 0。
+> 累计处理：P1×3、P2×3 逐条回源码核实，属实 6、驳回 0；P2×1 开 issue #109。
+
+## 第 2 轮（2026-11-14）· 总评「修改」（仅 P2）
+
+原文：`_tmp/codex-029/pending-57-codex-2.md`（不入库）。对象 `main...HEAD`（提交 `7702a6e`，含第 1 轮修复）。大总管代跑。
+上一轮处理的验证：#1 漏待发与截断、#3 附件正文已修（codex 确认）；#2 正式消息缺失分支已收紧，但另有遗漏（本轮 #1）；#4 已延期到 #109，不再列。
+本轮 P0/P1：0 条 · 停止线：连续第 1 轮无 P0/P1 · 留作 issue 的 P2：无（两条都已修）
+
+- **P2｜`pending.rs:346` 清缓存的删除仍可能被报成撤销成功**（第 2 轮 #1）
+  - 核实：属实。`send::verdict` 不看 `is_permanent` / `from_cache`，任何删除都成 `PendingDeleted`，CLI 转成 `cancelled`；`fate` 把没换 id、不在了的报 `deleted`，而 store 清缓存也会拿掉活消息（`store/mod.rs` 删除处）
+  - 处理：CLI 等下落时另记非永久删除（`note_soft`：`!is_permanent || from_cache`），这类报 `unknown`；`resolved` 里「不在了」改名 `gone`（被删或清缓存，分不清）；`send::verdict` 不动（对 `send` 来说清缓存与超时同归「结果未知」，结论不变）；单测补两种标志；契约 cli / actions 同步
+  - 属撤销下落一处，codex 已按口径列 P2；修法便宜，照修
+- **P2｜`store/mod.rs:620` 待发消息仍占普通配额，导致过量裁剪**（第 2 轮 #2）
+  - 核实：属实。`excess` 按全部活消息数算、却只从非待发里删，60 条待发会把之后的普通消息立刻挤掉
+  - 处理：`prune` 的超额改按能删的条数算（`prunable(…, None)`，只排除待发）；单测 `pending_do_not_eat_the_quota`（60 条待发 + 10 条普通，普通全留）；`store/mod.rs` 行数不增（`current_id` / `is_restricted` 两个查询迁到 `store/query.rs`）
+- 引用抽查：「属实」4 条；「不符」1 条——`store/query.rs:39` 注释仍说待发可能被删旧，已改；「无法核实」2 条（同第 1 轮）
+
+### 是否再审
+
+本轮无 P0/P1，只连续 1 轮，再审一轮确认（第 3 轮脚本交大总管代跑）。
 
 ## 第 1 轮（2026-11-14）· 总评「修改」
 

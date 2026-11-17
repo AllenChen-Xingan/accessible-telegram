@@ -180,7 +180,7 @@ fn fate_follows_the_id_swap() {
     assert_eq!(f(a.id)["outcome"], "succeeded");
     assert_eq!(f(a.id)["message_id"], 50);
     assert_eq!(f(b.id)["outcome"], "failed");
-    assert_eq!(f(c.id)["outcome"], "deleted");
+    assert_eq!(f(c.id)["outcome"], "gone");
     assert_eq!(f(c.id)["message_id"], Value::Null);
 }
 
@@ -341,7 +341,7 @@ fn raced_cancel_is_sent_deleted_here() {
             message: sent.clone(),
         },
     });
-    assert_eq!(cancel_outcome(&s, &w), ("already_sent", Some(50)));
+    assert_eq!(cancel_outcome(&s, &w, false), ("already_sent", Some(50)));
     s.apply(Input::Update {
         seq: 3,
         event: CoreEvent::MessagesDeleted {
@@ -351,14 +351,39 @@ fn raced_cancel_is_sent_deleted_here() {
             from_cache: false,
         },
     });
-    assert_eq!(cancel_outcome(&s, &w), ("sent_deleted_here", Some(50)));
+    assert_eq!(
+        cancel_outcome(&s, &w, false),
+        ("sent_deleted_here", Some(50))
+    );
     // store 里干脆没有（被删旧）：证明不了删过，报未知（codex 029 #2）
     let other = Waited::Succeeded({
         let mut m = sent.clone();
         m.id.message_id = 77;
         m
     });
-    assert_eq!(cancel_outcome(&s, &other), ("unknown", Some(77)));
+    assert_eq!(cancel_outcome(&s, &other, false), ("unknown", Some(77)));
     let gone = Waited::Unknown(atg_core::error::UnknownWhy::PendingDeleted);
-    assert_eq!(cancel_outcome(&s, &gone), ("cancelled", None));
+    assert_eq!(cancel_outcome(&s, &gone, false), ("cancelled", None));
+    // 那条删除只是清缓存 / 非永久：证明不了撤下（codex 029 第 2 轮 #1）
+    assert_eq!(cancel_outcome(&s, &gone, true), ("unknown", None));
+    let mut soft = Vec::new();
+    note_soft(
+        &CoreEvent::MessagesDeleted {
+            chat_id: ME,
+            message_ids: vec![1, 2],
+            is_permanent: true,
+            from_cache: true,
+        },
+        &mut soft,
+    );
+    note_soft(
+        &CoreEvent::MessagesDeleted {
+            chat_id: ME,
+            message_ids: vec![3],
+            is_permanent: true,
+            from_cache: false,
+        },
+        &mut soft,
+    );
+    assert_eq!(soft.len(), 2);
 }

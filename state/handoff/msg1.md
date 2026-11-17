@@ -1,4 +1,14 @@
-# 现状页 · msg1（批次 b18：发送这一侧收尾）
+# 现状页 · msg1
+
+## b20 接手（2026-11-16）
+交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
+- **做到哪**：已报到，等大总管合 main。工作区未提交改动 = codex 029 第 2 轮两条 P2 的修复（清缓存误报撤销成功 → `unknown`/`gone`；待发不占删旧配额），**未编译**
+- **合 main 预计冲突**：core `send.rs`（main 拆成子模块，分支改了约 100 行）、`confirm_box.rs`（main 删、分支改：修改/删除冲突）；还有 fake / td / store/mod / error / lib、CLI send / serve / session / args / main / forward / deadlines、契约 actions / cli / errors / config-privacy、reviews/README、文件行数基线
+- **Touch ID 删除波及我的代码**：pending 撤销确认框文字（confirm_box）、`delete.rs` 与其测试里的 HumanAuth / 确认文字、`serve/l2.rs`、`pending.rs`、`exp_real.rs`、CLI session / send 里的 Authenticator 接线 → 全改成直发
+- **下一步**：合完 → 去掉确认、编译测试（领名额）→ codex 029 第 3 轮 → #88
+- **要人定的事**：无
+
+## b18 记录（发送这一侧收尾）
 
 交代：MAIN `_tmp/20261113-b18/msg1.md`。分支 `feat/57-pending`。顺序：#57 pending（评审 029）→ 删除（030）→ 编辑（031）。
 
