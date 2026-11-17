@@ -6,14 +6,9 @@ use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::speech::chat_brief;
 use atg_core::tree::{ChatKind, ChatLast};
 use serde_json::{Value, json};
-use std::path::PathBuf;
-
-fn temp_root(tag: &str) -> PathBuf {
-    atg_core::testkit::temp_dir(&format!("cli-chats-{tag}"))
-}
 
 fn profile(tag: &str) -> Profile {
-    Profile::create(&temp_root(tag), "main", ServerKind::Main).unwrap()
+    atg_core::testkit::profile(&format!("cli-chats-{tag}"), ServerKind::Main)
 }
 
 /// 已登录的假后端
