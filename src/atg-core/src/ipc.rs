@@ -352,7 +352,7 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    /// 短路径的临时目录（套接字路径有上限，`temp_dir()` 在 macOS 上已经很长）
+    /// 短路径的临时目录（套接字路径有上限，`temp_dir()` 在 macOS 上已经很长）。不用 testkit：它的前缀与计数器会把路径拉长
     fn short_dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("atgipc-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);

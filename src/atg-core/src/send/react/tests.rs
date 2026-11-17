@@ -11,7 +11,6 @@ use crate::send::react_plan_json;
 use crate::status::AuthStep;
 use crate::tree::{Doc, Sender, Time};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
@@ -40,7 +39,6 @@ fn msg(chat: i64, id: i64, extra: Value) -> Value {
 }
 
 fn rig(tag: &str, test_dc: bool) -> Rig {
-    static N: AtomicU32 = AtomicU32::new(0);
     let gate = Gate::new(Holder::Cli);
     let b = FakeBackend::with_gate(gate).unwrap();
     b.set_auth(FakeAuth {
@@ -58,12 +56,7 @@ fn rig(tag: &str, test_dc: bool) -> Rig {
     b.set_chat(FRIEND, vec![new_chat(FRIEND, "林小雨")]);
     b.set_history(ME, vec![msg(ME, 5, json!({}))]);
     b.set_history(FRIEND, vec![msg(FRIEND, 5, json!({}))]);
-    let root = std::env::temp_dir().join(format!(
-        "atg-react-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = crate::testkit::temp_dir(&format!("react-{tag}"));
     let kind = if test_dc {
         ServerKind::Test
     } else {

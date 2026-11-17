@@ -15,11 +15,13 @@
 //!
 //! `tag` 写成「测试套-用途」（如 `cfg-garbled`），留下的目录才认得出是谁的。
 //!
-//! 进度（R3a 第一刀，2026-11-14）：已换 core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、
-//! `session/tests.rs`。还没换的同类助手（各在别的线手上，那条线合并后各补一刀）：core `gate/tests.rs`、`send_limits.rs`、
-//! `send/tests.rs`、`ipc.rs` 的测试、`tests/send_limits.rs`；cli `chats.rs`（R2a 后在 `chats/tests.rs`）、`login/tests.rs`、
-//! `send/tests.rs`、`serve/tests.rs`、`voice/tests.rs`、`watch/tests.rs`；还有 `tests/config.rs` 里 `atg-test-phone` 那个只带
-//! 进程号的临时目录（同一文件，但不在本刀的 4 处替换里，下一刀一起换）。造 TDLib JSON 的助手（各测试里的 `chat`、`msg`……）是 R3b。
+//! 进度：R3a 第一刀（2026-11-14）换了 core `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`；
+//! 第二刀（2026-11-17）换了 core `send/tests.rs`、`send/react/tests.rs`、`send_limits/tests.rs`、`tests/config.rs` 的
+//! `test-phone`，cli `chats`、`login`、`send`、`react`、`pending`、`voice`（含 `voice/tests/transcribe.rs`）、`watch` 的测试。
+//! 还没换（在途线合并后再补）：core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`。
+//! 故意不换：core `ipc.rs` 的测试与 cli `serve/tests.rs`（建套接字，路径有长度上限）；core `tests/send_limits.rs`
+//! （同一个 tag 要再算出同一个路径，模拟下一个进程）；`atg-audio`（不依赖 atg-core）。各处都有注释写明原因。
+//! 造 TDLib JSON 的助手（各测试里的 `chat`、`msg`……）是 R3b。
 
 use crate::config::{Profile, ServerKind};
 use std::path::{Path, PathBuf};

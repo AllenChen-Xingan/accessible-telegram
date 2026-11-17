@@ -29,7 +29,7 @@ impl Sink for Cap {
     }
 }
 
-/// 短路径（套接字路径有 103 字节上限）
+/// 短路径（套接字路径有 103 字节上限）。不用 testkit：它的前缀与计数器会把路径拉长
 fn profile(tag: &str, kind: ServerKind) -> Profile {
     let root = std::env::temp_dir().join(format!("atgs-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

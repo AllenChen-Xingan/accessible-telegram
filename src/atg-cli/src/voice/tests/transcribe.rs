@@ -29,9 +29,7 @@ struct Gated {
 impl Gated {
     fn new(tag: &str) -> Self {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("atg-stt-gate-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = atg_core::testkit::temp_dir(&format!("stt-gate-{tag}"));
         let d = dir.display();
         let script = format!(
             "#!/bin/sh\necho '{{\"kind\":\"hello\",\"proto\":1}}'\ncat > /dev/null\ntouch '{d}/started'\n\
