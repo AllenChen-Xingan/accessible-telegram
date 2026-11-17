@@ -361,3 +361,26 @@
 - codex 058（384da95...HEAD）：两轮零发现，收敛。记录 `docs/reviews/058_r3a-testkit-3-codex.md`
 - PR 说明草稿：`_tmp/20261116-b20/r3a3-pr-arch.md` → PR #157，等人合并（合 main 时交接页冲突已解：两节都留，tdjson 在前）
 - 之后待命：R7 的 `fake.rs`、`td.rs` 等 #12 合进 main；`tests/cli.rs` 的 `send_usage_paths` 也等 #12
+
+## R7 第九刀：拆 core `td.rs`（2026-11-17，工作副本 `atg-wt/arch-td`，分支 `refactor/r7-td`，从 main f5ca5b2 起）
+
+大总管批的切法：`td/real/submit.rs` 一字不动，因为 msg2 的 13a/13b 会往里加。基线和 PR 3（fake）会冲突，谁后合谁解，两边都合完基线应该一项不剩。codex 060。
+
+- 第一步：内联的 `mod real { … }`（原第 34–798 行）用脚本 `_tmp/20261117-r7td/split.py` 原样挪成 `td/real.rs`，缩进退 4 格；`td.rs` 剩 36 行
+- 第二步：照 fake 的写法，再拆出 `td/real/start.rs`（108 行）、`login.rs`（80 行）、`read.rs`（139 行）
+  - 根上 16 个方法各留一行，转给 `do_*`；`td/real.rs` 剩 539 行
+  - 内部助手留在根上，不改可见性。原计划要挪进 `call.rs`，不挪了，大总管已同意
+- rustfmt 合回一行的有 7 处，清单在 `_tmp/20261117-r7td/reflow.md`，要写进 PR 说明（格式变、内容不变）
+- 加一次只读真机冒烟（大总管要求）
+  - 正式档案，拆前 f5ca5b2 和本分支各跑一遍：`chats`、`history saved`、`links saved <id>`（走 `message_get`）
+  - 只比对输出，只报哈希、行数、键名；输出比完即删
+  - 脚本：`_tmp/20261117-r7td/smoke.sh`
+- 文档：010 的 td 行（保留了「原计划」）、R7 行、第五节末尾「基线」那句
+- ✅ 全量检查全过（领了名额跑，已归还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources
+  - tdlib-api 的 clippy 报 `real.rs` 有 4 处导入没用上（`Claim`，以及 `config`、`gate`、`secret` 的 `self`，已随 `start` 挪走），删掉了
+- ✅ 只读冒烟（正式档案，6 次 rc=0，没有档案锁问题）
+  - `history saved`、`links saved <id>`：拆前拆后只差 `.at`、`elapsed_ms`
+  - `chats` 第一次按行号比对不上：两次跑之间会话顺序变了
+  - 补跑 `smoke2.sh`，顺序是拆后、拆前、拆后，按 `chat_id` 配对：三两两比较，集合、顺序、各键的值全都相同（不算 `.at`、`elapsed_ms`、`first_chat_ms`）
+  - 输出、解出的源码、二进制都已删掉
+- 待提交检查点，然后走 atg-review → codex 060（`f5ca5b2...HEAD`，name `r7td`）
