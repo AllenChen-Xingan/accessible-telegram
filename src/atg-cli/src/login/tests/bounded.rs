@@ -208,3 +208,22 @@ fn core_fault_while_waiting_returns_at_once() {
     assert!(matches!(r, Err(Fail::Core(CoreError::Disconnected))));
     assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
 }
+
+/// 等授权线的途中内核故障：同样立刻报 `disconnected`（#100）
+#[test]
+fn core_fault_mid_wait_returns_at_once() {
+    let (b, _p) = started("fault-mid", ServerKind::Test, account());
+    let seen = b.auth_generation();
+    let t0 = Instant::now();
+    let r = std::thread::scope(|s| {
+        s.spawn(|| {
+            std::thread::sleep(Duration::from_millis(200));
+            b.crash();
+        });
+        wait_line(&b, Instant::now() + STEP_TIMEOUT, &NEVER, |t| {
+            b.wait_auth_update(t, seen)
+        })
+    });
+    assert!(matches!(r, Err(Fail::Core(CoreError::Disconnected))));
+    assert!(t0.elapsed() < Duration::from_secs(3), "{:?}", t0.elapsed());
+}

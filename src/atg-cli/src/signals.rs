@@ -1,7 +1,7 @@
 //! Ctrl+C / SIGTERM → 退出标志（`serve`、`watch`、`play`、登录这组命令共用）。第一次只立标志、正常收尾；第二次立刻以 130 退出、不出结尾行。
 //!
-//! 读秘密时终端被切成不回显（`tty.rs`）：第二次信号 `_exit` 会跳过恢复，所以读之前先把原设置交到这里
-//! （[`arm_tty`]），处理函数 `_exit` 之前先放回去（#98）。
+//! 读秘密时终端被切成不回显（`tty.rs`）：第二次信号 `_exit` 会跳过恢复，所以读之前先把终端 fd 和原设置登记到这里
+//! （[`arm_tty`]，读完 [`disarm_tty`] 撤销登记），处理函数 `_exit` 之前先放回去（#98）。
 
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
@@ -25,6 +25,7 @@ extern "C" fn on_signal(_: libc::c_int) {
     if STOP.swap(true, Ordering::SeqCst) {
         let fd = TTY_FD.load(Ordering::SeqCst);
         if fd >= 0 {
+            // 用 TCSANOW 立刻生效：马上就 `_exit` 了，不等输出排空（正常恢复用 TCSAFLUSH，丢掉没读的输入）
             // SAFETY: fd 已发布，SAVED 在发布之前写好、之后不再写
             unsafe { libc::tcsetattr(fd, libc::TCSANOW, (*SAVED.0.get()).as_ptr()) };
         }
@@ -33,6 +34,8 @@ extern "C" fn on_signal(_: libc::c_int) {
     }
 }
 
+/// 用 `libc::signal` 装：macOS 上按 BSD 语义，自带 `SA_RESTART`——阻塞中的 `read` 等被信号打断后由系统重启、
+/// 接着等，所以读终端那边靠 `select` 切片看 [`STOP`]（`tty.rs`），不靠 `read` 被打断
 pub fn install() {
     let h = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
     // SAFETY: 处理函数只用异步信号安全的操作
@@ -42,7 +45,7 @@ pub fn install() {
     }
 }
 
-/// 终端切成不回显之后调：第二次信号退出前把它放回 `orig`。已经武装着就不动（同一时刻只读一处输入）
+/// 登记恢复信息（切终端之前调）：第二次信号退出前把 `fd` 放回 `orig`。已登记着就不动（同一时刻只读一处输入）
 pub fn arm_tty(fd: i32, orig: &libc::termios) {
     if fd < 0 || TTY_FD.load(Ordering::SeqCst) >= 0 {
         return;
@@ -52,7 +55,7 @@ pub fn arm_tty(fd: i32, orig: &libc::termios) {
     TTY_FD.store(fd, Ordering::SeqCst);
 }
 
-/// 终端已放回：解除
+/// 终端已放回：撤销登记
 pub fn disarm_tty() {
     TTY_FD.store(-1, Ordering::SeqCst);
 }
@@ -61,7 +64,7 @@ pub fn disarm_tty() {
 mod tests {
     use super::*;
 
-    /// 武装 / 解除只改状态位；真发信号会让测试进程 `_exit`，不测
+    /// 登记 / 撤销只改状态位；真发信号会让测试进程 `_exit`，不测
     #[test]
     fn arm_and_disarm() {
         // SAFETY: termios 全零是合法值

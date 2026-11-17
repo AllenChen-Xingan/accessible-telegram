@@ -375,7 +375,7 @@ fn read_marker(dir: &Path) -> Result<ServerKind, MarkerError> {
     }
 }
 
-/// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 什么都没有。
+/// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 和标记本身什么都没有（标记见下面行内注释，#97）。
 /// 不只看 TDLib 的库：`send-guard.json`、`account-limited`、`send-pending` 这类落盘状态
 /// （`config-privacy.md` 第一节第 1 小节）也跟着档案种类走，留着任何一样都不算新。读目录出错也算不新，宁可拒绝
 fn is_fresh(dir: &Path) -> bool {
@@ -410,7 +410,8 @@ fn write_marker(dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = parent.join(format!(".{name}.{MARKER}.{}.{seq}", std::process::id()));
-    // 上次崩在这一步留下的同名临时文件：先删（只可能是本进程号、早已不在的那次留下的）
+    // 上次崩在这一步留下的同名临时文件：先删。进程号会被系统回收复用、计数每个进程从 0 起，所以以前同号、
+    // 早已退出的进程可能留下同名的；正在写的进程不会同名（同号同时只有一个进程，同进程里计数不重）
     let _ = fs::remove_file(&tmp);
     let written = OpenOptions::new()
         .write(true)

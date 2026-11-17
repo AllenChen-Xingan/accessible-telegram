@@ -1,3 +1,9 @@
+# b20 接手（2026-11-16）
+- 手上：先收第四批 #97 #98 #100 #40（c281455 + 自审修复未提交未编译）；再做发送闸 #77 #80 #83 #109（直发是唯一方式，改 gate/** send/** 前先报大总管，msg1 在同片做 #57 #88）
+- 做到哪：已向大总管 allenchen-37 报到。合 main 冲突预测：docs/reviews/README.md、scripts/file-size-baseline.json、specs/contracts/cli.md、errors.md、本页
+- 下一步：等大总管提交 WIP、合 main、给名额 → 复跑 → codex 045 → 发送闸一组
+- 要人定的事：无
+
 # fix 现状页（批次 b18）
 
 ## 第一批（已合 PR #76）
@@ -247,3 +253,8 @@ chats.rs:133 · history.rs:171 215 365 638 · login.rs:103 196–200 244 336 385
 
 ## 要大总管 / 人定
 - 无。#98 的「`poll` 切片、不改 `SA_RESTART`」与「第二次信号先放回终端」属技术细节，按上面做；有异议再改。
+
+## 第四批进度与实际做法（2026-11-14）
+- 大总管已提交 c281455。实现与上面设计的出入（以这里为准）：临时文件名 `<pid>.<序号>`（同进程多线程不重名，设计写的纳秒会撞）；`read_raw_line` 沿用 `Read`，源交出 `ErrorKind::Interrupted` 即「停止标志立起」（`Polled` 文档写明约定）；清零正本 `atg_core::secret::wipe`，`Secret::drop` 用私有 `wipe_all` 按容量清，tty 的 `wipe_from` 调 `wipe`；#100 测试是两条新测（等之前已故障、等的途中故障），没改旧测。
+- atg-review：P1×1 属实——macOS 的 `poll` 不支持 `/dev/tty`（一调就 `POLLNVAL`、不等；本机伪终端实测，`select` 按期等满 300 ms），切片形同虚设；改 `select`，补真终端测试（无控制终端时跳过）。P2×5（「内核」两义、`is_fresh` 定义与 `config-privacy.md` 落盘清单 / 第 2 小节 / 变更记录、`cli.md` #98 一句 + 变更记录、本节交接）、P3×10 照改（登记恢复信息挪到切终端之前、TCSANOW 理由、SA_RESTART 写在 `install`、pid 复用、`set_len` 理由、清零只留一份……）。
+- 下一步：领名额复跑 → 请大总管提交 → codex 045（范围 `origin/fix/62-64-95...HEAD`，只看第四批）。

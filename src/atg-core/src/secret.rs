@@ -42,21 +42,26 @@ impl Drop for Secret {
     }
 }
 
-/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）
-pub fn wipe_all(v: &mut Vec<u8>) {
-    let len = v.len();
-    // SAFETY: 先把长度设成 0，再把 0..capacity 整块当未初始化的字节写 0：写的都在这块分配之内、对齐的 u8；
-    // 随后长度恢复成原值，前 len 个字节是刚写好的 0，已初始化
-    unsafe {
-        v.set_len(0);
-        let p = v.as_mut_ptr();
-        for i in 0..v.capacity() {
-            // volatile：别让编译器把「写完就丢」的清零优化掉
-            std::ptr::write_volatile(p.add(i), 0);
-        }
-        v.set_len(len);
+/// 清零这几个字节（volatile，编译器不会把「写完就丢」的清零优化掉）。清零的唯一写法：别处都调它
+pub fn wipe(bytes: &mut [u8]) {
+    for b in bytes.iter_mut() {
+        // SAFETY: b 是这块切片里有效、对齐的 u8
+        unsafe { std::ptr::write_volatile(b, 0) };
     }
     std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 把整块容量都清零，不只 `0..len`：读输入时退格 / 截短删掉的字节还留在容量区里（#40）
+fn wipe_all(v: &mut Vec<u8>) {
+    let (len, cap) = (v.len(), v.capacity());
+    // 容量区（len..cap）不算 Vec 已有的元素，不能当 `&mut [u8]` 借出来；先把长度设成整个容量，
+    // 让 [`wipe`] 一并写满，写完再把长度设回原值
+    // SAFETY: 0..cap 都在这块分配之内；设长之后马上整块写 0，没有读到未初始化字节；之后长度恢复成原值
+    unsafe {
+        v.set_len(cap);
+        wipe(v.as_mut_slice());
+        v.set_len(len);
+    }
 }
 
 impl fmt::Debug for Secret {

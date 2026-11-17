@@ -91,7 +91,8 @@ fn wait_line<B: Backend>(
             }
             return Ok(s);
         }
-        // 内核已故障：等的那一方会立刻空手回来，不再往下空转到期限（#100）
+        // 本项目内核（`CoreState`，TDLib 收线程的监督）已故障：`wait` 收授权线时一进去就空手回来（不睡），
+        // 循环会一直空转到期限才报；这里看到故障就立刻报断开（#100）
         if b.status().lines.core == CoreState::Faulted {
             return Err(Fail::Core(CoreError::Disconnected));
         }

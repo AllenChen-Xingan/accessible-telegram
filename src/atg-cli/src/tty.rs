@@ -9,9 +9,11 @@
 //! 输入上限 [`MAX_INPUT`] 字节，预先分配好，读的过程中不会重新分配（重新分配会留下没清零的旧副本）；
 //! 退格、Ctrl+U 删掉的字节当场清零（#40）。
 //!
-//! 读的途中看停止标志（#98）：不靠 `read` 被信号打断（信号装的是 `SA_RESTART` 语义，`read` 会被内核重启），
-//! 而是 `poll` 一片片等（每片 [`POLL_SLICE_MS`]），片间看标志——外部 SIGTERM、提示出来之前那一瞬按的 Ctrl+C 都收得到。
-//! 终端切好之后武装 [`crate::signals::arm_tty`]：第二次信号直接 `_exit` 之前先把终端放回去。
+//! 读的途中看停止标志（#98）：不靠 `read` 被信号打断（`signals::install` 装的处理函数自带 `SA_RESTART`，
+//! 信号来了操作系统会把 `read` 重启、接着等键），而是 `select` 一片片等（每片 [`SLICE_MS`]），片间看标志——
+//! 外部 SIGTERM、提示出来之前那一瞬按的 Ctrl+C 都收得到。不用 `poll`：macOS 的 `poll` 不支持 `/dev/tty`
+//! 这个间接设备，一调就回 `POLLNVAL`、不等（本机伪终端实测；`select` 按期等满）。
+//! 切终端之前先登记恢复信息（[`crate::signals::arm_tty`]）：第二次信号直接 `_exit` 之前先把终端放回去。
 
 use atg_core::secret::Secret;
 use std::fs::{File, OpenOptions};
@@ -20,7 +22,7 @@ use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 等输入时每片最多多久（片间看停止标志）
-const POLL_SLICE_MS: libc::c_int = 100;
+const SLICE_MS: libc::suseconds_t = 100;
 
 /// 一次输入最多多少字节（号码、验证码、邮箱、密码都远小于它）
 pub const MAX_INPUT: usize = 256;
@@ -28,7 +30,7 @@ pub const MAX_INPUT: usize = 256;
 /// 读的时候人怎么结束的（不是正常回车）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadEnd {
-    /// Ctrl+C
+    /// Ctrl+C，或停止标志立起（外部 SIGTERM、读之前已按的 Ctrl+C）
     Interrupted,
     /// 空行上 Ctrl+D，或终端没了
     Cancelled,
@@ -99,16 +101,18 @@ impl Tty {
         if unsafe { libc::tcgetattr(fd, &mut orig) } != 0 {
             return (Vec::new(), Err(ReadEnd::Cancelled));
         }
+        // 先登记再切：切好之后、登记之前来第二次信号也不会把终端留在不回显（用原设置登记无害）
+        crate::signals::arm_tty(fd, &orig);
         let mut raw = orig;
         raw.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
         raw.c_cc[libc::VMIN] = 1;
         raw.c_cc[libc::VTIME] = 0;
         // SAFETY: 同上
         if unsafe { libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) } != 0 {
+            crate::signals::disarm_tty();
             return (Vec::new(), Err(ReadEnd::Cancelled));
         }
         let guard = Restore { fd, orig };
-        crate::signals::arm_tty(fd, &orig);
         // 先切好终端再出提示：切换时会丢掉已敲进来的输入，提示在前的话，看到提示就敲的人（或脚本）会被吞掉
         let _ = write!(self.file, "{prompt}");
         let _ = self.file.flush();
@@ -131,8 +135,9 @@ impl Tty {
     }
 }
 
-/// 一片片 `poll` 着读：停止标志立起来 → `Interrupted`（`read_raw_line` 认作 Ctrl+C）。
-/// 被信号打断的 `poll` / `read`（`EINTR`）只当这一片结束，回头再看标志
+/// 一片片 `select` 着读。约定：**交出 `ErrorKind::Interrupted` 只表示停止标志立起来了**（`read_raw_line` 认作
+/// Ctrl+C）；真的 `EINTR`（被信号打断）在这里吞掉、当这一片结束，回头再看标志，不往上交。
+/// fd 超出 `select` 能管的范围（`FD_SETSIZE`）时退回直接 `read`（不再看标志，不该发生：本进程 fd 很少）
 struct Polled<'a> {
     file: &'a File,
     stop: &'a AtomicBool,
@@ -144,13 +149,27 @@ impl Read for Polled<'_> {
             if self.stop.load(Ordering::SeqCst) {
                 return Err(io::ErrorKind::Interrupted.into());
             }
-            let mut p = libc::pollfd {
-                fd: self.file.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            // SAFETY: p 是一个有效的 pollfd，个数 1
-            match unsafe { libc::poll(&mut p, 1, POLL_SLICE_MS) } {
+            let fd = self.file.as_raw_fd();
+            if usize::try_from(fd).is_ok_and(|f| f < libc::FD_SETSIZE) {
+                // SAFETY: fd_set 是纯数据，全零后由 FD_ZERO / FD_SET 设好；fd 在 FD_SETSIZE 以内
+                let mut set: libc::fd_set = unsafe { std::mem::zeroed() };
+                let mut tv = libc::timeval {
+                    tv_sec: 0,
+                    tv_usec: SLICE_MS * 1000,
+                };
+                // SAFETY: set、tv 都是本栈上的有效对象；只关心可读
+                let n = unsafe {
+                    libc::FD_ZERO(&mut set);
+                    libc::FD_SET(fd, &mut set);
+                    libc::select(
+                        fd + 1,
+                        &mut set,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        &mut tv,
+                    )
+                };
+                match n {
                 0 => continue,
                 n if n < 0 => {
                     let e = io::Error::last_os_error();
@@ -160,6 +179,7 @@ impl Read for Polled<'_> {
                     return Err(e);
                 }
                 _ => {}
+                }
             }
             match (&mut &*self.file).read(out) {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -169,7 +189,7 @@ impl Read for Polled<'_> {
     }
 }
 
-/// 逐字节读到回车。`buf` 预先分配了 [`MAX_INPUT`]，超出的字节丢掉，不会重新分配。
+/// 逐字节读到回车。源交出 `ErrorKind::Interrupted` = 停止标志立起（见 [`Polled`]），结局同 Ctrl+C。`buf` 预先分配了 [`MAX_INPUT`]，超出的字节丢掉，不会重新分配。
 /// 收下的字、删掉的字经 `echo` 交回（回显时写回终端；读秘密时丢掉）
 fn read_raw_line(
     src: &mut impl Read,
@@ -224,10 +244,7 @@ fn read_raw_line(
 /// 删掉 `start` 之后的字节，删之前先清零：截短后它们还留在容量区，`Secret` 丢掉时虽也整块清，
 /// 读的途中就不该留着（#40）
 fn wipe_from(buf: &mut Vec<u8>, start: usize) {
-    for x in &mut buf[start..] {
-        // SAFETY: x 是这块 Vec 里有效、对齐的 u8；volatile 免得「写完就截掉」被优化掉
-        unsafe { std::ptr::write_volatile(x, 0) };
-    }
+    atg_core::secret::wipe(&mut buf[start..]);
     buf.truncate(start);
 }
 
@@ -355,7 +372,7 @@ mod tests {
         assert_eq!((r, buf), (Err(ReadEnd::Interrupted), b"12".to_vec()));
     }
 
-    /// `poll` 切片：没人敲键时另一线程立停止标志，一两片之内就回来；标志一开始就立着则一片都不等（#98）
+    /// `select` 切片：没人敲键时另一线程立停止标志，一两片之内就回来；标志一开始就立着则一片都不等（#98）
     #[test]
     fn polled_read_sees_the_stop_flag() {
         use std::os::fd::FromRawFd;
@@ -383,5 +400,28 @@ mod tests {
         let mut b = [0u8; 1];
         assert_eq!(Polled { file: &rd, stop }.read(&mut b).unwrap(), 1);
         assert_eq!(&b, b"x");
+    }
+
+    /// 真终端（`/dev/tty`）上同样按片等、看得到停止标志：macOS 的 `poll` 在 `/dev/tty` 上不等（自审 P1），
+    /// 管道测不出来。没有控制终端（CI、管道里跑）就跳过；本地用 `script -q /dev/null cargo test …` 跑得到
+    #[test]
+    fn polled_read_waits_on_the_real_tty() {
+        use std::time::{Duration, Instant};
+        let Ok(tty) = OpenOptions::new().read(true).open("/dev/tty") else {
+            return;
+        };
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let t0 = Instant::now();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(300));
+                stop.store(true, Ordering::SeqCst);
+            });
+            let mut b = [0u8; 1];
+            let r = Polled { file: &tty, stop }.read(&mut b);
+            assert_eq!(r.map_err(|e| e.kind()), Err(io::ErrorKind::Interrupted));
+        });
+        let took = t0.elapsed();
+        assert!(took >= Duration::from_millis(250) && took < Duration::from_secs(2), "{took:?}");
     }
 }
