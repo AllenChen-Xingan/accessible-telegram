@@ -186,16 +186,7 @@ impl Profile {
             }
             // #61：只有新档案才补写标记；留着数据却缺标记（标记被删、写标记前就中断……），
             // 按契约拒绝启动，绝不按调用方猜种类
-            Err(MarkerError::Missing) if is_fresh(&dir) => {
-                ensure_private_dir(&root.join("profiles"))?;
-                ensure_private_dir(&dir)?;
-                write_marker(&dir, kind)?
-            }
-            Err(MarkerError::Missing) => {
-                return Err(CoreError::Internal {
-                    what: "profile_marker_missing",
-                });
-            }
+            Err(MarkerError::Missing) => on_missing(root, &dir, kind)?,
             Err(MarkerError::Unreadable) => {
                 return Err(CoreError::Internal {
                     what: "profile_marker_unreadable",
@@ -375,38 +366,83 @@ fn read_marker(dir: &Path) -> Result<ServerKind, MarkerError> {
     }
 }
 
-/// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 什么都没有。
+/// 刚读到标记缺失之后：新档案就写标记；不新的再读一次标记——判新旧之前，别的进程可能已建好这个档案、
+/// 又拿了锁或写了别的文件（`atg.lock`……），这时标记已在，按它走（随后 `open` 核种类）；仍然缺才报 missing
+/// （#97，codex 045 第 1 轮 #3）
+fn on_missing(root: &Path, dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
+    if is_fresh(dir) {
+        ensure_private_dir(&root.join("profiles"))?;
+        ensure_private_dir(dir)?;
+        return write_marker(dir, kind);
+    }
+    match read_marker(dir) {
+        Ok(_) => Ok(()),
+        Err(MarkerError::Missing) => Err(CoreError::Internal {
+            what: "profile_marker_missing",
+        }),
+        Err(MarkerError::Unreadable) => Err(CoreError::Internal {
+            what: "profile_marker_unreadable",
+        }),
+    }
+}
+
+/// 新档案：档案目录还不存在，或里面除了空的 `db/`、`files/` 和标记本身什么都没有（标记见下面行内注释，#97）。
 /// 不只看 TDLib 的库：`send-guard.json`、`account-limited`、`send-pending` 这类落盘状态
 /// （`config-privacy.md` 第一节第 1 小节）也跟着档案种类走，留着任何一样都不算新。读目录出错也算不新，宁可拒绝
 fn is_fresh(dir: &Path) -> bool {
     let empty_dir = |p: &Path| fs::read_dir(p).is_ok_and(|mut e| e.next().is_none());
     match fs::read_dir(dir) {
+        // 标记本身也算新：调用方刚读到「缺」，这时出现的标记是别的进程刚建好、原子发布的（#97），
+        // 随后 `write_marker` 不覆盖它、`open` 按它核种类
         Ok(entries) => entries.into_iter().all(|e| {
-            e.is_ok_and(|e| {
-                matches!(e.file_name().to_str(), Some("db" | "files")) && empty_dir(&e.path())
+            e.is_ok_and(|e| match e.file_name().to_str() {
+                Some("db" | "files") => empty_dir(&e.path()),
+                Some(MARKER) => true,
+                _ => false,
             })
         }),
         Err(e) => e.kind() == std::io::ErrorKind::NotFound,
     }
 }
 
-/// 只新建、不覆盖：别的进程抢先写了，就留给调用方按落盘的标记核种类
+/// 只新建、不覆盖：别的进程抢先写了，就留给调用方按落盘的标记核种类。
+/// 原子发布（#97）：内容先写进档案目录**外**的临时文件（同在 `profiles/` 下、同一文件系统，
+/// 放在档案目录里会让别人的 `is_fresh` 看见它算「不新」），写完落盘再 `hard_link` 成标记——
+/// 别人要么读不到、要么读到完整的一份；`link` 撞上已有的报 `AlreadyExists`、不覆盖（`rename` 会覆盖，不用）
 fn write_marker(dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
-    match OpenOptions::new()
+    let io = || CoreError::Internal {
+        what: "profile_dir_io",
+    };
+    let (Some(parent), Some(name)) = (dir.parent(), dir.file_name().and_then(|n| n.to_str()))
+    else {
+        return Err(io());
+    };
+    // 本进程里也可能几个线程同时建：进程号 + 计数，不重名
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = parent.join(format!(".{name}.{MARKER}.{}.{seq}", std::process::id()));
+    // 上次崩在这一步留下的同名临时文件：先删。进程号会被系统回收复用、计数每个进程从 0 起，所以以前同号、
+    // 早已退出的进程可能留下同名的；正在写的进程不会同名（同号同时只有一个进程，同进程里计数不重）
+    let _ = fs::remove_file(&tmp);
+    let written = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
-        .open(dir.join(MARKER))
-    {
-        Ok(mut f) => f
-            .write_all(kind.marker().as_bytes())
-            .map_err(|_| CoreError::Internal {
-                what: "profile_dir_io",
-            }),
+        .open(&tmp)
+        .and_then(|mut f| {
+            f.write_all(kind.marker().as_bytes())?;
+            f.sync_all()
+        });
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+        return Err(io());
+    }
+    let published = fs::hard_link(&tmp, dir.join(MARKER));
+    let _ = fs::remove_file(&tmp);
+    match published {
+        Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(_) => Err(CoreError::Internal {
-            what: "profile_dir_io",
-        }),
+        Err(_) => Err(io()),
     }
 }
 
@@ -421,4 +457,42 @@ fn write_private(path: &Path, content: &str) -> Result<(), CoreError> {
         .map_err(|_| CoreError::Internal {
             what: "profile_dir_io",
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 共用夹具建的新空目录（#60 R3），下面放一个档案目录 `profiles/p`
+    fn scratch(tag: &str) -> PathBuf {
+        let root = crate::testkit::temp_dir(tag);
+        fs::create_dir_all(root.join("profiles").join("p")).unwrap();
+        root
+    }
+
+    /// 读到「缺」之后、判新旧之前，别的进程建好了档案并拿了锁：不报 missing，按落盘的标记走（codex 045 第 1 轮 #3）
+    #[test]
+    fn marker_published_with_lock_after_missing_is_not_missing() {
+        let root = scratch("raced");
+        let dir = root.join("profiles").join("p");
+        fs::write(dir.join(MARKER), "main").unwrap();
+        fs::write(dir.join(LOCK), "").unwrap();
+        assert!(on_missing(&root, &dir, ServerKind::Main).is_ok());
+    }
+
+    /// 真缺标记、目录里有别的东西：仍报 missing，且不补写（#61）
+    #[test]
+    fn data_without_marker_is_still_missing() {
+        let root = scratch("missing");
+        let dir = root.join("profiles").join("p");
+        fs::write(dir.join(LOCK), "").unwrap();
+        let e = on_missing(&root, &dir, ServerKind::Main);
+        assert!(matches!(
+            e,
+            Err(CoreError::Internal {
+                what: "profile_marker_missing"
+            })
+        ));
+        assert!(!dir.join(MARKER).exists());
+    }
 }
