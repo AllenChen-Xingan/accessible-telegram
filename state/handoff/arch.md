@@ -183,7 +183,7 @@
 - **进度（2026-11-17）**：已挪完，未提交。`text.rs` 671 → 506，新 `text/walk.rs` 175（自审后加了头注释一句与分节线）；逐行比对只多 mod / pub use / use / 头注释 / 空行，另有 2 行文档链接 `super::mask` → `crate::tree::mask`；`--tighten` 后基线 9 → 8 个。已申请名额编译，下一步：编译检查 → 自审 → codex 049
 - ✅ 自审 1 轮（P2×2、P3 已改）；codex 049 两轮都是零发现，收敛，记录在 `docs/reviews/049_r7-tree-text-codex.md`，索引已加。等大总管提交、开 PR
 
-## R7 第二刀：拆 `speech.rs`（2026-11-17，只出计划；codex 编号 050；新分支等 #139 合并后从 main 开）
+## R7 第二刀：拆 `speech.rs`（2026-11-17；已做完，PR #141 已合；codex 050 收敛）
 
 - **实查**（origin/main）：`speech.rs` 810 行。测试已经在 `speech/tests.rs`。已有的子模块：`content`（95，头注释写着「`speech.rs` 里其余正文、附件的读法以后照 010 搬进来」）、`playback`、`reaction`、`status`、`transcription`
 - **拆法**（照 010 那一行定的：根留入口、`service.rs`、`content.rs`、常量表一处）：

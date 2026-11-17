@@ -189,6 +189,7 @@ fn token_binds_target_and_digest_once_within_ttl() {
         nonce,
         issued: Instant::now(),
         mode: ConfirmMode::DirectMode,
+        again: false,
     };
     assert_eq!(
         reason(g.verify(forged, &p).unwrap_err()),
@@ -407,4 +408,122 @@ fn flood_wait_blocks_the_next_send() {
         g.issue(&plan(778, 2), false),
         Err(CoreError::RateLimited { .. })
     ));
+}
+
+/// 查重与登记在交出前一步做完（#77）：两份同内容计划都在对方登记之前拿到凭据，第二份交出前被拒，
+/// 什么都不写；带 `--again` 的放行。同一份计划先开过带 `--again`、没交出的凭据，再开不带的：不沿用那次放行
+#[test]
+fn duplicate_is_claimed_right_before_submit() {
+    let (g, dir) = gate(false);
+    let (a, b) = (plan(777, 6), plan(777, 6));
+    let ta = g.issue(&a, false).unwrap();
+    let tb = g.issue(&b, false).unwrap();
+    let ma = g.verify(ta, &a).unwrap();
+    g.before_submit(ma, &a).unwrap();
+    let mb = g.verify(tb, &b).unwrap();
+    assert_eq!(
+        reason(g.before_submit(mb, &b).unwrap_err()),
+        SendRefusedReason::DuplicateRecent
+    );
+    let entries = |d: &Path| -> usize {
+        serde_json::from_str::<Vec<GuardEntry>>(&fs::read_to_string(d.join(GUARD_FILE)).unwrap())
+            .unwrap()
+            .len()
+    };
+    assert_eq!(entries(&dir), 1, "被拒的那份不登记");
+    let log = fs::read_to_string(dir.join(DIRECT_LOG_FILE)).unwrap();
+    assert_eq!(log.lines().count(), 1, "被拒的那份不留痕");
+    assert_eq!(g.direct_sent(), 1);
+
+    // --again：放行（放行绑在这张凭据上，经 verify_again 带到交出）
+    let c = plan(777, 6);
+    let tc = g.issue(&c, true).unwrap();
+    let (mc, again) = g.verify_again(tc, &c).unwrap();
+    assert!(again);
+    g.before_submit_again(mc, &c, again).unwrap();
+    assert_eq!(entries(&dir), 2);
+
+    // 放行不串到别的凭据（codex 048 第 1 轮 #1）：同一份计划，普通凭据 A 先验、停在复核；带 --again 的 B 再验、
+    // 复核失败没交出；这时别的同内容发送先交出了。A 交出前照拦，B 的放行拿不走
+    let f = plan(777, 5);
+    let ta = g.issue(&f, false).unwrap();
+    let (ma, a_again) = g.verify_again(ta, &f).unwrap();
+    let tb = g.issue(&f, true).unwrap();
+    let (_mb, b_again) = g.verify_again(tb, &f).unwrap();
+    assert!(b_again);
+    let other = Plan {
+        target: 777,
+        digest: [50; 32],
+        intent: [5; 32],
+    };
+    let to = g.issue(&other, false).unwrap();
+    let mo = g.verify(to, &other).unwrap();
+    g.before_submit(mo, &other).unwrap();
+    assert_eq!(
+        reason(g.before_submit_again(ma, &f, a_again).unwrap_err()),
+        SendRefusedReason::DuplicateRecent
+    );
+}
+
+/// 一次请求动好几条的计划（批量重发）：留痕按条记（#83）
+struct Batch(Plan, Vec<i64>);
+impl Sealed for Batch {}
+impl Gated for Batch {
+    fn target(&self) -> ChatId {
+        self.0.target
+    }
+    fn digest(&self) -> [u8; 32] {
+        self.0.digest
+    }
+    fn intent(&self) -> [u8; 32] {
+        self.0.intent
+    }
+    fn dedup(&self) -> bool {
+        false
+    }
+    fn kind(&self) -> &'static str {
+        "resend"
+    }
+    fn log_items(&self) -> Vec<i64> {
+        self.1.clone()
+    }
+}
+
+/// 交出前每条一行「已提交」；结果按条记（含 TDLib 说不能重发的那条）；请求整个失败 / 到点时每条一行
+#[test]
+fn batch_plans_log_one_line_per_item() {
+    let (g, dir) = gate(false);
+    let p = Batch(plan(777, 3), vec![11, 12, 13]);
+    let t = g.issue(&p, false).unwrap();
+    let mode = g.verify(t, &p).unwrap();
+    g.before_submit(mode, &p).unwrap();
+    g.after_item(mode, &p, 11, -21, Some(31), Outcome::Succeeded, None);
+    g.after_item(mode, &p, 12, 0, None, Outcome::Failed, Some("not_resent"));
+    g.after_item(mode, &p, 13, -23, None, Outcome::Unknown, None);
+    let lines = |d: &Path| -> Vec<serde_json::Value> {
+        fs::read_to_string(d.join(DIRECT_LOG_FILE))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    };
+    let v = lines(&dir);
+    assert_eq!(v.len(), 6);
+    for (i, old) in [11, 12, 13].into_iter().enumerate() {
+        assert_eq!(v[i]["old_id"], old);
+        assert_eq!(v[i]["result"], "submitted");
+        assert_eq!(v[i + 3]["old_id"], old);
+    }
+    assert_eq!(v[3]["final_id"], 31);
+    assert_eq!(v[4]["error"], "not_resent");
+    assert_eq!(v[5]["result"], "unknown");
+
+    // 请求整个没等到（没有临时 id）：每条各一行
+    let t = g.issue(&p, false).unwrap();
+    let mode = g.verify(t, &p).unwrap();
+    g.before_submit(mode, &p).unwrap();
+    g.after_outcome(mode, &p, 0, None, Outcome::Unknown, None);
+    let v = lines(&dir);
+    assert_eq!(v.len(), 12);
+    assert!(v[9..].iter().all(|l| l["result"] == "unknown"));
 }

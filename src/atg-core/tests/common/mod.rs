@@ -1,5 +1,5 @@
 //! 集成测试共用的「造假数据」助手（Cargo 约定：`tests/common/mod.rs` 不当成单独的测试）。
-//! 现在只有 `reducer.rs` 用；以后别的集成测试也从这里取，不各自另造（arch 010 R3 testkit 的第一步）。
+//! 现在 `reducer/`、`pending.rs`、`transcripts.rs` 用；以后别的集成测试也从这里取，不各自另造（arch 010 R3 testkit 的第一步）。
 //! 全是手写的假事件，值都是编的。
 
 use atg_core::model::*;
