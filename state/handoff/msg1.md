@@ -3,6 +3,7 @@
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
 - **做到哪**：合并已提交 bbe2f20（大总管）。排队等编译名额（第二位）。#88：红测试已写 `src/atg-core/tests/send_limits.rs` 末尾两条（`late_limit_with_a_full_disk_still_stops_the_next_process` 现应红；`accepted_send_left_open_at_a_clean_close_leaves_no_manual_work` 现应绿、守 Q1=b）；单测三条（新 API `hold` / `await_outcome` / `outcome` / `closed`）暂放 scratchpad `88-unit-tests.rs`，红跑之后再放回 `send_limits.rs`。大总管定：#8 直发；`actions.md:294` 是历史记录不改；Q1 先按 b
+- **codex 029 第 4 轮（新身份第 2 轮）**：P1×1 属实——关闭后写盘入口没封全（晚到的 `note` 写限制文件、`begin` 写标记）→ 关闭后 `note` 只记内存、`begin` 拒；单测 `nothing_is_written_after_close`；记录已写。名额验证：全量 521 过、TDLib 494 过、clippy 两种净、fmt / 行数过；提交信息 `_tmp/msg1/commit-b20-3.md`。下一轮 focus 要写进共同规矩第 16 条（同进程构造时序竞态最高 P2）
 - **第三次名额（b20，2026-11-17）**：全量 520 过 0 败；开 TDLib 493 过 0 败；clippy 两种净；fmt / 空白 / 行数（--tighten 后 0 报错）过。修了自己引入的两处：新单测临时目录名与旧测试撞名（`early` → `outcome-first`）、clippy `match_like_matches_macro`；`fake.rs` 超基线 → `play_send` 挪进 `fake/submit.rs`（顺带成为假后端唯一登记处）。提交信息 `_tmp/msg1/commit-b20-2.md`。下一步：提交后 codex 029 新身份第 2 轮
 - **atg-review（#88 #109）**：P0×1（同 codex #1）、P2×9、P3×10，已合并处理：登记只留每个后端一处、删 `Sealed::is_preview`；补测试 2 条（成败先到、只认永久删除）；文档（正常关闭定义、断网可留很久、Q1 改指 issue #88、errors.md 期限与 temp=0）。**未改的 P3**（报大总管开 issue）：`jam` 两份且依赖 `write_atomic` 临时文件名；`cancel_unknown` 留痕没测；「守卫」「交出」等自造词无定义。记录已写进 029 第 3 轮。Q1 题面大总管已评论到 #88；余下 P3 开了 #127。排名额第二（fix 之后）
 - **codex 029 第 3 轮（pending-57-b20 第 1 轮，gpt-6-astra，read-only，medium）**：P1×2 P2×1，全部属实，已改（未编译）：
@@ -30,7 +31,7 @@
 ## #8 计划（b20，未动代码）
 分两段交付（roadmap 116 行）：先 **A 删除（给所有人，M2.7）**，后 **B 编辑（M5 ①）**；评审 030（删除）、031（编辑）。都是 L2，直发不确认（#113；现行规则以 actions.md 第一节第 5 小节为准，294 行是历史记录不改）。
 - A 删除：
-  - core：`Backend` 的 `getMessageProperties` 现只出 `can_reply`（`backend.rs:148`、`td.rs:707`）→ 加一个只读查询给出「能否给所有人删 / 能否编辑」（fake 同步）；`delete.rs` 加 `prepare_delete(chat, ids)`（L0：逐条查自己能删、给所有人；收藏夹必拒，`actions.md:110`）、`DeletePlan` 加 action `delete`（`revoke=true`）、`delete(plan, token)`（验凭据 → 交出前再查 → `send_limits::submit` → 错误走 `send::submit_failed`）；下落看永久的 `messages_deleted`
+  - core：`Backend::can_reply`（`backend.rs:148`、`td.rs:703`、`fake.rs:938`，唯一调用 `send/text.rs:180`）改成 `message_caps(id) -> MessageCaps { can_reply, can_delete_for_all, can_edit }`（同一次 `getMessageProperties`：`can_be_replied` / `can_be_deleted_for_all_users` / `can_be_edited`，唯一正本），fake 用三个集合模拟；`delete.rs` 加 `prepare_delete(chat, ids)`（L0：逐条查自己能删、给所有人；收藏夹必拒，`actions.md:110`）、`DeletePlan` 加 action `delete`（`revoke=true`）、`delete(plan, token)`（验凭据 → 交出前再查 → `send_limits::submit` → 错误走 `send::submit_failed`）；下落看永久的 `messages_deleted`
   - CLI：`atg-cli delete CHAT_ID MSG_ID... [--dry-run]`（`cli.md:37`）：每条一行 `plan` → 结果；转发进 `serve/l2.rs`、`forward::is_l2`
   - 测试：假后端全流程（成功、收藏夹拒、不能删的拒、交出前变了拒、断线报未知）；真账号只许 `--dry-run` 或收藏夹——收藏夹「给所有人删」TDLib 本就不许，正好验拒绝路径（只读查询，不交出）；成功路径要第二个测试号（N7，测试服务器登录不通 #35）→ 只能假后端，报大总管
 - B 编辑：`edit_text`（`actions.md:124`，`editMessageText`），同一套闸；真账号只在收藏夹试

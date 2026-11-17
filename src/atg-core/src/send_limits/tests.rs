@@ -304,6 +304,41 @@ fn only_permanent_deletions_settle_an_outcome() {
 }
 
 #[test]
+fn nothing_is_written_after_close() {
+    // codex 029 新身份第 2 轮 #1：关闭等到点还有在途的交出线程，它晚到的限流只记内存、不写盘（锁已放，目录里可能
+    // 已是新进程的文件）；留着的标记兜底，下一个进程照样拒
+    let dir = temp_dir("after-close");
+    let l = SendLimits::new();
+    l.load(&dir);
+    let caller = l.begin().unwrap();
+    let answer = l.hold();
+    drop(caller);
+    l.closed(Duration::from_millis(20));
+    l.note(&CoreError::RateLimited {
+        retry_after_s: 60,
+        td: None,
+    });
+    drop(answer);
+    assert!(!dir.join(FLOOD_FILE).exists());
+    assert!(dir.join(PENDING_FILE).exists());
+    // 关闭后再交出：拒，且不写标记
+    let dir2 = temp_dir("after-close-begin");
+    let k = SendLimits::new();
+    k.load(&dir2);
+    k.closed(Duration::ZERO);
+    assert!(matches!(
+        k.begin(),
+        Err(CoreError::Internal {
+            what: "not_started"
+        })
+    ));
+    assert!(!dir2.join(PENDING_FILE).exists());
+    // 同一进程再起（`load`）：解封，关闭前记在内存的限流补写下来
+    l.load(&dir);
+    assert!(dir.join(FLOOD_FILE).exists());
+}
+
+#[test]
 fn abandoned_or_overlapping_submits_clean_up_themselves() {
     // 调用方等不及把交出丢掉（守卫随之 drop）也自己清；两次交错时最后一个收尾才删
     let dir = temp_dir("overlap");

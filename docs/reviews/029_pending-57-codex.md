@@ -1,10 +1,25 @@
 # 评审 029 · #57 待发消息列表与按会话撤销（atg-cli pending / pending cancel、atg-core delete）+ #109 + #88（codex · gpt-6-astra · read-only）
 
-> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 3 轮（2026-11-16，对象改为 `origin/main...HEAD`、身份 `pending-57-b20` 第 1 轮）· 总评「修改」· P1×2，停止线重新计数**。
+> 对象：diff `main...HEAD`（分支 `feat/57-pending`，提交 `373decb`，WIP）；依据 `specs/contracts/actions.md`、`cli.md`。**最新一轮：第 4 轮（2026-11-17，身份 `pending-57-b20` 第 2 轮）· 总评「修改」· P1×1，停止线未满足**。
 > 之前：atg-review 自审 4 轮，每轮各有 P1、均已修；「撤销之后报下落」这一处同类 P1 第三次出现时按共同规矩第 12 条停下报大总管，**人定 A（2026-11-14）：就此收住**，不再自审。大总管转达口径：此后 P1 若又落在撤销下落时序上，降级记 P2、写明理由。
 > 第 1 轮由大总管代跑（隐私扫描把 6 处 `token: ConfirmToken` 类型标注认成密钥赋值，按共同规矩第 13 条经人确认后加 `--force-secrets`）。
 > 第 3 轮起本机 `main` 陈旧（停在 81f6195，检出在别的工作副本），三点范围改用 `origin/main...HEAD`，脚本身份换名 `pending-57-b20`（大总管同意），停止线从这一轮重新数。第 3 轮手下自跑，`--force-secrets` 经大总管逐条核实放行（共同规矩第 15 条：命中全是 `token: ConfirmToken`）。
-> 累计处理：P1×5、P2×4 逐条回源码核实，属实 9、驳回 0；P2×1 开 issue #109（已在第 3 轮前一并修掉，`Closes #109`）。
+> 累计处理：P1×6、P2×4 逐条回源码核实，属实 10、驳回 0；P2×1 开 issue #109（已在第 3 轮前一并修掉，`Closes #109`）。
+
+## 第 4 轮（2026-11-17）· 总评「修改」
+
+原文：`_tmp/codex-029/pending-57-b20-codex-2.md`（不入库）。对象 `origin/main...HEAD`（提交 `edcd11f`，含第 3 轮修复）。模型 gpt-6-astra · read-only · medium，101 秒。`--force-secrets`：14 处命中全是 `token: ConfirmToken` 或提到它的句子，大总管逐条核实后准（共同规矩第 15 条）。
+上一轮处理的验证：#1 继承标记、#2 放锁前收尾、#3 撤销断线报未知，codex 抽查均属实；登记只留每个后端一处也核过。
+本轮 P0/P1：1 条 · 停止线：未满足
+
+- **P1｜`send_limits.rs:270` 关闭后的写盘入口没封全**（第 4 轮 #1）
+  - 核实：属实，第 3 轮 #2 修得不完整。`closed(wait)` 到点还有在途的交出线程时，它晚到的受限 / 限流经 `note` 照样写 `flood-until` / `account-limited`、写失败还补写 `send-pending`——锁已放，可能写到新进程的文件上（还可能拿较短的期限盖掉新进程的）；关闭后并发的 `begin` 也照写标记，而收尾已被封住，留下删不掉的标记
+  - 处理：`note` 在关闭后只记内存、不写盘（下次 `load` 补写）；`begin` 关闭后拒（`internal{not_started}`）、不写标记；到点仍在途的，标记留着兜底。单测 `nothing_is_written_after_close`（晚到限流不写盘、标记留着；关闭后 `begin` 拒且不写；再 `load` 解封并补写）
+- 引用抽查：「属实」5 条；「无法核实」1 条（TDLib 源码不在获准补读范围）
+
+### 是否再审
+
+本轮有 P1，改完再审（新身份第 3 轮）。
 
 ## 第 3 轮（2026-11-16）· 总评「修改」
 

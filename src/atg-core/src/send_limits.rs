@@ -125,25 +125,28 @@ impl SendLimits {
     /// 一个发送错误（不论从哪条路来）：受限 / 限流就记下并当场落盘，别的不管
     pub fn note(&self, e: &CoreError) {
         let mut s = self.lock();
+        // 后端已关闭（档案锁已放）：只记在内存，不写盘——目录里可能已是新进程的文件；没写进去的由留着的标记兜底
+        // （codex 029 新身份第 2 轮 #1）。下次 `load` 时会补写
+        let dir = if s.closed { None } else { s.dir.clone() };
         match e {
             CoreError::AccountLimited { .. } if !s.limited => {
                 s.limited = true;
-                if let Some(dir) = s.dir.clone()
-                    && !persist_limited(&dir)
+                if let Some(dir) = &dir
+                    && !persist_limited(dir)
                 {
                     s.unsaved = true;
-                    mark_pending(&dir);
+                    mark_pending(dir);
                 }
             }
             CoreError::RateLimited { retry_after_s, .. } => {
                 let until = unix_now() + i64::from(*retry_after_s);
                 if until > s.flood_until {
                     s.flood_until = until;
-                    if let Some(dir) = s.dir.clone()
-                        && !persist_flood(&dir, until)
+                    if let Some(dir) = &dir
+                        && !persist_flood(dir, until)
                     {
                         s.unsaved = true;
-                        mark_pending(&dir);
+                        mark_pending(dir);
                     }
                 }
             }
@@ -180,6 +183,12 @@ impl SendLimits {
     /// 回一个守卫：交出这一步不论怎么结束（含调用方等不及把整个等待丢掉）都经它的 `drop` 收尾
     fn begin(self: &Arc<Self>) -> Result<Pending, CoreError> {
         let mut s = self.lock();
+        // 后端已关闭：不交出，也不写标记（codex 029 新身份第 2 轮 #1）
+        if s.closed {
+            return Err(CoreError::Internal {
+                what: "not_started",
+            });
+        }
         if let Some(dir) = &s.dir {
             write_atomic(&dir.join(PENDING_FILE), unix_now().to_string().as_bytes()).map_err(
                 |_| CoreError::Internal {
