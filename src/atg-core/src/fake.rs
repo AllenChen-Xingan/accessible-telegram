@@ -44,11 +44,12 @@ use std::time::Duration;
 
 mod call;
 mod caps;
-pub use caps::Cap;
+mod edit;
 mod files;
 mod submit;
 
 pub use call::Call;
+pub use caps::Cap;
 
 /// 一次真发送之后「TDLib」怎么推结果
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,8 +138,7 @@ pub struct FakeBackend {
     /// 自己的用户 id（`me()`）；没设 → 401
     me_id: Mutex<Option<i64>>,
     forums: Mutex<Vec<ChatId>>,
-    /// 被关掉的能力（[`caps::Cap`]），见 `fake/caps.rs`
-    denied: Mutex<Vec<(MsgId, caps::Cap)>>,
+    denied: Mutex<Vec<(MsgId, caps::Cap)>>, // 被关掉的能力，见 `fake/caps.rs`
     /// 接下来的几次预览是否「把回复去掉」（按次取，取完照常保留）
     preview_drops: Mutex<VecDeque<bool>>,
     /// 下一次预览时先跑它（测「凭据已验过、复核预览还没回」那一刻发生的事）

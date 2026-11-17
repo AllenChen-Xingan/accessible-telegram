@@ -2,10 +2,7 @@
 use super::*;
 
 fn temp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("atg-limits-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&d);
-    fs::create_dir_all(&d).unwrap();
-    d
+    crate::testkit::temp_dir(&format!("limits-{tag}"))
 }
 
 #[test]

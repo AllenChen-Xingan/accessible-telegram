@@ -270,3 +270,43 @@
   - `hub.rs` 开头 `use super::*;`：它调用的 `event_data`（根上私有）、常量和导入都从根上拿，不用改可见性
   - **要放宽 1 处可见性**：`watch/tests.rs` 第 358 行直接读 `Watcher` 的私有字段 `alerts`。挪进 `hub.rs` 以后，测试就看不到它了，所以 `alerts` 改成 `pub(super)`（只对 `watch` 模块和它下面的测试可见，对外不变）。别的私有字段、私有方法只在这一节里用
 - **验收**：fmt、两种 clippy、`test --workspace`（watch 的测试和快照兜底，快照一条不能变）；逐行比对（只多 mod / pub use / 头注释 / use super::* / 1 个 pub(super)）；`--tighten`；自审 + codex 054（按提交范围取 diff，规矩第 17 条）
+- **进度（2026-11-17，工作副本 `atg-wt/arch-watch`，分支 `refactor/r7-watch`，从 1f161b3 开）**：已挪完，没提交。`watch.rs` 837 → 518（`StdoutLines` 的导出单独一行，默认构建不开 tdlib 时允许它没被用），新 `watch/hub.rs` 327（自审后改了头注释）。逐行比对：多出来的只有 `mod hub;`、`pub use hub::{…}`、头注释两行、`use super::*`、空行；`alerts` 改成 `pub(super)`。rustfmt 把 `mod hub;` 排到了 `mod topics;` 前面。`--tighten` 6 → 5（这个分支上没有 #146 和 history 那刀的 PR，后合的那个基线文件会有小冲突）。010 表格已回写（`Watcher` 为什么也一起挪），第 103 行 `render_inner` 的位置改成 `watch/hub.rs`。下一步：领名额编译 → 请大总管提交检查点 → 自审 → codex 054
+- 自审 1 轮（按 `1f161b3...HEAD`）：P0/P1 零。P2 两条已改：路线表 R7 补上第四到六刀与 cli 两个文件的范围；第 105 行 `result_line` 的位置改成 `watch/hub.rs`。P3 已收尾：010 那一行解释 `pub(super)` 和 tdlib 特性、行号注明按哪个版本、第 108 行补注挪后的位置；`hub.rs` 头注释改准（JSON 的信封在 `Watcher`、每种事件的数据在根上），补词汇，去掉多余的分节线；`fail_unless_stopped` 的注释补上 `super::`。只改了注释和文档，rustfmt 过了。下一步：请大总管提交检查点 → codex 054
+- ✅ codex 054 两轮零发现，收敛，记录在 `docs/reviews/054_r7-watch-codex.md`，索引已加。等大总管提交、开 PR
+
+## R3a 第二刀：剩下的临时目录助手换成 testkit（2026-11-17，按 main 8a98ab3 重核；只出计划；codex 编号 055；工作副本 `atg-wt/arch-r3`，分支 `refactor/r3a-testkit-2`）
+
+- **实查**：`std::env::temp_dir()` 在 testkit 以外还有 21 处。大总管划的可改范围（避开在途的 `gate/tests.rs`、`atg-cli/tests/cli.rs`）里有 10 处：
+
+| 处 | 现在 | 换成 | 注意 |
+|---|---|---|---|
+| core `send/tests.rs:94`（夹具函数里） | 进程号 + 计数器，只删不建，后面 `Profile::create` | `crate::testkit::temp_dir(&format!("send-{tag}"))` | 删掉随之没用的计数器 `N` |
+| core `send_limits/tests.rs:5` `temp_dir` | 只有进程号（同 tag 用两次会撞），建 | 删本地助手，调用处用 `crate::testkit::temp_dir` | |
+| core `tests/send_limits.rs:23` `root` | 只有进程号，`rig` 里删后 `Profile::create(…, "p", Test)` | `atg_core::testkit::temp_dir`，档案名 `"p"` 不变 | |
+| core `tests/config.rs:248` `atg-test-phone` | 只有进程号，建 | `atg_core::testkit::temp_dir("test-phone")` | testkit 头注释点名过这一处 |
+| cli `chats/tests.rs:12` `temp_root` | 进程号 + 线程号，只删不建 | `atg_core::testkit::temp_dir` | 唯一调用方马上 `Profile::create`；在已有的空目录上建档案没问题（R3a 第一刀已核过） |
+| cli `login/tests.rs:61` `temp_root` | 同上 | 同上 | 3 个调用方也都是马上 `Profile::create` |
+| cli `send/tests.rs:55` `profile` | 计数器，`Profile::create(…, "p", kind)` | `temp_dir` 加原样的 `Profile::create` | |
+| cli `voice/tests.rs:19` `profile` | 进程号 + 线程号，`"main"`、Main | `atg_core::testkit::profile(…, Main)` | |
+| cli `voice/tests/transcribe.rs:32`（`Gated::new`） | 只有进程号，建 | `atg_core::testkit::temp_dir` | 里面拼进假辅助脚本的路径会变长，不影响 |
+| cli `watch/tests.rs:23` `profile` | 进程号 + 线程号，`"main"`、Main | `atg_core::testkit::profile(…, Main)` | |
+
+- **不在可改范围、要大总管定**：main 上新出现的 5 处，cli `delete/tests.rs:24`、`react/tests.rs:50`、`pending/tests.rs:25`，core `delete/tests.rs:56`、`send/react/tests.rs:61`。写法和 cli `send/tests.rs` 那处一样。这几个功能（#57 撤销待发、#9 表情、删除）现在还有没有线在改？没人碰的话一起换，否则留到下一刀
+- **继续不换**：core `ipc.rs:357`、cli `serve/tests.rs:34`（要在目录里建套接字，路径最多 103 字节，故意用了短前缀）；`atg-audio` 的 `stt/locate/tests.rs`（`atg-audio` 不依赖 `atg-core`，用不了 testkit）；`gate/tests.rs`、`tests/cli.rs`（在途）。每处各加一行注释，写明为什么不用 testkit
+- **原则**：只动测试，产品代码不碰。临时目录的名字和唯一性做法变了（统一成「进程号 + 计数器」），档案名和服务器种类原样保留
+- **验收**：fmt、两种 clippy、`test --workspace`；`#[test]` 数前后相等；`grep 'std::env::temp_dir()'` 只剩 testkit 和上面「继续不换」那几处；testkit 头注释里的进度清单更新；自审 + codex 055（按提交范围）
+- **进度（2026-11-17）**：按大总管定的范围改完，没提交（`delete` 两处留到下一刀；`react`、`pending` 一起换）。实际换了 12 处：core `send/tests.rs`、`send/react/tests.rs`、`send_limits/tests.rs`、`tests/config.rs` 的 `test-phone`；cli `chats`、`login`、`send`、`react`、`pending`、`voice`、`voice/tests/transcribe.rs`、`watch`。做法：本地助手的函数名和调用处不变，函数体换成 testkit 的一行，档案名、服务器种类不变；随之没用的计数器和 `AtomicU32` 导入删掉
+  - **计划里的 `tests/send_limits.rs` 没换**：它的 `root(tag)` 要能用同一个 tag 再算出同一个路径（`Profile::open(&root("late-full"), …)` 模拟下一个进程打开同一个档案），testkit 每次给新目录，换了测试就坏。已改回原样，加注释写明原因
+  - 「不换」的几处各加一行注释：`ipc.rs`、`serve/tests.rs`、`tests/send_limits.rs`、`atg-audio` 的 `stt/locate/tests.rs`；testkit 头注释的进度清单已更新
+  - rustfmt 单文件检查都过；`#[test]` 数每个文件前后相等。下一步：领名额编译 → 请大总管提交检查点 → 自审 → codex 055
+- 自审 1 轮（按 `8a98ab3...HEAD`）：P0/P1/P2 零，P3 已改：①`ipc.rs` 不换的理由写错了（写的是路径会变长，其实是要 0o700 的目录并在测试里断言），已改；`serve/tests.rs` 的理由写准（套接字在 `profiles/main/` 下，离 103 字节上限近）。②testkit 头注释解释 R3a / R3b，「在途线」改成白话。③`tests/config.rs` 那处改用文件里已经导入的 `temp_dir`。④cli `chats` 的 `profile` 和 voice、watch 同形状，也改成 `testkit::profile`，删掉只剩一处调用的 `temp_root` 和没用的 `PathBuf` 导入。③④动了测试代码，要复编
+- ✅ codex 055 两轮零发现，收敛，记录在 `docs/reviews/055_r3a-testkit-2-codex.md`，索引已加。等大总管提交、开 PR
+
+## 待命（2026-11-17）
+
+- 已开 PR，等人合并：#139 R7 tree/text（已合）· #141 speech（已合）· #144 store（已合）· #146 tests/reducer（已合）· #148 history（已合）· #150 watch（已合） · #152 R3a 第二刀 · #129（#108 testkit 检查）
+- 等着做：
+  - 几个 PR 合 main 的冲突，大总管一次性交来（基线、评审索引、交接页、010）
+  - R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`：等 #149（#8 编辑）、#10 合并后再排
+  - R3a 余下 4 处：core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`，等在途线合并
+- 要人定的事：无

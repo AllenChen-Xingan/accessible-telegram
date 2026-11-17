@@ -1,5 +1,13 @@
 # 现状页 · msg1
 
+## 已收尾（2026-11-17）
+b20 这条线全部做完：#57 pending / pending cancel、#88、#109（PR #134，已合）；#8 A 段删除（PR #140，已合）；#8 B 段编辑（最新 PR，Closes #8，一级评审待人本人审）。
+- 留下的 issue：#127（#88 余下 P3）、#132（文字格式结尾句改到树上，含 delete / edit）、#138（删除复查同一秒换图认不出）、#147（编辑后链接预览按默认重新生成等）、另一条「三个 L2 动作交出前复查到内容变了的码不统一 + delete 结果未知 temp_message_id 恒 0」
+- 待人看（大总管攒着）：只许删 / 改自己发的；带格式照改标 `formatting_dropped`；频道管理员改别人帖子不开；#88 Q1（正常关闭时还没回来的结果照删标记）
+- 人的收藏夹里留着实测消息：「atg 实验 编辑 1–3 改后」3 条（没有经闸的「只删自己这边」，没清，大总管已转告人）
+- 工作副本：`atg-wt/msg1`（feat/57-pending，已合）、`atg-wt/msg1-8`（feat/8-edit-delete，已合）、`atg-wt/msg1-edit`（feat/8-edit，PR 中），都由大总管处理；三处 `.env.local` 是指向 MAIN 的符号链接
+- 经验：评审一律按提交范围取 diff（共同规矩第 17 条）；codex 的 target 用不会变的写法（如 `<基点>..HEAD`），否则换范围时身份对不上；解冲突挪了代码要先编译再报
+
 ## b20 接手（2026-11-16）
 交代：MAIN `_tmp/20261116-b20/msg1.md`。大总管 `allenchen-37`。顺序：#57 pending 收尾（029）→ #88 待发标记提前删（先写红测试）→ #8 编辑 / 删除自己刚发的（030、031，直发不确认）。
 - **做到哪**：合并已提交 bbe2f20（大总管）。排队等编译名额（第二位）。#88：红测试已写 `src/atg-core/tests/send_limits.rs` 末尾两条（`late_limit_with_a_full_disk_still_stops_the_next_process` 现应红；`accepted_send_left_open_at_a_clean_close_leaves_no_manual_work` 现应绿、守 Q1=b）；单测三条（新 API `hold` / `await_outcome` / `outcome` / `closed`）暂放 scratchpad `88-unit-tests.rs`，红跑之后再放回 `send_limits.rs`。大总管定：#8 直发；`actions.md:294` 是历史记录不改；Q1 先按 b
@@ -29,6 +37,15 @@
   - 修法 B（治②）：交出成功回来的临时 id 各领一个守卫，存进 `SendLimits`；`Shared::event` 收到该 id 的 SendSucceeded / SendFailed（先 note 再放）才放；临时 id 换正式 id 要跟上
   - 红测试：A——`SendLimits` 层模拟「调用方守卫先放、晚到受限写盘失败、线程守卫后放」→ 重启后 `check` 应拒（现在会放行）；B——假后端：交出成功 → 堵住限制文件 → 推 SendFailed(受限) → 新进程 `load` 应拒
   - 待定 Q1（见下）
+
+## #8 B 段编辑（工作副本 `atg-wt/msg1-edit`，分支 `feat/8-edit`，从 main 2309789；A 段 #140 已合）
+- **2026-11-17 代码 + 契约已写，未编译，等名额**。大总管定：只许改自己发的（频道管理员改别人帖子进待人清单）；带格式照改、计划标 `formatting_dropped`（进待人清单）；附件说明第二批（`not_text`）；交出 10 秒；`DeleteRefused` 改名 `ActionRefused`（`RefusedWhy` 加 `NotEditable`；删除 / 编辑共用，说明改成两用）
+  - core：`edit.rs`（`EditPlan`、`prepare_edit`、`edit_text`；复查比原文 + 整份内容 + 编辑时间）；`InvalidSendWhy::{EditNotText(not_text), Unchanged}`；共享文件（大总管准）：`send.rs` 加 `SealedKind::Edit` + `Sealed::edit`、应答复用 `Answer::Message`；`td/requests.rs::edit`；`td/real/submit.rs` 一臂；`fake/submit.rs` 一臂 + `fake/edit.rs`；`fake/call.rs` 加 `Call::Edit`；测试 `edit/tests.rs` 10 条
+  - CLI：`edit.rs`（plan / 回显改后那条 / result；交出 10 秒到点报未知）；`send.rs` 的 `check_len` / `read_text_file` / `echo` 改 `pub(crate)` 共用；args / main / session / forward / serve / serve/l2 / tests/cli.rs 接线；测试 `edit/tests.rs` 6 条
+  - 契约：actions（两行 + `EditPlan` + 第 4 小节第 7 条清单补 `edit_message_text`——**这条清单改了，PR 属一级评审，人本人看**）· cli · errors · config-privacy
+  - 自审 atg-review（按 `2309789..1fca933`）：P2×1（链接预览按默认重新生成）+ P3×3 开 #147，P3×9 改在 `bde20a0`
+  - **codex 031 收敛（2026-11-17）**：第 1 轮 P2×2（实测失败仍通过、交出报错留痕不记 id）改在 `c28d1d1`（`send::submit_failed_for`，大总管准）；第 2 轮起换身份 `edit-8b-r`（target `2309789..HEAD`），第 2、3 轮通过。复验 635 / 636 过、clippy 两种净
+  - 下一步：提交评审记录 → 真账号只在收藏夹跑 `edit/exp_real.rs`（「atg 实验 编辑 N」三轮）→ PR（契约第 4 小节第 7 条清单改了，**一级评审、人本人看**）
 
 ## #8 进度（新工作副本 `atg-wt/msg1-8`，分支 `feat/8-edit-delete`，从 main 030f91b）
 - **A 删除（2026-11-17）代码 + 契约已写，未编译，等名额**。大总管定：只删自己发的（报 `forbidden why:not_own`，待人看）；一行 `plan`、`items` 逐条列；文字格式先在 CLI 拼句（#132 补「含 delete」）；受限 / 限流也拦删除（照现状）

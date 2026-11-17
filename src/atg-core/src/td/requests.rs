@@ -144,3 +144,12 @@ pub(super) fn caps(p: &types::MessageProperties) -> MessageCaps {
         can_forward: p.can_be_forwarded,
     }
 }
+
+/// `editMessageText`：（会话、消息 id、新内容）。请求里没有 `reply_markup`（只给机器人用）
+pub(super) fn edit(request: &Value) -> Result<(i64, i64, enums::InputMessageContent), CoreError> {
+    Ok((
+        request["chat_id"].as_i64().ok_or_else(bad)?,
+        request["message_id"].as_i64().ok_or_else(bad)?,
+        part(request, "input_message_content")?,
+    ))
+}

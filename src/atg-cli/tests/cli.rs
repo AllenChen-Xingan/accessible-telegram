@@ -24,6 +24,7 @@ const DONE: &[&str] = &[
     "transcribe",
     "pending",
     "delete",
+    "edit",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令

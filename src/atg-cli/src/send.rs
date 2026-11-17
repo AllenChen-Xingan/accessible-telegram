@@ -80,14 +80,14 @@ pub fn send_params(a: &crate::args::SendArgs, tz: Option<&str>) -> Result<SendPa
 }
 
 /// 正文上限（`--text`、`--text-file`、经本机接口转来的都查；core 的准备步骤还会再查一次）
-fn check_len(text: &str) -> Result<(), Fail> {
+pub(crate) fn check_len(text: &str) -> Result<(), Fail> {
     if u64::try_from(text.len()).unwrap_or(u64::MAX) > TEXT_MAX_BYTES {
         return Err(Fail::Usage("正文要在 64 KB 以内"));
     }
     Ok(())
 }
 
-fn read_text_file(p: &std::path::Path) -> Result<String, Fail> {
+pub(crate) fn read_text_file(p: &std::path::Path) -> Result<String, Fail> {
     let meta = std::fs::metadata(p).map_err(|_| Fail::Usage("--text-file 读不了"))?;
     if !meta.is_file() || meta.len() > TEXT_MAX_BYTES {
         return Err(Fail::Usage("--text-file 要是 64 KB 以内的普通文件"));

@@ -98,6 +98,11 @@ impl<'a> Sealed<'a> {
         let kind = SealedKind::Delete { request };
         Self { kind }
     }
+    /// `editMessageText`：只由 [`crate::edit`] 在闸验过凭据之后造
+    pub(crate) fn edit(request: &'a Value) -> Self {
+        let kind = SealedKind::Edit { request };
+        Self { kind }
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -111,12 +116,14 @@ pub(crate) enum SealedKind<'a> {
     Delete { request: &'a Value },
     /// `forwardMessages`（#10）：请求 JSON，摘要算过的就是它；应答同重发（[`Answer::Resent`]）
     Forward { request: &'a Value },
+    /// `editMessageText`（`chat_id` · `message_id` · `input_message_content`）：改自己发的一条（#8 B）
+    Edit { request: &'a Value },
 }
 
 /// 交出口的应答
 #[allow(clippy::large_enum_variant)]
 pub enum Answer {
-    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息
+    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息。`editMessageText`：服务器改完后的那条
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
@@ -189,6 +196,17 @@ pub(crate) fn submit_failed<B: Backend>(
     plan: &dyn Gated,
     e: CoreError,
 ) -> CoreError {
+    submit_failed_for(b, mode, plan, e, None)
+}
+
+/// 同 [`submit_failed`]，留痕另记动在哪条已有消息上（`final_id`；编辑用，codex 031 #2）
+pub(crate) fn submit_failed_for<B: Backend>(
+    b: &B,
+    mode: ConfirmMode,
+    plan: &dyn Gated,
+    e: CoreError,
+    target: Option<i64>,
+) -> CoreError {
     let maybe_left = matches!(
         e,
         CoreError::Disconnected
@@ -199,7 +217,7 @@ pub(crate) fn submit_failed<B: Backend>(
     );
     if maybe_left {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+            .after_outcome(mode, plan, 0, target, Outcome::Unknown, None);
         CoreError::SendOutcomeUnknown {
             chat_id: Some(plan.target()),
             temp_message_id: 0,
@@ -207,7 +225,7 @@ pub(crate) fn submit_failed<B: Backend>(
         }
     } else {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Failed, Some(&e));
+            .after_outcome(mode, plan, 0, target, Outcome::Failed, Some(&e));
         e
     }
 }

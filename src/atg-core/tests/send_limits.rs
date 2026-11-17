@@ -19,6 +19,8 @@ use std::time::Duration;
 /// 自己（测试号）的 id，收藏夹就是与自己的私聊
 const ME: i64 = 4242;
 
+/// 不用 testkit：同一个 tag 要能再算出同一个路径（`Profile::open(&root("late-full"), …)` 模拟下一个进程打开同一个档案），
+/// testkit 每次给新目录
 fn root(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("atg-limits-it-{tag}-{}", std::process::id()))
 }
