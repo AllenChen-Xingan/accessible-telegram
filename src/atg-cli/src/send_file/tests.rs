@@ -46,8 +46,7 @@ struct Env {
 }
 
 fn env(tag: &str) -> Env {
-    let root = std::env::temp_dir().join(format!("atg-cli-send-file-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = atg_core::testkit::temp_dir(&format!("cli-send-file-{tag}"));
     let profile = Profile::create(&root.join("data"), "p", ServerKind::Main).unwrap();
     let home = root.join("home");
     for d in file::ALLOWED_DIRS {

@@ -57,3 +57,4 @@
 | 056 | 2026-11-17 | #153 `atg-cli resend` 的 MSG_ID 吞掉后面的选项（去掉可变长参数上的 `allow_hyphen_values`，加 clap 解析测试与结构测试；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `056_153-args-hyphen-codex.md` |
 | 057 | 2026-11-17 | #60 R7 第七刀：拆 core `tdjson.rs`（「消息」整节挪到 `tdjson/message.rs`，只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `057_r7-tdjson-codex.md` |
 | 058 | 2026-11-17 | #60 R3a 第三刀：剩下的测试临时目录助手换成 testkit（含 #8、#10 带进来的 4 处；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `058_r3a-testkit-3-codex.md` |
+| 059 | 2026-11-17 | #60 R7 第八刀：拆 core `fake.rs`（设置方法、登录、会话与历史各挪一个子文件，trait 方法一行转发，只挪不改）；R3a 收尾（codex · diff 类） | 两轮零发现（第 1 轮抽查不符 1 条，行数，已改），收敛 → `059_r7-fake-codex.md` |
