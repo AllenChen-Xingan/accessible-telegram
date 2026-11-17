@@ -356,6 +356,12 @@ class Sources(unittest.TestCase):
         self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'default = ["dep:core", "core?/testkit"]\ntdlib = []',
                          "连带打开了 core/testkit")
 
+    def test_strong_feature_via_inherited_renamed_dependency_is_red(self):
+        # 强转发 core/testkit 也要红（codex 046 第 3 轮：原先只测了弱的 core?/testkit）
+        self.inherit_renamed_core()
+        self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'tdlib = ["core/testkit"]',
+                         "连带打开了 core/testkit")
+
     def test_inherited_unrelated_dependency_is_green(self):
         # 根上继承的是别的包，与 atg-core 无关：特性叫 testkit 也不报
         self.edit("Cargo.toml", 'resolver = "2"\n',

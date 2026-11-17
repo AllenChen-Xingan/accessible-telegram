@@ -4,7 +4,9 @@
 
 - **手上**：#108（本分支 `chore/108-testkit-gate`，未提交：check-sources.py · test_sources.py · architecture-rules.md 第 10 条 · 未跟踪 docs/reviews/046）。自测 83 条全过；对真仓库 testkit 一条红（「[features] 里没有 testkit」），是故意的锚定，等 #110 合并后转绿。codex 046：第 1 轮 P1×1 已修，第 2 轮全零；第 3 轮提示词已写，没跑
 - **已报大总管**（2026-11-16）：本分支落后 main 2 个（#112 #114），可快进，预计零冲突；PR #110 和新 main 重叠 core `Cargo.toml`（objc2 删行和 testkit 加行相邻，大概率冲突，好解）、`lib.rs`（不相邻）、`Cargo.lock`；main 上 `lib.rs:86` 删 localauth 时残留了 `#[cfg(target_os = "macos")]`，现在套在 `logline` 上（P2，建议开 issue）
-- **下一步**：等大总管合 main → codex 第 3 轮（等大总管定）→ 报提交；同时按新 main 排 R2 / R3 下一刀计划
+- **大总管回（2026-11-16）**：#108 已提交并合了 main（1364105）；codex 第 3 轮跑（已在后台起）。新活先做：解 r3（PR #110）的合并冲突。Cargo.lock 已取 main 那份重新生成，只多 atg-core 自身依赖一行；lib.rs 里遗留的 cfg 已删。已申请名额跑检查。下一刀 ② 暂缓：msg2 在改 tree/** 和 speech/**，msg1 在改 td.rs；① 等 #110 合并
+- ✅ codex 046 第 3 轮通过，满足停止线。抽查「不符」1 条（记录说覆盖了强转发，实际没测）：补了一条测试，变异检验能变红，自测 84 条全过；046 和评审索引都已更新（未提交）
+- **下一步**：等名额，在 r3 跑编译检查，结果填进 `MAIN/_tmp/20261116-b20/pr110-body-addendum-arch.md` 后报大总管 → 等 #110 合并后开 R3a 第二刀
 - **要人定**：无
 
 - **手上**（2026-11-14）：第一段 #86 已合。**R1a**（分支 `refactor/r1a-split-send`，worktree `atg-wt/r1`，大总管已提交 ca68a94 并合入含 #85/#86 的 main）：core `gate.rs` 1202 → 根 363 + `gate/{check 339, display 62, tests 448}`；`send.rs` 1688 → 根 253 + `send/{text 347, outcome 110, resending 378, tests 152}` + `send/tests/{text 275, resending 218}`。只挪不改：行多重集比对只多 mod / pub use / use / 注释与 5 处测试用 pub(super)；公开名字 gate 33、send 32 前后一致；#[test] 41 = 41；fmt、no-debug、clippy 两种、test --workspace 全绿（合 main 后复编也绿）；`--tighten` 17 → 15（未提交）。自审 1 轮：P0/P1 零，P2×7 摆放问题已改。codex 023 第 1 轮在跑（`--force-secrets` 人已确认：15 条全是 `token: ConfirmToken` 类型标注）。**R1b 取消**（fix 已把 cli send.rs 测试挪出，566）。**#92**（check-file-size 漏未跟踪文件）在 `atg-wt/arch` 分支 `chore/92-untracked-size`，R1a 之后做
@@ -109,3 +111,18 @@
 - **两个 PR**：R1a = core 的 `gate.rs` + `send.rs`（同一族、同一批人审）；R1b = cli `send.rs` 挪测试。每个都只碰 ≤ 4 个实体（闸、发送、重发、测试）
 - 验收：`cargo fmt --check`、`clippy -D warnings`（含 `tdlib-api` 特性）、`cargo test --workspace`、`check-no-debug.sh`（领名额）；`check-file-size.py --tighten` 收紧基线并一起提交；`git diff --stat` 证明是纯挪动（新增行 ≈ 删除行，差额只在 `mod` / `use` 行）；对外 `pub` 名字清单前后一致（`cargo doc` 或 `grep '^pub'` 对比）
 - 前置：#52 合并、本 PR #86 合并（基线在库里）；开工前与 fix 线（#78 动 `link.rs`、`deadlines.rs`）、media 线确认不撞这三个文件
+
+## b20 下一刀计划（2026-11-16，按 origin/main @ 719d5d1 重算，没动代码）
+
+**新 main 实查**
+- 超线 9 个（基线）：`tests/reducer.rs` 2102 · `fake.rs` 1153 · `store/mod.rs` 958 · `tdjson.rs` 859 · cli `watch.rs` 849 · `speech.rs` 839 · `td.rs` 834 · cli `history.rs` 707 · `tree/text.rs` 671。另外 cli `watch/tests.rs` 正好 600 行，cli `serve.rs` 599 行，都卡在线上
+- **R2 基本收完**：这 9 个文件的测试都已经挪出去了，结尾只剩 `mod tests;`。还留着行内测试的都是不超线的小文件（ipc 181 行、auth 129、send_limits 127、audio 三个等），挪出去收益低，不单开一刀，以后谁改这个文件谁顺手挪
+- **R3 余下**：临时目录助手在 main 上还有 15 份（`gate/tests`、`send/tests`、core `send_limits.rs`（行内）、`ipc.rs`（行内）、`tests/send_limits.rs`、`tests/config.rs:261`；cli `chats`、`login`、`send`、`serve`、`voice`、`watch` 的 tests，以及 `tests/cli.rs` ×2）。#110 换的 4 处不算在内
+
+**建议顺序**
+1. **R3a 第二刀**（#110 合并后马上做）：上面 15 处改用 `testkit::temp_dir` / `profile`。只动测试，零产品行为变化；`watch/tests.rs` 会降到 600 以下。原来管这些文件的线都已经合并，撞车风险低（开工前请大总管确认还有没有在途线改这些测试文件）。验收：fmt、两种 clippy、`test --workspace`、`#[test]` 前后数相等、`grep std::env::temp_dir` 只剩 testkit 和 tdlib-rs 例子
+2. **R7 第一刀：`tree/text.rs` 671**（离线最近，纯挪）。分完行数基线就少一个。要先确认 media / speech 线没在改它
+3. 然后排 R7：`td.rs`、`speech.rs`、`tdjson.rs`、`store/mod.rs`，一次一个文件，一个 PR，开工前各自核一次在途线。`fake.rs`、`reducer.rs` 最大，放到最后
+4. R4（目标解析收一，会动 history/watch/send）是改逻辑不是挪，等 R3、R7 前几刀做完再单独设计
+
+**第 1 刀和第 2 刀能不能并行**：文件不重叠，可以。但重活名额全机只有一个，所以按顺序做
