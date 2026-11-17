@@ -30,6 +30,13 @@
   - 红测试：A——`SendLimits` 层模拟「调用方守卫先放、晚到受限写盘失败、线程守卫后放」→ 重启后 `check` 应拒（现在会放行）；B——假后端：交出成功 → 堵住限制文件 → 推 SendFailed(受限) → 新进程 `load` 应拒
   - 待定 Q1（见下）
 
+## #8 B 段编辑（工作副本 `atg-wt/msg1-edit`，分支 `feat/8-edit`，从 main 2309789；A 段 #140 已合）
+- **2026-11-17 代码 + 契约已写，未编译，等名额**。大总管定：只许改自己发的（频道管理员改别人帖子进待人清单）；带格式照改、计划标 `formatting_dropped`（进待人清单）；附件说明第二批（`not_text`）；交出 10 秒；`DeleteRefused` 改名 `ActionRefused`（`RefusedWhy` 加 `NotEditable`；删除 / 编辑共用，说明改成两用）
+  - core：`edit.rs`（`EditPlan`、`prepare_edit`、`edit_text`；复查比原文 + 整份内容 + 编辑时间）；`InvalidSendWhy::{EditNotText(not_text), Unchanged}`；共享文件（大总管准）：`send.rs` 加 `SealedKind::Edit` + `Sealed::edit`、应答复用 `Answer::Message`；`td/requests.rs::edit`；`td/real/submit.rs` 一臂；`fake/submit.rs` 一臂 + `fake/edit.rs`；`fake/call.rs` 加 `Call::Edit`；测试 `edit/tests.rs` 10 条
+  - CLI：`edit.rs`（plan / 回显改后那条 / result；交出 10 秒到点报未知）；`send.rs` 的 `check_len` / `read_text_file` / `echo` 改 `pub(crate)` 共用；args / main / session / forward / serve / serve/l2 / tests/cli.rs 接线；测试 `edit/tests.rs` 6 条
+  - 契约：actions（两行 + `EditPlan` + 第 4 小节第 7 条清单补 `edit_message_text`——**这条清单改了，PR 属一级评审，人本人看**）· cli · errors · config-privacy
+  - 下一步：编译测试 → atg-review → codex 031 → 真账号只在收藏夹改一条自己发的「atg 实验 编辑 N」
+
 ## #8 进度（新工作副本 `atg-wt/msg1-8`，分支 `feat/8-edit-delete`，从 main 030f91b）
 - **A 删除（2026-11-17）代码 + 契约已写，未编译，等名额**。大总管定：只删自己发的（报 `forbidden why:not_own`，待人看）；一行 `plan`、`items` 逐条列；文字格式先在 CLI 拼句（#132 补「含 delete」）；受限 / 限流也拦删除（照现状）
   - core：`model::MessageCaps`；`Backend::message_caps`（`can_reply` 成默认方法委托它，`send/text.rs` 不动）；td 走 `td/requests.rs::caps`；假后端 `fake/caps.rs`（`Cap`、`deny`，默认照 TDLib：自己发的、已发出、不在收藏夹）；`error::DeleteRefused{why: saved|not_own|not_revocable}`（码 `forbidden`）、`InvalidSendWhy::Changed`；`delete.rs` 加 `Action`、`prepare_delete`、`delete`，与撤销共用 `prepare` / `submit`（种类不对 `internal{delete_action_mismatch}`）；测试 `delete/tests/revoke.rs` 9 条

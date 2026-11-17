@@ -111,6 +111,8 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `pending_cancel_prepare(chat: ChatId, ids: Vec<MessageId>)` | `DeletePlan`（撤哪几条、每条正文） | `not_found` · `invalid_input`：`why:"not_pending"`（不是自己的待发消息）；id 为空或超过 100 条时不带 `why` | L0 | 只查不删；逐条 `getMessage` 查「自己发的、还在待发」（见下「待发出的消息」）。临时 id 只在同一进程里有效（续发会重编），CLI 在同一进程里从 Store 的 `pending_sends` 取这个会话的全部待发再调它 |
 | `pending_cancel(plan, token: ConfirmToken)` | `Ack`；撤没撤下经事件（临时 id 出现在 `messages_deleted` = 撤销了；先来 `send_succeeded` = 没赶上，随后正式 id 也被删 = 只从自己这边删掉了） | `send_refused` `invalid_input`（`not_pending`：交出前再查，已发出或正文变了） | **L2** | `deleteMessages`（`:13226`）**`revoke=false`**（见下「待发出的消息」）；凭据绑会话 + 这几条 id + 每条正文；只是尽力撤销 |
 | `delete(plan, token: ConfirmToken)` | `Ack`：TDLib 应答 `ok` 即算完成（本机已删，给服务器的删除 TDLib 在后台做完）；随后的 `messages_deleted` 只作旁证，不等 | `send_refused` `forbidden`（`why`） `invalid_input`（`changed`） `not_found` `send_outcome_unknown` | **L2** | `deleteMessages`（`:13226`）`revoke=true`。**S1 人定进 MVP：只做「给所有人」**；只删自己这边（`revoke=false`）留第二批。凭据绑会话 + 消息 id 列表（+ 每条正文）；交出前逐条再查一遍，不再能删的照 `delete_prepare` 拒，准备计划之后被编辑过的 `invalid_input`（`why:"changed"`；不用 `send_refused(content_mismatch)`：那条的说明讲的是发送），都是整批不删。不进直发防重复（同一条删两次，第二次 `not_found`） |
+| `edit_prepare(chat: ChatId, id: MessageId, draft: Draft)` | `EditPlan`（哪一条、原文、新文、新文看不见的字符数、`formatting_dropped`） | `not_found` `forbidden`（`why`） `invalid_input`（`why`） | L0 | 只查不改。**只许自己发的**（同 `delete_prepare`，大总管定 2026-11-17，待人看：频道里有编辑权限的管理员能改别人的帖子，这个能力不开）`why:"not_own"`；还没发出的（待发、失败）`why:"not_sent"`；不是纯文字的（带附件）`invalid_input why:"not_text"`（说明文字 `editMessageCaption` 第二批）；`message_properties.can_be_edited` 为假（编辑时限一般 48 小时、收藏夹 / 投票不限时，转发来的、带键盘的不行……，`MessagesManager.cpp:23113-23222`，全由 TDLib 判、不自己算）`why:"not_editable"`；新文与原文一样 `invalid_input why:"unchanged"`（本地先拦，免得服务器报 `MESSAGE_NOT_MODIFIED`）；空 / 超长同 `send_text_prepare`。新文只有纯文字（`Draft` 第一阶段）：原文带格式（加粗、文字链接、代码……；服务器会自己再认出的网址、@用户名、话题标签不算）改后会丢，计划里 `formatting_dropped:true`（大总管定照改，待人看：人可能要「带格式一律拒」） |
+| `edit_text(plan: EditPlan, token: ConfirmToken)` | 改后的 `Message`：`editMessageText` **等服务器改完才应答**，应答即完成（随后的 `message_content` / `message_edited` 事件照常来） | `send_refused` `forbidden`（`why`） `invalid_input`（`changed`） `not_found` `send_outcome_unknown` | **L2** | `editMessageText`（`:13252`）。凭据绑会话 + id + 新文 + **原文**；交出前再查一遍（同准备时的全部条件，另比整份内容与编辑时间），列计划之后原文变了 `invalid_input why:"changed"`、不改。直发（第 5 小节）；不进直发防重复（同一条改成同样的字，第二次在准备时就 `unchanged`）；账号受限 / 限流也拦（同发送）。留痕记 `message_id`，不记正文 |
 
 **表情回应（#9）**
 
@@ -129,7 +131,6 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 | 动作 | 等级 | 说明 |
 |---|---|---|
-| `edit_text` | L2 | `editMessageText`（`:13252`） |
 | `delete(ids, revoke=false)` | L0 但本机不可逆 | 只删自己这边；要人当场确认（给所有人的已进 MVP，见上表） |
 | `forward` | L2 | `forwardMessages`（`:13180`） |
 | `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
@@ -166,7 +167,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 6. **凭据的性质**（写死，改它的 PR 人本人看）：不实现 `Clone` / `Copy` / `Serialize` / `Deserialize`；`send_text` 按值吃掉它；有效期 60 秒，用单调时钟；用过的随机数在进程内登记；**绝不跨进程传递**。CLI 经本机接口由别的进程执行时（P1 人定一开始就做，`config-privacy.md` 第一节第 2 小节），由**执行方**的闸重新开凭据，确认说明里标明「来自命令行，可能是 AI」（与第 4 条同一句）。
 
-7. **只有闸能发**：`atg-core` 以外的代码不得直接调 tdlib-rs 的发送类函数（`send_message`、`resend_messages`、`add_message_reaction`、`remove_message_reaction`、`delete_messages`、`send_chat_action`、`set_option`（`online`）、`view_messages`、`set_chat_draft_message`、`open_message_content`……）。tdlib-rs 只在 `atg-core::td` 里引入；CI 用一个扫描脚本拦（`testing.md` 第一节第 4 小节）。改到闸、对外等级、这条清单的 PR 属一级评审，人本人看。
+7. **只有闸能发**：`atg-core` 以外的代码不得直接调 tdlib-rs 的发送类函数（`send_message`、`resend_messages`、`add_message_reaction`、`remove_message_reaction`、`delete_messages`、`edit_message_text`、`send_chat_action`、`set_option`（`online`）、`view_messages`、`set_chat_draft_message`、`open_message_content`……）。tdlib-rs 只在 `atg-core::td` 里引入；CI 用一个扫描脚本拦（`testing.md` 第一节第 4 小节）。改到闸、对外等级、这条清单的 PR 属一级评审，人本人看。
 
 8. 验凭据：目标对、摘要对、60 秒内、没用过、第 2、3 条成立；任一不符即 `send_refused`，不发。
 9. **L1 也在入口把关**：`mark_read`、`mark_listened`、`set_online`、`typing`、`draft_set` 都只从 `atg-core` 入口走。F1、A2 人定后，`mark_read` / `set_online` / `typing` 不再一律拒、不确认，谁调谁负责（GUI 按官方客户端的时机调；CLI 不调）；`mark_listened` 照同一取向（AI 推，可推翻：GUI 播放即标，CLI 只在 `play --mark-listened` 时）。开发 / 测试时在正式档案上发这些 L1 也允许（N3 人定，`.42cog/real.md`「不替我对外发消息」已去掉「标记已读」）；`draft_set` 仍按 L2 同级把关；阅后即焚的 `mark_listened` 按 L2。`send_refused(l1_disabled)` 保留，供以后若加整类关闭的开关时用（第一阶段没有这个开关）。
@@ -177,7 +178,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 - **怎么进入**：不用进入——**直发是唯一方式**（人定 2026-11-16「我完全不需要 touch id」#111、「touch id 这个功能彻底关掉以及完全不用」#113）。`--unsafe-direct-send` 留着只为旧脚本不报错，加不加一样（帮助里不显示）
 - **管多久**：一直如此，没有开关。测试服务器只许发收藏夹（第一节第 4 小节第 2 条）照旧
-- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），`react` / 去掉回应，以及将来的 `send_file` / `send_voice` / `forward` / `edit_text`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
+- **免什么**（D1 人定：全部免确认）：**一切 L2**——`send_text`、`resend`、`delete`（给所有人），`react` / 去掉回应，`edit_text`，以及将来的 `send_file` / `send_voice` / `forward`——**所有会话**免确认，闸直接开 `direct_mode` 凭据。`draft_set`（按 L2 同级）与阅后即焚的 `mark_listened`（按 L2）同样免（N6 人定：一切 L2 都免确认）
 - **不免什么**（这些不是「确认」，是防误发与防封号，不增加摩擦）：摘要与目标校验照做（防「确认 A 发 B」那类程序错误）；L2 不自动重试；限流与 `account_limited` 照旧；**重复提交拦截**（下一条）。`logout` 的当场确认不是 L2，照旧
 - **重复提交拦截**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A「拦下」）：一次性凭据只防同一张凭据被重放，直发模式下闸每次自动开新凭据，双击、界面重复触发、AI 在「结果未知」后重跑都会发出第二条，撤不回。所以：
   - **管谁**：只管 `direct_mode` 凭据（含转给以直发启动的执行方的命令）。`test_exempt` 不拦（回归测试要反复发固定文本）
@@ -199,6 +200,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|
 | `SendPlan` | 目标（类型、名字、id）· 内容全文 · 回复的那条（`MsgId` + 简短读法）· 发起方 · 摘要值（删除用 `DeletePlan`，见下一行） |
 | `DeletePlan` | 目标（同 `SendPlan`）· 每条 `temp_message_id` 与能给人确认的正文（不是纯文字为空）· `hidden_chars` · 发起方 · 确认方式 · 摘要 · `note_zh`（「只是尽力撤销」）。`action` 现在只有 `pending_cancel`（交出 `revoke=false`）；M2.7 再加「给所有人」（`revoke=true`）一项；`docs/plan/002_roadmap.md` M2.7「删除（给所有人）」也用它（那时 id 叫 `message_id`） |
+| `EditPlan` | 目标（同 `SendPlan`）· `message_id` · 原文 `old_text` · 新文 `text` · `hidden_chars` · `formatting_dropped` · 发起方 · 确认方式 · 摘要 · `note_zh`（改的是已发出的消息、对方那边也跟着变） |
 | `ReactPlan` | 目标（类型、名字、id）· 哪一条 · 哪个回应（`ReactionKind`）· 加还是去 · 可能挤掉的我原先点的回应 · 这份名单拿不拿得准（`replaces_known`）· 发起方 · 开法 · 摘要值 |
 | `AddedReactions` | `total` · 这一页每项（回应种类 · 谁（发送人 id）· 是不是我 · 时间）· `next_offset`（空 = 没有更多） |
 | `PendingMessage` | `chat_id` · `temp_message_id`（临时 id）· `date`（交给 TDLib 或续发的时间；续发时与临时 id 一起重编） |
@@ -360,3 +362,4 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-17 #9 codex 032 第 5 轮后（手下 msg2）：第二节第 3 条依据随 #133（intent 改为一律过闸、直发）去掉「待人改」括注；验收表「只认启动参数」改为「没有开关」
 - 2026-11-17 #8 A（msg1，大总管定 2026-11-17）：`delete_prepare` 只许自己发的、`forbidden.why`（`saved` / `not_own` / `not_revocable`）；`delete` 交出前复查与 `changed`
 - 2026-11-17 #8 A 自审（msg1）：还没发出的（待发、失败）自己拦 `forbidden why:not_sent`（TDLib 对它们说能给所有人删）；`changed` 措辞改为「列出计划之后、交出之前」；成功即本机已删、服务器在后台补做
+- 2026-11-17 #8 B（msg1，大总管定 2026-11-17）：「发送」表加 `edit_prepare` / `edit_text` 两行（只许自己发的、已发出的纯文字；`not_editable` / `unchanged`；带格式照改标 `formatting_dropped`，待人看），第二批留位去掉 `edit_text`；第 6 小节加 `EditPlan`；第 4 小节第 7 条清单补 `edit_message_text`

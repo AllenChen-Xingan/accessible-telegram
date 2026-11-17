@@ -9,8 +9,8 @@ fn mid(chat: i64, id: i64) -> MsgId {
     }
 }
 
-fn refused(why: DeleteRefusedWhy) -> CoreError {
-    CoreError::DeleteRefused { why }
+fn refused(why: RefusedWhy) -> CoreError {
+    CoreError::ActionRefused { why }
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn saved_messages_are_refused_on_both_servers() {
     for test_dc in [false, true] {
         let b = rig(test_dc);
         let e = block_on(prepare_delete(&b, ME, &[5], SendOrigin::Cli)).unwrap_err();
-        assert_eq!(e, refused(DeleteRefusedWhy::Saved));
+        assert_eq!(e, refused(RefusedWhy::Saved));
         assert_eq!(e.code(), "forbidden");
         assert!(deletes(&b).is_empty());
     }
@@ -64,7 +64,7 @@ fn someone_elses_message_is_refused() {
         vec![own(FRIEND, 5, "atg 测试 已发", Value::Null), m],
     );
     let e = block_on(prepare_delete(&b, FRIEND, &[5, 6], SendOrigin::Cli)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotOwn));
+    assert_eq!(e, refused(RefusedWhy::NotOwn));
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn what_tdlib_will_not_revoke_is_refused() {
             .can_delete_for_all
     );
     let e = block_on(prepare_delete(&b, FRIEND, &[1_048_577], SendOrigin::Cli)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotSent));
+    assert_eq!(e, refused(RefusedWhy::NotSent));
     // 发送失败的：没送到对方，同样不给所有人删
     let failed = json!({"@type": "messageSendingStateFailed", "error": {"@type": "error", "code": 400, "message": "X"},
         "can_retry": true, "need_another_sender": false, "need_another_reply_quote": false,
@@ -90,11 +90,11 @@ fn what_tdlib_will_not_revoke_is_refused() {
         ],
     );
     let e = block_on(prepare_delete(&b, FRIEND, &[8], SendOrigin::Cli)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotSent));
+    assert_eq!(e, refused(RefusedWhy::NotSent));
     // 过了时限等：TDLib 说不行就不行，本项目不自己算
     b.deny(mid(FRIEND, 5), Cap::DeleteForAll);
     let e = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotRevocable));
+    assert_eq!(e, refused(RefusedWhy::NotRevocable));
     let e = block_on(prepare_delete(&b, FRIEND, &[99], SendOrigin::Cli)).unwrap_err();
     assert_eq!(e.code(), "not_found");
     assert!(deletes(&b).is_empty());
@@ -137,7 +137,7 @@ fn no_longer_revocable_at_submit_is_refused() {
     let token = b.gate().issue(&plan, false).unwrap();
     b.deny(mid(FRIEND, 5), Cap::DeleteForAll);
     let e = block_on(delete(&b, &plan, token)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotRevocable));
+    assert_eq!(e, refused(RefusedWhy::NotRevocable));
     assert!(deletes(&b).is_empty());
 }
 

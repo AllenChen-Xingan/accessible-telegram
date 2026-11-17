@@ -45,7 +45,7 @@ pub const EXECUTOR_GONE_SEND_ZH: &str =
 fn is_l2(command: &str) -> bool {
     matches!(
         command,
-        "send" | "resend" | "react" | "pending_cancel" | "delete"
+        "send" | "resend" | "react" | "pending_cancel" | "delete" | "edit"
     )
 }
 

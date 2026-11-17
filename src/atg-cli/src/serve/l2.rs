@@ -1,4 +1,4 @@
-//! 执行方上走发送外壳的命令：L2 的 `send`、`resend`、`pending cancel`、`delete`，和与它们同一外壳的 `pending` 列表（L0，只读）。
+//! 执行方上走发送外壳的命令：L2 的 `send`、`resend`、`pending cancel`、`delete`、`edit`，和与它们同一外壳的 `pending` 列表（L0，只读）。
 //! 解参数 → 与直跑同一段执行代码。
 //! 从 `serve.rs` 挪出
 
@@ -59,6 +59,13 @@ pub(super) fn execute<B: Backend>(
                 Ok(p) => crate::delete::execute_delete(b, stream, feed, &p, sink, format, started),
             };
             ("delete", code)
+        }
+        "edit" => {
+            let code = match serde_json::from_value::<crate::edit::EditParams>(params) {
+                Err(_) => fail_with_to(sink, format, &bad),
+                Ok(p) => crate::edit::execute_edit(b, stream, feed, &p, sink, format, started),
+            };
+            ("edit", code)
         }
         "pending" => {
             let code = match serde_json::from_value::<crate::pending::PendingParams>(params) {

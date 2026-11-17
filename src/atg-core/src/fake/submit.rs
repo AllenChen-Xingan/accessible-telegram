@@ -59,6 +59,7 @@ impl FakeBackend {
             }
             SealedKind::Resend { request } => Ok(self.resend(request)),
             SealedKind::Delete { request } => self.delete(request).await,
+            SealedKind::Edit { request } => self.edit(request).await,
             SealedKind::React { request } => {
                 let chat = request["chat_id"].as_i64().unwrap_or(0);
                 lock(&self.calls).push(Call::Submit {

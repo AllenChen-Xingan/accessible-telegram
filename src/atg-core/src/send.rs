@@ -96,6 +96,11 @@ impl<'a> Sealed<'a> {
         let kind = SealedKind::Delete { request };
         Self { kind }
     }
+    /// `editMessageText`：只由 [`crate::edit`] 在闸验过凭据之后造
+    pub(crate) fn edit(request: &'a Value) -> Self {
+        let kind = SealedKind::Edit { request };
+        Self { kind }
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -107,12 +112,14 @@ pub(crate) enum SealedKind<'a> {
     React { request: &'a Value },
     /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
     Delete { request: &'a Value },
+    /// `editMessageText`（`chat_id` · `message_id` · `input_message_content`）：改自己发的一条（#8 B）
+    Edit { request: &'a Value },
 }
 
 /// 交出口的应答
 #[allow(clippy::large_enum_variant)]
 pub enum Answer {
-    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息
+    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息。`editMessageText`：服务器改完后的那条
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
