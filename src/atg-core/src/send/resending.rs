@@ -118,6 +118,9 @@ impl Gated for ResendPlan {
     fn kind(&self) -> &'static str {
         "resend"
     }
+    fn log_items(&self) -> Vec<i64> {
+        self.items.iter().map(|i| i.id).collect()
+    }
 }
 
 /// 重发凭据绑的摘要：请求 + 每条重发后的回复关系（去不去掉、回复谁）+ 每条的正文（人确认的就是这些）
@@ -233,6 +236,16 @@ pub async fn resend<B: Backend>(
     plan: &ResendPlan,
     token: ConfirmToken,
 ) -> Result<Vec<Option<Submitted>>, CoreError> {
+    hand_over(b, plan, token, &AtomicBool::new(false)).await
+}
+
+/// [`resend`] 本体；`handed` 在真交出之前置真（见 `text.rs` 同名函数，#80）
+async fn hand_over<B: Backend>(
+    b: &B,
+    plan: &ResendPlan,
+    token: ConfirmToken,
+    handed: &AtomicBool,
+) -> Result<Vec<Option<Submitted>>, CoreError> {
     let mode = b.gate().verify(token, plan)?;
     // 交出前复核（codex 016 第 2 轮 #2）：从准备到交出最长 60 秒、还等了人确认，这期间失败态、正文、回复关系
     // 可能变了（别的设备重发了、被删了、被编辑了）。重取一遍与人确认过的那份比，不一样就拒，什么都不交出
@@ -252,6 +265,10 @@ pub async fn resend<B: Backend>(
             last: None,
         });
     }
+    // 交出前的复核到此为止。为什么到点只会落在这之前或交出之后：`block_on_timeout` 只在 future 停在 await 时
+    // 才看期限，从这里到交给 TDLib（`before_submit` 的读写文件、`send_limits::submit` 第一次 poll 就同步交出）
+    // 中间没有 await，打断不了。置在 `before_submit` 之前也无妨：它拒了就直接返回错误，不会走到「到点」那一支
+    handed.store(true, Ordering::SeqCst);
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
         kind: SealedKind::Resend {
@@ -259,10 +276,34 @@ pub async fn resend<B: Backend>(
         },
     };
     match crate::send_limits::submit(b, sealed).await {
-        Ok(Answer::Resent(ms)) => Ok(ms
-            .into_iter()
-            .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
-            .collect()),
+        Ok(Answer::Resent(ms)) => {
+            let mut out = Vec::with_capacity(ms.len());
+            for (item, m) in plan.items.iter().zip(ms) {
+                match m {
+                    Some(m) => out.push(Some(Submitted {
+                        mode,
+                        temp: m.id,
+                        old: Some(item.id),
+                    })),
+                    // TDLib 说这条不能重发（应答里是 null）：当场记一行留痕「没发出」，分步调用（[`resend`] →
+                    // [`wait`] → [`finish`]）与 [`resend_and_wait`] 都一样（#83）。标记用 CLI `items` 里同一个词
+                    // `not_resent`（只在留痕里，不是 errors.md 的错误码）
+                    None => {
+                        b.gate().after_item(
+                            mode,
+                            plan,
+                            item.id,
+                            0,
+                            None,
+                            Outcome::Failed,
+                            Some("not_resent"),
+                        );
+                        out.push(None);
+                    }
+                }
+            }
+            Ok(out)
+        }
         Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
@@ -295,7 +336,15 @@ pub fn resend_and_wait<B: Backend>(
     on_fed: &mut dyn FnMut(Fed),
 ) -> Result<(ConfirmMode, Vec<ResendOutcome>), CoreError> {
     let started = std::time::Instant::now();
-    let news = submit_within(b, plan, plan.mode, timeout, resend(b, plan, token))?;
+    let handed = AtomicBool::new(false);
+    let news = submit_within(
+        b,
+        plan,
+        plan.mode,
+        timeout,
+        &handed,
+        hand_over(b, plan, token, &handed),
+    )?;
     let timeout = timeout.saturating_sub(started.elapsed());
     let mode = news
         .iter()
@@ -314,15 +363,20 @@ pub fn resend_and_wait<B: Backend>(
     let mut waited = wait(stream, &temps, timeout, &mut |e| on_fed(Fed::Event(e))).into_iter();
     let mut out = Vec::with_capacity(olds.len());
     for (old, new) in olds.into_iter().zip(news) {
-        let result = new.map(|sub| {
-            let temp = sub.temp;
-            let w = waited
-                .next()
-                .unwrap_or(Waited::Unknown(UnknownWhy::Timeout));
-            finish(b, plan, sub, &w);
-            (temp, w)
+        // 不能重发的那条交出时已记过留痕（见 [`resend`]）；其余按条记、带旧 id（[`finish`]，#83）
+        let Some(sub) = new else {
+            out.push(ResendOutcome { old, result: None });
+            continue;
+        };
+        let temp = sub.temp;
+        let w = waited
+            .next()
+            .unwrap_or(Waited::Unknown(UnknownWhy::Timeout));
+        finish(b, plan, sub, &w);
+        out.push(ResendOutcome {
+            old,
+            result: Some((temp, w)),
         });
-        out.push(ResendOutcome { old, result });
     }
     Ok((mode, out))
 }
