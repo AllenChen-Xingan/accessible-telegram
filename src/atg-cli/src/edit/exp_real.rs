@@ -82,7 +82,7 @@ fn exp_edit() {
             assert!(good, "第 {n} 轮没改成");
         }
         eprintln!("改成 {ok} 轮（共 {ROUNDS} 轮）");
-        assert_eq!(ok, ROUNDS, "不是每轮都改成");
+        assert!(ok == ROUNDS, "不是每轮都改成：{ok}/{ROUNDS}");
         Ok(())
     });
     if let Err(e) = r {
