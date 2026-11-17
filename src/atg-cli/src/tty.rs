@@ -170,15 +170,15 @@ impl Read for Polled<'_> {
                     )
                 };
                 match n {
-                0 => continue,
-                n if n < 0 => {
-                    let e = io::Error::last_os_error();
-                    if e.kind() == io::ErrorKind::Interrupted {
-                        continue;
+                    0 => continue,
+                    n if n < 0 => {
+                        let e = io::Error::last_os_error();
+                        if e.kind() == io::ErrorKind::Interrupted {
+                            continue;
+                        }
+                        return Err(e);
                     }
-                    return Err(e);
-                }
-                _ => {}
+                    _ => {}
                 }
             }
             match (&mut &*self.file).read(out) {
@@ -422,6 +422,9 @@ mod tests {
             assert_eq!(r.map_err(|e| e.kind()), Err(io::ErrorKind::Interrupted));
         });
         let took = t0.elapsed();
-        assert!(took >= Duration::from_millis(250) && took < Duration::from_secs(2), "{took:?}");
+        assert!(
+            took >= Duration::from_millis(250) && took < Duration::from_secs(2),
+            "{took:?}"
+        );
     }
 }
