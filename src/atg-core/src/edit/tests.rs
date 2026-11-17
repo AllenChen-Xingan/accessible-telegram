@@ -6,7 +6,6 @@ use crate::fake::{Call, Cap, FakeAuth, FakeBackend};
 use crate::gate::Gate;
 use crate::link::block_on;
 use crate::status::AuthStep;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 const ME: i64 = 4242;
@@ -25,7 +24,6 @@ fn rig(test_dc: bool) -> FakeBackend {
 
 /// 同 [`rig`]，另给档案目录（读直发留痕 `direct-send.log` 用）
 fn rig_at(test_dc: bool) -> (FakeBackend, std::path::PathBuf) {
-    static N: AtomicU32 = AtomicU32::new(0);
     let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: if test_dc {
@@ -46,12 +44,7 @@ fn rig_at(test_dc: bool) -> (FakeBackend, std::path::PathBuf) {
         );
         b.set_history(id, vec![own(id, 5, "atg 测试 原文", Value::Null)]);
     }
-    let root = std::env::temp_dir().join(format!(
-        "atg-edit-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = crate::testkit::temp_dir("edit");
     let kind = if test_dc {
         ServerKind::Test
     } else {

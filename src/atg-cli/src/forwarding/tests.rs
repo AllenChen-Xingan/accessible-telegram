@@ -5,7 +5,6 @@ use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend, FakeSend};
 use atg_core::gate::Gate;
 use serde_json::Value;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Default)]
 struct Cap {
@@ -52,13 +51,7 @@ fn backend() -> FakeBackend {
 }
 
 fn profile() -> Profile {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "atg-cli-forward-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = atg_core::testkit::temp_dir("cli-forward");
     Profile::create(&root, "p", ServerKind::Main).unwrap()
 }
 

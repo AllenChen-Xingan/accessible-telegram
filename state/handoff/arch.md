@@ -325,3 +325,39 @@
 - #153 → PR #155，等人合并。顺手修了 PR #149 的 check-no-debug（`edit/exp_real.rs` 一行 `assert_eq!` 改成 `assert!`），大总管已推送
 - 等大总管叫：R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`；R3a 余下 4 处（core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`）。都等 #149、#154 合并
 - 要人定的事：无
+
+## R7 第七刀：拆 core `tdjson.rs`（2026-11-17，工作副本 `atg-wt/arch-tdjson`，分支 `refactor/r7-tdjson`，从 main 384da95 起）
+
+计划已批，全文在 `_tmp/20261116-b20/plan-next-arch.md`，这是其中的 PR 2。PR 1（R3a 第三刀）等这刀交 codex 后再开副本；`tests/cli.rs` 的 `send_usage_paths` 留到 #12 之后。PR 3、PR 4（fake、td）等 #12（msg2 的发文件，会在 fake、td 里加上传进度）合进 main。
+
+- 改了：`tdjson.rs` 836 → 503（挪完 501，atg-review 后根头注释补 2 行文件分工）；新文件 `tdjson/message.rs` 341（「消息」整节 + `OTHER_SERVICE` / `OTHER_CONTENT`）；基线去掉 `tdjson.rs`；010 表格那一行、路线表 R7 一行
+- 不算纯挪的：根上 `mod message;`、`use message::{body, ephemeral, sender};`、`pub use message::{formatted, message};`（检查点里还有一行 `//` 说明，自审后改成根头注释的「文件分工」）；`body` / `ephemeral` / `sender` 改成 `pub(super)`；新文件头注释；去掉原来的「消息」分节线
+- 已过：挪动前后两份按行排序比对（多重集，只多上面那些）、check-file-size（超 600 行的剩 2 个：fake、td）、check-sources、check-no-debug
+- 编译（2026-11-17，大总管给名额，在 05f731d 之前的工作区跑，内容即 05f731d）：fmt、两种 clippy（`-D warnings`）、`cargo test --workspace` 680 过、0 败、5 忽略
+- 检查点 05f731d（大总管提交）。挪动证据：`git diff --color-moved=plain 384da95...05f731d -- src/` 挪动 670 行，没识别为挪动的只有上面列的那些，落在 `_tmp/20261116-b20/r7-tdjson-moved-arch.txt`
+- atg-review 第 1 轮：P1×2（同一件事：工作副本里的交接页是旧版本，覆盖掉了 main 上 R7 前六刀、R3a 第二刀、#153 的记录）——已改回 main 的全文再接本节；P2×3、P3 若干已改（`specs/content-tree.md` 两处位置指针、010 行补说明、R7 进度打勾、根头注释补文件分工）
+- atg-review 第 2 轮（1e34e79）：P0/P1 零；P2×1（010 R7 行「本 PR」与全文用法冲突）、P3×5 已改（只动注释与文档）
+- codex 057 第 1 轮（384da95...1e34e79）：零发现，总评通过。记录 `docs/reviews/057_r7-tdjson-codex.md`
+- 检查点 157cb1e（自审第 2 轮的文档修改 + 057 记录）
+- codex 057 第 2 轮（384da95...HEAD，name 换成 `r7tjh`，原因见记录）：零发现，总评通过 → 连续两轮无 P0/P1，**收敛**
+- PR 说明草稿：`_tmp/20261116-b20/r7-tdjson-pr-arch.md` → PR #156，已合进 main（6217358）
+
+## R3a 第三刀（2026-11-17，工作副本 `atg-wt/arch-r3a3`，分支 `refactor/r3a-testkit-3`，从 main 384da95 起；codex 编号 058）
+
+计划 `_tmp/20261116-b20/plan-next-arch.md` 的 PR 1。上一节说要等的 #149、#154 都已合进 main（384da95），所以开工。只动测试与 `testkit.rs` 头注释，产品代码不碰。
+
+- 换成 testkit 的（本地临时目录助手换成 `temp_dir`，删掉随之没用的计数器与导入；档案名、服务器种类、本地助手名与调用处都不变）。两处行为差别，测试全过、都无害：
+  - 原来只删不建、交给 `Profile::create` 的几处（core delete/edit/forward，cli delete/edit/forwarding），现在拿到的是**已建好的空目录**。`Profile::create` 接受已存在的空目录，`testkit::profile` 本来就这么用
+  - `tests/cli.rs` 的 speech 一处原来是「进程号 + `create_dir_all`」，可能复用上次留下的目录；现在每次都是全新的空目录
+  - core：`gate/tests.rs`（本地 `temp_dir` 只留一行转给 testkit，目录名仍是 `atg-gate-<tag>-…`）、`delete/tests.rs`
+  - cli：`delete/tests.rs`、`tests/cli.rs` 的 `speech_bad_input_is_usage_and_does_not_echo`
+  - **计划外多换的 4 处**：#8（编辑）、#10（转发）合进 main 时新加的同款写法——core `edit/tests.rs`、`send/forward/tests.rs`，cli `edit/tests.rs`、`forwarding/tests.rs`
+- 不换：`tests/cli.rs` 的 `send_usage_paths`（大总管定：#12 发文件正在改那附近，等它合并后再换；这次连注释都不加，免得和 #12 的分支改到同一段、合并时冲突）
+- 换完 `git grep 'std::env::temp_dir()' -- src` 只剩：testkit 自己、ipc、serve、`tests/send_limits.rs`、atg-audio（都是故意不换）和 `send_usage_paths`
+- 已过（2026-11-17，大总管给名额）：fmt、`clippy --workspace --all-targets -D warnings`、`clippy -p atg-core --features tdlib-api --all-targets -D warnings`、`cargo test --workspace` 680 过、0 败、5 忽略，check-no-debug、check-sources、check-file-size；改过的 8 个测试文件 `#[test]` 数前后相等（core gate 23、delete 7、edit 11、send/forward 17；cli delete 7、`tests/cli.rs` 21、edit 6、forwarding 10）
+- 检查点 d776ea1（大总管提交）
+- atg-review 第 1 轮（384da95...d776ea1）：P0/P1/P2 零；P3×8 已改（gate 本地助手补注释说明为什么留、010 R3 行回写第二刀第三刀、交接页补行为差别与几处说明）
+- 检查点 c0e5152（大总管提交）
+- codex 058（384da95...HEAD）：两轮零发现，收敛。记录 `docs/reviews/058_r3a-testkit-3-codex.md`
+- PR 说明草稿：`_tmp/20261116-b20/r3a3-pr-arch.md` → PR #157，等人合并（合 main 时交接页冲突已解：两节都留，tdjson 在前）
+- 之后待命：R7 的 `fake.rs`、`td.rs` 等 #12 合进 main；`tests/cli.rs` 的 `send_usage_paths` 也等 #12

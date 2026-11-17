@@ -19,8 +19,9 @@
 //! `tests/config.rs`、`tests/lifecycle.rs`，cli `history/tests.rs`、`session/tests.rs`；第二刀（2026-11-17）换了 core
 //! `send/tests.rs`、`send/react/tests.rs`、`send_limits/tests.rs`、`tests/config.rs` 的 `test-phone`，cli `chats`、`login`、
 //! `send`、`react`、`pending`、`voice`（含 `voice/tests/transcribe.rs`）、`watch` 的测试。
-//! 还没换（换的时候有别的 PR 正在改这几个文件，等它们合并后再补）：core `gate/tests.rs`、`delete/tests.rs`，cli
-//! `delete/tests.rs`、`tests/cli.rs`。
+//! 第三刀（2026-11-17）换了 core `gate/tests.rs`、`delete/tests.rs`、`edit/tests.rs`、`send/forward/tests.rs`，cli
+//! `delete/tests.rs`、`edit/tests.rs`、`forwarding/tests.rs`、`tests/cli.rs` 的 speech 一处。
+//! 还没换：cli `tests/cli.rs` 的 `send_usage_paths`（#12 发文件正在改那附近，等它合并后再换）。
 //! 故意不换：core `ipc.rs` 的测试（要 0o700 的目录并断言它）；cli `serve/tests.rs`（套接字路径离 103 字节上限近）；core
 //! `tests/send_limits.rs`（同一个 tag 要再算出同一个路径，模拟下一个进程）；`atg-audio`（不依赖 atg-core）。各处都有注释写明原因。
 //! R3b 还没做。
