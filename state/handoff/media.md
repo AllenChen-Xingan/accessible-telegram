@@ -24,7 +24,14 @@
 - codex 039 干跑过：`_tmp/reviews-039/`，类型 diff、范围 origin/main（main 已在 HEAD 里）、隐私扫描无拦截（13 条测试假数据提示）
 - codex 039：第 1 轮 P2×2（测试靠时序、租约测试不全）属实已改：闸门式假辅助程序、18+ 途中变化测试、守卫共存 / panic 测试，删 ok-zh-slow.sh；第 2 轮 P2×2（下载闸门、假后端没开不推，都要改超标的 fake.rs）→ 满足停止线，开 issue。记录 docs/reviews/039_transcribe-codex.md
 - 复验（名额，已还）：test 520 过 0 败；clippy 三遍、fmt、门槛过。守卫测试并行时偶发 auth_required（没等授权就绪）已修。已有偶发：serve lifecycle `two_watches_on_same_chat_share_one_open` 13 次挂 1 次（#106 那条，非 3c）
-- 下一步：报大总管提交、开 PR；PR 合后本线收尾
+- 大总管已提交 a7a1a6e、开 PR #125（先合 #106）；issue 甲 #122、乙 #123、丙 #124
+- #121（serve `two_watches_on_same_chat_share_one_open` 偶发）读代码分析（未编译）：
+  - 现象：同步环里每个探针接入时报「现有 3 个」直到 10 秒期限
+  - 原因（推断）：`serve` 主循环只在 `accept(POLL)` 返回、`handle` 做完**之后**才 `hub.reap()`；`watch 接入（现有 N 个）` 数的是 `hub.len()`，含已走但还没摘的。上一个探针停掉后，若下一个探针在服务端这一轮 `accept(200ms)` 超时前就连上，它先被接入、数里带着上一个死探针 → 3；只有两次接入间隔超过 `serve::POLL`（200ms）、中间转过一圈空轮才会摘掉。测试只睡 50ms，一轮约 100–200ms，卡在边上：慢机器 / 并行时可能连续 10 秒都不超 200ms
+  - 修法（建议甲）：产品代码在接入新连接前先摘死订阅者（Conn 分支里 `handle` 之前 `lease::close(b, feed.hub.reap(), …)`），「现有 N 个」与租约放回都不再等空轮；测试去掉 50ms 等待环，探针一次即判。乙：只改测试，睡过 POLL（仍靠时序，不推荐）
+  - 复现计划（要名额）：把测试里的 50ms 改 0 应几乎必挂、改 300ms 应必过，确认推断；再按甲修、连跑 20 次
+  - 待大总管定：修在 #106 分支（4-media-lease，serve.rs 迁移与这条测试都来自它）还是本分支
+  - **更正（2026-11-16）**：#106 分支早已由 06803cb 修过（执行方记「watch 离开（现有 N 个）」、测试按事件等、去掉探针与 sleep）；本分支叠在旧 #106（a5b4786）上，没有 06803cb 等 4 个提交。建议不改代码，由大总管把 origin/feat/59-lease 合进本分支（预计 serve.rs、lifecycle.rs 冲突，取 #106 版），合后领名额复验并连跑 20 次。已报大总管，等回复
 
 > 2026-11-13 · 交代 MAIN `_tmp/20261113-b18/media.md` · 大总管 `telegram-accessibility-dd` · arch `arch-4d` · 分支 `feat/4-voice`
 

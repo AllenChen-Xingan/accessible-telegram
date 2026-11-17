@@ -377,12 +377,13 @@ impl Sink for Log {
 }
 
 impl Log {
-    /// 执行方报过的各次 watch 接入时的订阅者数（接入是一件一件处理的，第 i 行就是第 i 个接入的）
-    fn joins(&self) -> Vec<usize> {
+    /// 执行方报过的「watch 接入 / 离开（现有 N 个）」各行的 N，按先后（接入、摘掉都是一件一件处理的）
+    fn counts(&self, what: &str) -> Vec<usize> {
+        let tag = format!("watch {what}（现有 ");
         let ls = self.0.lock().unwrap();
         ls.iter()
             .filter_map(|l| {
-                l.split("watch 接入（现有 ")
+                l.split(tag.as_str())
                     .nth(1)?
                     .split(' ')
                     .next()?
@@ -392,6 +393,21 @@ impl Log {
             .collect()
     }
 
+    /// 等执行方记下第 `i` 行（从 0 数）「watch {what}」，回那时的订阅者数。按事件等，不靠时序
+    fn nth(&self, what: &str, i: usize) -> usize {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(&n) = self.counts(what).get(i) {
+                return n;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "执行方没记下第 {i} 行 watch {what}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// 屏障：挂一个 watch，等执行方把它接入做完（含 `--chat` 开会话、记日志），回那时的订阅者数。
     /// 只等 `sync_done` 不够：它先于挂上订阅者发出
     fn join(
@@ -399,16 +415,9 @@ impl Log {
         p: &Profile,
         params: Value,
     ) -> (Shared, &'static AtomicBool, JoinHandle<u8>, usize) {
-        let before = self.joins().len();
+        let before = self.counts("接入").len();
         let (out, stop, h) = watch_client(p, params);
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(&n) = self.joins().get(before) {
-                return (out, stop, h, n);
-            }
-            assert!(Instant::now() < deadline, "执行方没做完接入");
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        (out, stop, h, self.nth("接入", before))
     }
 }
 
@@ -459,19 +468,8 @@ fn two_watches_on_same_chat_share_one_open() {
 
     stop1.store(true, Ordering::SeqCst);
     assert_eq!(c1.join().unwrap(), 0);
-    // 同步点：反复挂一个不开会话的探针，直到执行方报「现有 2 个」= 第二个 + 这次的探针，即第一个已摘掉
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let (_probe, stop_p, cp, n) = log.join(&p, json!({"reveal": false}));
-        stop_p.store(true, Ordering::SeqCst);
-        assert_eq!(cp.join().unwrap(), 0);
-        if n == 2 {
-            break;
-        }
-        assert!(Instant::now() < deadline, "第一个一直没摘掉：{n:?}");
-        // 留一拍让执行方转一圈摘掉上一个探针，否则下一个探针总在它被摘之前接入、数里一直多一个
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    // 同步点：等执行方记下「watch 离开（现有 1 个）」= 第一个已摘掉、第二个还挂着（按事件等，慢机器上也稳）
+    assert_eq!(log.nth("离开", 0), 1);
     assert_eq!(closes(), 0, "第二个还挂着，先走的不关");
 
     stop2.store(true, Ordering::SeqCst);
