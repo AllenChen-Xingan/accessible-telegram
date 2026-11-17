@@ -1,8 +1,8 @@
 # 评审 032 · #9 表情回应（`react` / `reactions`，合 main 后直发）（codex · gpt-6-astra · read-only · diff 类）
 
 > 对象：`origin/main`（= 分叉点 719d5d1，评审时 main 没前进，两点与三点等价）对工作区的 diff；新文件 `src/atg-core/src/send/react/tests/replace.rs` 未跟踪，作依据附上。重点写在 `_tmp/reviews-032/focus.md`（不入库）。
-> **最新一轮：第 5 轮（2026-11-17）· 总评「修改」· 无 P0/P1，待第 6 轮确认**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
-> 累计（第 1–5 轮）：提出 14 条（P1×6、P2×8），属实 12 条（其中第 3 轮 #2 按人定威胁模型降 P2 → #131）、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
+> **最新一轮：第 6 轮（2026-11-17）· 总评「通过」· 第 5、6 轮连续无 P0/P1，收敛**（第 2 轮起范围改三点、name 换 `react-9-3dot`，停止线从第 2 轮重数）。
+> 累计（第 1–6 轮，第 6 轮零发现）：提出 14 条（P1×6、P2×8），属实 12 条（其中第 3 轮 #2 按人定威胁模型降 P2 → #131）、部分属实 1 条，交人裁决 1 条（第 2 轮 #4，与第 1 轮 #3 同一条；定 A → #128）。
 > 之前：多视角自审 5 轮（atg-review；第 4 轮 P1「普通群信缓存」按人定 A 修；第 5 轮 P0/P1 零）。机器验收：`cargo test -p atg-core -p atg-cli` 486 过 0 败，clippy -D warnings 两种（tdlib-api、`--features atg-cli/tdlib`）0。
 > 隐私扫描：密钥类命中 9 条，全是参数类型标注 `token: ConfirmToken`（同 023）；人定 2026-11-16 长期放行这一类，大总管逐条核实后准加 `--force-secrets`。chat-content 只提示 11 条，都是测试夹具里编的 TDLib JSON。
 
@@ -132,3 +132,19 @@
 ### 是否再审
 
 要再审：第 6 轮确认（连续第 2 轮）。
+
+## 第 6 轮（2026-11-17）· 总评「通过」
+
+范围：合 main（64918b8，含 #117 #125 #133）后的三点 diff。原文：`_tmp/reviews-032/react-9-3dot-codex-5.md`（不入库）。gpt-6-astra · read-only · effort medium，70 秒（`result: P0×0 P1×0 P2×0 P3×0`）。隐私扫描密钥类 17 条，全是 `token: ConfirmToken`，大总管逐条核过准加 `--force-secrets`。
+上一轮处理的验证：codex 抽查确认第 5 轮 #1 的转发、`play`、`draft`、「启动参数」几处都已改。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 5、6 轮连续无 P0/P1）· 留作 issue 的 P2：无（统计入树 #128、复核读取期间重连 #131 已开）
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：9 条
+- 无法核实：1 条（TDLib 上游源码不在可读范围）
+
+### 是否再审
+
+不再审：连续两轮无 P0/P1，收敛。合并后复验 `cargo test -p atg-core -p atg-cli` 533 过 0 败；clippy -D warnings 不带 tdlib 0，带 tdlib 的 lib/bins/tests 0（示例 `live_wait_phone.rs` 的多余引入是 main 上 #114 的遗留，由 PR #134 修）。
