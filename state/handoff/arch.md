@@ -304,7 +304,7 @@
 
 ## 待命（2026-11-17）
 
-- 已开 PR，等人合并：#139 R7 tree/text（已合）· #141 speech（已合）· #144 store（已合）· #146 tests/reducer（已合）· #148 history（已合）· #150 watch · #152 R3a 第二刀 · #129（#108 testkit 检查）
+- 已开 PR，等人合并：#139 R7 tree/text（已合）· #141 speech（已合）· #144 store（已合）· #146 tests/reducer（已合）· #148 history（已合）· #150 watch（已合） · #152 R3a 第二刀 · #129（#108 testkit 检查）
 - 等着做：
   - 几个 PR 合 main 的冲突，大总管一次性交来（基线、评审索引、交接页、010）
   - R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`：等 #149（#8 编辑）、#10 合并后再排
