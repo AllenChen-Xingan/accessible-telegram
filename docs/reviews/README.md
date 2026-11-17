@@ -38,4 +38,5 @@
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
 | 039 | 2026-11-16 | #59 3c `transcribe` 命令（Doc::Transcription、stt_unavailable、辅助程序查找、lease::Guard；codex · diff） | 第 1 轮仅 P2×2，全部属实：途中更新改成闸门、补 18+ 途中变化与守卫共存测试；第 2 轮仅 P2×2（同两截的剩余：下载闸门、假后端「没开不推」）开 issue；两轮无 P0/P1，满足停止线 → `039_transcribe-codex.md` |
 | 044 | 2026-11-14 | #60 R3a 测试共用夹具 testkit 第一刀（codex · diff 类 · 两轮） | 第 1 轮 P2×2 属实（删残留失败时交出旧目录；一处临时目录被误当成文件）已改；第 2 轮零发现，收敛 → `044_r3a-testkit-codex.md` |
+| 046 | 2026-11-16 | #108 testkit 特性只许在 dev 依赖里开的机器检查（`check-sources.py` testkit 一条；codex · contract 类 · 三轮） | 第 1 轮 P1×1（继承改名漏检）属实，已改结构；第 2、3 轮无 P0/P1，收敛；第 3 轮抽查「不符」1 条（记录写过头），已补测试 → `046_testkit-gate-108-codex.md` |
 | 047 | 2026-11-16 | PR #112 + #114 删除 Touch ID、发送一律直发（codex 补审 · diff 类 · 两轮） | 两轮均无 P0/P1；P2 共 7 条（第 2 轮 3 条是第 1 轮的重提）：契约与 README 文字残留 → #115，N7 第二测试号私聊例外（契约有、代码从未实现）→ 交人定，1 条驳回；安全不变量 codex 核过都在 → `047_remove-touch-id-codex.md` |
