@@ -1,5 +1,7 @@
 //! 假后端给测试用的设置方法：排数据（会话、历史、话题）、编排结果（发送、`start`、注入的错误）、
 //! 喂更新、让收线程崩溃或断掉、记账。从 `fake` 拆出（#60 R7），函数体照原样。
+//! 只属于某一项能力、跟它的实现放在一起的不在这里：`set_auth`（`login.rs`）、`set_file`（`files.rs`）、
+//! `set_uploads`（`upload.rs`）、`deny` / `set_no_reply`（`caps.rs`）。
 
 use super::{Call, FakeBackend, FakeSend, FakeStart, Feed, lock};
 use crate::error::CoreError;

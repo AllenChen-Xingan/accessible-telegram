@@ -364,7 +364,7 @@
 
 ## R7 第八刀：拆 core `fake.rs`（2026-11-17，工作副本 `atg-wt/arch-fake`，分支 `refactor/r7-fake`，从 main f5ca5b2 起）
 
-大总管批的切法：#12（#161）合进 main 后开这刀；`submit.rs` 一字不动（msg2 的 #13 投票和按钮之后会改它）；`send_usage_paths` 并进来，PR 说明单列一节。
+大总管批的切法：#12（#161）合进 main 后开这刀；`submit.rs` 一字不动（做 #12、#13 的手下线 msg2 接下来做 #13 投票和按钮，会改它）；`send_usage_paths` 并进来，PR 说明单列一节。
 
 - `fake.rs` 1021 → 548，从基线删掉。新拆三个：
   - `fake/script.rs`（156）：测试用的设置方法，纯挪
@@ -372,5 +372,8 @@
   - `fake/read.rs`（217）：`do_chats_load`、`do_chat_get/open/close`、`do_forum_topic_get`、`do_history`、`do_message_get`
 - 根上 trait 方法一行转给 `do_*`，签名不变；挪动由脚本 `_tmp/20261117-r7fake/split.py` 按行号切，函数体逐字照搬
 - 测试临时目录：cli `tests/cli.rs` 的 `send_usage_paths`，以及 #12 新带进来的 cli `send_file/tests.rs` 的 `env`，都换成了 testkit。R3a 换完
-- 文档：010 的 fake 行、R3 行、R7 行改了，第 164 行也更新了；`testkit.rs` 头注释的进度清单也改了
-- ✅ 全量检查全绿（领名额跑，跑完已还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources。待提交检查点，再审（atg-review → codex 059，范围 `f5ca5b2...HEAD`）
+- 文档：010 的 fake 行、R3 行、R7 行改了，第五节末尾「基线只剩」那句也更新了；`testkit.rs` 头注释的进度清单也改了
+- ✅ 全量检查全绿（领名额跑，跑完已还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources
+- 检查点 5ab87e3（大总管提交）；证据 `_tmp/20261116-b20/r7-fake-moved-arch.txt`（MAIN 下）：没被识别为挪动的 77 行只有头注释、导入、`mod` / `pub use`、15 行转发和 `do_*` 签名
+- 多视角自审第 1 轮：P0/P1 零，P2×1（010 的 td 行「同上」没了指向，已补「原计划」）、P3×8（改了 5 条，另 3 条不改：根头上登录、会话、消息三段是整个假后端的行为说明，照旧留在根上；「第 N 块」是原来的说法，沿用；script.rs 的归类在头注释里写明）
+- 下一步：codex 059（`f5ca5b2...HEAD`，name `r7fk`）
