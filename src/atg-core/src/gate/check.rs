@@ -18,10 +18,6 @@ struct Facts {
 pub struct Gate {
     proc: Holder,
     used: Mutex<HashSet<u64>>,
-    /// 验过、带 `--again` 的进防重复计划，按计划摘要记，交出前查重时取走（#77）。只记这一种：
-    /// 别的计划（不进防重复的、不带 `--again` 的）不写，表里不会积攒走不到交出的条目。
-    /// 同一份计划又验了一张不带的凭据，就把它删掉（后验的为准，不沿用前一张的放行）
-    again: Mutex<HashMap<[u8; 32], bool>>,
     facts: Mutex<Facts>,
     direct_sent: std::sync::atomic::AtomicU64,
     /// 账号受限、限流冷却（与收线程共用一份，见 [`crate::send_limits`]）
@@ -34,7 +30,6 @@ impl Gate {
         Self {
             proc,
             used: Mutex::new(HashSet::new()),
-            again: Mutex::new(HashMap::new()),
             facts: Mutex::new(Facts::default()),
             direct_sent: std::sync::atomic::AtomicU64::new(0),
             limits: crate::send_limits::SendLimits::new(),
@@ -145,27 +140,36 @@ impl Gate {
         if !lock(&self.used).insert(token.nonce) {
             return Err(refused(SendRefusedReason::TokenReused));
         }
-        if plan.dedup() && token.mode == ConfirmMode::DirectMode {
-            let mut again = lock(&self.again);
-            if token.again {
-                // 带 `--again` 验过却没走到交出（复核被拒、超时）的会留下；这种很少，攒到上限才整个清掉。
-                // 清掉的只会让那次交出按不带 `--again` 查重：宁可多拦
-                if again.len() >= AGAIN_KEEP {
-                    again.clear();
-                }
-                again.insert(token.digest, true);
-            } else {
-                again.remove(&token.digest);
-            }
-        }
         Ok(token.mode)
     }
 
-    /// 交给 TDLib 之前：直发要先把「已提交」记下、留痕文件要写得进去，否则拒发
+    /// 同 [`Self::verify`]，另交回这张凭据带没带 `--again`。放行只绑在这一张凭据上，由调用方一路带到
+    /// [`Self::before_submit_again`]；不经闸里的共享状态，别的凭据拿不走、也清不掉（#77，codex 048 第 1 轮 #1）
+    pub(crate) fn verify_again(
+        &self,
+        token: ConfirmToken,
+        plan: &dyn Gated,
+    ) -> Result<(ConfirmMode, bool), CoreError> {
+        let again = token.again;
+        Ok((self.verify(token, plan)?, again))
+    }
+
+    /// 交给 TDLib 之前（不带 `--again`）：见 [`Self::before_submit_again`]。不进防重复的计划（删除、回应、重发）用它
     pub(crate) fn before_submit(
         &self,
         mode: ConfirmMode,
         plan: &dyn Gated,
+    ) -> Result<(), CoreError> {
+        self.before_submit_again(mode, plan, false)
+    }
+
+    /// 交给 TDLib 之前：直发要先过查重并把「已提交」记下（`again` = 这张凭据带了 `--again`，放行查重）、
+    /// 留痕文件要写得进去，否则拒发
+    pub(crate) fn before_submit_again(
+        &self,
+        mode: ConfirmMode,
+        plan: &dyn Gated,
+        again: bool,
     ) -> Result<(), CoreError> {
         // 交出前最后一次复查限制：所有 await 之后的唯一位置（codex 016 第 5 轮 #1，见 `send_limits` 模块文档）
         self.limits.check(unix_now())?;
@@ -189,7 +193,6 @@ impl Gate {
             )
         });
         if let Some((store, fp)) = &guard {
-            let again = lock(&self.again).remove(&plan.digest()).unwrap_or(false);
             let claimed =
                 store
                     .claim(now, plan.target(), fp, again)
@@ -368,9 +371,6 @@ fn duplicate(now: i64, e: &GuardEntry) -> CoreError {
         }),
     }
 }
-
-/// [`Gate`] 的 `again` 表最多留几条（见 `verify`）
-const AGAIN_KEEP: usize = 256;
 
 fn refused(reason: SendRefusedReason) -> CoreError {
     CoreError::SendRefused { reason, last: None }

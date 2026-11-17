@@ -276,10 +276,34 @@ async fn hand_over<B: Backend>(
         },
     };
     match crate::send_limits::submit(b, sealed).await {
-        Ok(Answer::Resent(ms)) => Ok(ms
-            .into_iter()
-            .map(|m| m.map(|m| Submitted { mode, temp: m.id }))
-            .collect()),
+        Ok(Answer::Resent(ms)) => {
+            let mut out = Vec::with_capacity(ms.len());
+            for (item, m) in plan.items.iter().zip(ms) {
+                match m {
+                    Some(m) => out.push(Some(Submitted {
+                        mode,
+                        temp: m.id,
+                        old: Some(item.id),
+                    })),
+                    // TDLib 说这条不能重发（应答里是 null）：当场记一行留痕「没发出」，分步调用（[`resend`] →
+                    // [`wait`] → [`finish`]）与 [`resend_and_wait`] 都一样（#83）。标记用 CLI `items` 里同一个词
+                    // `not_resent`（只在留痕里，不是 errors.md 的错误码）
+                    None => {
+                        b.gate().after_item(
+                            mode,
+                            plan,
+                            item.id,
+                            0,
+                            None,
+                            Outcome::Failed,
+                            Some("not_resent"),
+                        );
+                        out.push(None);
+                    }
+                }
+            }
+            Ok(out)
+        }
         Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
             what: "resend_answer_shape",
         }),
@@ -339,37 +363,19 @@ pub fn resend_and_wait<B: Backend>(
     let mut waited = wait(stream, &temps, timeout, &mut |e| on_fed(Fed::Event(e))).into_iter();
     let mut out = Vec::with_capacity(olds.len());
     for (old, new) in olds.into_iter().zip(news) {
-        // 留痕按条记、带旧 id（#83）；TDLib 说这条不能重发（应答里是 null）的也记一行：没发出。
-        // 标记用 CLI `items` 里同一个词 `not_resent`（只在留痕里，不是 errors.md 的错误码）
+        // 不能重发的那条交出时已记过留痕（见 [`resend`]）；其余按条记、带旧 id（[`finish`]，#83）
         let Some(sub) = new else {
-            b.gate().after_item(
-                mode,
-                plan,
-                old,
-                0,
-                None,
-                Outcome::Failed,
-                Some("not_resent"),
-            );
             out.push(ResendOutcome { old, result: None });
             continue;
         };
+        let temp = sub.temp;
         let w = waited
             .next()
             .unwrap_or(Waited::Unknown(UnknownWhy::Timeout));
-        let (outcome, final_id, err) = super::outcome::verdict_of(&w);
-        b.gate().after_item(
-            mode,
-            plan,
-            old,
-            sub.temp.message_id,
-            final_id,
-            outcome,
-            err.map(CoreError::code),
-        );
+        finish(b, plan, sub, &w);
         out.push(ResendOutcome {
             old,
-            result: Some((sub.temp, w)),
+            result: Some((temp, w)),
         });
     }
     Ok((mode, out))

@@ -130,6 +130,8 @@ pub enum Answer {
 pub struct Submitted {
     mode: ConfirmMode,
     temp: MsgId,
+    /// 批量重发里这条重发前的旧 id：[`finish`] 据此按条记留痕、带 `old_id`（#83，codex 048 第 1 轮 #2）
+    old: Option<i64>,
 }
 
 impl Submitted {

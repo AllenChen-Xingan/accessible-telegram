@@ -282,14 +282,14 @@ async fn hand_over<B: Backend>(
     token: ConfirmToken,
     handed: &AtomicBool,
 ) -> Result<Submitted, CoreError> {
-    let mode = b.gate().verify(token, plan)?;
+    let (mode, again) = b.gate().verify_again(token, plan)?;
     // 发6②：准备到交出之间最长 60 秒、还等了人确认，被回复那条可能已被删、被挪话题
     preview_check(b, plan).await?;
     // 交出前的复核到此为止。为什么到点只会落在这之前或交出之后：`block_on_timeout` 只在 future 停在 await 时
     // 才看期限，从这里到交给 TDLib（`before_submit` 的读写文件、`send_limits::submit` 第一次 poll 就同步交出）
     // 中间没有 await，打断不了。置在 `before_submit` 之前也无妨：它拒了就直接返回错误，不会走到「到点」那一支
     handed.store(true, Ordering::SeqCst);
-    b.gate().before_submit(mode, plan)?;
+    b.gate().before_submit_again(mode, plan, again)?;
     let sealed = Sealed {
         kind: SealedKind::Message {
             request: &plan.request,
@@ -297,7 +297,11 @@ async fn hand_over<B: Backend>(
         },
     };
     match crate::send_limits::submit(b, sealed).await {
-        Ok(Answer::Message(m)) => Ok(Submitted { mode, temp: m.id }),
+        Ok(Answer::Message(m)) => Ok(Submitted {
+            mode,
+            temp: m.id,
+            old: None,
+        }),
         Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
             what: "send_answer_shape",
         }),

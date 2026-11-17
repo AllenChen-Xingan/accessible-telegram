@@ -435,19 +435,22 @@ fn duplicate_is_claimed_right_before_submit() {
     assert_eq!(log.lines().count(), 1, "被拒的那份不留痕");
     assert_eq!(g.direct_sent(), 1);
 
-    // --again：放行
+    // --again：放行（放行绑在这张凭据上，经 verify_again 带到交出）
     let c = plan(777, 6);
     let tc = g.issue(&c, true).unwrap();
-    let mc = g.verify(tc, &c).unwrap();
-    g.before_submit(mc, &c).unwrap();
+    let (mc, again) = g.verify_again(tc, &c).unwrap();
+    assert!(again);
+    g.before_submit_again(mc, &c, again).unwrap();
     assert_eq!(entries(&dir), 2);
 
-    // 同一摘要先开带 --again 的凭据、验过但没交出；再开不带的，交出前别的那份已登记：照拦，不沿用上一张的放行
+    // 放行不串到别的凭据（codex 048 第 1 轮 #1）：同一份计划，普通凭据 A 先验、停在复核；带 --again 的 B 再验、
+    // 复核失败没交出；这时别的同内容发送先交出了。A 交出前照拦，B 的放行拿不走
     let f = plan(777, 5);
-    let tf = g.issue(&f, true).unwrap();
-    let _ = g.verify(tf, &f).unwrap();
-    let tf2 = g.issue(&f, false).unwrap();
-    // 同内容、摘要不同（真实里每次的 sending_id 不同）
+    let ta = g.issue(&f, false).unwrap();
+    let (ma, a_again) = g.verify_again(ta, &f).unwrap();
+    let tb = g.issue(&f, true).unwrap();
+    let (_mb, b_again) = g.verify_again(tb, &f).unwrap();
+    assert!(b_again);
     let other = Plan {
         target: 777,
         digest: [50; 32],
@@ -456,9 +459,8 @@ fn duplicate_is_claimed_right_before_submit() {
     let to = g.issue(&other, false).unwrap();
     let mo = g.verify(to, &other).unwrap();
     g.before_submit(mo, &other).unwrap();
-    let mf2 = g.verify(tf2, &f).unwrap();
     assert_eq!(
-        reason(g.before_submit(mf2, &f).unwrap_err()),
+        reason(g.before_submit_again(ma, &f, a_again).unwrap_err()),
         SendRefusedReason::DuplicateRecent
     );
 }

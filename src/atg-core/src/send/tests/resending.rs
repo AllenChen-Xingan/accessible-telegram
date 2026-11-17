@@ -234,3 +234,42 @@ fn resend_log_has_one_line_per_message_with_old_id() {
     assert!(mine[0].contains("\"result\":\"submitted\""));
     assert!(mine[1].contains("\"result\":\"succeeded\""));
 }
+
+/// 分步调用（resend → wait → finish）也按条记、带旧 id（codex 048 第 1 轮 #2）
+#[test]
+fn stepwise_resend_logs_old_id_too() {
+    let mut r = rig("rs-step-log", false);
+    let (a, b) = (failed_one(&mut r), failed_one_text(&mut r, "第二句"));
+    let plan = block_on(prepare_resend(&r.b, FRIEND, &[a, b], SendOrigin::Cli)).unwrap();
+    let token = r.b.gate().issue(&plan, false).unwrap();
+    let news = block_on(resend(&r.b, &plan, token)).unwrap();
+    let subs: Vec<Submitted> = news.into_iter().flatten().collect();
+    let temps: Vec<MsgId> = subs.iter().map(Submitted::temp).collect();
+    let w = wait(&mut r.stream, &temps, Duration::from_secs(2), &mut |_| {});
+    for (sub, w) in subs.into_iter().zip(&w) {
+        finish(&r.b, &plan, sub, w);
+    }
+    let log = std::fs::read_to_string(r.dir.join(crate::gate::DIRECT_LOG_FILE)).unwrap();
+    let mine: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("\"kind\":\"resend\""))
+        .collect();
+    assert_eq!(mine.len(), 4, "{log}");
+    for id in [a, b] {
+        let old = format!("\"old_id\":{id}");
+        assert_eq!(mine.iter().filter(|l| l.contains(&old)).count(), 2, "{log}");
+    }
+}
+
+fn failed_one_text(r: &mut Rig, text: &str) -> i64 {
+    r.b.script_sends(vec![FakeSend::Fail {
+        code: 400,
+        message: "X".into(),
+        can_retry: true,
+    }]);
+    let Waited::Failed { message, .. } = send_once(r, FRIEND, &draft(text, None), false).unwrap()
+    else {
+        panic!("应当失败");
+    };
+    message.id.message_id
+}

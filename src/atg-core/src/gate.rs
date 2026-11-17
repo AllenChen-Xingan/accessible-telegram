@@ -33,7 +33,7 @@ use crate::secret::Secret;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;

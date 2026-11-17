@@ -13,7 +13,8 @@
 - 2026-11-17 放行开工。#77 #80 #83 代码 + 测试 + 契约写完（16 文件），未编译；已申请名额。注意：测试与修法同时写，没在修前实测红
 - 2026-11-17 复跑 574 过；会红验证：5 红 2 绿（2 绿是交出后到点的回归测试），git diff 与存档补丁 cmp 一致。大总管提交检查点 8dcf473
 - atg-review（3 视角，范围 origin/main...HEAD）：P0/P1 无；P2×7（多为重复）+ P3×9 全改：again 表只记「进防重复 + 带 --again」、不带的删条目；hit/claim 共用 latest_hit；留痕标记改 `not_resent`（与 CLI 同名，注明不是错误码）；handed 注释写清 block_on_timeout 只在 await 看期限；契约 send_text/resend 两行与 cli resend 行补 #80、errors network 行补、30 秒从验凭据算、--again 规则挪到放行条、testing.md:82 留痕行数、变更记录来源统一。未编译
-- 下一步：名额复跑 → 提交 → codex 048 → PR
+- 2026-11-17 自审修改复跑 574 过，大总管提交 530f2a5。codex 048 第 1 轮（隐私扫描 13 处 `token: ConfirmToken` 经大总管核准 --force-secrets）：P1 `--again` 放行被别的凭据拿走 → 去掉共享表，verify_again/before_submit_again 把放行绑在凭据上；P2 分步重发不带 old_id → Submitted 带 old、finish 按条记、null 条交出时记。记录 docs/reviews/048。未编译
+- 下一步：名额复跑 → 提交 → codex 048 第 2 轮
 - 要人定的事：无
 
 # fix 现状页（批次 b18）
