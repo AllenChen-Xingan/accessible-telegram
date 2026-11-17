@@ -352,7 +352,8 @@ pub struct ResendArgs {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
-    // 不开 `allow_hyphen_values`：可变长参数开了它会把后面的 `--dry-run` 等选项吞成 id（#153）。消息 id 都是正数，用不着
+    // `allow_hyphen_values` = 以「-」开头的词也当作值收，不当作选项。会话 id 要开（群、频道的 id 是负数）；这里不开：
+    // 可变长参数开了它会把后面的 `--dry-run` 等选项吞成 id（#153）。消息 id 都是正数，用不着
     /// 要重发的失败消息 id（一条或几条）。用 send 失败时那行 error 里的 message_id——失败后 TDLib 会给它换一个新
     /// id，不是最初的那个，也不是 temp_message_id
     #[arg(value_name = "MSG_ID", required = true, num_args = 1..)]
