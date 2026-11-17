@@ -51,11 +51,11 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// 真实后端的配置
 pub struct TdConfig {
-    /// `.env.local`（开发期；默认 [`config::default_env_file`]）
+    /// `.env.local`（开发期；默认 [`crate::config::default_env_file`]）
     pub env_file: PathBuf,
     /// 钥匙放哪（正式用 [`crate::keystore::Keychain`]）
     pub keystore: Box<dyn KeyStore>,
-    /// 日志目录（默认 [`config::default_log_dir`]）
+    /// 日志目录（默认 [`crate::config::default_log_dir`]）
     pub log_dir: PathBuf,
     /// 本进程是 CLI 还是 GUI（写进档案锁，别人打不开时能说清是谁占着）
     pub holder: Holder,

@@ -364,7 +364,7 @@
 
 ## R7 第九刀：拆 core `td.rs`（2026-11-17，工作副本 `atg-wt/arch-td`，分支 `refactor/r7-td`，从 main f5ca5b2 起）
 
-大总管批的切法：`td/real/submit.rs` 一字不动，因为 msg2 的 13a/13b 会往里加。基线和 PR 3（fake）会冲突，谁后合谁解，两边都合完基线应该一项不剩。codex 060。
+大总管批的切法：`td/real/submit.rs` 一字不动，因为 msg2 要往里加 issue #13 的两步（13a 投票、13b 按钮）。基线和 PR 3（fake）会冲突，谁后合谁解，两边都合完基线应该一项不剩。codex 060。
 
 - 第一步：内联的 `mod real { … }`（原第 34–798 行）用脚本 `_tmp/20261117-r7td/split.py` 原样挪成 `td/real.rs`，缩进退 4 格；`td.rs` 剩 36 行
 - 第二步：照 fake 的写法，再拆出 `td/real/start.rs`（108 行）、`login.rs`（80 行）、`read.rs`（139 行）
@@ -381,6 +381,11 @@
 - ✅ 只读冒烟（正式档案，6 次 rc=0，没有档案锁问题）
   - `history saved`、`links saved <id>`：拆前拆后只差 `.at`、`elapsed_ms`
   - `chats` 第一次按行号比对不上：两次跑之间会话顺序变了
-  - 补跑 `smoke2.sh`，顺序是拆后、拆前、拆后，按 `chat_id` 配对：三两两比较，集合、顺序、各键的值全都相同（不算 `.at`、`elapsed_ms`、`first_chat_ms`）
+  - 补跑 `smoke2.sh`，顺序是拆后、拆前、拆后，按 `chat_id` 配对：三次运行两两比较（3 组），集合、顺序、各键的值全都相同（不算 `.at`、`elapsed_ms`、`first_chat_ms`）
   - 输出、解出的源码、二进制都已删掉
-- 待提交检查点，然后走 atg-review → codex 060（`f5ca5b2...HEAD`，name `r7td`）
+- 检查点 c89a35a（大总管提交）；证据 MAIN 下 `_tmp/20261116-b20/r7-td-moved-arch.txt`：没被识别为挪动的 104 行只有头注释、导入、`mod`、16 行转发、`do_*` 签名和 7 处合行
+- 本节提到的 `_tmp/…` 脚本和清单都是一次性材料，不入库；合行清单与证据的正本写进 PR 说明
+- 多视角自审第 1 轮：P0/P1 零；P2×1（010 第五节末尾那句写得像基线已清空，已改成条件句）；P3×11，改了 8 条
+  - 其中一条：删掉 `config` 的 `self` 导入后，`TdConfig` 有两条文档链接 `config::default_*` 会断，已改写成 `crate::config::…`
+  - 另 3 条不改：`real.rs:40`「见这两个子模块」是原文带过来的（只挪不改，不动）；`td/real/` 下 `*_impl`、`submit_sealed` 和 `do_*` 两套命名并存，因为 `submit.rs` 不许动，等 #13 合并后另开 issue 统一；010 和交接页的说明已补
+- 下一步：codex 060（`f5ca5b2...HEAD`，name `r7td`）
