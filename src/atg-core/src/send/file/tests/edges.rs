@@ -172,3 +172,16 @@ fn upload_wait_stops_at_the_cap() {
         "{el:?}"
     );
 }
+
+/// 按文件发就原样按文件发：关掉 TDLib 的自动类型识别，不让它把文件改成视频、音频等（codex 034 第 2 轮 #1，`api.tl:6425`）
+#[test]
+fn document_request_turns_off_type_detection() {
+    let mut r = rig("doctype");
+    let p = r.put("Documents/clip.mp4", b"not really a video");
+    let plan = r.prepare(&p, "").unwrap();
+    r.send(&plan, false).unwrap();
+    let c = r.b.submitted().pop().unwrap()["input_message_content"].clone();
+    assert_eq!(c["@type"], "inputMessageDocument");
+    assert_eq!(c["document"]["@type"], "inputDocument");
+    assert_eq!(c["document"]["disable_content_type_detection"], true);
+}
