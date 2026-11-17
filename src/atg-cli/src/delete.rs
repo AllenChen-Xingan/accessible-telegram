@@ -3,9 +3,11 @@
 //!
 //! 输出（直跑与经本机接口转发同一段代码）：一行 `plan`（目标、每条 `message_id` + 正文 + 简短读法 `brief`、`note_zh`、
 //! 确认方式、摘要）→ `--dry-run` 到此为止 → 闸开凭据（直发，不确认）→ 交出 `deleteMessages`（`revoke=true`）→
-//! 结尾 `result`（`deleted`：删了哪几条）。TDLib 应答 `ok` = 本机已删、给服务器的删除已排上，不再等事件。
+//! 结尾 `result`（`deleted`：删了哪几条）。TDLib 应答 `ok` = 本机已删、给服务器的删除 TDLib 已记下、在后台做完
+//! （断网时联网后补做），不再等事件；要核对就用 `history` 看。
 //! 交出到点没回或断线 → `send_outcome_unknown`（删没删掉未知，不许直接重做）。
-//! 只删自己发的；收藏夹里的、TDLib 说不能给所有人删的（还在待发、过了时限……）一律 `forbidden`（带 `why`），什么都不删。
+//! 只删自己发的、已发出的；收藏夹里的、还没发出的、TDLib 说不能给所有人删的（过了时限……）一律 `forbidden`（带 `why`），
+//! 什么都不删。
 
 use crate::args::Format;
 use crate::chats::{self, Feed};
@@ -87,8 +89,8 @@ fn run<B: Backend>(
     started: Instant,
     submit_timeout: Duration,
 ) -> Result<u8, Fail> {
-    let chat =
-        history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
+    // 收藏夹里的不能给所有人删：用法提示里不提 `saved`（写了也照样解析，准备时报 `forbidden why:saved`）
+    let chat = history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id"))?;
     let cx = history::speech_ctx(p.tz.as_deref(), false)?;
     // 经本机接口转来的参数绕过了 clap，这里再查一次
     if p.ids.is_empty() || p.ids.len() > delete::MAX_IDS {
@@ -134,7 +136,12 @@ fn run<B: Backend>(
     let n = ids.len();
     let data = json!({"command": "delete", "chat_id": chat_id, "confirm": mode.as_str(),
         "deleted": ids, "elapsed_ms": crate::elapsed_ms(started)});
-    finish(sink, format, data, &format!("已给所有人删除 {n} 条"));
+    finish(
+        sink,
+        format,
+        data,
+        &format!("已在本机删除 {n} 条，服务器那边由 Telegram 在后台给所有人删（断网时联网后补做）"),
+    );
     Ok(0)
 }
 

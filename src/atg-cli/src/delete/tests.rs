@@ -206,7 +206,7 @@ fn text_format_reads_plan_and_result() {
     assert_eq!(code, 0);
     assert!(cap.out[0].starts_with("将给所有人删除 "), "{}", cap.out[0]);
     assert!(cap.out[0].contains("id 5："));
-    assert_eq!(cap.out.last().unwrap(), "已给所有人删除 1 条");
+    assert!(cap.out.last().unwrap().starts_with("已在本机删除 1 条"));
 }
 
 #[test]

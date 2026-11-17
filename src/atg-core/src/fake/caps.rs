@@ -23,8 +23,8 @@ impl FakeBackend {
         lock(&self.denied).push((id, cap));
     }
 
-    /// 默认：都能回复；给所有人删、编辑只限自己发的、已在服务器上的、不在收藏夹里的（TDLib 不许给所有人删收藏夹里的，
-    /// `MessagesManager.cpp:8346`）。被 [`FakeBackend::deny`] 关掉的照关
+    /// 默认照 TDLib：都能回复；给所有人删只限自己发的、不在收藏夹里的（`MessagesManager.cpp:8346`）——**还没发出的也算能删**
+    /// （`:8352-8354`，核心得自己拦）；编辑只限自己发的、已发出的。被 [`FakeBackend::deny`] 关掉的照关
     pub(super) fn caps(&self, id: MsgId) -> Result<MessageCaps, CoreError> {
         let m = self.find_message(id).ok_or(CoreError::NotFound {
             what: "message",
@@ -32,12 +32,12 @@ impl FakeBackend {
         })?;
         let on = |c: Cap| !lock(&self.denied).contains(&(id, c));
         let sent = m["sending_state"].is_null();
-        let own = m["is_outgoing"].as_bool() == Some(true) && sent;
+        let own = m["is_outgoing"].as_bool() == Some(true);
         let saved = *lock(&self.me_id) == Some(id.chat_id);
         Ok(MessageCaps {
             can_reply: on(Cap::Reply),
             can_delete_for_all: own && !saved && on(Cap::DeleteForAll),
-            can_edit: own && on(Cap::Edit),
+            can_edit: own && sent && on(Cap::Edit),
         })
     }
 }

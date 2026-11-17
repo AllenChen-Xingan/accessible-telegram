@@ -1,10 +1,13 @@
 //! `delete`：经发送闸的 `deleteMessages`，两种：「撤销待发消息」（`pending_cancel`，#57，`revoke=false`）与
 //! 「给所有人删除」（M2.7，`delete_prepare` / `delete`，#8，`revoke=true`）。共用同一份计划、同一张凭据、同一个交出口。
-//! 规约：`specs/contracts/actions.md`「发送」表 `delete` 两行、「待发出的消息」、第一节第 4 小节（闸）。
+//! 规约：`specs/contracts/actions.md`「发送」表 `delete_prepare` / `delete` / `pending_cancel_prepare` / `pending_cancel` 四行、
+//! 「待发出的消息」、第一节第 4 小节（闸）。
 //!
-//! **给所有人删除**：只删自己发的（大总管定 2026-11-17）；收藏夹里的 TDLib 不许（`:8346`），准备时就拒；能不能删
-//! （还在待发、过了时限、会话不许）全听 `getMessageProperties.can_be_deleted_for_all_users`，不自己算。交出前逐条再查，
-//! 被编辑过（正文和确认时不一样）就整批不删。
+//! **给所有人删除**：只删自己发的（大总管定 2026-11-17）、已发出的（待发、失败的拒：TDLib 对还没发出的说「能删」，
+//! `:8352-8354`，但待发的只许走撤销，见下）；收藏夹里的 TDLib 不许（`:8346`），准备时就拒；其余能不能删（过了时限、
+//! 会话不许）全听 `getMessageProperties.can_be_deleted_for_all_users`，不自己算。交出前逐条再查一遍（同准备时的全部
+//! 条件），正文和准备计划时不一样（被编辑过）就整批不删。应答 `ok` = 本机已删、给服务器的删除 TDLib 已记下、在后台做完
+//! （断网时联网后补做），不再等事件。
 //!
 //! **撤销只是尽力而为**（TDLib 1.8.69 `MessagesManager.cpp`）：删掉待发消息只停本机的网络请求（`:21330-21345`）；
 //! 请求已经到了服务器的，成功应答回来时 TDLib 自己以 `revoke=true` 在服务器上删掉它（`:27848-27851` →
@@ -20,7 +23,10 @@
 //! 删了，正是要拒的「给所有人删除」。`revoke=false` 对还在待发的消息没有区别（`:21330-21345` 只停本机请求），TDLib
 //! 事后的自动撤回也固定用 `true`（`:8484-8490`），不受它影响；赶上恰好发出的，只删掉自己这边，对方那边留着。
 //!
-//! 流程：[`prepare_cancel`]（L0，逐条查是不是自己的待发消息、取正文给人确认）→ 闸开凭据 → [`cancel`]（验凭据 →
+//! 给所有人删除的流程：[`prepare_delete`]（L0）→ 闸开凭据 → [`delete`]（验凭据 → 交出前逐条再查 → 交出），与撤销共用
+//! `prepare` / `submit`。
+//!
+//! 撤销的流程：[`prepare_cancel`]（L0，逐条查是不是自己的待发消息、取正文给人确认）→ 闸开凭据 → [`cancel`]（验凭据 →
 //! 交出前逐条再查一遍，变了就拒 → 交出）。成没成看之后的事件：临时 id 出现在 `messages_deleted` 里 = 撤销了；
 //! 先来了这条的 `send_succeeded` = 没赶上，消息已发出——随后若它的正式 id 出现在 `messages_deleted` 里，就是上面
 //! 那种被换成正式 id、只从自己这边删掉了（调用方要接着看一小会儿，见 CLI `pending`）。
@@ -28,7 +34,7 @@
 use crate::backend::Backend;
 use crate::error::{CoreError, DeleteRefusedWhy, InvalidSendWhy};
 use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
-use crate::model::{ChatId, ChatTarget, MsgId, SendingState};
+use crate::model::{Body, ChatId, ChatTarget, MsgId, SendingState, Time};
 use crate::send::{self, Answer, Sealed, SendOrigin};
 use serde_json::{Value, json};
 
@@ -52,11 +58,22 @@ pub enum Action {
 pub const MAX_IDS: usize = 100;
 
 /// 计划里的一条：消息 id + 能给人确认的正文（不是纯文字的给不出，`None`）
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub struct DeleteItem {
     pub id: i64,
     pub text: Option<String>,
+    /// 准备时看到的整份内容：交出前复查拿它比，附件换了、说明改了也认得出（`text` 对附件是 `None`，codex 030 #1）。
+    /// 已听 / 已看一律标上再存（[`seen`]）：对方听了自己的语音不是编辑，不该因此拒删
+    content: Body,
+    /// 最后编辑时间（`edit_date`）：换图不换说明时内容树里看不出（图片节点不带文件），靠它认
+    edited: Option<Time>,
+}
+
+/// 复查用的内容：已听 / 已看抹平（对方听没听会变，不算内容变了）
+fn seen(mut b: Body) -> Body {
+    b.mark_opened();
+    b
 }
 
 /// 一份已定稿的删除：确认给人看的、交给 TDLib 的都是它（摘要绑请求 + 每条正文）
@@ -123,7 +140,8 @@ impl Gated for DeletePlan {
     fn intent(&self) -> [u8; 32] {
         self.digest
     }
-    /// 不拦：撤销的对象是某条待发消息的临时 id，撤下之后那个 id 就没了，同一条撤不了两次
+    /// 不拦：撤销的对象是某条待发消息的临时 id，撤下之后那个 id 就没了，同一条撤不了两次；给所有人删的，第二次
+    /// 那条已不在，准备时就 `not_found`
     fn dedup(&self) -> bool {
         false
     }
@@ -227,8 +245,13 @@ async fn load_revocable<B: Backend>(
             message_id: id,
         };
         let m = b.message_get(mid).await?;
+        // 还没发出的（待发、失败）自己拦：TDLib 对还没发出的 `can_be_deleted_for_all_users` 恒为真
+        // （`MessagesManager.cpp:8352-8354`），可待发那条恰好发出时删除会被换成正式 id、`revoke=true` 就给所有人删了
+        // ——待发的只许走 `pending cancel`（`revoke=false`，见模块文档；自审 #8 A P1）
         let why = if !m.outgoing {
             Some(DeleteRefusedWhy::NotOwn)
+        } else if m.sending != SendingState::Sent {
+            Some(DeleteRefusedWhy::NotSent)
         } else if !b.message_caps(mid).await?.can_delete_for_all {
             Some(DeleteRefusedWhy::NotRevocable)
         } else {
@@ -238,7 +261,12 @@ async fn load_revocable<B: Backend>(
             return Err(CoreError::DeleteRefused { why });
         }
         let text = send::resending::confirmable_text(&m);
-        items.push(DeleteItem { id, text });
+        items.push(DeleteItem {
+            id,
+            text,
+            content: seen(m.content),
+            edited: m.edited,
+        });
     }
     Ok(items)
 }
@@ -269,6 +297,8 @@ async fn load_pending<B: Backend>(
         items.push(DeleteItem {
             id,
             text: Some(text),
+            content: seen(m.content),
+            edited: m.edited,
         });
     }
     Ok(items)

@@ -70,9 +70,27 @@ fn someone_elses_message_is_refused() {
 #[test]
 fn what_tdlib_will_not_revoke_is_refused() {
     let b = rig(false);
-    // 还在待发的：TDLib 不许给所有人删（该用 `pending cancel`）
+    // 还在待发的：TDLib 说能给所有人删（假后端照真的来），核心自己拦——该用 `pending cancel`（自审 #8 A P1）
+    assert!(
+        block_on(b.message_caps(mid(FRIEND, 1_048_577)))
+            .unwrap()
+            .can_delete_for_all
+    );
     let e = block_on(prepare_delete(&b, FRIEND, &[1_048_577], SendOrigin::Cli)).unwrap_err();
-    assert_eq!(e, refused(DeleteRefusedWhy::NotRevocable));
+    assert_eq!(e, refused(DeleteRefusedWhy::NotSent));
+    // 发送失败的：没送到对方，同样不给所有人删
+    let failed = json!({"@type": "messageSendingStateFailed", "error": {"@type": "error", "code": 400, "message": "X"},
+        "can_retry": true, "need_another_sender": false, "need_another_reply_quote": false,
+        "need_drop_reply": false, "required_paid_message_star_count": 0, "retry_after": 0.0});
+    b.set_history(
+        FRIEND,
+        vec![
+            own(FRIEND, 8, "atg 测试 失败", failed),
+            own(FRIEND, 5, "atg 测试 已发", Value::Null),
+        ],
+    );
+    let e = block_on(prepare_delete(&b, FRIEND, &[8], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e, refused(DeleteRefusedWhy::NotSent));
     // 过了时限等：TDLib 说不行就不行，本项目不自己算
     b.deny(mid(FRIEND, 5), Cap::DeleteForAll);
     let e = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap_err();
@@ -148,4 +166,55 @@ fn disconnect_while_submitting_is_outcome_unknown() {
     b.fail_next("delete", CoreError::Disconnected);
     let e = block_on(delete(&b, &plan, token)).unwrap_err();
     assert_eq!(e.code(), "send_outcome_unknown");
+}
+
+fn photo(chat: i64, id: i64, caption: &str, file: i64) -> Value {
+    let mut m = own(chat, id, "", Value::Null);
+    m["content"] = json!({"@type": "messagePhoto", "caption": {"@type": "formattedText", "text": caption, "entities": []},
+        "photo": {"@type": "photo", "has_stickers": false, "sizes": [{"@type": "photoSize", "type": "x",
+            "photo": {"@type": "file", "id": file}, "width": 1, "height": 1, "progressive_sizes": []}]}});
+    m
+}
+
+/// codex 030 #1：附件没有可比的正文，改了说明或换了图也得认出来，整批不删
+#[test]
+fn attachment_changed_after_prepare_is_refused() {
+    // 换了图、说明没变：图片节点不带文件，靠 TDLib 更新的 `edit_date` 认
+    let mut swapped = photo(FRIEND, 7, "atg 测试 图", 32);
+    swapped["edit_date"] = json!(1_792_756_000);
+    for changed in [photo(FRIEND, 7, "atg 测试 改过的说明", 31), swapped] {
+        let b = rig(false);
+        b.set_history(FRIEND, vec![photo(FRIEND, 7, "atg 测试 图", 31)]);
+        let plan = block_on(prepare_delete(&b, FRIEND, &[7], SendOrigin::Cli)).unwrap();
+        let token = b.gate().issue(&plan, false).unwrap();
+        b.set_history(FRIEND, vec![changed]);
+        let e = block_on(delete(&b, &plan, token)).unwrap_err();
+        assert_eq!(
+            e,
+            CoreError::InvalidSend {
+                why: InvalidSendWhy::Changed
+            }
+        );
+        assert!(deletes(&b).is_empty());
+    }
+}
+
+/// 对方听了自己发的语音不是编辑：照删
+#[test]
+fn voice_listened_meanwhile_still_deletes() {
+    let voice = |listened: bool| {
+        let mut m = own(FRIEND, 9, "", Value::Null);
+        m["content"] = json!({"@type": "messageVoiceNote", "is_listened": listened,
+            "caption": {"@type": "formattedText", "text": "", "entities": []},
+            "voice_note": {"@type": "voiceNote", "duration": 3, "waveform": "", "mime_type": "audio/ogg",
+                "voice": {"@type": "file", "id": 41}}});
+        m
+    };
+    let b = rig(false);
+    b.set_history(FRIEND, vec![voice(false)]);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[9], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&plan, false).unwrap();
+    b.set_history(FRIEND, vec![voice(true)]);
+    block_on(delete(&b, &plan, token)).unwrap();
+    assert_eq!(deletes(&b).len(), 1);
 }

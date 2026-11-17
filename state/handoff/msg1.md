@@ -35,7 +35,9 @@
   - core：`model::MessageCaps`；`Backend::message_caps`（`can_reply` 成默认方法委托它，`send/text.rs` 不动）；td 走 `td/requests.rs::caps`；假后端 `fake/caps.rs`（`Cap`、`deny`，默认照 TDLib：自己发的、已发出、不在收藏夹）；`error::DeleteRefused{why: saved|not_own|not_revocable}`（码 `forbidden`）、`InvalidSendWhy::Changed`；`delete.rs` 加 `Action`、`prepare_delete`、`delete`，与撤销共用 `prepare` / `submit`（种类不对 `internal{delete_action_mismatch}`）；测试 `delete/tests/revoke.rs` 9 条
   - CLI：`delete.rs`（plan 带每条 `brief`、`--dry-run`、交出 10 秒到点报未知）、args / main / session / forward / serve / serve/l2 接线；测试 `delete/tests.rs` 7 条；`tests/cli.rs` delete 从占位挪到已做；`serve/tests/lifecycle.rs` 占位改用 `show`
   - 契约：cli / actions / errors / config-privacy
-  - 下一步：编译测试 → atg-review → codex 030 → 真账号只 `delete --dry-run saved …`（验 `forbidden why:saved`，只读）
+  - 自审 atg-review：P1×1（TDLib 对还没发出的说能给所有人删，`:8352-8354`）已修 → `forbidden why:not_sent`、假后端照真 TDLib；P2 码不统一 + P3 `temp_message_id` 恒 0 大总管合开 issue
+  - **codex 030 收敛（2026-11-17）**：第 1 轮 P2（附件改说明 / 换图复查不出）已修（存整份内容 + `edit_date`）；第 2 轮 P2（同一秒再换图）待开 issue；两轮无 P0/P1。复验 586 / 587 过、clippy 两种净
+  - 下一步：提交 → 真账号只 `delete --dry-run saved …`（验 `forbidden why:saved`，只读）→ PR → B 段编辑（codex 031）
 
 ## #8 计划（b20，未动代码）
 分两段交付（roadmap 116 行）：先 **A 删除（给所有人，M2.7）**，后 **B 编辑（M5 ①）**；评审 030（删除）、031（编辑）。都是 L2，直发不确认（#113；现行规则以 actions.md 第一节第 5 小节为准，294 行是历史记录不改）。
