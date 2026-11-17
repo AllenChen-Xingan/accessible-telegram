@@ -1,4 +1,4 @@
-//! 语音的组合动作（#4、#59）：找到这条语音 → 下载 → 解码、放（以后：转写）。
+//! 语音的组合动作（#4、#59）：找到这条语音 → 下载 → 解码、放或转写（转写在 [`transcribe`]）。
 //!
 //! 落层（arch 定 2026-11-13，arch 分支 `docs/plan/010_complexity-budget.md` 第四节）：这里是**库代码**——吃
 //! `Backend` 和参数，吐结果；不碰 clap、不写标准输出，渲染交给调用方。以后 GUI 链接 `atg-cli` 的库目标直接用。
@@ -68,7 +68,7 @@ pub struct Found {
     pub self_destruct: bool,
 }
 
-/// 在已起好的后端上：取这条消息（`getMessage`，不标已读）、确认是语音。不是语音 → `invalid_input`
+/// 在已起好的后端上：认会话、取这条消息（`getMessage`，不标已读）、确认是语音。不是语音 → `invalid_input`
 pub fn find<B: Backend>(
     b: &B,
     stream: &mut EventStream,
@@ -76,18 +76,38 @@ pub fn find<B: Backend>(
     q: &VoiceQuery,
     stop: &AtomicBool,
 ) -> Result<Found, Fail> {
+    let id = chat(b, stream, feed, q)?;
+    find_in(b, stream, feed, id, stop)
+}
+
+/// 认会话（就绪 → 认 id → `getChat`）；回这条消息的身份
+pub fn chat<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    q: &VoiceQuery,
+) -> Result<MsgId, Fail> {
     chats::ensure_ready(b)?;
     let chat_id = history::resolve(b, stream, feed, q.chat)?;
     history::load_chat(b, stream, feed, chat_id)?;
-    let id = MsgId {
+    Ok(MsgId {
         chat_id,
         message_id: q.message_id,
-    };
+    })
+}
+
+/// 会话已认好：取这条消息、放进 store（`transcribe` 从 store 取凭据）、确认是语音
+pub fn find_in<B: Backend>(
+    b: &B,
+    stream: &mut EventStream,
+    feed: &mut Feed,
+    id: MsgId,
+    stop: &AtomicBool,
+) -> Result<Found, Fail> {
     let m =
         within(b, b.message_get(id), Instant::now() + QUERY_TIMEOUT, stop)?.map_err(Fail::Core)?;
-    feed.drain(stream);
     // 有效内容（有临时内容就用它）；受限的存下来时已换成受限节点，不是语音
-    match m.effective() {
+    let found = match m.effective() {
         Body::Content(Content {
             attachment: Some(Attachment::Voice { duration, file, .. }),
             ..
@@ -98,7 +118,10 @@ pub fn find<B: Backend>(
             self_destruct: m.self_destruct,
         }),
         _ => Err(Fail::Core(CoreError::InvalidInput { td: None })),
-    }
+    };
+    crate::send::remember(feed, m);
+    feed.drain(stream);
+    found
 }
 
 /// 下载找到的语音（同步等下完；只在下完时交路径）
@@ -182,7 +205,7 @@ pub fn prepare_play<B: Backend, O: Output>(
 }
 
 /// 每一步之后先看取消、再传播这一步的错误：取消期间某步失败，仍按 `interrupted` 报
-fn after_step<T>(cancel: &AtomicBool, r: Result<T, Fail>) -> Result<T, Fail> {
+pub(crate) fn after_step<T>(cancel: &AtomicBool, r: Result<T, Fail>) -> Result<T, Fail> {
     if cancel.load(Ordering::SeqCst) {
         Err(Fail::Interrupted)
     } else {
@@ -204,6 +227,8 @@ pub fn run_prepare_play<B: Backend, O: Output>(
         prepare_play(b, stream, feed, q, mark, out, cancel)
     })
 }
+
+pub mod transcribe;
 
 // 测试数据全是编的
 #[cfg(test)]

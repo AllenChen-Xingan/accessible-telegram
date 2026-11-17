@@ -92,8 +92,7 @@ pub struct Page {
     pub landing: &'static str,
     /// 等到补发完了没有
     pub synced: bool,
-    /// 停住了（TDLib 连着几次不空却没给新的：往新是只回起点那一条，往旧是只有起点或更新的）：这页可能不满，
-    /// 稍后重试同一条命令。一条都没拿到时 `more` / `more_newer` 为假，只看它
+    /// 停住了（TDLib 连着几次不空却没给新的：往新是只回起点那一条，往旧是只有起点或更新的）：这页可能不满，稍后重试同一条命令。一条都没拿到时 `more` / `more_newer` 为假，只看它
     pub partial: bool,
 }
 
@@ -108,6 +107,7 @@ fn doc_id(d: &Doc) -> Option<i64> {
         Doc::Message(m) => Some(m.id.message_id),
         Doc::Service(s) => Some(s.id.message_id),
         Doc::Tombstone(t) => Some(t.id.message_id),
+        Doc::Transcription(t) => Some(t.id.message_id),
         Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) => None,
         Doc::Reactor(_) | Doc::Unknown(_) => None,
     }

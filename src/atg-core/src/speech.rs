@@ -26,6 +26,7 @@ mod playback;
 pub mod reaction;
 use reaction::reactions;
 mod status;
+mod transcription;
 use content::dur;
 
 /// 读法需要、但不在树里的东西
@@ -78,6 +79,7 @@ pub fn brief(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::Status(s) => status::brief(s.status).to_owned(),
         Doc::Playback(p) => playback::brief(p),
         Doc::Reactor(r) => reaction::reactor(r, cx),
+        Doc::Transcription(t) => transcription::brief(t, cx.reveal),
         Doc::Unknown(_) => UNSUPPORTED.to_owned(),
     }
 }
@@ -183,6 +185,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
         Doc::ChatItem(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
             String::new()
         }
+        Doc::Transcription(_) => String::new(),
     }
 }
 
@@ -198,24 +201,7 @@ pub fn full(doc: &Doc, cx: &SpeechCtx) -> String {
             brief(doc, cx)
         }
         Doc::Unknown(_) => brief(doc, cx),
-    }
-}
-
-fn full_content(c: &Content, reveal: bool) -> String {
-    let body = full_spans(&c.body, reveal);
-    let label = c.attachment.as_ref().map(|a| {
-        let (l, spoiler) = attachment(a, reveal);
-        if (spoiler || c.sensitive) && !reveal {
-            format!("{l}，{HIDDEN}")
-        } else {
-            l
-        }
-    });
-    match (label, body.trim().is_empty()) {
-        (None, true) => "空消息".to_owned(),
-        (None, false) => body,
-        (Some(l), true) => l,
-        (Some(l), false) => format!("{l}，{body}"),
+        Doc::Transcription(_) => brief(doc, cx),
     }
 }
 

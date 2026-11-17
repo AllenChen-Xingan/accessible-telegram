@@ -18,7 +18,8 @@ mod time;
 mod top;
 
 pub use media::{
-    Expirable, FileRef, PlayState, Playback, Transcript, TranscriptSegment, TranscriptSource,
+    Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
+    TranscriptSource, Transcription,
 };
 pub use reaction::{Reaction, ReactionKind, Reactor};
 pub use top::{Status, UserStatus};
@@ -64,6 +65,8 @@ pub enum Doc {
     Playback(Playback),
     /// 谁点了哪个表情回应（`reactions`，#9）
     Reactor(Reactor),
+    /// `transcribe` 这一次的结果（#59）
+    Transcription(Transcription),
     /// 不认识的顶层对象
     Unknown(Unknown),
 }

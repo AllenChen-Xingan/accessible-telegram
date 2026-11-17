@@ -15,9 +15,12 @@ from _common import REPO, REVIEW, SIZE, SOURCES, git, run  # noqa: F401
 # 否则正常的契约升级（如 SCHEMA_V 1 → 2）会先把自测弄红，自测又是门槛文件，改它还要标签。
 # 仓库本身一致不一致，由 CI 直接跑 check-sources.py 来查。
 FIXTURE = {
-    "Cargo.toml": '[workspace]\nmembers = ["src/atg-*"]\n',
-    "src/atg-core/Cargo.toml": '[package]\nname = "atg-core"\n',
-    "src/atg-cli/Cargo.toml": '[package]\nname = "atg-cli"\n',
+    "Cargo.toml": '[workspace]\nmembers = ["src/atg-*"]\nresolver = "2"\n',
+    "src/atg-core/Cargo.toml": '[package]\nname = "atg-core"\n\n[features]\ntdlib = []\ntestkit = []\n\n'
+    '[dev-dependencies]\natg-core = { path = ".", features = ["testkit"] }\n',
+    "src/atg-cli/Cargo.toml": '[package]\nname = "atg-cli"\n\n[dependencies]\natg-core = { path = "../atg-core" }\n\n'
+    '[features]\ntdlib = ["atg-core/tdlib"]\n\n'
+    '[dev-dependencies]\natg-core = { path = "../atg-core", features = ["testkit"] }\n',
     "src/atg-core/src/error.rs": """impl CoreError {
     pub fn code(&self) -> &'static str {
         match self {
@@ -274,6 +277,115 @@ class Sources(unittest.TestCase):
     def test_changed_members_rule_is_unparsed_not_green(self):
         self.edit("Cargo.toml", 'members = ["src/atg-*"]', 'members = ["src/*"]')
         r = self.check("workspace")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("解析不出", r.stdout)
+
+    # ── testkit 特性只许在 dev 依赖里开（#108）──
+    def red_testkit(self, rel: str, old: str, new: str, want: str) -> None:
+        self.edit(rel, old, new)
+        r = self.check("testkit")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(want, r.stdout)
+
+    def test_testkit_in_dev_dependencies_is_green(self):
+        self.assertEqual(self.check("testkit").returncode, 0)
+
+    def test_testkit_in_normal_dependencies_is_red(self):
+        self.red_testkit("src/atg-cli/Cargo.toml", 'atg-core = { path = "../atg-core" }',
+                         'atg-core = { path = "../atg-core", features = ["testkit"] }', "[dependencies]")
+
+    def test_testkit_in_target_dependencies_is_red(self):
+        self.red_testkit("src/atg-cli/Cargo.toml", "[features]",
+                         "[target.'cfg(unix)'.dependencies]\natg-core = { path = \"../atg-core\", features = [\"testkit\"] }\n\n[features]",
+                         "target.'cfg(unix)'.dependencies")
+
+    def test_testkit_in_build_dependencies_is_red(self):
+        self.red_testkit("src/atg-cli/Cargo.toml", "[features]",
+                         '[build-dependencies]\natg-core = { path = "../atg-core", features = ["testkit"] }\n\n[features]',
+                         "[build-dependencies]")
+
+    def test_testkit_under_renamed_dependency_is_red(self):
+        self.red_testkit("src/atg-cli/Cargo.toml", 'atg-core = { path = "../atg-core" }',
+                         'core = { package = "atg-core", path = "../atg-core", features = ["testkit"] }', "的 core 开了 testkit")
+
+    def test_feature_that_enables_testkit_is_red(self):
+        self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]',
+                         'tdlib = ["atg-core/tdlib", "atg-core?/testkit"]', "连带打开了 atg-core/testkit")
+
+    def test_default_feature_with_testkit_in_core_is_red(self):
+        self.red_testkit("src/atg-core/Cargo.toml", "tdlib = []", 'default = ["testkit"]\ntdlib = []',
+                         "default 连带打开了 testkit")
+
+    def test_testkit_in_workspace_dependencies_is_red(self):
+        self.red_testkit("Cargo.toml", 'members = ["src/atg-*"]\n',
+                         'members = ["src/atg-*"]\n\n[workspace.dependencies]\natg-core = { path = "src/atg-core", features = ["testkit"] }\n',
+                         "workspace.dependencies")
+
+    def test_testkit_in_target_dev_dependencies_is_green(self):
+        # 平台专属的测试依赖照样只给测试：不许误报（自审 #13）
+        self.edit("src/atg-cli/Cargo.toml", "[features]",
+                  "[target.'cfg(unix)'.dev-dependencies]\natg-core = { path = \"../atg-core\", features = [\"testkit\"] }\n\n[features]")
+        self.assertEqual(self.check("testkit").returncode, 0)
+
+    def test_feature_via_renamed_dependency_is_red(self):
+        # 改名的依赖，特性字符串里写的是本地名 core/testkit（自审 #6）
+        self.edit("src/atg-cli/Cargo.toml", 'atg-core = { path = "../atg-core" }',
+                  'core = { package = "atg-core", path = "../atg-core" }')
+        self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'tdlib = ["core/tdlib", "core/testkit"]',
+                         "连带打开了 core/testkit")
+
+    def test_unrelated_dependency_named_testkit_feature_is_green(self):
+        # 别的依赖自己有个叫 testkit 的特性，与 atg-core 无关：不许误报
+        self.edit("src/atg-cli/Cargo.toml", "[features]", '[dependencies.other]\nversion = "1"\n\n[features]')
+        self.edit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'tdlib = ["atg-core/tdlib", "other/testkit"]')
+        self.assertEqual(self.check("testkit").returncode, 0)
+
+    def inherit_renamed_core(self) -> None:
+        # 根上集中声明、改了名；成员 workspace = true 继承（codex 046 第 1 轮 #1）
+        self.edit("Cargo.toml", 'resolver = "2"\n',
+                  'resolver = "2"\n\n[workspace.dependencies]\ncore = { package = "atg-core", path = "src/atg-core" }\n')
+        self.edit("src/atg-cli/Cargo.toml", 'atg-core = { path = "../atg-core" }', 'core = { workspace = true }')
+
+    def test_inherited_renamed_dependency_with_testkit_is_red(self):
+        self.inherit_renamed_core()
+        self.red_testkit("src/atg-cli/Cargo.toml", "core = { workspace = true }",
+                         'core = { workspace = true, features = ["testkit"] }', "的 core 开了 testkit")
+
+    def test_feature_via_inherited_renamed_dependency_is_red(self):
+        self.inherit_renamed_core()
+        self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'default = ["dep:core", "core?/testkit"]\ntdlib = []',
+                         "连带打开了 core/testkit")
+
+    def test_strong_feature_via_inherited_renamed_dependency_is_red(self):
+        # 强转发 core/testkit 也要红（codex 046 第 3 轮：原先只测了弱的 core?/testkit）
+        self.inherit_renamed_core()
+        self.red_testkit("src/atg-cli/Cargo.toml", 'tdlib = ["atg-core/tdlib"]', 'tdlib = ["core/testkit"]',
+                         "连带打开了 core/testkit")
+
+    def test_inherited_unrelated_dependency_is_green(self):
+        # 根上继承的是别的包，与 atg-core 无关：特性叫 testkit 也不报
+        self.edit("Cargo.toml", 'resolver = "2"\n',
+                  'resolver = "2"\n\n[workspace.dependencies]\nother = { version = "1" }\n')
+        self.edit("src/atg-cli/Cargo.toml", "[features]", '[dependencies.other]\nworkspace = true\nfeatures = ["testkit"]\n\n[features]')
+        self.assertEqual(self.check("testkit").returncode, 0)
+
+    def test_resolver_1_is_red(self):
+        self.red_testkit("Cargo.toml", 'resolver = "2"', 'resolver = "1"', "workspace.resolver 是 1")
+
+    def test_missing_resolver_is_red(self):
+        self.red_testkit("Cargo.toml", 'resolver = "2"\n', "", "没写，按 1 算")
+
+    def test_renamed_testkit_feature_is_unparsed_not_green(self):
+        self.edit("src/atg-core/Cargo.toml", "testkit = []", "test-support = []")
+        self.edit("src/atg-core/Cargo.toml", 'features = ["testkit"]', 'features = ["test-support"]')
+        self.edit("src/atg-cli/Cargo.toml", 'features = ["testkit"]', 'features = ["test-support"]')
+        r = self.check("testkit")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("解析不出", r.stdout)
+
+    def test_unreadable_manifest_is_unparsed_not_green(self):
+        self.edit("src/atg-cli/Cargo.toml", "[features]", "[features")
+        r = self.check("testkit")
         self.assertEqual(r.returncode, 1)
         self.assertIn("解析不出", r.stdout)
 

@@ -30,10 +30,16 @@ fn mask_doc(d: &mut Doc) {
                 }
             }
         }
-        Doc::Tombstone(_) | Doc::Alert(_) | Doc::Status(_) | Doc::Playback(_) | Doc::Unknown(_) => {
-        }
+        // 18+ 遮挡的语音没展开：转写文字整个不出（同消息上的 `transcript`，大总管定 2026-11-14）
+        Doc::Transcription(t) if t.hidden(false) => t.outcome = Outcome::Hidden,
+        Doc::Tombstone(_)
+        | Doc::Alert(_)
+        | Doc::Status(_)
+        | Doc::Playback(_)
+        | Doc::Transcription(_)
         // 只有表情与名字，没有可藏的正文
-        Doc::Reactor(_) => {}
+        | Doc::Reactor(_)
+        | Doc::Unknown(_) => {}
     }
 }
 

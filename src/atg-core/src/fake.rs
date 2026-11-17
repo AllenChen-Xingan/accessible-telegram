@@ -379,8 +379,8 @@ impl FakeBackend {
         }));
     }
 
-    /// 等收线程处理完已喂进去的更新（最多 5 秒；收线程没了就不等）
-    fn settle(&self) {
+    /// 等收线程处理完已喂进去的更新（最多 5 秒；收线程没了就不等）。测试拿它做屏障：返回后推过的都已进事件流
+    pub fn settle(&self) {
         let (tx, rx) = mpsc::channel();
         if lock(&self.feed).send(Feed::Barrier(tx)).is_ok() {
             let _ = rx.recv_timeout(Duration::from_secs(5));

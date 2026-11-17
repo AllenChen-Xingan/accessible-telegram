@@ -129,7 +129,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 | `delete(ids, revoke=false)` | L0 但本机不可逆 | 只删自己这边；要人当场确认（给所有人的已进 MVP，见上表） |
 | `forward` | L2 | `forwardMessages`（`:13180`） |
 | `send_file` · `send_voice` | L2 | `sendMessage` + `inputMessageDocument` / `inputMessageVoiceNote`（`:6700,6738`） |
-| `speech_to_text` | L0 | `recognizeSpeech`（`:13121`） |
+| `speech_to_text` | L0 | **本机转写**（#59 取代 F4）：`atg-audio` 的 `stt` 起本机辅助程序、用 Apple 端侧模型（SpeechAnalyzer），音频经管道喂、不落盘、不外发（以 Apple 端侧说明为据，**断网未实测**，待人验证）；不调 `recognizeSpeech`（`:13121`，那是 Telegram 服务器识别、要 Premium）。CLI `transcribe`；结果只在内存（转写表），不标已听 |
 | `mark_unread` | L0 | `toggleChatIsMarkedAsUnread`（`:14514`） |
 
 所有 L2 一律走同一道闸。
@@ -149,14 +149,14 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
    Touch ID / 系统密码（原 `human_auth`）已整个删除（人定 2026-11-16「touch id 这个功能彻底关掉以及完全不用」，#113）
 
-   理由（历史，#113 前；现在正式服务器一律直发，这段只说明为什么从来不做终端确认）：终端确认（`/dev/tty`）拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，AI 能无人在场完成真实发送；拍板 10 只给「测试服务器 + 收藏夹」免确认，正式服务器的收藏夹不在其内（codex 评审 004 的 P0）。所以终端确认**不开凭据**；当时正式服务器改要 AI 拿不到的东西（Touch ID），#113 起整个删除、改为直发（第七节第 9 条的理由推广到 CLI 与 GUI 全部发送：界面分不清按键的是人还是 AI，这是推断，不是原话）。
+   不做终端确认（`/dev/tty`）：它拦不住 `tmux send-keys`，也拦不住 `script` 造出来的伪终端，做了也是假确认（codex 评审 004 的 P0）。正式服务器一律直发，靠防重复、留痕、限流与 `account_limited` 停发兜底（第 5 小节）。
 
 2. **测试服务器上只许发收藏夹**（架构方案第四节第 1 小节）：测试服务器上发往收藏夹以外的会话，有什么凭据都拒绝（`send_refused(test_dc_saved_only)`）。测试号谁都能登，别人可能往里发消息、拉群。
    **唯一例外（N7 人定）**：与**第二个自己控制的测试号**的私聊——可以互发，也可以把发给它的消息给所有人删（收藏夹里删不了给所有人，`MessagesManager.cpp:8346`）。判定只认：本进程实际的 `use_test_dc` 为真 **且** 目标是与该号的私聊；该号的用户 id 在每次进入 `authorizationStateReady` 时按 `.env.local` 的 `ATG_TEST_PHONE_2`（也须 `99966` 开头）重查，不认会话名字。这个私聊里闸同样自动开 `test_exempt` 凭据（AI 推：例外是为了让自动化测试能跑，可推翻）
 
 3. **`test_exempt` 的判定**只认：本进程启动时**实际**传给 `setTdlibParameters` 的 `use_test_dc`（由闸独家持有，不认后端自报）**且**当前登录号以 `99966` 开头**且**目标是 `me()` 的收藏夹。每次发送前重查，不只在开凭据时查。
 
-4. **确认时给人看什么**（终端 `plan` 行、界面都一样）：目标会话的**类型 + 名字 + id**（如「私聊 · 张三 · 777」，改名叫「收藏夹」的会话骗不过去）· 内容全文 · 回复的那条 · **发起方**（界面 / 命令行，命令行注明「可能是 AI」）。显示前把 ANSI 控制序列、双向控制字符、零宽字符转义成可见形式（它们能改写终端显示，VoiceOver 也不读）——范围是 Unicode 的 Default_Ignorable_Code_Point 全集加格式类与行 / 段分隔符，含标签字符（U+E0000–E007F，能藏一整段只有程序读得出的文字）与变体选择符；宁可多转不可漏（`gate::visible`）。（原「Touch ID 弹框的说明区与放不下就拒 `too_long_to_confirm`」一段随 Touch ID 一起删除，#113）
+4. **`plan` 给人看什么**（终端 `plan` 行、界面都一样）：目标会话的**类型 + 名字 + id**（如「私聊 · 张三 · 777」，改名叫「收藏夹」的会话骗不过去）· 内容全文 · 回复的那条 · **发起方**（界面 / 命令行，命令行注明「可能是 AI」）。显示前把 ANSI 控制序列、双向控制字符、零宽字符转义成可见形式（它们能改写终端显示，VoiceOver 也不读）——范围是 Unicode 的 Default_Ignorable_Code_Point 全集加格式类与行 / 段分隔符，含标签字符（U+E0000–E007F，能藏一整段只有程序读得出的文字）与变体选择符；宁可多转不可漏（`gate::visible`）。（原「Touch ID 弹框的说明区与放不下就拒 `too_long_to_confirm`」一段随 Touch ID 一起删除，#113）
 
 5. **摘要算什么**：最终交给 TDLib 的那份请求的字节（文本**不做** Unicode 规范化）+ 所有发送选项 + 回复目标 + **最终话题** + 自己的账号 id + 服务器类别，取 SHA-256。
 
@@ -184,7 +184,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
   - `react` 也不进这套：同一个回应点两次 Telegram 那边不会多出一个
   - `resend` 不进这套：重发对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
 - **测试档案**：仍然**只许发收藏夹**（`test_dc_saved_only`），外加第 4 小节第 2 条的第二个测试号私聊（N7）。测试服务器上的号谁都能登，可能是真人；`CLAUDE.md` 第五节「测试绝不向真实联系人发消息」
-- **启动时提示**：CLI 在标准错误打一行醒目提示，并在标准输出第一行输出 `kind:"status"`，带 `direct_send: true`；GUI 窗口标题前加「直发模式」，启动时播报一次「直发模式已开启，发送不再确认」，状态常驻在标题里
+- **启动时不提示**：直发是唯一方式，CLI 不出开场 `status` 行与醒目提示，GUI 标题不加「直发模式」、不播报（原规定随 #113 删除）
 - **本地留痕**：每条直发在档案目录追加一行到 `direct-send.log`（JSON 行；交给 TDLib 之前先写一行结果为 `submitted` 的，写不进去就拒，等到结果后再写一行）：时间（Unix 秒）· 进程种类（CLI / GUI）· 进程号 · `chat_id` · 消息 id（临时与最终）· 内容类型（文字 / 文件 / 表情回应……）· 表情回应另有 `reaction`（`message_id` · `may_replace` 个数，拿不准为 `null`）· 结果（`submitted` / `succeeded` / `failed` / `unknown`，失败带错误码）。**不记内容、不记名字**。保留 30 天（写的时候发现头一行已过 30 天就整理一遍）
 - **建议**（都不增加摩擦）：`plan` 行照常输出（AI 和人事后都能看到发了什么）；退出时汇总「本次直发 N 条」；`status` 显示本次已直发条数；`direct-send.log` 写不进去就拒绝直发（留痕是条件，不是可选）
 - 人已明确知道并接受：AI 能直接发；收到的消息里藏的指令可能诱导 AI 发错。本契约**不**为它加确认、白名单之类的门槛
@@ -246,7 +246,7 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 
 1. **意图级、少而稳**：架构方案定了不照抄 TDLib 几百个函数；CLI 和 GUI 用同一组动作，AI 学一套就够（AI 友好①）
 2. **查询和动作分开**：Store 查询不联网、不会失败、能同步调用，GUI 按键响应快（速度很快）；假后端也不用实现它们
-3. **每个动作必标对外等级**：对外动作（L2）一律过闸——验目标与摘要、一次性、受限与限流照管、留痕——把它变成表里一列，加新动作时漏不了。（原依据是 intent「对外动作无论走哪条路都须人确认」；#113 起正式服务器一律直发、不再确认，intent 这句人已同意改成一律直发，由 PR #133 改；#133 合入后删掉本括号）
+3. **每个动作必标对外等级**：对外动作（L2）一律过闸——验目标与摘要、一次性、受限与限流照管、留痕——把它变成表里一列，加新动作时漏不了。（依据 intent「发消息等对外动作一律过闸」；直发不确认是人定 2026-11-16 #113，intent 经 #133 同步）
 4. **凭据绑「发给谁 + 发什么」且一次性**：防止确认 A 却发出 B、确认一次发多次
 5. **不做终端确认**：`/dev/tty` 挡得住管道，挡不住 `tmux send-keys` 和伪终端，做了也是假确认。正式服务器一律直发（人定 2026-11-16，#113：Touch ID 删除；有留痕、有重复拦截）
 7. **L2 不自动重试**：重试一次就可能是对方收到两条
@@ -258,18 +258,18 @@ T09「跳到下一个有未读的会话」是 `Store` 查询，不是 `Backend` 
 |---|---|
 | ✅ | `send_text_prepare(收藏夹, "测试")` → 测试服务器上闸自动开 `test_exempt` 凭据 → `send_text` 成功，收到 `send_succeeded` |
 | ✅ | 正式服务器发给收藏夹：CLI 打出计划 → 直接交出，不弹框（`confirm:"direct_mode"`） |
-| ✅ | 人用 `atg-cli --unsafe-direct-send send 777 --text 好的` → 不确认、直接发；`direct-send.log` 多一行（只有 id 和类型） |
-| ✅ | `--unsafe-direct-send` 跑在测试档案上发给别的会话 → 仍拒（`test_dc_saved_only`） |
+| ✅ | 人用 `atg-cli send 777 --text 好的` → 不确认、直接发；`direct-send.log` 多两行（`submitted` 与结果，只有 id 和类型） |
+| ✅ | 测试档案上发给别的会话 → 仍拒（`test_dc_saved_only`） |
 | ❌ | `send_text(plan)` 不带凭据也能发 |
 | ❌ | 确认时内容是「好的」，之后改成「好的！」用同一张凭据发出 |
 | ✅ | GUI 进会话 → `chat_open` → 显式 `mark_read(会话, 最新一条)`（F1，同官方客户端） |
-| ✅ | `--unsafe-direct-send` 下删除一条给所有人 → 不确认、直接删（D1）；`direct-send.log` 多一行 |
+| ✅ | 删除一条给所有人 → 不确认、直接删（D1）；`direct-send.log` 多两行（`submitted` 与结果） |
 | ❌ | `chat_open` 自己顺手调 `viewMessages`（标已读必须是显式的 `mark_read`） |
 | ❌ | `atg-cli history` 把读到的消息标成已读 |
 | ❌ | `Backend` 上出现 `get_chat_history_raw(td_json)` 这种 TDLib 透传口子 |
 | ❌ | 用会话标题等于「Saved Messages」来判断收藏夹 |
-| ❌ | AI 在 tmux 里跑 `atg-cli send …`，再 `tmux send-keys y` 把确认按掉（默认模式下终端确认根本不开凭据） |
-| ❌ | 用环境变量或配置文件打开直发模式（只认启动参数） |
+| ❌ | AI 在 tmux 里跑 `atg-cli send …`，再 `tmux send-keys y` 把确认按掉（不做终端确认，没有可按的；闸开不开凭据与终端按键无关） |
+| ❌ | 加环境变量、配置文件或启动参数把发送改回「要确认」或关掉闸的留痕、防重复（直发是唯一方式，没有开关；第 5 小节） |
 | ❌ | `mark_read` 只想标第 5 条，结果第 1–4 条也被标了却没告诉人 |
 | ❌ | 缓存清理（`from_cache`）被显示成「已撤回」 |
 | ❌ | 网络超时后内核自动再调一次 `sendMessage` |
@@ -340,12 +340,15 @@ TDLib 的 `online` 选项设为真时，别人会看到你「在线」；GUI 输
 - 2026-11-13 issue #52 codex 016 第 4 轮后（属技术细节）：发送前查限流截止（`rate_limited`）与账号受限，两者收到即落盘；`Gated` 只许核心内的计划实现
 - 2026-11-13 issue #52 codex 016 第 5 轮后（属技术细节）：交出前（所有等待之后）再查一次受限与限流；限制标记读不准就拒发
 - 2026-11-13 issue #52 codex 016 第 7 轮后（属技术细节）：确认框估行数时连字符、斜杠、标点等断行机会也算（两种断法取多的）；估算挪到 `atg-core::confirm_box`
+- 2026-11-14 #59 3c（手下 media，按 exp008 设计）：`speech_to_text` 改成本机转写（取代 F4 的 `recognizeSpeech`），L0 不变
+- 2026-11-16 issue #111 / #113（人定）：先改成默认直发，再把 Touch ID / 系统密码确认整个删除——`human_auth`、确认框估算与 `too_long_to_confirm`、`auth_failed`、`not_interactive` 全部去掉；直发为唯一方式
+- 2026-11-16 issue #115（codex 047 补审，只改文字）：删 Touch ID 后的文字残留——第一节第 4 小节理由段改成「不做终端确认、一律直发」；第 5 小节「启动时提示」改为不提示（GUI 也不加「直发模式」、不播报）；验收表去掉 `--unsafe-direct-send` 前提，留痕按 `submitted` + 结果两行；第 4 小节小标题改「`plan` 给人看什么」、验收表 tmux 反例括注改写
 - 2026-11-14 #9 表情回应（手下 msg2，B18-2 人定）：动作表加「表情回应」一组（`react_prepare` · `react` · `added_reactions`），第二批留位去掉 `react`；凭据开法加 `unconfirmed`（人定不确认的动作种类，照样留痕）
 - 2026-11-14 #9 自审第 1 轮后（手下 msg2，属技术细节）：加回应会挤掉我原先点的别的回应时默认拒（`reaction_would_replace`），`replace` 放行并在计划里列出；第 5 小节写明 `react` 不进重复提交拦截；第 4 小节理由段补 `unconfirmed` 例外；第 6 小节加 `ReactPlan`、`AddedReactions`；第 4 小节第 7 条清单补三个交出函数
 - 2026-11-14 #9 自审第 2 轮后（手下 msg2）：表情回应的留痕另记 `target`（哪条消息、挤掉了几个）；`replaces` 统一说「可能」
 - 2026-11-14 #9 自审第 3 轮后（手下 msg2，属技术细节）：`react_prepare` 加 `reaction_state_unknown`（缓存可能旧时拒）
-- 2026-11-16 issue #111 / #113（人定）：先改成默认直发，再把 Touch ID / 系统密码确认整个删除——`human_auth`、确认框估算与 `too_long_to_confirm`、`auth_failed`、`not_interactive` 全部去掉；直发为唯一方式
 - 2026-11-16 #9 合 main 后（手下 msg2；第 4 轮 P1 那道待定题人定 2026-11-16 选 A——「普通群也向服务器取名单，拿不准就拒、要 replace」；另两项是 B「拿不准时改走 Touch ID」随 #113 作废、C「不拦只留痕」；大总管转达，题面在 `state/coord.md` 待定清单）：`unconfirmed` 开法随 Touch ID 删除去掉，`react` 与其他 L2 一样开 `direct_mode`（不进重复提交拦截）；拿不准我已点了哪些：只有私聊、加密聊天信本机（TDLib 只给它们推回应变化），普通群、超级群、频道都向服务器取名单；`replace` 放行拿不准的时计划带 `replaces_known:false`，留痕 `reaction.may_replace` 记 `null`（留痕字段由 `target{message_id, replaced}` 改名 `reaction{message_id, may_replace}`：plan 行的 `target` 是会话，不能同名；`replaced` 读着像实际挤掉的数）
 - 2026-11-16 #9 codex 032 第 1 轮后（手下 msg2）：`react` 交出前复核会不会挤掉（#1，P1）、同一条消息串行；第一节第 4 小节理由段与第四节 A4、D1 标明 #113 后已废止（#2）
 - 2026-11-16 #9 codex 032 第 2 轮后（手下 msg2）：`react` 交出前复核看当前连接线、`replace` 也刷新留痕、到点放弃的那条消息之后按拿不准拒
 - 2026-11-17 #9 codex 032 第 3、4 轮后（手下 msg2）：`react` 放弃了的请求槽位一直留着、断线按结果未知也留；有放弃了的请求时 `replace` 放行但留痕记 `null`；第二节第 3 条依据改为现行的「过闸」，intent 原句与 #113 冲突待人改
+- 2026-11-17 #9 codex 032 第 5 轮后（手下 msg2）：第二节第 3 条依据随 #133（intent 改为一律过闸、直发）去掉「待人改」括注；验收表「只认启动参数」改为「没有开关」

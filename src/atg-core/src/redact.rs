@@ -34,6 +34,8 @@ redacted_debug!(
     "Attachment" => t::Attachment,
     "Transcript" => t::Transcript,
     "TranscriptSegment" => t::TranscriptSegment,
+    "Transcription" => t::Transcription,
+    "Outcome" => t::Outcome,
     "Span" => t::Span,
     "Service" => t::Service,
     "UserRef" => t::UserRef,

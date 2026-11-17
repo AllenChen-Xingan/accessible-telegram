@@ -20,6 +20,7 @@ const DONE: &[&str] = &[
     "play",
     "react",
     "reactions",
+    "transcribe",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
@@ -181,6 +182,18 @@ fn download_and_play_shell_paths_without_tdlib() {
         (&["download", "群", "1"][..], "usage", 2),
         (
             &["--fake", "basic", "download", "saved", "1"][..],
+            "not_implemented",
+            1,
+        ),
+        (&["transcribe", "群", "1"][..], "usage", 2),
+        (
+            &["transcribe", "saved", "1", "--lang", "fr"][..],
+            "usage",
+            2,
+        ),
+        // 假后端判在找辅助程序之前：没装辅助程序的机器上也是 not_implemented
+        (
+            &["--fake", "basic", "transcribe", "saved", "1"][..],
             "not_implemented",
             1,
         ),
@@ -430,6 +443,7 @@ fn redact_refused_until_done() {
         &["watch", "--redact"][..],
         &["download", "saved", "1", "--redact"][..],
         &["play", "saved", "1", "--redact"][..],
+        &["transcribe", "saved", "1", "--redact"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");
