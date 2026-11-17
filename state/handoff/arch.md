@@ -325,3 +325,16 @@
 - #153 → PR #155，等人合并。顺手修了 PR #149 的 check-no-debug（`edit/exp_real.rs` 一行 `assert_eq!` 改成 `assert!`），大总管已推送
 - 等大总管叫：R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`；R3a 余下 4 处（core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`）。都等 #149、#154 合并
 - 要人定的事：无
+
+## R3a 第三刀（2026-11-17，工作副本 `atg-wt/arch-r3a3`，分支 `refactor/r3a-testkit-3`，从 main 384da95 起；评审编号 058）
+
+计划 `_tmp/20261116-b20/plan-next-arch.md` 的 PR 1。只动测试与 `testkit.rs` 头注释，产品代码不碰。
+
+- 换成 testkit 的（本地临时目录助手换成 `temp_dir`，删掉随之没用的计数器与导入；档案名、服务器种类、本地助手名与调用处都不变）：
+  - core：`gate/tests.rs`（本地 `temp_dir` 只留一行转给 testkit，目录名仍是 `atg-gate-<tag>-…`）、`delete/tests.rs`
+  - cli：`delete/tests.rs`、`tests/cli.rs` 的 `speech_bad_input_is_usage_and_does_not_echo`
+  - **计划外多换的 4 处**：#8（编辑）、#10（转发）合进 main 时新加的同款写法——core `edit/tests.rs`、`send/forward/tests.rs`，cli `edit/tests.rs`、`forwarding/tests.rs`
+- 不换：`tests/cli.rs` 的 `send_usage_paths`（大总管定：#12 发文件正在改那附近，等它合并后再换；这次连注释都不加，免得撞行）
+- 换完 `git grep 'std::env::temp_dir()' -- src` 只剩：testkit 自己、ipc、serve、`tests/send_limits.rs`、atg-audio（都是故意不换）和 `send_usage_paths`
+- 已过（2026-11-17，大总管给名额）：fmt、两种 clippy（`-D warnings`）、`cargo test --workspace` 680 过、0 败、5 忽略，check-no-debug、check-sources、check-file-size；改过的 8 个测试文件 `#[test]` 数前后相等（23、7、7、21、11、17、6、10）
+- 待：大总管提交检查点 → atg-review → codex 058

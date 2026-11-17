@@ -1,7 +1,6 @@
 //! `gate` 的测试：开凭据、复核、防重复记录、直发留痕、限流冷却。
 
 use super::*;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 struct Plan {
     target: ChatId,
@@ -85,15 +84,7 @@ fn plan(target: ChatId, d: u8) -> Plan {
 }
 
 fn temp_dir(tag: &str) -> PathBuf {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let d = std::env::temp_dir().join(format!(
-        "atg-gate-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = fs::remove_dir_all(&d);
-    fs::create_dir_all(&d).unwrap();
-    d
+    crate::testkit::temp_dir(&format!("gate-{tag}"))
 }
 
 const ME: Me = Me {

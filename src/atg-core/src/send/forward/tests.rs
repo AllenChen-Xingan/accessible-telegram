@@ -8,7 +8,6 @@ use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
@@ -45,7 +44,6 @@ fn friend_history() -> Vec<Value> {
 }
 
 fn rig(tag: &str, test_dc: bool) -> Rig {
-    static N: AtomicU32 = AtomicU32::new(0);
     let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: if test_dc {
@@ -72,12 +70,7 @@ fn rig(tag: &str, test_dc: bool) -> Rig {
         },
         Cap::Forward,
     );
-    let root = std::env::temp_dir().join(format!(
-        "atg-forward-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = crate::testkit::temp_dir(&format!("forward-{tag}"));
     let kind = if test_dc {
         ServerKind::Test
     } else {

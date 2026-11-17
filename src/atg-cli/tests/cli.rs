@@ -369,8 +369,7 @@ fn speech_json_lines_end_with_result() {
 
 #[test]
 fn speech_bad_input_is_usage_and_does_not_echo() {
-    let dir = std::env::temp_dir().join(format!("atg-cli-speech-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = atg_core::testkit::temp_dir("cli-speech");
     let not_array = dir.join("暗号目录-not-array.json");
     std::fs::write(&not_array, r#"{"暗号":"内容"}"#).unwrap();
     let not_json = dir.join("not-json.json");
