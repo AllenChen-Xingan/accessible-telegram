@@ -89,7 +89,7 @@ pub(crate) fn execute_within<B: Backend>(
     started: Instant,
     submit_timeout: Duration,
 ) -> u8 {
-    match run(b, stream, feed, p, sink, format, started, submit_timeout) {
+    match run_on(b, stream, feed, p, sink, format, started, submit_timeout) {
         Ok(code) => code,
         // 交出后断线等「可能已交出」：换成删除的说明
         Err(Fail::Core(e @ CoreError::SendOutcomeUnknown { .. })) => {
@@ -102,7 +102,7 @@ pub(crate) fn execute_within<B: Backend>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run<B: Backend>(
+fn run_on<B: Backend>(
     b: &B,
     stream: &mut EventStream,
     feed: &mut Feed,
