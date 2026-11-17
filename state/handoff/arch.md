@@ -325,3 +325,19 @@
 - #153 → PR #155，等人合并。顺手修了 PR #149 的 check-no-debug（`edit/exp_real.rs` 一行 `assert_eq!` 改成 `assert!`），大总管已推送
 - 等大总管叫：R7 余下 core `fake.rs`、`td.rs`、`tdjson.rs`；R3a 余下 4 处（core `gate/tests.rs`、`delete/tests.rs`，cli `delete/tests.rs`、`tests/cli.rs`）。都等 #149、#154 合并
 - 要人定的事：无
+
+## R7 第七刀：拆 core `tdjson.rs`（2026-11-17，工作副本 `atg-wt/arch-tdjson`，分支 `refactor/r7-tdjson`，从 main 384da95 起）
+
+计划已批，全文在 `_tmp/20261116-b20/plan-next-arch.md`，这是其中的 PR 2。PR 1（R3a 第三刀）等这刀交 codex 后再开副本；`tests/cli.rs` 的 `send_usage_paths` 留到 #12 之后。PR 3、PR 4（fake、td）等 #12（msg2 的发文件，会在 fake、td 里加上传进度）合进 main。
+
+- 改了：`tdjson.rs` 836 → 503（挪完 501，atg-review 后根头注释补 2 行文件分工）；新文件 `tdjson/message.rs` 341（「消息」整节 + `OTHER_SERVICE` / `OTHER_CONTENT`）；基线去掉 `tdjson.rs`；010 表格那一行、路线表 R7 一行
+- 不算纯挪的：根上 `mod message;`、`use message::{body, ephemeral, sender};`、`pub use message::{formatted, message};`（检查点里还有一行 `//` 说明，自审后改成根头注释的「文件分工」）；`body` / `ephemeral` / `sender` 改成 `pub(super)`；新文件头注释；去掉原来的「消息」分节线
+- 已过：挪动前后两份按行排序比对（多重集，只多上面那些）、check-file-size（超 600 行的剩 2 个：fake、td）、check-sources、check-no-debug
+- 编译（2026-11-17，大总管给名额，在 05f731d 之前的工作区跑，内容即 05f731d）：fmt、两种 clippy（`-D warnings`）、`cargo test --workspace` 680 过、0 败、5 忽略
+- 检查点 05f731d（大总管提交）。挪动证据：`git diff --color-moved=plain 384da95...05f731d -- src/` 挪动 670 行，没识别为挪动的只有上面列的那些，落在 `_tmp/20261116-b20/r7-tdjson-moved-arch.txt`
+- atg-review 第 1 轮：P1×2（同一件事：工作副本里的交接页是旧版本，覆盖掉了 main 上 R7 前六刀、R3a 第二刀、#153 的记录）——已改回 main 的全文再接本节；P2×3、P3 若干已改（`specs/content-tree.md` 两处位置指针、010 行补说明、R7 进度打勾、根头注释补文件分工）
+- atg-review 第 2 轮（1e34e79）：P0/P1 零；P2×1（010 R7 行「本 PR」与全文用法冲突）、P3×5 已改（只动注释与文档）
+- codex 057 第 1 轮（384da95...1e34e79）：零发现，总评通过。记录 `docs/reviews/057_r7-tdjson-codex.md`
+- 检查点 157cb1e（自审第 2 轮的文档修改 + 057 记录）
+- codex 057 第 2 轮（384da95...HEAD，name 换成 `r7tjh`，原因见记录）：零发现，总评通过 → 连续两轮无 P0/P1，**收敛**
+- PR 说明草稿：`_tmp/20261116-b20/r7-tdjson-pr-arch.md`。待：大总管提交本笔（057 第 2 轮记录）→ 推送、开 PR
