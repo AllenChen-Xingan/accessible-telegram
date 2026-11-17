@@ -54,29 +54,17 @@ pub(super) fn full(m: &Message, reveal: bool) -> String {
 /// 内容的全文：附件照名称的说法放在前面，正文原样（`super::full` 的正文部分）
 pub(super) fn full_content(c: &Content, reveal: bool) -> String {
     let body = full_spans(&c.body, reveal);
-    let label = c.attachment.as_ref().map(|a| {
-        // 投票的全文逐项读出选项与票数（#13）；其余附件同名称。隐藏内容的说法照下面同一条判定（18+ 遮挡）
-        let (l, spoiler) = if let Attachment::Poll {
-            question,
-            options,
-            total,
-            results_visible,
-            explanation,
-            ..
-        } = a
-        {
-            let full = super::interactive::poll_full(
-                question,
-                options,
-                *total,
-                *results_visible,
-                explanation,
-                reveal,
-            );
-            (full, false)
+    // 投票的全文自己排：题目、说明文字、逐项、总人数、解析（#13；说明紧跟题目，同名称）。18+ 遮挡的说法同下
+    if let Some(a @ Attachment::Poll { .. }) = &c.attachment {
+        let full = super::interactive::poll_full(a, body.trim(), reveal);
+        return if c.sensitive && !reveal {
+            format!("{full}，{HIDDEN}")
         } else {
-            attachment(a, reveal)
+            full
         };
+    }
+    let label = c.attachment.as_ref().map(|a| {
+        let (l, spoiler) = attachment(a, reveal);
         if (spoiler || c.sensitive) && !reveal {
             format!("{l}，{HIDDEN}")
         } else {
@@ -91,9 +79,12 @@ pub(super) fn full_content(c: &Content, reveal: bool) -> String {
     }
 }
 
-/// 「附件说法，正文」：附件说法自己以标点结尾（投票题目「几点出发？」）就不再接逗号，免得念成「？，」
+/// 句末这些标点之后不再接分隔号（免得念成「？，」「？；」，大总管定 2026-11-17）。名称、全文、投票共用这一份
+pub(super) const ENDS: [char; 10] = ['？', '?', '！', '!', '。', '.', '…', '：', ':', '；'];
+
+/// 「附件说法，正文」：附件说法自己以标点结尾（投票题目「几点出发？」）就不再接逗号
 fn join(label: &str, body: &str) -> String {
-    if label.ends_with(['？', '?', '！', '!', '。', '…', '：', ':', '；']) {
+    if label.ends_with(ENDS) {
         format!("{label}{body}")
     } else {
         format!("{label}，{body}")

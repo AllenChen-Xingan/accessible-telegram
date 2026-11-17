@@ -76,7 +76,9 @@ fn blocked(r: &Value, closed: bool) -> Option<VoteBlock> {
         "pollVoteRestrictionReasonCountryRestricted" => VoteBlock::CountryRestricted {
             country_code: s(r, "country_code").to_owned(),
         },
-        "pollVoteRestrictionReasonMembershipRequired" => VoteBlock::MembershipRequired,
+        "pollVoteRestrictionReasonMembershipRequired" => VoteBlock::MembershipRequired {
+            chat_id: i(r, "chat_id"),
+        },
         "pollVoteRestrictionReasonOther" => VoteBlock::Other,
         other => VoteBlock::Unknown {
             td_type: other.to_owned(),

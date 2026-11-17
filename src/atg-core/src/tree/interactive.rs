@@ -11,7 +11,7 @@ pub struct PollOption {
     /// TDLib 的 0 起编号（`options` 数组里的位置；投票 `setPollAnswer` 用它），与显示顺序不一定相同
     pub index: u32,
     pub text: Vec<Span>,
-    /// 投它的人数。看不到结果（投票的 `results_visible` 为假）时 TDLib 给 0，不是真没人投
+    /// 投它的人数。看不到结果（投票的 `results_visible` 为假：没投、或设了结束后才公布）时 TDLib 给 0，不是真没人投
     pub votes: u32,
     /// 占总票数的百分比（0–100，TDLib 算好的；看不到结果时同样是 0）
     pub percent: u32,
@@ -38,8 +38,10 @@ pub enum VoteBlock {
     CountryRestricted {
         country_code: String,
     },
-    /// 要先加入这个会话满一天才能投
-    MembershipRequired,
+    /// 要先加入 `chat_id` 那个会话满一天才能投（不一定是投票所在的会话，如转发来的投票）
+    MembershipRequired {
+        chat_id: i64,
+    },
     /// 别的原因
     Other,
     Unknown {

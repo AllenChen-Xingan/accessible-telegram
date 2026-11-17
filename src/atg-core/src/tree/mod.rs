@@ -285,7 +285,8 @@ pub enum Attachment {
         options: Vec<PollOption>,
         /// 总投票人数
         total: u32,
-        /// 我能看到各项票数（`can_see_results`）：TDLib 只在已结束、我投过、或我是发起人时给票数，否则各项都是 0
+        /// 我能看到各项票数（`can_see_results`）。看不到时各项都是 0：可能是我还没投，也可能是发起时设了「结束后才公布」
+        /// （`hide_results_until_closes`，`td_api.tl:6788`），投了也看不到
         results_visible: bool,
         anonymous: bool,
         multiple: bool,
