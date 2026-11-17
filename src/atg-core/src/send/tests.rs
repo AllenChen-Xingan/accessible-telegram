@@ -12,23 +12,14 @@ use crate::backend::Backend;
 use crate::config::Profile;
 use crate::error::Holder;
 use crate::fake::{FakeAuth, FakeBackend, FakeSend};
-use crate::gate::{Authenticator, Gate};
+use crate::gate::Gate;
 use crate::link::block_on;
 use crate::status::AuthStep;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 const FORUM: i64 = -100_555;
-
-struct Auth(Arc<AtomicU32>, Result<(), SendRefusedReason>);
-impl Authenticator for Auth {
-    fn authenticate(&self, _: &str) -> Result<(), SendRefusedReason> {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        self.1
-    }
-}
 
 fn new_chat(id: i64, title: &str, ty: Value) -> Value {
     json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title, "type": ty,
@@ -45,13 +36,11 @@ fn msg(chat: i64, id: i64, text: &str, topic: Value) -> Value {
 struct Rig {
     b: FakeBackend,
     stream: EventStream,
-    asks: Arc<AtomicU32>,
 }
 
-fn rig(tag: &str, direct: bool, test_dc: bool, auth: Result<(), SendRefusedReason>) -> Rig {
+fn rig(tag: &str, test_dc: bool) -> Rig {
     static N: AtomicU32 = AtomicU32::new(0);
-    let asks = Arc::new(AtomicU32::new(0));
-    let gate = Gate::new(direct, Holder::Cli, Box::new(Auth(asks.clone(), auth)));
+    let gate = Gate::new(Holder::Cli);
     let b = FakeBackend::with_gate(gate).unwrap();
     b.set_auth(FakeAuth {
         phone: if test_dc {
@@ -116,7 +105,7 @@ fn rig(tag: &str, direct: bool, test_dc: bool, auth: Result<(), SendRefusedReaso
     block_on(b.start(&profile)).unwrap();
     b.wait_auth(Duration::from_secs(5), &|s| s == AuthStep::Ready)
         .unwrap();
-    Rig { b, stream, asks }
+    Rig { b, stream }
 }
 
 fn draft(text: &str, reply_to: Option<i64>) -> Draft {

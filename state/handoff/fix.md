@@ -1,7 +1,8 @@
 # b20 接手（2026-11-16）
 - 手上：先收第四批 #97 #98 #100 #40（c281455 + 自审修复未提交未编译）；再做发送闸 #77 #80 #83 #109（直发是唯一方式，改 gate/** send/** 前先报大总管，msg1 在同片做 #57 #88）
 - 做到哪：已向大总管 allenchen-37 报到。合 main 冲突预测：docs/reviews/README.md、scripts/file-size-baseline.json、specs/contracts/cli.md、errors.md、本页
-- 下一步：等大总管提交 WIP、合 main、给名额 → 复跑 → codex 045 → 发送闸一组
+- 2026-11-16 大总管提交 WIP 8ecdea6、merge origin/main；我解了 5 处冲突（README/errors/baseline 取 main；cli.md 正文取本分支含 #98 的一句、变更记录两边都留；本页取本分支），未 commit。codex：第四批 045，发送闸组 048
+- 下一步：领名额复跑 → codex 045 → 发送闸一组（048）
 - 要人定的事：无
 
 # fix 现状页（批次 b18）
