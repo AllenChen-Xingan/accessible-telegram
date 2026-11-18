@@ -38,17 +38,20 @@ jobs:
       - name: test
         if: steps.crates.outputs.has == '1'
         run: cargo test --workspace
-      # 文档链接（#137）：断链、链到私有项、同名歧义都算错。两种特性各跑一次——有的链接只在开 / 不开 tdlib-api 时才断
+      # 文档链接（#137）：断链、公开文档链到私有项（读者点不开）、同名歧义（如既是函数又是模块）都算错。
+      # 跑两次，因为有的链接只在某种特性下才断：第一次整个工作区、不开特性（td.rs 链 TdBackend 就只在这时断——
+      # 那个类型要 tdlib-api 才有）；第二次 atg-core 开 tdlib-api 与 testkit（td 的真实后端、测试夹具 testkit
+      # 都只在开了特性时才有文档）。不管：atg-cli 的 tdlib 特性下的代码（它要链接 TDLib 库，CI 没有；同 clippy 的现状，#164）
       - name: doc
         if: steps.crates.outputs.has == '1'
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps
-      - name: doc（atg-core，tdlib-api 特性）
+      - name: doc（atg-core，tdlib-api、testkit 特性）
         if: steps.crates.outputs.has == '1'
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc -p atg-core --features tdlib-api --no-deps
+        run: cargo doc -p atg-core --features tdlib-api,testkit --no-deps
       # src/tdlib-rs 是 fork 的 subtree、自成工作区，上面几步不碰它（atg-core 的 tdlib 特性默认关，不编 TDLib）。
       # 这里只跑不需要 TDLib 库的两包：生成器（含 004 第一节第 2、5 件的测试）与解析器。tdlib-rs 包本身要 TDLib 库，跳过；
       # 不对 subtree 跑 clippy -D warnings：上游代码，新版 clippy 的新 lint 会让 CI 为不归我们管的代码变红。
