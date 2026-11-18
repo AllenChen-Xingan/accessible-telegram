@@ -368,7 +368,7 @@ async fn my_reactions<B: Backend>(
 /// 向服务器取「谁点了」时一页要多少（TDLib 上限 100）
 const SERVER_PAGE: u32 = 100;
 
-/// `react`（L2）：验凭据 → 复核会不会挤掉（[`recheck`]，同一条消息串行）→ 留痕「已提交」→ 交给 TDLib → 记结果。
+/// `react`（L2）：验凭据 → 复核会不会挤掉（`recheck`，同一条消息串行）→ 留痕「已提交」→ 交给 TDLib → 记结果。
 /// 成功回凭据的开法
 pub async fn react<B: Backend>(
     b: &B,

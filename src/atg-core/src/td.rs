@@ -1,4 +1,4 @@
-//! `td`：真实后端 [`TdBackend`]——起 TDLib、收线程、发请求、关闭流程。
+//! `td`：真实后端 `TdBackend`——起 TDLib、收线程、发请求、关闭流程。
 //!
 //! 只有这个模块许直接用 tdlib-rs；它的类型不许渗出去（`docs/plan/001_arch-stack.md` 第一节第 1、3、4 小节）。
 //! TDLib 对象绝不用 `{:?}` 整个打印（拍板 005 补丁 ③），由 crate 根的 lint 行与 `scripts/check-no-debug.sh` 拦。
@@ -14,7 +14,7 @@
 //! 客户端建好之后 `start` 再失败（如钥匙不对、网络错）：客户端还在，调用方照常调 `shutdown` 收尾；例外是收线程起不来，
 //! `start` 自己交一次 `close`、清运行标记、退回没起（#62），调用方不用再收尾。
 //!
-//! tdlib-rs 的 `receive()` 是全进程共用的，内部 `OBSERVER` 是全局单例，所以一个进程只许一个 [`TdBackend`]。
+//! tdlib-rs 的 `receive()` 是全进程共用的，内部 `OBSERVER` 是全局单例，所以一个进程只许一个 `TdBackend`。
 
 #[cfg(feature = "tdlib-api")]
 pub use real::{TdBackend, TdConfig, tdlib_version};
