@@ -1,6 +1,6 @@
 //! 真的声音出口：AudioToolbox 的 AudioQueue（C 接口，直接 FFI），实现 [`crate::player::Output`]。
 //!
-//! - 格式：48 kHz 单声道 f32（与 [`crate::decode`] 出的 PCM 一样，不再转换）
+//! - 格式：48 kHz 单声道 f32（与 [`crate::decode()`] 出的 PCM 一样，不再转换）
 //! - 倍速：开 AudioQueue 自带的变速不变调（`EnableTimePitch` + 频谱算法），`PlayRate` 0.5–2
 //! - 位置：每个缓冲区放完回到回调时才计入「已放完」——粒度一个缓冲区（约 85 毫秒），与倍速无关
 //! - 跳转：由播放器先 `stop` 再从新位置 `start`（整个队列重建），旧的排队音频随之丢掉
@@ -8,7 +8,7 @@
 //!   `resume` 才第一次 Start（`play --mark-listened`：标成功之后才出声，设计第 5b 条）
 //! - 出错：`resume` / 改倍速返回系统的失败；回调里重新排队失败记进 `failed`，播放器据此结束为 `OutputFailed`
 //!
-//! 回调在 AudioQueue 自己的线程上跑；它读写的状态在 [`Feed`] 里，用锁保护。队列先 `Dispose`（同步）再释放
+//! 回调在 AudioQueue 自己的线程上跑；它读写的状态在 `Feed` 里，用锁保护。队列先 `Dispose`（同步）再释放
 //! `Feed`，回调不会摸到已释放的内存。
 
 use crate::AudioError;

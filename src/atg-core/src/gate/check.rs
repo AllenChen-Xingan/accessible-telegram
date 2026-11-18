@@ -88,7 +88,7 @@ impl Gate {
         Ok(ConfirmMode::DirectMode)
     }
 
-    /// 开凭据。直发先查防重复（`again` 放行这一次）：这里只为早拒、人少等；以交出前 [`Self::before_submit`] 那次为准（#77）
+    /// 开凭据。直发先查防重复（`again` 放行这一次）：这里只为早拒、人少等；以交出前 `Self::before_submit` 那次为准（#77）
     pub fn issue(&self, plan: &dyn Gated, again: bool) -> Result<ConfirmToken, CoreError> {
         let mode = self.mode_for(plan.target())?;
         match mode {

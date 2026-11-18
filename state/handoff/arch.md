@@ -411,3 +411,14 @@
 - ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
   - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
 - PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
+
+## #137：rustdoc 链接（2026-11-17，工作副本 `atg-wt/arch-137`，分支 `docs/137-rustdoc-links`，从 refactor/r7-td 的 2a17a44 起）
+
+计划已批：MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`（先做 #137，再做 #42）。
+
+- 修法：断掉的或指向私有项的文档链接，改成反引号或改链到公开项；代码一行不动
+- CI：在 `ci.yml` 加两步 `RUSTDOCFLAGS="-D warnings" cargo doc`（一步 `--workspace --no-deps`，一步 `-p atg-core --features tdlib-api --no-deps`）。`ci.yml` 不在门槛文件清单里，不用挂标签（大总管已批）
+- 评审范围：`2a17a44...HEAD`；#163 合进 main、大总管替我合过 main 之后，改用 `origin/main...HEAD`
+- 数出来 22 条（比 issue 多）：atg-core 16 条链到私有项、2 条 `TdBackend` 只在不开特性时断，atg-audio 4 条（1 条私有项、3 条 `decode` 同名歧义）。全改：私有项和 `TdBackend` 改反引号，`decode` 改 `[`decode()`]`（仍是链接）
+- ✅ 全量检查全过（领名额跑，已还）：两遍 `RUSTDOCFLAGS=-D warnings cargo doc` 零警告，fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources；`ci.yml` 用 ruby 解析过
+- 下一步：等提交检查点，然后走 atg-review → codex 061（`2a17a44...HEAD`）
