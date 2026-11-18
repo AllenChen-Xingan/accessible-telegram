@@ -427,4 +427,6 @@
   - P2×2：① CI 第二步没开 `testkit`，测试夹具的文档没被查过，已改成 `tdlib-api,testkit`；② atg-cli 的 `tdlib` 特性下的代码没被查，CI 加不了，已在注释和本页写明，大总管开了 #164
   - P3×6，改了 5 条（CI 注释、本页措辞）。不改 1 条：`td.rs` 头注释里的 `TdBackend` 开了特性也不再能跳转，要做到「开特性才有链接」得写 `cfg_attr(doc = …)`，为一条链接不值得
 - ✅ 重跑 `RUSTDOCFLAGS=-D warnings cargo doc -p atg-core --features tdlib-api,testkit --no-deps` 零警告（领名额跑，已还）
-- 下一步：等提交，再起 codex 061（`2a17a44...HEAD`，name `d137`）
+- ✅ codex 061（`2a17a44...HEAD`，name `d137`）两轮零发现，收敛。隐私扫描密钥类命中 7 条，全是 `ConfirmToken` 类型标注，大总管逐条核过，按共同规矩 15 加 `--force-secrets`。记录 `docs/reviews/061_137-rustdoc-links-codex.md`
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/137-pr-arch.md`
+- 之后：#163 合并后大总管合 main，到时只解冲突、跑检查，不重审；然后做 #42
