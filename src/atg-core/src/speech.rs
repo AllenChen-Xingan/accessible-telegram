@@ -190,7 +190,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
                 anonymous,
                 multiple,
                 revotable,
-                quiz,
+                kind,
                 closed,
                 blocked,
                 ..
@@ -203,7 +203,7 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
                     anonymous: *anonymous,
                     multiple: *multiple,
                     revotable: *revotable,
-                    quiz: *quiz,
+                    kind,
                     closed: *closed,
                     blocked: blocked.as_ref(),
                 }));

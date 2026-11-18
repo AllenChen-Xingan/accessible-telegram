@@ -18,9 +18,24 @@ pub struct PollOption {
     /// 我选了它
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub chosen: bool,
-    /// 测验的正确答案（`pollTypeQuiz.correct_option_ids`；还没作答时 TDLib 不给，都为假）
+    /// 测验的正确答案（`pollTypeQuiz.correct_option_ids`；别人发的、还没作答的测验 TDLib 不给，都为假）
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub correct: bool,
+}
+
+/// 投票类型（`PollType`，`td_api.tl:484-494`）。开放集合：TDLib 以后加的类型进 `Unknown`，读法只说「暂不支持的投票类型」，
+/// 不按普通投票去断言它的性质
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PollKind {
+    /// `pollTypeRegular`
+    Regular,
+    /// `pollTypeQuiz`：有正确答案
+    Quiz,
+    Unknown {
+        td_type: String,
+    },
 }
 
 /// 我为什么不能投（`pollVoteRestrictionReason*`，`td_api.tl:513-529`）。开放集合，认不出的进 `Unknown`
@@ -49,8 +64,8 @@ pub enum VoteBlock {
     },
 }
 
-/// 消息上的按钮（`reply_markup`，`td_api.tl:4294-4314`）。只收两种有按钮的：消息下面的（`inline`）与机器人换掉输入框的
-/// 键盘（`reply`）；「收起键盘」「强制回复」没有按钮，不建
+/// 消息上的按钮（`reply_markup`，`td_api.tl:4294-4314`）。有按钮的两种：消息下面的（`inline`）与机器人换掉输入框的
+/// 键盘（`reply`）；「收起键盘」「强制回复」没有按钮，不建；认不出的种类进 [`KeyboardKind::Unknown`]（按钮读不出，只说有）
 #[derive(Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Keyboard {
@@ -60,7 +75,8 @@ pub struct Keyboard {
 }
 
 /// 开放集合（`ReplyMarkup`，`td_api.tl:4294-4314`）：认不出的带按钮种类进 `Unknown`（按钮读不出，只说有）
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum KeyboardKind {
     /// `replyMarkupInlineKeyboard`：消息下面的按钮
@@ -104,7 +120,7 @@ pub enum ButtonAction {
     WebApp,
     /// 把按钮上的数据发给机器人（机器人收到后做什么由它定）
     Callback,
-    /// 同上，但要先输入两步验证密码（多见于转让、付款）
+    /// 同上，但要先输入你账号的两步验证密码（`td_api.tl:4244-4246`）
     CallbackWithPassword,
     /// 开一个游戏
     Game,

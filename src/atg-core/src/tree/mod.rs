@@ -18,7 +18,9 @@ pub mod text;
 mod time;
 mod top;
 
-pub use interactive::{Button, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock};
+pub use interactive::{
+    Button, ButtonAction, Keyboard, KeyboardKind, PollKind, PollOption, VoteBlock,
+};
 pub use media::{
     Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
     TranscriptSource, Transcription,
@@ -292,8 +294,8 @@ pub enum Attachment {
         multiple: bool,
         /// 投了还能改（`allows_revoting`）
         revotable: bool,
-        /// 测验：有正确答案（投了能不能改同普通投票，看 `revotable`）
-        quiz: bool,
+        /// 投票类型（开放集合）：普通 / 测验（有正确答案；投了能不能改同普通投票，看 `revotable`）/ 认不出的
+        kind: PollKind,
         closed: bool,
         /// 我为什么不能投；`None` = 能投
         #[serde(skip_serializing_if = "Option::is_none")]

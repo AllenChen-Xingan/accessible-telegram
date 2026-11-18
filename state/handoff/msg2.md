@@ -249,3 +249,4 @@
 - 2026-11-17 #13 只读 自审第 4 轮：P1×1（测验一律「投了不能改」不对：TDLib 改票只看 has_revoting_disabled_，`PollManager.cpp:905,1240-1262`）已修，照 revotable 读；人定 6 措辞「投了不能改」要改，大总管问人中；P2 补 request_managed_bot；P3 契约多处补写。未编译，等名额（arch 用着）。停止线从头算：下一轮第 5 轮
 - 2026-11-17 人改定人定 6：计划行照投票实际设置写能不能改，测验另写「投后会公布答案」；契约已改（actions.md 原条标注 + 新增一行「人改定」，content-tree.md 指过去）
 - 2026-11-17 #13 只读 自审第 5 轮：P1×1（契约说票数要再取才更新、13a 要接 updatePoll——错：updatePoll 只给机器人，用户账号走 updateMessageContent，早已实时更新；TDLib api.tl:12058、PollManager.cpp:484-499 核实）已改契约 + 加快照测试；P2 KeyboardKind 加 unknown 兜底（kind 改成带 type 判别）；P3 契约多处。未编译
+- 2026-11-17 #13 只读 自审第 6 轮（加一个视角逐条核 TDLib 说法：约 30 条属实，2 处小错——tl:4293→4292、历史修订记录加「已更正」，另补测验答案「自己发起的也有」）：多视角无 P0/P1（第 5 轮之后连续第 1 轮）；P2 修：quiz 换开放集合 kind（硬规矩 2）、「谁投了」守卫真正写进 poll() 注释并加快照测试；P3 修：13b 归属、入口写全、标点规则只留一条通则、Keyboard 注释、KeyboardKind derive 体例、basic.json 重复键、测试注释行号。未编译

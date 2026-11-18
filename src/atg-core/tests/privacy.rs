@@ -6,7 +6,7 @@
 use atg_core::model::*;
 use atg_core::project;
 use atg_core::store::{Input, Store};
-use atg_core::tree::{self, Doc, PollOption, Span};
+use atg_core::tree::{self, Doc, PollKind, PollOption, Span};
 
 const SECRET: &str = "ZQX暗号";
 
@@ -64,7 +64,7 @@ fn attachments() -> Vec<Attachment> {
             anonymous: false,
             multiple: false,
             revotable: false,
-            quiz: true,
+            kind: PollKind::Quiz,
             closed: true,
             blocked: None,
             explanation: spans(),

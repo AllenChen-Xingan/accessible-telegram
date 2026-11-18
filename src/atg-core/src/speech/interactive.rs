@@ -7,7 +7,9 @@
 //!   全文不读按钮（按钮在详情里）
 
 use super::content::{glue, spans};
-use crate::tree::{Attachment, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock};
+use crate::tree::{
+    Attachment, ButtonAction, Keyboard, KeyboardKind, PollKind, PollOption, VoteBlock,
+};
 
 /// 选项里有没有隐藏内容（剧透）：整条的按键提示要算上
 pub(super) fn options_hidden(options: &[PollOption], reveal: bool) -> bool {
@@ -78,7 +80,7 @@ pub(super) struct PollFacts<'a> {
     pub anonymous: bool,
     pub multiple: bool,
     pub revotable: bool,
-    pub quiz: bool,
+    pub kind: &'a PollKind,
     pub closed: bool,
     pub blocked: Option<&'a VoteBlock>,
 }
@@ -103,8 +105,11 @@ pub(super) fn poll_detail(f: &PollFacts<'_>) -> String {
     if f.multiple {
         parts.push("可以多选".to_owned());
     }
-    if f.quiz {
-        parts.push("测验，有正确答案".to_owned());
+    match f.kind {
+        PollKind::Regular => {}
+        PollKind::Quiz => parts.push("测验，有正确答案".to_owned()),
+        // 认不出的类型：只说认不出，性质照投票自己的字段（匿名、多选、能否改都是投票上的，不靠类型）
+        PollKind::Unknown { .. } => parts.push("暂不支持的投票类型".to_owned()),
     }
     // 能不能改只看 `allows_revoting`，测验也一样（TDLib `PollManager.cpp`：改票只看 `has_revoting_disabled_`，
     // 不看是不是测验，#13 自审第 4 轮）；已结束就不说

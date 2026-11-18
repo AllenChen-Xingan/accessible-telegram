@@ -113,7 +113,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": false,
         "multiple": true,
         "revotable": true,
-        "quiz": false,
+        "kind": {
+          "type": "regular"
+        },
         "closed": false
       }
     },
@@ -187,7 +189,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": true,
         "multiple": false,
         "revotable": false,
-        "quiz": true,
+        "kind": {
+          "type": "quiz"
+        },
         "closed": true,
         "blocked": {
           "type": "closed"
@@ -263,7 +267,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": false,
         "multiple": false,
         "revotable": false,
-        "quiz": false,
+        "kind": {
+          "type": "regular"
+        },
         "closed": false,
         "blocked": {
           "type": "membership_required",
@@ -536,7 +542,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": false,
         "multiple": true,
         "revotable": true,
-        "quiz": false,
+        "kind": {
+          "type": "regular"
+        },
         "closed": false
       }
     },
@@ -647,7 +655,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": false,
         "multiple": true,
         "revotable": true,
-        "quiz": false,
+        "kind": {
+          "type": "regular"
+        },
         "closed": false
       }
     },
@@ -714,7 +724,9 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
         "anonymous": true,
         "multiple": false,
         "revotable": true,
-        "quiz": true,
+        "kind": {
+          "type": "quiz"
+        },
         "closed": false
       }
     },

@@ -1228,7 +1228,9 @@ expression: "json_pretty(&world(\"basic\").docs())"
         "anonymous": false,
         "multiple": false,
         "revotable": true,
-        "quiz": false,
+        "kind": {
+          "type": "regular"
+        },
         "closed": false
       }
     },

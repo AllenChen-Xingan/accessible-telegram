@@ -4,14 +4,25 @@
 use super::message::formatted;
 use super::{arr, b, i, s, ty, u};
 use crate::tree::{
-    Attachment, Button, ButtonAction, Keyboard, KeyboardKind, PollOption, VoteBlock,
+    Attachment, Button, ButtonAction, Keyboard, KeyboardKind, PollKind, PollOption, VoteBlock,
 };
 use serde_json::Value;
 
 /// `messagePoll.poll`（`td_api.tl:731`）→ 投票附件。选项按 `option_order`（TDLib：「必须按这个顺序显示」）排，
 /// 每项留着 TDLib 的 0 起编号；`option_order` 为空或对不上（缺号、重号、越界）就按原顺序
+///
+/// **隐私守卫**：「谁投了」（`recent_voter_ids`，投票与选项上都有）**有意不读**——别人的投票去向。所有消息 JSON
+/// （新消息、取历史、`updateMessageContent` 换内容）都经 `content()` 走到这里，以后改这个函数也不要读它
+/// （测试 `snapshots::voters_never_reach_the_tree`）
 pub(super) fn poll(p: &Value) -> Attachment {
-    let quiz = ty(&p["type"]) == "pollTypeQuiz";
+    let kind = match ty(&p["type"]) {
+        "pollTypeRegular" | "" => PollKind::Regular,
+        "pollTypeQuiz" => PollKind::Quiz,
+        other => PollKind::Unknown {
+            td_type: other.to_owned(),
+        },
+    };
+    let quiz = kind == PollKind::Quiz;
     let correct: Vec<i64> = arr(&p["type"], "correct_option_ids")
         .iter()
         .filter_map(Value::as_i64)
@@ -37,7 +48,7 @@ pub(super) fn poll(p: &Value) -> Attachment {
         anonymous: b(p, "is_anonymous"),
         multiple: b(p, "allows_multiple_answers"),
         revotable: b(p, "allows_revoting"),
-        quiz,
+        kind,
         closed,
         blocked: blocked(&p["vote_restriction_reason"], closed),
         explanation: if quiz {

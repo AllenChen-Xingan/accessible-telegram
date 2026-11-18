@@ -488,7 +488,7 @@ fn poll_option_spoiler_is_masked() {
     assert!(json::line(poll, &revealed()).contains("庚辛"));
 }
 
-/// 票数变化对用户账号走 `updateMessageContent`（`updatePoll` 只给机器人，`td_api.tl:12058`；TDLib
+/// 票数变化对用户账号走 `updateMessageContent`（`updatePoll` 只给机器人，`td_api.tl:12059`；TDLib
 /// `PollManager::notify_on_poll_update` 对普通账号调 `on_external_update_message_content`）：store 整块换内容，
 /// 投票跟着读全，不用再取那条消息（#13 自审第 5 轮）
 #[test]
@@ -518,4 +518,25 @@ fn poll_counts_follow_update_message_content() {
     let full = speech::full(poll, &cx());
     assert!(full.contains("七点，9 票，90%"), "{full}");
     assert!(full.contains("共 10 人投票"), "{full}");
+}
+
+/// 「谁投了」（`recent_voter_ids`）有意不收：夹具 4001 的投票与选项上都带了投票人 424242，树、JSON、读法里都不能出现
+/// （隐私守卫在 `tdjson/interactive.rs` 的 `poll()`；#13 自审第 6 轮）
+#[test]
+fn voters_never_reach_the_tree() {
+    let docs = world("interactive").docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 4001))
+        .unwrap();
+    for out in [
+        json::line(poll, &cx()),
+        json::line(poll, &revealed()),
+        brief(poll, &cx()),
+        speech::detail(poll, &cx()),
+        speech::full(poll, &revealed()),
+    ] {
+        assert!(!out.contains("424242"), "投票人漏了：{out}");
+        assert!(!out.contains("voter"), "投票人字段漏了：{out}");
+    }
 }
