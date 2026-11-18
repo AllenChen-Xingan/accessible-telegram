@@ -210,7 +210,15 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
             question,
             options,
             explanation,
-            ..
+            // 其余字段都不带行内树；写全不用 `..`：以后加了带文字的字段，这里编不过，逼着决定要不要遮（自审第 7 轮）
+            total: _,
+            results_visible: _,
+            anonymous: _,
+            multiple: _,
+            revotable: _,
+            kind: _,
+            closed: _,
+            blocked: _,
         }) => {
             spans(question, reveal).1
                 || spans(explanation, reveal).1

@@ -35,6 +35,7 @@ pub(super) fn poll_full(a: &Attachment, description: &str, reveal: bool) -> Stri
         results_visible,
         closed,
         explanation,
+        kind,
         ..
     } = a
     else {
@@ -66,6 +67,10 @@ pub(super) fn poll_full(a: &Attachment, description: &str, reveal: bool) -> Stri
     }
     let q = spans(question, reveal).0;
     let mut head = format!("投票，{}", q.trim());
+    // 认不出的投票类型：全文也先说一句（同详情），别让人当普通投票听
+    if matches!(kind, PollKind::Unknown { .. }) {
+        head = glue(&head, "，", "暂不支持的投票类型");
+    }
     if !description.is_empty() {
         head = glue(&head, "，", description);
     }
@@ -135,7 +140,11 @@ fn blocked(b: &VoteBlock) -> &'static str {
         VoteBlock::YetUnsent => "还没发出去，发出后才能投",
         VoteBlock::Scheduled => "定时消息，发出后才能投",
         VoteBlock::CountryRestricted { .. } => "你所在的地区不能投",
-        VoteBlock::MembershipRequired { .. } => "要先加入指定的会话满一天才能投",
+        // TDLib 判的是「入会时间早于投票发出时间一天以上」（`PollManager.cpp` `is_poll_vote_subscribers_only_limited`），
+        // 现在加入也投不了这个投票，所以不说「加入后就能投」（自审第 7 轮）
+        VoteBlock::MembershipRequired { .. } => {
+            "只许投票发出前已在指定会话里满一天的人投，你投不了"
+        }
         VoteBlock::Other | VoteBlock::Unknown { .. } => "你不能投",
     }
 }
@@ -163,7 +172,8 @@ pub(super) fn buttons_detail(k: &Keyboard) -> String {
 fn action(a: &ButtonAction) -> String {
     match a {
         ButtonAction::Url { url } => format!("打开网址 {url}"),
-        ButtonAction::LoginUrl { .. } => "以你的身份登录网站".to_owned(),
+        // 读地址：按下是把你的 Telegram 身份交给这个网站，听的人要知道是哪个（同网址按钮的例外）
+        ButtonAction::LoginUrl { url } => format!("以你的身份登录网站 {url}"),
         ButtonAction::WebApp => "打开网页应用".to_owned(),
         ButtonAction::Callback => "通知机器人，聊天里不出现".to_owned(),
         ButtonAction::CallbackWithPassword => "通知机器人，要输入你账号的两步验证密码".to_owned(),

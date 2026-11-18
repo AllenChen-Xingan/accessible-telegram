@@ -23,8 +23,8 @@ pub struct PollOption {
     pub correct: bool,
 }
 
-/// 投票类型（`PollType`，`td_api.tl:484-494`）。开放集合：TDLib 以后加的类型进 `Unknown`，读法只说「暂不支持的投票类型」，
-/// 不按普通投票去断言它的性质
+/// 投票类型（`PollType`，`td_api.tl:484-494`）。开放集合：TDLib 以后加的类型进 `Unknown`；读法在详情与全文里多说一句
+/// 「暂不支持的投票类型」，不说它是不是测验，投票自己的字段（匿名、多选、能否改）照读
 #[derive(Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(Debug))]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -53,7 +53,8 @@ pub enum VoteBlock {
     CountryRestricted {
         country_code: String,
     },
-    /// 要先加入 `chat_id` 那个会话满一天才能投（不一定是投票所在的会话，如转发来的投票）
+    /// 只许投票发出前已在 `chat_id` 那个会话里满一天的人投（TDLib：入会时间早于投票发出时间一天以上；现在加入也投不了）。
+    /// 会话不一定是投票所在的那个，如转发来的投票
     MembershipRequired {
         chat_id: i64,
     },

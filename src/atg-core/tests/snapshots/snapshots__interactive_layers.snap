@@ -14,10 +14,17 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
 匿名驴友：只有你能看到的内容，20:54
 周大山：投票，下次去哪座山，20:55
 林小雨：投票，最高峰叫什么，20:55
+林小雨：投票，新规矩，20:55
+林小雨：投票，地区投票，20:55
+林小雨：投票，刚发的投票，20:55
+林小雨：投票，定时投票，20:55
+林小雨：投票，别的原因，20:56
+匿名驴友：登录看看，20:56
+匿名驴友：新键盘，20:56
 # detail
 2026年10月23日 20:53；3 个选项，你已投，公开投票，别人看得到你投了什么，可以多选，投了能改
 2026年10月23日 20:53；2 个选项，你已投，匿名投票，测验，有正确答案，已结束
-2026年10月23日 20:53；2 个选项，公开投票，别人看得到你投了什么，投了不能改，要先加入指定的会话满一天才能投
+2026年10月23日 20:53；2 个选项，公开投票，别人看得到你投了什么，投了不能改，只许投票发出前已在指定会话里满一天的人投，你投不了
 2026年10月23日 20:54；按钮 4 个：确认，通知机器人，聊天里不出现；取消，通知机器人，聊天里不出现；活动说明，打开网址 https://example.invalid/hike；复制集合点，复制文字
 2026年10月23日 20:54；键盘按钮 3 个：报名，以你的名义发出这句话；发手机号，把你的手机号发给机器人；建机器人，新建一个由这个机器人代管的机器人
 2026年10月23日 20:54
@@ -26,6 +33,13 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
 2026年10月23日 20:54
 2026年10月23日 20:55；3 个选项，你已投，结束后才公布结果，公开投票，别人看得到你投了什么，可以多选，投了能改
 2026年10月23日 20:55；2 个选项，现在看不到各项票数，匿名投票，测验，有正确答案，投了能改
+2026年10月23日 20:55；2 个选项，公开投票，别人看得到你投了什么，暂不支持的投票类型，投了不能改
+2026年10月23日 20:55；2 个选项，公开投票，别人看得到你投了什么，投了不能改，你所在的地区不能投
+2026年10月23日 20:55；2 个选项，公开投票，别人看得到你投了什么，投了不能改，还没发出去，发出后才能投
+2026年10月23日 20:55；2 个选项，公开投票，别人看得到你投了什么，投了不能改，定时消息，发出后才能投
+2026年10月23日 20:56；2 个选项，公开投票，别人看得到你投了什么，投了不能改，你不能投
+2026年10月23日 20:56；按钮 2 个：登录，以你的身份登录网站 https://example.invalid/login；新花样，不认识的按钮
+2026年10月23日 20:56；有暂不支持的按钮
 # full
 投票，几点出发？周六早上集合；第 1 项，七点，3 票，60%；第 2 项，八点，2 票，40%，你选的；第 3 项，九点，0 票，0%；共 5 人投票
 投票，山顶海拔多少米？看看谁最熟这座山；第 1 项，一千，1 票，50%，正确答案；第 2 项，两千，1 票，50%，你选的；共 2 人投票；解析：主峰海拔一千米左右
@@ -38,6 +52,13 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
 只有你能看到的内容
 投票，下次去哪座山；第 1 项，七点；第 2 项，八点，你选的；第 3 项，九点；共 5 人投票，结束后才公布结果
 投票，最高峰叫什么；第 1 项，一千；第 2 项，两千；共 2 人投票，现在看不到各项票数
+投票，新规矩，暂不支持的投票类型；第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+投票，地区投票；第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+投票，刚发的投票；第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+投票，定时投票；第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+投票，别的原因；第 1 项，要，0 票，0%；第 2 项，不要，0 票，0%；共 0 人投票
+登录看看
+新键盘
 # json
 {
   "v": 1,
@@ -734,5 +755,459 @@ expression: "format!(\"# brief\\n{}\\n# detail\\n{}\\n# full\\n{}\\n# json\\n{}\
   },
   "speech": {
     "brief": "林小雨：投票，最高峰叫什么，20:55"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4012
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:55:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "新规矩"
+          }
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "kind": {
+          "type": "unknown",
+          "td_type": "pollTypeFutureKind"
+        },
+        "closed": false
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，新规矩，20:55"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4013
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:55:30Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "地区投票"
+          }
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "kind": {
+          "type": "regular"
+        },
+        "closed": false,
+        "blocked": {
+          "type": "country_restricted",
+          "country_code": "XX"
+        }
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，地区投票，20:55"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4014
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:55:40Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "刚发的投票"
+          }
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "kind": {
+          "type": "regular"
+        },
+        "closed": false,
+        "blocked": {
+          "type": "yet_unsent"
+        }
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，刚发的投票，20:55"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4015
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:55:50Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "定时投票"
+          }
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "kind": {
+          "type": "regular"
+        },
+        "closed": false,
+        "blocked": {
+          "type": "scheduled"
+        }
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，定时投票，20:55"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4016
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 101,
+        "name": "林小雨"
+      },
+      "date": "2026-10-23T12:56:00Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [],
+      "attachment": {
+        "type": "poll",
+        "question": [
+          {
+            "type": "text",
+            "text": "别的原因"
+          }
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "不要"
+              }
+            ],
+            "votes": 0,
+            "percent": 0
+          }
+        ],
+        "total": 0,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": false,
+        "kind": {
+          "type": "regular"
+        },
+        "closed": false,
+        "blocked": {
+          "type": "unknown",
+          "td_type": "pollVoteRestrictionReasonFutureKind"
+        }
+      }
+    },
+    "tail": {}
+  },
+  "speech": {
+    "brief": "林小雨：投票，别的原因，20:56"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4017
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:56:10Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "登录看看"
+        }
+      ]
+    },
+    "tail": {},
+    "buttons": {
+      "kind": {
+        "type": "inline"
+      },
+      "rows": [
+        [
+          {
+            "text": "登录",
+            "action": {
+              "type": "login_url",
+              "url": "https://example.invalid/login"
+            }
+          },
+          {
+            "text": "新花样",
+            "action": {
+              "type": "unknown",
+              "td_type": "inlineKeyboardButtonTypeFutureKind"
+            }
+          }
+        ]
+      ]
+    }
+  },
+  "speech": {
+    "brief": "匿名驴友：登录看看，20:56"
+  }
+}
+{
+  "v": 1,
+  "kind": "message",
+  "data": {
+    "type": "message",
+    "id": {
+      "chat_id": -1001,
+      "message_id": 4018
+    },
+    "head": {
+      "sender": {
+        "type": "user",
+        "user_id": 104,
+        "name": "匿名驴友"
+      },
+      "date": "2026-10-23T12:56:20Z",
+      "outgoing": false
+    },
+    "content": {
+      "body": [
+        {
+          "type": "text",
+          "text": "新键盘"
+        }
+      ]
+    },
+    "tail": {},
+    "buttons": {
+      "kind": {
+        "type": "unknown",
+        "td_type": "replyMarkupFutureKind"
+      },
+      "rows": []
+    }
+  },
+  "speech": {
+    "brief": "匿名驴友：新键盘，20:56"
   }
 }
