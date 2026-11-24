@@ -15,21 +15,17 @@ use crate::fake::{FakeAuth, FakeBackend, FakeSend};
 use crate::gate::Gate;
 use crate::link::block_on;
 use crate::status::AuthStep;
+use crate::testkit::td_json::{self, new_chat};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 const FORUM: i64 = -100_555;
 
-fn new_chat(id: i64, title: &str, ty: Value) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title, "type": ty,
-        "positions": [], "notification_settings": {}}})
-}
-
 fn msg(chat: i64, id: i64, text: &str, topic: Value) -> Value {
-    json!({"@type": "message", "id": id, "chat_id": chat,
-        "sender_id": {"@type": "messageSenderUser", "user_id": FRIEND}, "is_outgoing": false,
-        "date": 1_792_755_000, "topic_id": topic,
-        "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": text, "entities": []}}})
+    td_json::with(
+        td_json::message(chat, id, FRIEND, 1_792_755_000, td_json::text(text)),
+        json!({"topic_id": topic}),
+    )
 }
 
 struct Rig {
