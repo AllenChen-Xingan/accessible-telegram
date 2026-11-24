@@ -22,6 +22,16 @@ const BOT: i64 = 900;
 const DATA: &str = "c2VjcmV0LWRhdGE=";
 
 fn backend(keyboard_at: i64) -> FakeBackend {
+    backend_in(keyboard_at, false)
+}
+
+/// `group`：把机器人放进一个普通群（群里按键盘按钮要回复键盘那条，机器人才收得到）
+fn backend_in(keyboard_at: i64, group: bool) -> FakeBackend {
+    let chat_type = if group {
+        json!({"@type": "chatTypeBasicGroup", "basic_group_id": 31})
+    } else {
+        json!({"@type": "chatTypePrivate", "user_id": BOT})
+    };
     let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();
     b.set_auth(FakeAuth {
         phone: "+15550001234".into(),
@@ -32,7 +42,7 @@ fn backend(keyboard_at: i64) -> FakeBackend {
     b.set_chat(
         BOT,
         vec![json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": BOT, "title": "订票助手",
-            "type": {"@type": "chatTypePrivate", "user_id": BOT}, "positions": [], "reply_markup_message_id": keyboard_at,
+            "type": chat_type, "positions": [], "reply_markup_message_id": keyboard_at,
             "notification_settings": {"@type": "chatNotificationSettings", "use_default_mute_for": true, "mute_for": 0}}})],
     );
     let text = |t: &str| json!({"@type": "formattedText", "text": t, "entities": []});
@@ -193,7 +203,7 @@ fn keyboard_button_goes_through_send_and_says_replaced() {
     let b = backend(6);
     let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Json);
     let plan = &lines(&cap)[0];
-    assert_eq!(plan["data"]["press"]["keyboard_replaced"], false);
+    assert_eq!(plan["data"]["press"]["keyboard"], "here");
     assert_eq!(plan["data"]["text"], "好的");
 }
 
@@ -205,4 +215,19 @@ fn missing_button_is_invalid_input() {
     assert_eq!(end["data"]["why"], "button_not_found");
     assert_eq!(end["data"]["retryable"], false);
     assert_ne!(code, 0);
+}
+
+/// 自审 13b-2 第 1 轮 P2：群里按键盘文字按钮，发出的要回复键盘所在那条（同官方客户端）——机器人默认开隐私模式，
+/// 群里只收得到命令与回复它的消息，不回复就等于没按
+#[test]
+fn keyboard_button_in_group_replies_to_the_keyboard_message() {
+    let b = backend_in(6, true);
+    let (code, cap, _) = run(&b, &press_p(6, 1, true), Format::Json);
+    assert_eq!(code, 0, "{:?}", cap.out);
+    let plan = &lines(&cap)[0];
+    assert_eq!(plan["data"]["reply_to"]["message_id"], 6, "{plan}");
+    // 私聊里不用回复
+    let b = backend(6);
+    let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Json);
+    assert!(lines(&cap)[0]["data"]["reply_to"].is_null());
 }

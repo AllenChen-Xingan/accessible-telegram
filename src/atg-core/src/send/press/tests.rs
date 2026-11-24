@@ -240,9 +240,15 @@ fn kinds_route_to_readonly_keyboard_or_refusal() {
     );
     // 键盘文字按钮：交给调用方走 send_text；会话的键盘就在这条上 = 没换过
     match prepare(&r, BOT, 6, 1).unwrap() {
-        Press::Keyboard { text, replaced, .. } => {
+        Press::Keyboard {
+            text,
+            keyboard,
+            reply,
+            ..
+        } => {
             assert_eq!(text, "好的");
-            assert!(!replaced);
+            assert_eq!(keyboard, KeyboardNow::Here);
+            assert!(!reply, "私聊不用回复");
         }
         other => panic!("{other:?}"),
     }
@@ -253,12 +259,17 @@ fn kinds_route_to_readonly_keyboard_or_refusal() {
     assert!(r.b.submitted().is_empty());
 }
 
-/// 人定 B：键盘已换到别的消息上，照样给文字，`replaced` 为真（计划里说一句）
+/// 人定 B：键盘已换到别的消息上 / 已收起，照样给文字，计划里说一句（收起不说成更换，自审第 1 轮 P2）
 #[test]
 fn replaced_keyboard_still_presses() {
+    let r = rig("hidden", false, 0);
+    match prepare(&r, BOT, 6, 1).unwrap() {
+        Press::Keyboard { keyboard, .. } => assert_eq!(keyboard, KeyboardNow::Hidden),
+        other => panic!("{other:?}"),
+    }
     let r = rig("replaced", false, 99);
     match prepare(&r, BOT, 6, 1).unwrap() {
-        Press::Keyboard { replaced, .. } => assert!(replaced),
+        Press::Keyboard { keyboard, .. } => assert_eq!(keyboard, KeyboardNow::Replaced),
         other => panic!("{other:?}"),
     }
 }

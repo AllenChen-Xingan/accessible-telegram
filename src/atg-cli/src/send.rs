@@ -58,8 +58,9 @@ pub struct KeyPress {
     /// 第几个按钮（1 起）与那条消息的 id
     pub button: usize,
     pub message_id: i64,
-    /// 会话此刻的键盘不在那条消息上（已换过）：照原文字发（人定 B 2026-11-24），计划里说一句
-    pub replaced: bool,
+    /// 会话此刻的键盘：`here` 就在那条上 / `replaced` 已换成别的 / `hidden` 已收起。后两种照原文字发（人定 B 2026-11-24），
+    /// 计划里说一句
+    pub keyboard: String,
 }
 
 /// 一次 `resend` 要的东西
@@ -349,7 +350,7 @@ fn emit_plan(
             d["reply_brief"] = json!(reply_brief);
             if let Some(k) = press {
                 d["press"] = json!({"button": k.button, "message_id": k.message_id,
-                    "keyboard_replaced": k.replaced});
+                    "keyboard": k.keyboard});
             }
             emit_to(sink, &envelope("plan", d));
         }
@@ -370,10 +371,11 @@ fn emit_plan(
             // 按键盘文字按钮转来的：先说清是按了哪个按钮、按下就是以你的名义发出这句话；键盘换过的也说（人定 B）
             let head = press
                 .map(|k| {
-                    let swap = if k.replaced {
-                        "键盘已更换，照原文字发；"
-                    } else {
-                        ""
+                    // 照旧文字发出去：机器人可能已不认这句话，但它照样以你的名义出现在会话里
+                    let swap = match k.keyboard.as_str() {
+                        "replaced" => "键盘已更换，照原文字发，机器人可能已不认这句；",
+                        "hidden" => "键盘已收起，照原文字发，机器人可能已不认这句；",
+                        _ => "",
                     };
                     format!(
                         "按 id {} 那条的第 {} 个键盘按钮 = 以你的名义发出按钮上的字；{swap}",

@@ -164,18 +164,30 @@ fn run_press<B: Backend>(
             result_line(sink, format, data, &zh);
             Ok(0)
         }
-        Press::Keyboard { text, replaced, .. } => {
+        Press::Keyboard {
+            text,
+            message,
+            reply,
+            keyboard,
+            ..
+        } => {
+            let keyboard = match keyboard {
+                press::KeyboardNow::Here => "here",
+                press::KeyboardNow::Replaced => "replaced",
+                press::KeyboardNow::Hidden => "hidden",
+            };
             let sp = SendParams {
                 chat: chat_id.to_string(),
                 text,
-                reply_to: None,
+                // 不是私聊：回复键盘所在那条，机器人才收得到（同官方客户端；话题群也因此有了回复对象）
+                reply_to: reply.then_some(message.message_id),
                 dry_run: p.dry_run,
                 again: p.again,
                 tz: p.tz.clone(),
                 press: Some(KeyPress {
                     button: p.button,
                     message_id: p.message_id,
-                    replaced,
+                    keyboard: keyboard.to_owned(),
                 }),
             };
             Ok(crate::send::execute_send(

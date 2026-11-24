@@ -140,8 +140,9 @@ impl TdBackend {
                 )
                 .await?;
                 let m = r.map_err(|e| self.read_error("message", &e))?;
+                // 还没交出：名字不用 `td_message_reserialize_failed`（那个按「可能已交出」记账）
                 let raw = serde_json::to_value(&m).map_err(|_| CoreError::Internal {
-                    what: "td_message_reserialize_failed",
+                    what: "press_message_reserialize_failed",
                 })?;
                 let data =
                     crate::tdjson::callback_data(&raw, n, &text).ok_or(CoreError::InvalidSend {

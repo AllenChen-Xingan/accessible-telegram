@@ -91,14 +91,28 @@ impl Gated for CallbackPlan {
 pub enum Press {
     /// 回调按钮：要过闸再交出
     Callback(CallbackPlan),
-    /// 键盘文字按钮：调用方用 `text` 走 `send_text`。`replaced`：会话此刻的键盘不在这条消息上（已换过），照样发、要说一句
+    /// 键盘文字按钮：调用方用 `text` 走 `send_text`。`reply`：不是私聊时要回复键盘所在那条（`message`）——同官方客户端；
+    /// 机器人默认开隐私模式，群里只收得到命令与回复它的消息（自审 13b-2 第 1 轮 P2）。`keyboard`：会话此刻的键盘在哪
     Keyboard {
         target: ChatTarget,
         text: String,
-        replaced: bool,
+        message: MsgId,
+        reply: bool,
+        keyboard: KeyboardNow,
     },
     /// 只读出、不按：网址、登录网址、复制文字、用户
     ReadOnly { button: Button },
+}
+
+/// 会话此刻的键盘（键盘是会话级的，同一时刻只有一套，`reply_markup_message_id` 标在哪条上）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyboardNow {
+    /// 就在这条上
+    Here,
+    /// 已换成别的消息上的那套：照原文字发（人定 B），计划说「键盘已更换」
+    Replaced,
+    /// 已收起，此刻没有键盘：照原文字发，计划说「键盘已收起」
+    Hidden,
 }
 
 /// 这条消息此刻显示的按钮里的第 `n` 个（显示的是临时内容时原按钮不算，同 `project`）
@@ -169,11 +183,18 @@ pub async fn prepare_press<B: Backend>(
             }))
         }
         (KeyboardKind::Reply, ButtonAction::Text) => {
-            let replaced = target.keyboard_message_id != id.message_id;
+            let keyboard = match target.keyboard_message_id {
+                k if k == id.message_id => KeyboardNow::Here,
+                0 => KeyboardNow::Hidden,
+                _ => KeyboardNow::Replaced,
+            };
+            let reply = target.kind != crate::tree::ChatKind::Private;
             Ok(Press::Keyboard {
                 target,
                 text: button.text,
-                replaced,
+                message: id,
+                reply,
+                keyboard,
             })
         }
         (
