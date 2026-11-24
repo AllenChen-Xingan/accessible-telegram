@@ -4,6 +4,7 @@ use atg_core::config::{Profile, ServerKind};
 use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend, FakeSend};
 use atg_core::gate::Gate;
+use atg_core::testkit::td::{self, new_private_chat_notify_default as chat};
 use serde_json::Value;
 
 #[derive(Default)]
@@ -22,16 +23,8 @@ const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 const OTHER: i64 = 888;
 
-fn chat(id: i64, title: &str) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title,
-        "type": {"@type": "chatTypePrivate", "user_id": id}, "positions": [],
-        "notification_settings": {"@type": "chatNotificationSettings", "use_default_mute_for": true, "mute_for": 0}}})
-}
-
 fn msg(id: i64, text: &str) -> Value {
-    json!({"@type": "message", "id": id, "chat_id": FRIEND,
-        "sender_id": {"@type": "messageSenderUser", "user_id": FRIEND}, "is_outgoing": false, "date": 1_792_755_000,
-        "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": text, "entities": []}}})
+    td::message(FRIEND, id, FRIEND, 1_792_755_000, td::text(text))
 }
 
 fn backend() -> FakeBackend {

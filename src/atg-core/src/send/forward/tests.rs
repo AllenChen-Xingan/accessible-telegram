@@ -7,6 +7,7 @@ use crate::fake::{Cap, FakeAuth, FakeBackend, FakeSend};
 use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
+use crate::testkit::td::{self, new_private_chat as new_chat};
 use std::path::PathBuf;
 
 const ME: i64 = 4242;
@@ -19,20 +20,11 @@ struct Rig {
     dir: PathBuf,
 }
 
-fn new_chat(id: i64, title: &str) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title,
-        "type": {"@type": "chatTypePrivate", "user_id": id}, "positions": [], "notification_settings": {}}})
-}
-
 fn msg(chat: i64, id: i64, text: &str, extra: Value) -> Value {
-    let mut m = json!({"@type": "message", "id": id, "chat_id": chat,
-        "sender_id": {"@type": "messageSenderUser", "user_id": FRIEND}, "is_outgoing": false,
-        "date": 1_792_755_000,
-        "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": text, "entities": []}}});
-    if let (Some(o), Value::Object(x)) = (m.as_object_mut(), extra) {
-        o.extend(x);
-    }
-    m
+    td::with(
+        td::message(chat, id, FRIEND, 1_792_755_000, td::text(text)),
+        extra,
+    )
 }
 
 fn friend_history() -> Vec<Value> {

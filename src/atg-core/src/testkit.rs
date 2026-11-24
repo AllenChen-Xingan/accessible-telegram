@@ -24,7 +24,8 @@
 //! #12 合并后（2026-11-17，随 R7 拆 `fake.rs`）换了 cli `tests/cli.rs` 的 `send_usage_paths` 和 `send_file/tests.rs`；R3a 换完。
 //! 故意不换：core `ipc.rs` 的测试（要 0o700 的目录并断言它）；cli `serve/tests.rs`（套接字路径离 103 字节上限近）；core
 //! `tests/send_limits.rs`（同一个 tag 要再算出同一个路径，模拟下一个进程）；`atg-audio`（不依赖 atg-core）。各处都有注释写明原因。
-//! R3b 还没做。
+//! R3b 第一刀（2026-11-24）：造 TDLib JSON 的助手放进 `testkit::td`，换了 core `send/file`、`send/forward`、`send/tests`，cli
+//! `forwarding`、`send_file`、`history`、`watch` 的测试；core `send/react/tests.rs` 和其余各处还没换。
 
 use crate::config::{Profile, ServerKind};
 use std::path::{Path, PathBuf};
@@ -66,6 +67,9 @@ pub fn profile(tag: &str, kind: ServerKind) -> Profile {
         Err(e) => panic!("testkit：建档案失败：{}", e.code()),
     }
 }
+
+// 造 TDLib JSON 的助手（#60 R3b）。说明写在 td.rs 头上：这里写 `///` 会和它合并，链接按本模块解析就断了
+pub mod td;
 
 #[cfg(test)]
 mod tests {

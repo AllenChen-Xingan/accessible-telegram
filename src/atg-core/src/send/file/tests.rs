@@ -8,6 +8,7 @@ use crate::fake::{FakeAuth, FakeBackend, FakeSend};
 use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
+use crate::testkit::td::new_private_chat as new_chat;
 use std::path::{Path, PathBuf};
 
 /// 自审第 1 轮补的边界
@@ -21,11 +22,6 @@ struct Rig {
     stream: EventStream,
     dir: PathBuf,
     roots: FileRoots,
-}
-
-fn new_chat(id: i64, title: &str) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title,
-        "type": {"@type": "chatTypePrivate", "user_id": id}, "positions": [], "notification_settings": {}}})
 }
 
 fn rig(tag: &str) -> Rig {
