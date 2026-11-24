@@ -1,0 +1,24 @@
+[package]
+name = "exp009-gpui-head"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# 空 workspace 表：不让上层的 workspace 吞掉本实验
+[workspace]
+
+[dependencies]
+# Zed 主干 15d136b（2026-11-14），MAIN 的 resources/zed-20261114（部分克隆）
+gpui = { path = "../../../../../telegram accessibility /resources/zed-20261114/crates/gpui" }
+gpui_platform = { path = "../../../../../telegram accessibility /resources/zed-20261114/crates/gpui_platform", features = ["font-kit", "runtime_shaders"] }
+objc2 = "0.6"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSDictionary", "NSValue", "NSArray"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+
+# 15d136b 的 Zed 根 Cargo.toml [patch.crates-io] 里 gpui 依赖树用得到的三条（与 79fe6a6 时不同：async-task 换成 smol-rs 的 rev，多了 async-process）
+[patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/smol-rs/async-task", rev = "41fd3359c75e221bd8b187a8ee361aa309c1714c" }
+calloop = { git = "https://github.com/zed-industries/calloop", rev = "3759371fee14c40066d64777e2a36b6ffcc22590" }

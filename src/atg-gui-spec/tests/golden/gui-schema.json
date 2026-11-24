@@ -1,0 +1,139 @@
+{
+  "v": 1,
+  "x-content-hash": "b427a473774cc7b5",
+  "about": {
+    "v": "本自描述的版本号：改名、删字段、改义时加一；加字段、加取值不加",
+    "x-content-hash": "内容哈希（去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位），内容变了它就变",
+    "ids": "稳定标识（macOS 的 AXIdentifier）的种类。写法：kind，后面跟 arity 个十进制整数，每个前面加一个冒号，如 msg:-100123:4567；数字是什么见 specs/gui/a11y-tree.md 第二节",
+    "roles": "树里会出现的角色（AccessKit 的角色名）",
+    "elements": "每类元素：key 元素名（本表内唯一，不是树里的标识）、role 角色、id 用哪种标识、name 名称从哪来、role_description 角色描述取哪条文案（null 为不设）、operable 能不能获焦或被选中",
+    "elements.name": "text:<文案>：就是这条文案；text:<文案>+alert：文案加新消息提醒（提醒还没接上时只有文案）；speech:<读法>：由 atg-core 的这条读法现算；window_title:<文案>+alert+status：根节点不带名称（附加段都写在冒号后、用 + 连），窗口名在 NSWindow 标题上（文案 + 新消息提醒 + 用户状态）",
+    "texts": "固定文案表：key 文案编号（elements.name 等处引用它）、zh 中文原文"
+  },
+  "ids": [
+    {
+      "kind": "window",
+      "arity": 0
+    },
+    {
+      "kind": "region-chats",
+      "arity": 0
+    },
+    {
+      "kind": "chats",
+      "arity": 0
+    },
+    {
+      "kind": "chat",
+      "arity": 1
+    },
+    {
+      "kind": "region-messages",
+      "arity": 0
+    },
+    {
+      "kind": "messages",
+      "arity": 1
+    },
+    {
+      "kind": "msg",
+      "arity": 2
+    },
+    {
+      "kind": "status",
+      "arity": 0
+    }
+  ],
+  "roles": [
+    "Window",
+    "Navigation",
+    "Main",
+    "List",
+    "ListItem",
+    "Status"
+  ],
+  "elements": [
+    {
+      "key": "window",
+      "role": "Window",
+      "id": "window",
+      "name": "window_title:app_title+alert+status",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "region_chats",
+      "role": "Navigation",
+      "id": "region-chats",
+      "name": "text:chats",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "chat_list",
+      "role": "List",
+      "id": "chats",
+      "name": "text:chats+alert",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "chat_item",
+      "role": "ListItem",
+      "id": "chat",
+      "name": "speech:chat_brief",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "region_messages",
+      "role": "Main",
+      "id": "region-messages",
+      "name": "text:messages",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "message_list",
+      "role": "List",
+      "id": "messages",
+      "name": "text:messages+alert",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "message_item",
+      "role": "ListItem",
+      "id": "msg",
+      "name": "speech:brief",
+      "role_description": "message_role",
+      "operable": true
+    },
+    {
+      "key": "status_bar",
+      "role": "Status",
+      "id": "status",
+      "name": "speech:brief",
+      "role_description": null,
+      "operable": false
+    }
+  ],
+  "texts": [
+    {
+      "key": "app_title",
+      "zh": "无障碍 Telegram"
+    },
+    {
+      "key": "chats",
+      "zh": "会话"
+    },
+    {
+      "key": "messages",
+      "zh": "消息"
+    },
+    {
+      "key": "message_role",
+      "zh": "消息"
+    }
+  ]
+}

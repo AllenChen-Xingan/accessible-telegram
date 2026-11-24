@@ -1,0 +1,11 @@
+ui                           GPL-3.0-or-later     31642
+theme                        GPL-3.0-or-later     5957
+component                    GPL-3.0-or-later     530
+icons                        GPL-3.0-or-later     360
+syntax_theme                 GPL-3.0-or-later     345
+ui_macros                    GPL-3.0-or-later     239
+menu                         GPL-3.0-or-later     37
+mode=normal starts=['ui'] minus=['gpui', 'gpui_platform'] (base mode=normal)
+internal crates: 7 lines: 39110 external deps (not expanded): 3
+GPL: ['component', 'icons', 'menu', 'syntax_theme', 'theme', 'ui', 'ui_macros']
+heavy-crate hits: []
