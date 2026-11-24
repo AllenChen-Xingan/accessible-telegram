@@ -69,27 +69,43 @@ pub struct A11yNode {
     pub children: Vec<A11yNode>,
 }
 
+/// 一个节点的名称要用的数据。调用方只交数据，**名称用哪条读法、哪条文案由契约表的 `name` 一列定**（[`name_of`]），
+/// 不由调用方挑函数——这样表就是名称来源的唯一正本
+enum Data<'a> {
+    /// 不带数据（文案来源、根节点）
+    None,
+    Chat(&'a ChatItem),
+    Doc(&'a Doc),
+}
+
+/// 照契约表的 `name` 一列算名称。数据和来源对不上（比如表说读 `chat_brief`、给的却是一条消息）就没有名称——
+/// 可操作元素没名称会被规则检查抓到，不可操作的会让快照变
+fn name_of(e: Element, data: Data, cx: &SpeechCtx) -> Option<String> {
+    match (spec(e).name, data) {
+        // 根节点不带名称（窗口名在 NSWindow 标题上）
+        (NameFrom::WindowTitle(_), _) => None,
+        (NameFrom::Text(t), _) => Some(t.zh().to_owned()),
+        // 提醒那段要 `speech` 给拼接口（#172）；接上之前只给文案，不在界面里拼句子（`specs/architecture-rules.md` 第 3 条）
+        (NameFrom::TextWithAlert(t), _) => Some(t.zh().to_owned()),
+        (NameFrom::ChatBrief, Data::Chat(c)) => Some(speech::chat_brief(c)),
+        (NameFrom::Brief, Data::Doc(d)) => Some(speech::brief(d, cx)),
+        (NameFrom::ChatBrief, Data::None | Data::Doc(_))
+        | (NameFrom::Brief, Data::None | Data::Chat(_)) => None,
+    }
+}
+
 impl A11yNode {
-    fn of(e: Element, a: Aid, name: Option<String>) -> Self {
+    /// 角色、角色描述、名称来源都取契约表那一行；标识种类和那一行对不上就不出标识（规则检查要求每个节点都有标识，会红）
+    fn of(e: Element, a: Aid, data: Data, cx: &SpeechCtx) -> Self {
         let s = spec(e);
         A11yNode {
             role: s.role,
-            aid: Some(aid(a)),
-            name,
+            aid: (a.kind() == s.id).then(|| aid(a)),
+            name: name_of(e, data, cx),
             role_description: s.role_description.map(|t| t.zh()),
             states: Vec::new(),
             children: Vec::new(),
         }
-    }
-}
-
-fn text_name(e: Element) -> Option<String> {
-    match spec(e).name {
-        NameFrom::Text(t) => Some(t.zh().to_owned()),
-        // 提醒那段要 `speech` 给拼接口（M4.3）；接上之前只给文案，不在界面里拼句子（`specs/architecture-rules.md` 第 3 条）
-        NameFrom::TextWithAlert(t) => Some(t.zh().to_owned()),
-        // 根节点不带名称（窗口名在 NSWindow 标题上）；读法来源的由调用处现算
-        NameFrom::WindowTitle(_) | NameFrom::ChatBrief | NameFrom::Brief => None,
     }
 }
 
@@ -153,7 +169,7 @@ fn list(
 
 /// 投影出整棵树
 pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
-    let mut root = A11yNode::of(Element::Window, Aid::Window, None);
+    let mut root = A11yNode::of(Element::Window, Aid::Window, Data::None, input.cx);
 
     // 会话区
     let chats: Vec<(String, A11yNode)> = input
@@ -164,23 +180,21 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
             let node = A11yNode::of(
                 Element::ChatItem,
                 Aid::Chat(c.chat_id),
-                Some(speech::chat_brief(c)),
+                Data::Chat(c),
+                input.cx,
             );
             (aid(Aid::Chat(c.chat_id)), node)
         })
         .collect();
     let chat_anchor = ui.chats_anchor.map(|c| aid(Aid::Chat(c)));
     let chat_list = list(
-        A11yNode::of(Element::ChatList, Aid::Chats, text_name(Element::ChatList)),
+        A11yNode::of(Element::ChatList, Aid::Chats, Data::None, input.cx),
         chats,
         chat_anchor.as_deref(),
         ui.region == Region::ChatList,
     );
-    let mut region_chats = A11yNode::of(
-        Element::RegionChats,
-        Aid::RegionChats,
-        text_name(Element::RegionChats),
-    );
+    let mut region_chats =
+        A11yNode::of(Element::RegionChats, Aid::RegionChats, Data::None, input.cx);
     region_chats.children.push(chat_list);
     root.children.push(region_chats);
 
@@ -188,7 +202,8 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
     let mut region_msgs = A11yNode::of(
         Element::RegionMessages,
         Aid::RegionMessages,
-        text_name(Element::RegionMessages),
+        Data::None,
+        input.cx,
     );
     if let Some(open) = &input.open {
         let items: Vec<(String, A11yNode)> = open
@@ -196,11 +211,7 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
             .iter()
             .filter_map(|d| message_id(d).map(|id| (id, d)))
             .map(|(id, d)| {
-                let node = A11yNode::of(
-                    Element::MessageItem,
-                    Aid::Msg(id),
-                    Some(speech::brief(d, input.cx)),
-                );
+                let node = A11yNode::of(Element::MessageItem, Aid::Msg(id), Data::Doc(d), input.cx);
                 (aid(Aid::Msg(id)), node)
             })
             .collect();
@@ -212,7 +223,8 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
             A11yNode::of(
                 Element::MessageList,
                 Aid::Messages(open.chat_id),
-                text_name(Element::MessageList),
+                Data::None,
+                input.cx,
             ),
             items,
             anchor.as_deref(),
@@ -223,9 +235,13 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
 
     // 状态栏
     if let Some(status) = input.status {
-        let name = speech::brief(&Doc::Status(Status { status }), input.cx);
-        root.children
-            .push(A11yNode::of(Element::StatusBar, Aid::Status, Some(name)));
+        let doc = Doc::Status(Status { status });
+        root.children.push(A11yNode::of(
+            Element::StatusBar,
+            Aid::Status,
+            Data::Doc(&doc),
+            input.cx,
+        ));
     }
     root
 }

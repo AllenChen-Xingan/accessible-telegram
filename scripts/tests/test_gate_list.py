@@ -1,7 +1,7 @@
 """门槛文件清单（scripts/check-file-size.py 的 GATE_FILES）要盖住 arch.yml 调用的每个脚本。
 
 arch.yml 里每一步 `python3 scripts/X.py` / `bash scripts/X.sh` 都是一道 CI 门槛；它若不在 GATE_FILES 里，
-以后只改这个脚本（比如让检查直接通过）就不用 baseline:loosen 标签，arch-guard 拦不住（atg-review 064 前第 2 轮 P1）。
+以后只改这个脚本（比如让检查直接通过）就不用 baseline:loosen 标签，arch-guard 拦不住（PR-1 #169 的 atg-review 第 2 轮 P1，交 codex 评审 `docs/reviews/064_*` 之前）。
 """
 from __future__ import annotations
 

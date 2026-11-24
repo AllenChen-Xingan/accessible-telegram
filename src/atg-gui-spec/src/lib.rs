@@ -4,7 +4,7 @@
 //! 正本在哪、其余怎么跟上：`docs/plan/012_gui-ssot.md`；产出该长什么样：`specs/gui/`。
 //!
 //! - [`aid`]：稳定标识（AXIdentifier）的唯一写法，界面代码只经 [`aid::aid`] 拿
-//! - [`a11y`]：无障碍树契约表——每类元素的角色、名称从哪来、标识种类、能不能操作
+//! - [`a11y`]：无障碍树契约表——每类元素的角色、标识种类、名称从哪来、角色描述、能不能操作
 //! - [`text`]：固定文案表 `TextId` → 中文（不带数据的控件名；带数据的句子归 `atg_core::speech`）
 //! - [`project`]：界面输入 + [`project::UiState`] → [`project::A11yNode`] 树，并按 `specs/gui/a11y-tree.md`
 //!   第四节的 GPUI 层格式渲染成文本

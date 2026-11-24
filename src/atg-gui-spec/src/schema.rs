@@ -6,9 +6,11 @@
 //! - 盖章：`python3 scripts/schema-stamp.py check src/atg-gui-spec/tests/golden/gui-schema.json`（CI：`arch.yml` 单独一步）——内容变了
 //!   哈希没跟着改就红，逼人有意识地决定要不要升 `v`
 //!
-//! 改了表之后的更新步骤：① 按下面的口径决定升不升 `GUI_SCHEMA_V`；② `cargo run -p atg-gui-spec --bin gui-schema >
-//! src/atg-gui-spec/tests/golden/gui-schema.json`；③ `python3 scripts/schema-stamp.py stamp` 同一文件，把打印出的哈希抄进
-//! [`GUI_SCHEMA_HASH`]；④ 再跑一次 ②，金样测试与盖章都绿。
+//! **改了表之后的更新步骤**（这里是全部步骤的正本，命令都在仓库根目录跑）：① 按下面的口径决定升不升 `GUI_SCHEMA_V`；
+//! ② `cargo run -p atg-gui-spec --bin gui-schema > src/atg-gui-spec/tests/golden/gui-schema.json`；③ `python3 scripts/schema-stamp.py
+//! stamp` 同一文件，把打印出的哈希抄进 [`GUI_SCHEMA_HASH`]；④ 再跑一次 ②；⑤ `cargo run -p atg-gui-spec --bin gui-schema --
+//! --md-elements`，用输出替换 `specs/gui/a11y-tree.md` 第三节起止标记之间那段；⑥ `INSTA_UPDATE=always cargo test -p
+//! atg-gui-spec` 重出投影快照，逐行看过差异。做完金样、md 段、快照、盖章四样都绿。
 //!
 //! 为什么哈希要手抄成常量、不让程序自己算：手抄这一步是故意加的一道关。程序自己算的话，内容一变哈希就跟着变，
 //! 金样重生成就绿了，没人会停下来想 `v` 要不要加一；手抄逼改表的人在抄的那一刻做这个决定。第 ④ 步重跑 ②，
@@ -25,7 +27,7 @@ use serde_json::{Value, json};
 pub const GUI_SCHEMA_V: u32 = 1;
 
 /// 内容哈希（`scripts/schema-stamp.py` 的算法：去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位）
-pub const GUI_SCHEMA_HASH: &str = "8b46f8ccbb7d3fba";
+pub const GUI_SCHEMA_HASH: &str = "b427a473774cc7b5";
 
 /// 生成自描述
 pub fn schema() -> Value {
@@ -37,9 +39,9 @@ pub fn schema() -> Value {
             "x-content-hash": "内容哈希（去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位），内容变了它就变",
             "ids": "稳定标识（macOS 的 AXIdentifier）的种类。写法：kind，后面跟 arity 个十进制整数，每个前面加一个冒号，如 msg:-100123:4567；数字是什么见 specs/gui/a11y-tree.md 第二节",
             "roles": "树里会出现的角色（AccessKit 的角色名）",
-            "elements": "每类元素：role 角色、id 用哪种标识、name 名称从哪来、role_description 角色描述取哪条文案（null 为不设）、operable 能不能获焦或被选中",
+            "elements": "每类元素：key 元素名（本表内唯一，不是树里的标识）、role 角色、id 用哪种标识、name 名称从哪来、role_description 角色描述取哪条文案（null 为不设）、operable 能不能获焦或被选中",
             "elements.name": "text:<文案>：就是这条文案；text:<文案>+alert：文案加新消息提醒（提醒还没接上时只有文案）；speech:<读法>：由 atg-core 的这条读法现算；window_title:<文案>+alert+status：根节点不带名称（附加段都写在冒号后、用 + 连），窗口名在 NSWindow 标题上（文案 + 新消息提醒 + 用户状态）",
-            "texts": "固定文案表：key 与中文"
+            "texts": "固定文案表：key 文案编号（elements.name 等处引用它）、zh 中文原文"
         },
         "ids": IdKind::ALL.iter().map(|k| json!({ "kind": k.prefix(), "arity": k.arity() })).collect::<Vec<_>>(),
         "roles": Role::ALL.iter().map(|r| r.name()).collect::<Vec<_>>(),

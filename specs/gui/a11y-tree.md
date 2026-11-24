@@ -49,13 +49,13 @@
 
 **消息 id 用当前的**：发送成功 TDLib 换 id（`actions.md` 事件 `send_succeeded`），对外标识跟着换成新 id，与 `atg-cli` 输出的 id 对得上；GPUI 元素 id 则沿用本次运行里最初的那个键，节点身份不断（`docs/plan/012_gui-ssot.md` 第三节第 3 小节）。⏳ 换标识那一帧 VoiceOver 会不会重读，待实测。
 
-**界面代码只调一个函数** `aid(种类, 数字…)` 拿标识，不手拼字符串（`check-gui-strings.py` 扫）。
+**界面代码只调一个函数** `aid(Aid::<种类>(数字…))` 拿标识（`src/atg-gui-spec/src/aid.rs`；数字个数由变体的形状定，拼不错），不手拼字符串（`check-gui-strings.py` 扫）。
 
 ## 三、元素表（机读契约 + 手写 v0）
 
 ### 机读契约（已移交：M3.1 的 8 类元素）
 
-正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述只在这段；下面「元素表 v0」里对应的行（窗口 → `window`，区块 → `region_chats` / `region_messages`，会话列表 → `chat_list`，会话项 → `chat_item`，消息列表 → `message_list`，消息项、系统消息项、撤回占位三行都 → `message_item`，状态栏 → `status_bar`）「角色（macOS）」一列写「见上表」加 macOS 层的映射（还没进表），「名称来自」一列只写「见上表」（必要时括号注明读的是哪种 `Doc`），其余列照旧手写。「能操作」= 能获焦或能被选中，`check-a11y-tree.py`（待写）对这类元素查角色、名称、标识三样；标识种类后的数字是什么，见第二节。
+正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成：`atg-gui-spec` 的金样测试（金样 = 提交进库的预期输出，测试重新生成一遍逐字比）拿这段和生成结果比，对不上 CI 就红。生成命令只打到标准输出，要在仓库根目录跑 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements`，用输出替换起止标记之间那段（含标记）；改表时连带要做的其余几步见 `src/atg-gui-spec/src/schema.rs` 文件头。「新消息提醒」= `notify` 产出的 `Doc::Alert`，也就是第一节第 6 条说的写进列表名、窗口标题的新消息数那一句。这 8 类元素的角色、标识种类、名称来源、角色描述只在这段；下面「元素表 v0」里对应的行（窗口 → `window`，区块 → `region_chats` / `region_messages`，会话列表 → `chat_list`，会话项 → `chat_item`，消息列表 → `message_list`，消息项、系统消息项、撤回占位三行都 → `message_item`，状态栏 → `status_bar`）「角色（macOS）」一列写「见上表」加 macOS 层的映射（还没进表），「名称来自」一列只写「见上表」（必要时括号注明读的是哪种 `Doc`），其余列照旧手写。「能操作」= 能获焦或能被选中，`check-a11y-tree.py`（待写）对这类元素查角色、名称、标识三样；标识种类后的数字是什么，见第二节。
 
 <!-- 由 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements` 生成，别手改：开始 -->
 
@@ -84,8 +84,8 @@
 | 会话项 | 见上表 `chat_item`；AXGroup（exp003 实测） | 见上表 `chat_item` | ⏳ | 选中；位置 / 总数（只进 GPUI 层） | 回车 = 打开（`keymap.md`） | T02；003 R2 |
 | 消息列表 | 见上表 `message_list`；AXList | 见上表 `message_list` | — | 同会话列表 | 同会话列表 | 001 拍板 2；exp003b-v2 |
 | 消息项 | 见上表 `message_item`；AXGroup；角色描述在 macOS 上是 AXRoleDescription，VoiceOver 读「消息」不读「组」（卡 G15 人选 B：把「组」换成「消息」） | 见上表 `message_item` | 详情提示「按 D 听详情」（键从按键表取）。有隐藏内容时正文里另有「隐藏内容，按 D 展开」（读法的 `expand_key`）——两句说的是同一个键，各在各的位置（名称 / 提示语），不重复 | 选中；位置 / 总数 | D = 读详情，有隐藏内容同时展开，再按收起（B19-6）；回车 = 阅读视图 | 001 拍板 3 B；003 R1；M3.5 |
-| 系统消息项 | 见上表 `message_item`；同消息项（`Doc::Service`） | 见上表 `message_item` | — | 同上 | — | `content-tree.md` 第三节第 4 小节 |
-| 撤回占位 | 见上表 `message_item`；同消息项（`Doc::Tombstone`） | 见上表 `message_item` | — | 同上 | — | 001 拍板 7；003 R7 |
+| 系统消息项 | 见上表 `message_item`；同消息项 | 见上表 `message_item`（读的是系统消息 `Doc::Service`） | — | 同上 | — | `content-tree.md` 第三节第 4 小节 |
+| 撤回占位 | 见上表 `message_item`；同消息项 | 见上表 `message_item`（读的是撤回占位 `Doc::Tombstone`） | — | 同上 | — | 001 拍板 7；003 R7 |
 | 日期分隔 | `Heading`（VO+Cmd+H 能按日期跳；清单 S14） | `speech` 的日期读法（树节点待加，`content-tree.md` 第三节第 1 小节「以后加」已列） | — | — | — | 清单 S14 |
 | 第一条未读的消息项 | 同消息项 | `speech::brief`，名称前加「未读：」（树节点或投影字段待加，012 第八节第 1 条） | 同消息项 | 同消息项 | 同消息项 | 003 F2；B19-7 |
 | 未读分隔线 | 不可聚焦的装饰（不进 ↑↓ 顺序、不是 Tab 站） | — | — | — | — | B19-7 |
@@ -139,7 +139,7 @@
 
 **两层共同**：
 
-- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；场景目录建好之前它借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`。它存成 insta 快照（`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
+- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；场景目录建好之前它借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`。它存成 insta 快照（insta 是 Rust 的快照测试库；`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
 - 去掉几何位置、时间戳、GPUI 内部节点号（每次都变）；节点用标识定位
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）只写角色，`check-a11y-tree.py` 只对能操作的角色查标识
@@ -176,5 +176,5 @@ Window window
 | ❌ | 消息项 `desc="3 条新消息，按 M 收听"` | 提示语一格的主人是读法的详情提示（第一节第 6 条）；新消息数写进标题和列表名 |
 | ✅ | 撤回后 `ListItem msg:101:1002 "林小雨撤回了一条消息，7:00"` 原位、仍 `selected` | 标识不变、焦点不动（001 拍板 7） |
 | ❌ | 撤回后这一项消失，选中跳到下一条 | 焦点乱跳（真难题 1） |
-| ✅ | 界面代码 `.accessibility_id(aid(Kind::Msg, &[chat, msg]))` | 只经一个函数 |
+| ✅ | 界面代码 `.accessibility_id(aid(Aid::Msg(MsgId { chat_id, message_id })))` | 只经一个函数 |
 | ❌ | 界面代码 `.accessibility_id(format!("msg:{}:{}", c, m))` | 手拼，第二份写法 |

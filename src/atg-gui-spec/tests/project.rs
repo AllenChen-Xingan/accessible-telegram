@@ -1,7 +1,7 @@
 //! 纯函数层的无障碍树快照（`docs/plan/012_gui-ssot.md` 第四节）：夹具 → core 投影 → 界面投影 → GPUI 层格式文本。
 //! 夹具借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/`，只有一处：`testing.md` 第一节第 3 小节）；
 //! 场景目录（`fixtures/scenarios/`）建好后改用场景。
-//! 改了表或读法：`INSTA_UPDATE=always cargo test -p atg-gui-spec`，**逐行看过差异**再入库。
+//! 改了表或读法：`INSTA_UPDATE=always cargo test -p atg-gui-spec`，**逐行看过差异**再入库（改表的全部步骤见 `atg_gui_spec::schema` 文件头）。
 
 use atg_core::speech::SpeechCtx;
 use atg_core::tdjson::World;
@@ -75,7 +75,7 @@ fn snap(node: &A11yNode, fixture: &str) -> String {
     format!("{}\n{}", header("projection", fixture), render(node))
 }
 
-/// 每个节点：可操作的角色有合法标识和非空名称；整棵树里标识不重复（`a11y-tree.md` 第一节第 1 条、第二节）
+/// 每个节点：有合法标识（种类与契约表一致）；可操作的角色有非空名称；整棵树里标识不重复（`a11y-tree.md` 第一节第 1 条、第二节）
 fn check_rules(root: &A11yNode) {
     let operable: Vec<Role> = TABLE
         .iter()
@@ -84,10 +84,13 @@ fn check_rules(root: &A11yNode) {
         .collect();
     let mut seen = std::collections::HashSet::new();
     fn walk(n: &A11yNode, operable: &[Role], seen: &mut std::collections::HashSet<String>) {
-        if let Some(a) = &n.aid {
-            assert!(aid::is_valid(a), "标识不合规：{a}");
-            assert!(seen.insert(a.clone()), "标识重复：{a}");
-        }
+        // 契约表里每类元素都有标识种类，所以每个节点都该有标识；投影时种类和表对不上会不出标识，这里红
+        let a = n
+            .aid
+            .as_ref()
+            .unwrap_or_else(|| panic!("{:?} 没有标识（或标识种类与契约表不符）", n.role));
+        assert!(aid::is_valid(a), "标识不合规：{a}");
+        assert!(seen.insert(a.clone()), "标识重复：{a}");
         if operable.contains(&n.role) {
             assert!(n.aid.is_some(), "{:?} 缺标识", n.role);
             assert!(
