@@ -155,7 +155,10 @@ cp "${out}/td-src/td/telegram/td_json_client.h" "${out}/td-src/td/telegram/td_lo
 [[ -f "${prefix}/lib/${dylib}" && -L "${prefix}/lib/libtdjson.dylib" ]] || die "前缀里缺 ${dylib} 或 libtdjson.dylib 软链接"
 
 # ── 核 OpenSSL 已静态链入、再签名（签名会改文件字节，所以在算 sha256 之前）──
-if otool -L "${prefix}/lib/${dylib}" | grep -Eq 'libssl|libcrypto'; then
+# 先拿到 otool 的输出、确认它成功，再匹配：otool 失败时不能当成「没有动态依赖」放行（codex 063 第 1 轮 #2）
+deps="$(otool -L "${prefix}/lib/${dylib}")" || die "otool -L 读不了 ${dylib}"
+[[ "${deps}" == *"${dylib}"* ]] || die "otool -L 的输出认不出（没列出 ${dylib} 自己）"
+if [[ "${deps}" == *libssl* || "${deps}" == *libcrypto* ]]; then
   die "${dylib} 仍动态依赖 OpenSSL（OPENSSL_USE_STATIC_LIBS 没生效），见 ${out}/cmake-configure.log"
 fi
 # codesign 失败时的报错里可能带身份名，只留一句说明
