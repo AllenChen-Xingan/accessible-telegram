@@ -32,7 +32,7 @@ pub struct VoteArgs {
     /// 选第几项：`history --full` 全文里读的「第 N 项」（从 1 起，按显示顺序）；许多选的投票可给几个
     #[arg(value_name = "N", required = true, num_args = 1..)]
     pub choices: Vec<u32>,
-    /// 你已投过、这个投票许改票时照样投：会把你现在投的整组换掉（不是加上；多选要追加就把原来的也写上）
+    /// 你已投过、这次没再选上原来投的某项时照样投：那一项会被撤掉（多选要追加就把原来的也写上，不用这个）
     #[arg(long)]
     pub replace: bool,
     /// 只输出要投什么，不投
@@ -86,7 +86,9 @@ fn fail_line(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
                     why: InvalidSendWhy::VoteWouldReplace
                 }
             )
-            .then_some("确要换掉就加 --replace；多选想追加就把原来投的也写上");
+            .then_some(
+                "确要换掉就加 --replace；多选想追加就把原来投的也写上（那样不丢，不用 --replace）",
+            );
             if let Some(h) = hint {
                 data["hint_zh"] = json!(h);
             }
@@ -204,7 +206,7 @@ fn said(plan: &VotePlan) -> String {
     let swap = if plan.replaces().is_empty() {
         String::new()
     } else {
-        format!("（换掉你现在投的{}）", items(plan.replaces()))
+        format!("（你现在投的{}会被撤掉）", items(plan.replaces()))
     };
     format!(
         "在 {} 里 id {} 那条投票里投{}{swap}；{}",

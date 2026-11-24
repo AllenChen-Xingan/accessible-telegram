@@ -38,8 +38,8 @@ pub struct VotePlan {
     target: ChatTarget,
     message: MsgId,
     choices: Vec<Choice>,
-    /// 我现在投着、这次会被换掉的几项（`setPollAnswer` 整组替换，不是追加；自审 13b-1 第 1 轮 P1）。
-    /// 不空只可能是给了 `replace`；新选的与现在投的一样时为空（不会换掉什么）
+    /// 我现在投着、这次没再选上、会被丢掉的几项（`setPollAnswer` 整组替换；自审 13b-1 第 1 轮 P1、第 2 轮 P2）。
+    /// 不空只可能是给了 `replace`；追加或与现在投的一样时为空
     replaces: Vec<Choice>,
     replace: bool,
     /// 投票的性质，计划行照实际设置说（人改定 6）
@@ -162,9 +162,9 @@ fn choice(o: &PollOption, number: u32) -> Choice {
     }
 }
 
-/// 能不能这样投；能就回（选中的各项，会换掉的我现在投着的各项），都按显示顺序。`numbers` 是显示顺序里的第几项（1 起）。
-/// 我投过、许改票、新选的和现在的不一样：会整组换掉，没给 `replace` 就拒（`vote_would_replace`，同 react 的
-/// `reaction_would_replace`：直发没人当场看着）
+/// 能不能这样投；能就回（选中的各项，会丢掉的我现在投着的各项），都按显示顺序。`numbers` 是显示顺序里的第几项（1 起）。
+/// `setPollAnswer` 整组替换：我投过、许改票、现在投着的有一项这次没再选上，就会丢掉它，没给 `replace` 就拒
+/// （`vote_would_replace`，同 react 的 `reaction_would_replace`：直发没人当场看着）；把原来投的也写上（追加）不丢、不拒
 fn judge(
     p: &PollView<'_>,
     numbers: &[u32],
@@ -198,14 +198,12 @@ fn judge(
         .filter(|(_, o)| o.chosen)
         .map(|(n, o)| choice(o, n))
         .collect();
-    let replaces = if mine.is_empty() || mine == choices {
-        Vec::new()
-    } else if replace {
-        mine
-    } else {
+    // 真会丢掉的：现在投着、这次没再选上的（追加、和现在一样都不丢；自审第 2 轮 P2）
+    let lost: Vec<Choice> = mine.into_iter().filter(|m| !choices.contains(m)).collect();
+    if !lost.is_empty() && !replace {
         return err(InvalidSendWhy::VoteWouldReplace);
-    };
-    Ok((choices, replaces))
+    }
+    Ok((choices, lost))
 }
 
 /// 各选项原文，按 TDLib 编号排（交出前比对用）

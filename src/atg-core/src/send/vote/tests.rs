@@ -297,12 +297,23 @@ fn revote_replaces_and_needs_replace() {
         vote_plan_json(&plan)["replaces"],
         json!([{"number": 1, "index": 0, "text": "七点"}])
     );
-    // 把原来投的也写上 = 追加，还是会换（整组），照样要 replace；和现在投的一模一样的不会换掉什么，不用
-    assert_eq!(
-        why(prepare(&r, ME, &[1, 3]).unwrap_err()),
-        InvalidSendWhy::VoteWouldReplace
-    );
+    // 自审第 2 轮 P2：把原来投的也写上 = 追加，一项都不丢——不拒、不算换；和现在投的一样的也不算
+    let add = prepare(&r, ME, &[1, 3]).unwrap();
+    assert!(add.replaces().is_empty());
     assert!(prepare(&r, ME, &[1]).unwrap().replaces().is_empty());
+    // 部分重叠：只列真会丢掉的那几项
+    let two = Poll {
+        chosen: Some(0),
+        multiple: true,
+        ..Poll::default()
+    };
+    let r2 = rig("revote-overlap", true, &two);
+    let mut m = poll_msg(ME, &two);
+    m["content"]["poll"]["options"][1]["is_chosen"] = json!(true);
+    r2.b.set_history(ME, vec![m]);
+    let p = prepare_with(&r2, ME, &[1, 3], true).unwrap();
+    let lost: Vec<u32> = p.replaces().iter().map(|c| c.number).collect();
+    assert_eq!(lost, vec![2]);
     assert!(once_with(&r, ME, &[3], true).is_ok());
     assert!(r.b.submitted().len() == 1);
 }
