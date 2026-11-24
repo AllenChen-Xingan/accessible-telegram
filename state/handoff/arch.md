@@ -397,6 +397,57 @@
 - codex 059 第 2 轮：零发现，连续两轮无 P0/P1，收敛
 - PR 说明草稿：`_tmp/20261116-b20/r7-fake-pr-arch.md`（MAIN 下）
 
+## R7 第九刀：拆 core `td.rs`（2026-11-17，工作副本 `atg-wt/arch-td`，分支 `refactor/r7-td`，从 main f5ca5b2 起）
+
+大总管批的切法：`td/real/submit.rs` 一字不动，因为 msg2 要往里加 issue #13 的两步（13a 投票、13b 按钮）。基线和 PR 3（fake）会冲突，谁后合谁解，两边都合完基线应该一项不剩。codex 060。
+
+- 第一步：内联的 `mod real { … }`（原第 34–798 行）用脚本 `_tmp/20261117-r7td/split.py` 原样挪成 `td/real.rs`，缩进退 4 格；`td.rs` 剩 36 行
+- 第二步：照 fake 的写法，再拆出 `td/real/start.rs`（108 行）、`login.rs`（80 行）、`read.rs`（139 行）
+  - 根上 16 个方法各留一行，转给 `do_*`；`td/real.rs` 剩 539 行
+  - 内部助手留在根上，不改可见性。原计划要挪进 `call.rs`，不挪了，大总管已同意
+- rustfmt 合回一行的有 7 处，清单在 `_tmp/20261117-r7td/reflow.md`，要写进 PR 说明（格式变、内容不变）
+- 加一次只读真机冒烟（大总管要求）
+  - 正式档案，拆前 f5ca5b2 和本分支各跑一遍：`chats`、`history saved`、`links saved <id>`（走 `message_get`）
+  - 只比对输出，只报哈希、行数、键名；输出比完即删
+  - 脚本：`_tmp/20261117-r7td/smoke.sh`
+- 文档：010 的 td 行（保留了「原计划」）、R7 行、第五节末尾「基线」那句
+- ✅ 全量检查全过（领了名额跑，已归还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources
+  - tdlib-api 的 clippy 报 `real.rs` 有 4 处导入没用上（`Claim`，以及 `config`、`gate`、`secret` 的 `self`，已随 `start` 挪走），删掉了
+- ✅ 只读冒烟（正式档案，6 次 rc=0，没有档案锁问题）
+  - `history saved`、`links saved <id>`：拆前拆后只差 `.at`、`elapsed_ms`
+  - `chats` 第一次按行号比对不上：两次跑之间会话顺序变了
+  - 补跑 `smoke2.sh`，顺序是拆后、拆前、拆后，按 `chat_id` 配对：三次运行两两比较（3 组），集合、顺序、各键的值全都相同（不算 `.at`、`elapsed_ms`、`first_chat_ms`）
+  - 输出、解出的源码、二进制都已删掉
+- 检查点 c89a35a（大总管提交）；证据 MAIN 下 `_tmp/20261116-b20/r7-td-moved-arch.txt`：没被识别为挪动的 104 行只有头注释、导入、`mod`、16 行转发、`do_*` 签名和 7 处合行
+- 本节提到的 `_tmp/…` 脚本和清单都是一次性材料，不入库；合行清单与证据的正本写进 PR 说明
+- 多视角自审第 1 轮：P0/P1 零；P2×1（010 第五节末尾那句写得像基线已清空，已改成条件句）；P3×11，改了 8 条
+  - 其中一条：删掉 `config` 的 `self` 导入后，`TdConfig` 有两条文档链接 `config::default_*` 会断，已改写成 `crate::config::…`
+  - 另 3 条不改：`real.rs:40`「见这两个子模块」是原文带过来的（只挪不改，不动）；`td/real/` 下 `*_impl`、`submit_sealed` 和 `do_*` 两套命名并存，因为 `submit.rs` 不许动，等 #13 合并后另开 issue 统一；010 和交接页的说明已补
+- 自审修正 7bf60cb；大总管合了 origin/main（#162 fake 已在 main 36d2cea）。冲突：基线解成空（大总管）；010 的 fake 行取 main 的、td 行取本分支的，R7 行和第五节末尾写「基线已清空」；交接页两节都留（arch 解）
+- ✅ c41e790 上全量检查全过（领名额跑，已还）：test 713 过 0 败 5 忽略，file-size 超线 0，基线已空
+- ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
+  - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
+
+## #137：rustdoc 链接（2026-11-17，工作副本 `atg-wt/arch-137`，分支 `docs/137-rustdoc-links`，从 refactor/r7-td 的 2a17a44 起）
+
+计划已批：MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`（先做 #137，再做 #42）。
+
+- 修法：链到私有项的、只在某种特性下才断的，改成反引号；同名歧义（`decode` 既是模块 `pub mod decode`，又是经 `pub use decode::decode` 导出的函数）加 `()`，让 rustdoc 只找函数，链接还在。代码一行不动
+- CI：在 `ci.yml` 加两步 `RUSTDOCFLAGS="-D warnings" cargo doc`（一步 `--workspace --no-deps`，一步 `-p atg-core --features tdlib-api,testkit --no-deps`）。门槛文件（改了要人加 `baseline:loosen` 标签才放行的那几份，清单是 `scripts/check-file-size.py` 的 `GATE_FILES`，规矩见 `specs/architecture-rules.md` 第 1 条）里没有 `ci.yml`，所以不用挂标签（大总管已批）。
+  - 不覆盖 atg-cli 在 `tdlib` 特性下的代码：它要链接 TDLib 库，而 atg-cli 没有「只拉类型、不链接」的特性，CI 的 clippy 也是同样的空缺。已开成 #164（给 atg-cli 加一个只开 `atg-core/tdlib-api` 的特性，补上 clippy 和 doc），排在 #42 之后
+- 评审范围：`2a17a44...HEAD`。本副本起点在 #163（拆 td.rs）的分支上，好让数链接时看到的是拆完的 td；#163 合进 main、大总管把 main 合进本分支以后，范围改成 `origin/main...HEAD`（换基要换 codex 的 name）
+- 数出来 22 条（比 issue 多）：atg-core 16 条链到私有项、2 条 `TdBackend` 只在不开特性时断，atg-audio 4 条（1 条私有项、3 条 `decode` 同名歧义）。全改：私有项和 `TdBackend` 改反引号，`decode` 加 `()`（仍是链接）
+- ✅ 全量检查全过（领名额跑，已还）：两遍 `RUSTDOCFLAGS=-D warnings cargo doc` 零警告，fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources；`ci.yml` 用 ruby 解析过
+- 检查点 49fe0b8（大总管提交）
+- 多视角自审第 1 轮：P0/P1 零
+  - P2×2：① CI 第二步没开 `testkit`，测试夹具的文档没被查过，已改成 `tdlib-api,testkit`；② atg-cli 的 `tdlib` 特性下的代码没被查，CI 加不了，已在注释和本页写明，大总管开了 #164
+  - P3×6，改了 5 条（CI 注释、本页措辞）。不改 1 条：`td.rs` 头注释里的 `TdBackend` 开了特性也不再能跳转，要做到「开特性才有链接」得写 `cfg_attr(doc = …)`，为一条链接不值得
+- ✅ 重跑 `RUSTDOCFLAGS=-D warnings cargo doc -p atg-core --features tdlib-api,testkit --no-deps` 零警告（领名额跑，已还）
+- ✅ codex 061（`2a17a44...HEAD`，name `d137`）两轮零发现，收敛。隐私扫描密钥类命中 7 条，全是 `ConfirmToken` 类型标注，大总管逐条核过，按共同规矩 15 加 `--force-secrets`。记录 `docs/reviews/061_137-rustdoc-links-codex.md`
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/137-pr-arch.md`
+- 之后：#163 合并后大总管合 main，到时只解冲突、跑检查，不重审；然后做 #42
+
 ## #42：开发版开强化运行时（2026-11-17，工作副本 `atg-wt/arch-42`，分支 `fix/42-hardened-runtime`，从 main 36d2cea 起）
 
 人定（2026-11-17，经大总管）：改 exp005 当时「缓做」的建议，现在做。开关 `ATG_DEV_HARDEN=0` 可以用；软链接放 `~/.atg-dev/tdlib`。计划见 MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`。
@@ -419,4 +470,4 @@
   - 重编放进 arch-42 自己的 `_build/<时间戳>/`，不动 MAIN 的 `_build/20261025-171733`
   - 软链接会指向 arch-42 里的新前缀。PR 合进 main 后，要在 MAIN 再编一次（或者用 `build.sh link` 指到 MAIN 的新构建），不然副本删了以后链接就断了
   - #42 之前签的旧版（还在磁盘上的）照样能被注入，强化运行时管不到它们
-- 状态：代码写完，没编译；`~/.atg-dev` 目前不存在（已核）；待领名额
+- 状态：b21 跑完名额内的验证，检查点 4f19c0e（大总管提交），已合 main；详情见本页顶上「b21 接手」
