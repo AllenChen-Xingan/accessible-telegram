@@ -1,5 +1,17 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · R4 第二步 2a：其余调用方接上 chat_arg / resolve_chat（2026-11-24，工作副本 `atg-wt/arch-r4b`，分支 `refactor/r4b-chat-arg`，从 main 8edd495 起；codex 070）
+
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r4b-arch.md`。先做 2a；文件大总管对过了，和 msg2 的 13b-2 不撞。注意 cli 的 `vote.rs` 和 core 的 `send/vote.rs` 是两个文件
+- 已改（还没编译，等名额）：cli 的 `edit`、`pending`、`delete`、`forwarding`、`send_file`、`vote`、`edit/exp_real`、`pending/exp_real`、`history`（只改注释），共 9 个文件
+  - 改用 `history::chat_arg` / `resolve_chat`，直接写名字，不用 `as` 别名
+  - `vote.rs` 删了本地那份 `chat_ref`
+  - `delete` 的提示保持不变
+- 行为不变：`send::resolve` 和 `resolve_chat` 本来就是同一种做法（问 `me()`）。`vote` 原来走 `history::resolve` 转调，现在直接调，也一样
+- 改完以后，`send::resolve`、`send::chat_ref` 只剩 `send.rs` 自己在用，`history::resolve` 只剩 `react` 在用，都等 2b 再删
+- 验证要多跑一项：两个 `exp_real` 只在 `tdlib` 特性下编译，要加跑 `cargo clippy -p atg-cli --features tdlib --all-targets`（要用 TDLib 库，`~/.atg-dev/tdlib`）
+- 排在 2a 后面的（大总管派，2026-11-24）：等 13b-2 合进 main 以后，做 cli `main.rs` → `lib.rs` 的纯挪动，单独开一个 PR，codex 071（照 R7 的只挪不改，附 `--color-moved` 证据）；做完接着做 R4 2b，那时 `mod target` 加在 `lib.rs` 里。依据：gui PR-4 的边界方案（MAIN 下 `_tmp/20261124-b21/plan-m31-pr4-boundary.md`），我审过的意见已经由大总管转给 gui
+
 ## b21 接手（2026-11-24）
 
 - 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`

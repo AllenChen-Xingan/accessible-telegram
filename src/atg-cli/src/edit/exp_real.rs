@@ -39,7 +39,7 @@ fn exp_edit() {
     let b = crate::session::td_backend().unwrap_or_else(|_| panic!("后端起不来"));
     let r = history::with_backend(&b, &profile, Instant::now(), |b, stream, feed| {
         chats::ensure_ready(b)?;
-        let saved = crate::send::resolve(b, history::ChatRef::Saved)?;
+        let saved = history::resolve_chat(b, history::ChatRef::Saved)?;
         let mut ok = 0;
         for n in 1..=ROUNDS {
             let draft = Draft {
