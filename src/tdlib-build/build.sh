@@ -8,7 +8,8 @@
 #   bash src/tdlib-build/build.sh link     # 只把常驻软链接 ~/.atg-dev/tdlib 指到最近一次编好的前缀，不重编
 #   export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 #
-# 需要：git、cmake、gperf、Homebrew 的 openssl@3。缺了就报错退出，不自动安装。
+# 需要：git、cmake、gperf、Homebrew 的 openssl@3（含静态库），以及开发签名身份（bash scripts/setup-dev-codesign.sh 检查并给步骤；
+#   #42 起编完要给 libtdjson 签名）。缺了就报错退出，不自动安装。
 # 源码来源：先从本地 resources/td（或环境变量 ATG_TDLIB_SRC 指的本地 TDLib 仓库，工作副本里没有 resources/ 时用）
 #   只取锁定的那个提交（复制对象，不走网络），取不到再从 GitHub 拉这一个提交。
 #
@@ -35,14 +36,16 @@ dylib="libtdjson.${TDLIB_VERSION}.dylib"
 
 die() { echo "✗ $*" >&2; exit 1; }
 
-# 最近一次编好的前缀：_build/YYYYMMDD-HHMMSS/tdlib，里面有对应版本的 dylib 和 build-info.txt
+# 最近一次编好的、能用的前缀：_build/YYYYMMDD-HHMMSS/tdlib，有对应版本的 dylib，同级 build-info.txt 提交号对得上、
+# 且是 #42 以后的构建（OpenSSL 静态链、签过名）。#42 以前的动态链构建在强化运行时下会被拒载，path 和 link 都不认它
 latest_prefix() {
   local d i
   local dirs=("${root}"/_build/[0-9]*-[0-9]*/)   # 通配按名字升序 = 按时间升序；倒着找
   for (( i = ${#dirs[@]} - 1; i >= 0; i-- )); do
     d="${dirs[i]%/}"
     if [[ -f "${d}/tdlib/lib/${dylib}" && -f "${d}/build-info.txt" ]] \
-       && grep -q "^commit=${TDLIB_COMMIT}$" "${d}/build-info.txt"; then
+       && grep -q "^commit=${TDLIB_COMMIT}$" "${d}/build-info.txt" \
+       && grep -q '^openssl_link=static$' "${d}/build-info.txt"; then
       echo "${d}/tdlib"
       return 0
     fi
@@ -54,7 +57,7 @@ latest_prefix() {
 dev_link="${HOME}/.atg-dev/tdlib"
 update_link() {
   local target="$1"
-  if [[ -e "${dev_link}" || -L "${dev_link}" ]] && [[ ! -L "${dev_link}" ]]; then
+  if [[ -e "${dev_link}" && ! -L "${dev_link}" ]]; then
     die "${dev_link} 已存在且不是软链接，不覆盖；先看看它是什么"
   fi
   mkdir -p "$(dirname "${dev_link}")"
@@ -62,14 +65,13 @@ update_link() {
   echo "→ 软链接：${dev_link} → ${target}"
 }
 
+no_build="还没有编好的 TDLib ${TDLIB_VERSION}（#42 以前编的不算：那是动态链 OpenSSL、没签名的，要重编；先跑 bash src/tdlib-build/build.sh）"
 if [[ "${1:-}" == "path" && $# -eq 1 ]]; then
-  latest_prefix || die "还没有编好的 TDLib ${TDLIB_VERSION}（先跑 bash src/tdlib-build/build.sh）"
+  latest_prefix || die "${no_build}"
   exit 0
 fi
 if [[ "${1:-}" == "link" && $# -eq 1 ]]; then
-  p="$(latest_prefix)" || die "还没有编好的 TDLib ${TDLIB_VERSION}（先跑 bash src/tdlib-build/build.sh）"
-  grep -q '^openssl_link=static$' "${p}/../build-info.txt" \
-    || die "${p} 是动态链 OpenSSL 的旧构建，强化运行时下会被拒载；重编一次（bash src/tdlib-build/build.sh）"
+  p="$(latest_prefix)" || die "${no_build}"
   update_link "${p}"
   exit 0
 fi
@@ -159,8 +161,10 @@ fi
 # codesign 失败时的报错里可能带身份名，只留一句说明
 codesign -s "${sign_id}" --force "${prefix}/lib/${dylib}" 2>/dev/null \
   || die "给 ${dylib} 签名失败（身份 SHA-1 前 8 位 ${sign_id:0:8}）"
+# 只核「有团队号」，不把团队号写进文件或打印出来（同 dev-sign.sh：身份只露 SHA-1 前 8 位）
 team="$(codesign -dv "${prefix}/lib/${dylib}" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
 [[ -n "${team}" && "${team}" != "not set" ]] || die "${dylib} 签完没有团队号"
+unset team
 
 secs=$(( $(date +%s) - start ))
 sha="$(shasum -a 256 "${prefix}/lib/${dylib}" | cut -d' ' -f1)"
@@ -170,13 +174,13 @@ commit=${TDLIB_COMMIT}
 arch=${arch}
 openssl=${openssl_root}
 openssl_link=static
-signed_team=${team}
+signed=dev_identity_with_team
 seconds=${secs}
 dylib_sha256=${sha}
 EOF
 
 echo "✓ TDLib ${TDLIB_VERSION} 编好了（${secs} 秒）· ${dylib} sha256 ${sha}"
-echo "  OpenSSL 已静态链入；用开发身份签过名（团队号 ${team}）"
+echo "  OpenSSL 已静态链入；用开发身份签过名（带团队号）"
 update_link "${prefix}"
 old_dirs=("${root}"/_build/[0-9]*-[0-9]*/)
 if (( ${#old_dirs[@]} > 1 )); then

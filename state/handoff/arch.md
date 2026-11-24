@@ -13,9 +13,22 @@
   - `check-harden.sh`：修了一处 pipefail 与 `grep -q` 一起用时把判断弄反的毛病，重跑全过
   - 测试服务器冒烟：直接跑，库按 rpath 找到，状态到 wait_phone，退出码 0，没弹框
 - 已归还名额；提交草稿已报大总管
-- 待人点头：正式档案只读跑 `me`、`chats -n 5`（可能弹钥匙串框）
 - 已只读审完 gui PR-2 三处并报大总管：① 同意；② 要改，临时档案的新建目录要做成正式代码里的共用能力，并保证不碰钥匙串；③ 要改，只在 debug 构建里按名字找场景，名字只许 `[a-z0-9-]+`
-- 下一步：提交并合 main 以后，atg-review，再交 codex 063（contract 类，effort high）
+- ✅ 检查点 4f19c0e，合 main 83f3487（本页冲突由 arch 解，两边都留）；issue #167（config.rs 构建机路径）已由大总管开
+- ✅ 正式档案只读冒烟（人同意，经大总管）：`chats -n 5` 退出码 0、不弹框；`me` 报 not_implemented（命令本身没做）。内容没进任何文件
+- 多视角自审第 1 轮（`origin/main...HEAD`）：P1×1，P2×11，P3×9。已改的：
+  - P1：build.sh 不再把团队号写进 build-info、也不打印，改记 `signed=dev_identity_with_team`；本机已有那份 build-info 也改了
+  - P2：
+    - README 写明先要签名身份、#42 以前的旧构建要重编，删掉「照旧带 DYLD_LIBRARY_PATH」，补软链接全机共享的说明
+    - exp005「已定 C」和 007 加改定记录；exp005 补记写上实测结果
+    - 004 第三节（build-info 字段、软链接位置、坑 3）和 cog.md 跟上
+    - testing.md 第一节第 4 小节加「强化运行时」一行，runner 那句也改了
+    - check-harden 的准备步骤失败时退 2
+    - `path` 和 `link` 认可用构建的标准统一，都收进 `latest_prefix`
+  - P3：login-main.sh 和 login.exp 不再依赖 DYLD；check-harden 加上可执行位、写明前置条件；config-privacy 写明旧版怎么处理；两处日期改成 2026-11-24（人定 11-17）；改了一个多余条件；README 加了术语表指针
+  - 不改，报给大总管开 issue（P2）：两个 build.rs 内容一样，rpath 路径又在 4 处各写一遍，没有一处是正本
+- 改后已核：build.sh path 和 link 正常，check-harden 全过，file-size 超线 0。没改 Rust，cargo 没重跑
+- 下一步：大总管提交这批修改后，交 codex 063（contract 类，effort high）
 
 ## b20 接手（2026-11-16）
 

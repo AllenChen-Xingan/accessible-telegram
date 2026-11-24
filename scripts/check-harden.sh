@@ -9,6 +9,8 @@
 #   ③ 程序链了 libtdjson 时再核两件：rpath 里有 ~/.atg-dev/tdlib/lib 且照常能起；把 rpath 换成一个放着
 #      临时签名 libtdjson 的目录，强化运行时版应被 dyld 拒载（库验证：不同团队号）
 # 用法：bash scripts/check-harden.sh [程序]     # 默认 target/debug/atg-cli（先 cargo build -p atg-cli [--features tdlib]）
+# 前置：clang（Xcode 命令行工具）、开发签名身份；核带 TDLib 的程序时还要先编过 TDLib（bash src/tdlib-build/build.sh，
+#   它顺带建好软链接 ~/.atg-dev/tdlib）。本机跑，不在 CI（CI 不签名）；什么时候跑见 specs/contracts/testing.md 第一节第 4 小节「强化运行时」
 # 退出码：0 全部符合预期 · 1 有一项不符 · 2 用法错 / 准备失败
 set -euo pipefail
 
@@ -78,14 +80,14 @@ if has "${libs}" libtdjson; then
   loads="$(otool -l "${bin}")"
   if has "${loads}" "path ${rp} "; then ok "rpath 有 ${rp}"; else bad "rpath 里没有 ${rp}"; fi
   if "${tmp}/hard" version >/dev/null 2>&1; then ok "强化运行时版照常起（同团队号签的 libtdjson 按 rpath 载入）"; else bad "强化运行时版起不来（libtdjson 没签、没静态链 OpenSSL，或软链接不对）"; fi
-  # 换库：临时签名的 libtdjson 副本放进另一个目录，把 rpath 改指那里
-  real="$(cd "${rp}" && pwd -P)"
-  mkdir -p "${tmp}/fake-lib"
-  cp "${real}"/libtdjson.*.dylib "${tmp}/fake-lib/"
-  for f in "${tmp}"/fake-lib/libtdjson.*.dylib; do codesign -s - --force "${f}" 2>/dev/null; done
-  cp "${bin}" "${tmp}/swapped"
-  install_name_tool -rpath "${rp}" "${tmp}/fake-lib" "${tmp}/swapped" 2>/dev/null
-  bash "${here}/dev-sign.sh" "${tmp}/swapped"
+  # 换库：临时签名的 libtdjson 副本放进另一个目录，把 rpath 改指那里。准备失败按约定退 2，不和「有一项不符」混
+  prep() { echo "check-harden: 换库那项准备失败：$*" >&2; exit 2; }
+  real="$(cd "${rp}" && pwd -P)" || prep "软链接 ${rp} 不在（先 bash src/tdlib-build/build.sh 或 build.sh link）"
+  mkdir -p "${tmp}/fake-lib" && cp "${real}"/libtdjson.*.dylib "${tmp}/fake-lib/" || prep "拷 libtdjson 失败"
+  for f in "${tmp}"/fake-lib/libtdjson.*.dylib; do codesign -s - --force "${f}" 2>/dev/null || prep "临时签名失败"; done
+  cp "${bin}" "${tmp}/swapped" || prep "拷程序失败"
+  install_name_tool -rpath "${rp}" "${tmp}/fake-lib" "${tmp}/swapped" 2>/dev/null || prep "改 rpath 失败"
+  bash "${here}/dev-sign.sh" "${tmp}/swapped" || prep "签换库版失败"
   if "${tmp}/swapped" version >/dev/null 2>"${tmp}/swapped.err"; then
     bad "换成临时签名的 libtdjson 后照常起了（库验证没生效）"
   elif grep -q 'Team ID\|not valid for use in process\|code signature' "${tmp}/swapped.err"; then

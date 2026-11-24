@@ -24,7 +24,7 @@
 
 ```sh
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
-cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名、带上库目录（scripts/dev-sign-run.sh）
+cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名（scripts/dev-sign-run.sh），库按 rpath 找
 # 或分开做：cargo build -p atg-cli --features tdlib && bash scripts/dev-sign.sh target/debug/atg-cli
 #           target/debug/atg-cli --test-dc login    # 库按 rpath ~/.atg-dev/tdlib/lib 找（#42，见 src/README.md）
 ```
