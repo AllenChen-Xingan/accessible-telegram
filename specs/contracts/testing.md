@@ -56,7 +56,8 @@ src/atg-core/fixtures/
 - 人名、会话名只许取自 `names.txt`；正文是编的
 - 手机号只许 `99966` 开头的测试号；不许出现邮箱、真实链接
 - `chat_id` / `user_id` / `message_id` 只许在保留区间（1–99999，超级群用 `-100` + 同区间）；`minithumbnail.data`、文件的 `remote.id` / `unique_id` 必须为空或固定占位符；`username` 也只许取自 `names.txt`；日期用固定的假日期
-- `scripts/check-fixtures.py`（待写）在 CI 里扫上面每一条，命中即失败
+- `scripts/check-fixtures.py` 在 CI 里扫上面每一条（`arch.yml`），命中即失败；链接、邮箱只许保留域名（`.invalid` / `.test` / `.example`、`example.com` 一类，RFC 2606）；规则只防无心之失。日期是否固定它不查，靠评审
+- `atg-cli --fake <场景>`（现在 `chats`、`history` 能用）与 `atg-gui --fixture <场景>` 用同一个加载器 `atg_core::fake::Scenario`；`--fake` 每次用一个一次性测试档案（系统临时目录下 0700 的新目录，种类 `test`，跑完即删），不碰人的档案、不碰钥匙串。场景名（`[a-z0-9-]+`）只在开发构建里认，发布构建要给目录路径
 - **绝不从真实聊天截取、导出、改名后当夹具**
 
 ### 4. 必须有的单测（CI 每次都跑）
