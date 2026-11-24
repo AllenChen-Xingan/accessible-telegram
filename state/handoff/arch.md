@@ -15,7 +15,9 @@
   - 注释里的批次代号补上出处（issue #13 第 13b-2 步、plan 文件）
   - 本页记上实测结果
   - 没改的：`send.rs` 里 `send::resolve`、`chat_ref` 的注释，因为 `send.rs` 是 msg2 在改的文件，留到 2b 删的时候一起处理
-  - 改完还没编译
+  - 自审修正 d5abe39，名额内编译过了（772 过）
+- ✅ codex 070（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r4b-pr-arch.md`
 - 排在 2a 后面的（大总管派，2026-11-24）：等 13b-2 合进 main 以后，做 cli `main.rs` → `lib.rs` 的纯挪动，单独开一个 PR，codex 071（照 R7 的只挪不改，附 `--color-moved` 证据）；做完接着做 R4 2b，那时 `mod target` 加在 `lib.rs` 里。依据：gui PR-4 的边界方案（MAIN 下 `_tmp/20261124-b21/plan-m31-pr4-boundary.md`），我审过的意见已经由大总管转给 gui
 
 ## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
