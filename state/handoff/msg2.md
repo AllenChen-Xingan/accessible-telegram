@@ -1,5 +1,15 @@
 # 现状页 · 手下 msg2（批次 b18：收发消息其余功能）
 
+## b21 接手（2026-11-24）
+
+- 交代：MAIN `_tmp/20261124-b21/msg2.md`；大总管 `telegram-accessibility-7a`（旧 `allenchen-37` 不在了）
+- 现状：#13 只读那半已提交 dade7f7（自审 7 轮收敛；当时全套过：684 过 0 败、两种 clippy 0）；大总管已合 main 27038c9（0c81363，未编译）
+- codex 035 卡在隐私扫描：`tdjson/interactive.rs:148` 一行（TDLib 类型名 `…CallbackWithPassword` 被当成密钥赋值），共 2 条命中（源码 + 补丁），不在 ConfirmToken 长期放行内，等大总管核 A（`--force-secrets`）/ B（改写绕开）
+- 下一步：领名额编译全套 → 报检查点 → codex 035 → PR 说明；之后 13b
+- 2026-11-24 全套过（717 过 0 败，atg-core+cli 684；两种 clippy 0；三个 check 脚本过）；大总管核过准 `--force-secrets`（只限 interactive.rs:148）
+- codex 035 第 1 轮 P2×2：#2 属实（全文误用 spans 合并表情）→ 红测试 `poll_full_keeps_repeated_emoji` 已写、改法在 scratchpad fix2.py 待红后应用；#1 驳回（「只读出」是 13b 按下的规矩）→ PR 遗留「待人实听」。记录 docs/reviews/035 已起草。等名额（arch 之后）
+- #2 先红后绿已改（检查点 73e182d，大总管提交）；codex 035 第 2 轮零发现 → 收敛。记录 035 与 README 索引行已写；PR 说明 `_tmp/20261116-b20/pr-13-readonly.md` 占位全填、遗留加 #165、更正票数变化的说法。下一步：大总管提交记录 → 开 PR → 13b（动闸，先报）
+
 ## b20 接手（2026-11-16）
 
 - 交代：MAIN `_tmp/20261116-b20/msg2.md`；大总管 `allenchen-37`
@@ -198,3 +208,56 @@
 - codex 034 第 1 轮：P2×3 全属实已改（句柄路径再判许可、意图摘要不装媒体结构、等进度用绝对截止）；679 过；记录 docs/reviews/034_send-file-12-codex.md
 - codex 034 第 2 轮：P2×2 属实已改（关类型识别、查询限时 + 判未知前看事件）；大总管已合 main 9434d39；680 过；下一步第 3 轮 → PR（说明放 _tmp/20261116-b20/，两节：闸逐行、基线放宽）
 - codex 034 第 3 轮（三点范围，确认轮）：无 P0/P1，P2×2 → issue；PR 说明 MAIN _tmp/20261116-b20/pr-12-send-file.md；下一步大总管提交记录、开 PR；真机只发收藏夹等排
+## #13 投票与按钮 · 设计计划（只读阶段，2026-11-17；工作副本 msg2-13，分支 feat/13-poll-buttons，从 main fe8d1ec；codex 035）
+
+**结论**：建议拆成两个 PR——**13a 投票**（读全 + 投票 / 撤票）、**13b 按钮**（读出 + 按下）。两边都有对外动作（L2，直发不确认，同 #113），都要在「只有闸能发」清单加函数（一级评审）。读的部分（L0）先做、不动闸。
+
+### 现状
+- 树里投票只有题目（`Attachment::Poll { question }`，`tree/mod.rs:276`），选项、票数、我投了哪个都没有；消息上的按钮（`message.reply_markup`）完全没读
+
+### TDLib（`src/tdlib-rs/tdlib-rs/tl/api.tl`）
+- 投票：`messagePoll`（:5796）→ `poll`（:731：选项、总票数、匿名、多选、能否改票 `allows_revoting`、测验 `pollTypeQuiz`、已结束、`vote_restriction_reason`）；`pollOption`（:475：文字、票数、百分比、`is_chosen`）。投票 `setPollAnswer(chat, msg, option_ids: [int32])`（:13890，0 起的位置；空表 = 撤票）。变化走 `updatePoll`（:12059）
+- 按钮：`replyMarkupInlineKeyboard`（:4314，消息下面的按钮）/ `replyMarkupShowKeyboard`（:4309，机器人换掉输入框的键盘）。内联按钮 11 种（:4230–4266）：网址、登录网址、网页应用、回调、带密码的回调、游戏、切换内联、购买、用户、复制文字、禁用。键盘按钮 9 种（:4167–4215）：文字、发手机号、发位置、发起投票、选用户、选会话、网页应用……
+- 按回调按钮：`getCallbackQueryAnswer(chat, msg, callbackQueryPayloadData{data})`（:14098），机器人回一句 `callbackQueryAnswer{text, show_alert, url}`（:8384）；机器人 502 = 没在时限内回
+
+### 动作与对外等级（建议）
+| 动作 | 等级 | TDLib | 说明 |
+|---|---|---|---|
+| 读投票全貌（选项、票数、我选了哪个、匿名 / 多选 / 测验 / 已结束 / 能否改票） | L0 | 已有 `getMessage` | 进树与读法（「投票：午饭吃什么，3 个选项，共 12 票，你选了第 2 项」） |
+| `vote`（投一票 / 多选几项） | **L2** | `setPollAnswer` | 非匿名投票别人看得到你投了谁；匿名也改票数。直发、留痕；**测验投了不能改**（计划行写明）；已结束、不能投（`vote_restriction_reason`）的准备时拒 |
+| `vote --retract`（撤票） | **L2** | `setPollAnswer` 空表 | 只有 `allows_revoting` 且非测验才许 |
+| 读按钮（每行每个：文字、种类、网址按钮的网址） | L0 | 已有 `getMessage`（`reply_markup`） | 进树（新节点或消息的子节点）与读法（「按钮 3 个：确认、取消、打开网页」） |
+| `press`（按回调按钮） | **L2** | `getCallbackQueryAnswer` | 机器人收到、可能做任何事（验证入群、确认操作……）；直发、留痕；结尾带机器人回的那句 |
+| `press`（键盘上的文字按钮） | **L2** | 就是发那句文字 | 走现成的 `send_text`（同一道闸、同防重复），不新开交出口 |
+| 网址按钮 / 复制文字按钮 / 用户按钮 | L0 | — | 只读出网址、文字、用户 id，**不自动打开**（打开是 `open`，另一件 issue） |
+| 其余（登录网址、网页应用、购买、游戏、切换内联、带密码的回调；键盘上发手机号 / 位置 / 选用户 / 选会话 / 发起投票 / 网页应用） | 拒 | — | v0 一律 `invalid_input`（`why:"button_not_supported"`）：要么交出个人信息、要么要付钱或密码、要么要开网页 |
+
+### 闸（一级评审，动前报大总管）
+- `SealedKind` 加 `Vote`、`Callback` 两种；「只有闸能发」清单加 `set_poll_answer`、`get_callback_query_answer`
+- 防重复：投票**不进**（同样的票投两次结果一样，同 `react`）；按回调按钮**进**（按两次机器人收两次，可能做两次事；10 分钟，`--again` 放行）——要人定（题 3）
+- 落点：交出口分支加在 `td/real/submit.rs`、`fake/submit.rs`（不动 `td.rs`、`fake.rs` 本体）；读按钮要 `model.rs` / `tdjson` / `tree` / `speech` 加字段，`tdjson` 已被 #156 拆过，按新结构放新文件。不碰 #12 改过的文件
+
+### CLI（建议）
+- `poll CHAT MSG`（读全，L0，可并进 `history --detail`）· `vote CHAT MSG OPTION... [--retract] [--dry-run]`（OPTION 用 1 起的序号，计划行写出选项文字）
+- `buttons CHAT MSG`（列出，L0）· `press CHAT MSG ROW COL [--dry-run] [--again]`（或按序号；计划行写出按钮文字、种类、发给哪个机器人）
+
+### 要人定（经大总管）
+1. **拆不拆**：A 拆 13a 投票 / 13b 按钮两个 PR（建议，各自小、各自一级评审）；B 一个 PR
+2. **按回调按钮直发吗**：A 同一切 L2 直发、不确认（建议，按 D1 / #113）；B 回调按钮另要确认（但确认已删，等于另起一套）；C 只许按按钮文字在白名单里的（如「我不是机器人」）
+3. **按回调按钮进不进防重复**：A 进，10 分钟内同一条消息同一个按钮再按拦下，`--again` 放行（建议）；B 不进
+4. **键盘文字按钮**：A `press` 帮你把那句文字发出去（走 `send_text`，建议）；B 不做，让人自己 `send --text`
+5. **哪些按钮种类先做**：A 只做回调 + 键盘文字，网址 / 复制文字 / 用户只读出，其余拒（建议）；B 网址按钮也直接打开（要 `open`，那是另一件 issue）
+6. **测验**：A 照样许投、计划行写明「测验投了不能改、投后会公布正确答案」（建议）；B 测验不许投
+- 2026-11-17 大总管：只读那半先开工（投票全貌 + 按钮 reply_markup 读进树与读法，不碰闸、不外发）；题 1 = A（拆 13a / 13b）、题 5 = A（回调 + 键盘文字，网址只读）大总管定；题 2/3/4/6 问人中
+- 2026-11-17 **人定（经大总管）全按 A**：1 拆 13a 投票 / 13b 按钮（大总管定）· 2 按回调按钮同一切 L2 直发，计划行写明哪个按钮、哪个机器人 · 3 按回调按钮进防重复（10 分钟内同一条消息同一个按钮再按拦下，`--again` 放行），投票不进 · 4 键盘文字按钮由 `press` 走现成的 `send_text`（闸、防重复、留痕照旧）· 5 先做回调 + 键盘文字，网址 / 复制文字 / 用户只读出，其余拒（大总管定）· 6 测验许投，计划行写明「投了不能改、投后会公布答案」
+- 2026-11-17 大总管：读法里题目已以标点结尾就不再加逗号（「投票，几点出发？2 个选项」），补快照
+- 2026-11-17 #13 只读那半写完、验过：投票读全 + 按钮读出（树 `tree/interactive.rs`、映射 `tdjson/interactive.rs`、读法 `speech/interactive.rs`，`model::Message.buttons`，受限清按钮，mask 遮选项剧透）；读法题目以标点结尾不接逗号 / 分号；新夹具 `interactive.json`（含无标点题目一例）；快照：basic brief / detail / full / json、hidden_everywhere 变（逐行看过，全是投票补选项带来的），新 `interactive_layers`；649 过 0 败，clippy 两种 0，fmt / no-debug / file-size 过
+- 没接：`updateMessageEdited.reply_markup`（机器人改按钮）、`updateChatReplyMarkup`——要动 CoreEvent / store / watch，13a / 13b 前报大总管。（更正 2026-11-17 第 5 轮：票数变化对用户账号走 `updateMessageContent`，早已接上；`updatePoll` 只给机器人，不用接）
+- 2026-11-17 #13 只读 自审第 1 轮：P1×3（去重）全修——`results_visible`（看不到结果不读票数）、`option_order` 排序 + `index`、名称撤回守第九节（大总管认可；「名称说有按钮」默认不说，攒清单）；P2 修：说明文字进正文、`blocked` 原因（开放集合）、测验正确答案与解析、全文 18+ 遮挡统一、有临时内容不挂原按钮、按钮说法、已结束不说能改、附件说法以标点结尾不接逗号、契约补 `updateChatReplyMarkup`；P3 小事留着。649 过 0 败，clippy 两种 0；对 main 的快照差异：basic detail / full / json、hidden_everywhere 各一处（投票补字段），名称（brief）与 main 一致；新 interactive_layers
+- 2026-11-17 #13 只读 自审第 2 轮：P1×1（看不到结果不许诺「投了就看得到」：可能是结束后才公布）已修；P2/P3：按钮详情去括号、全文说明紧跟题目、已结束测验不说能不能改、契约写明「第 N 项」↔ index、membership_required 带 chat_id、标点表一份、契约补类型名 / 遮挡范围 / 网址例外 / 13a13b。649 过，clippy 两种 0；本轮只 interactive_layers 快照变（加两例）。下一步：大总管提交 → 第 3 轮（第 1、2 轮都有 P1，停止线未满足）
+- 2026-11-17 #13 只读 自审第 3 轮：无 P0/P1（连续第 1 轮）；P2 修：第九节详情旧句、名称带说明写明、带密码回调说明是账号两步验证密码；P3：拼接规则并成一个 glue、「不进树」清单补全、测验不看 revotable 写明依据。遗留（大总管记，13a 补）：「先加入指定的会话」不读会话名。682 过，clippy 两种 0，快照无变化。下一步：大总管提交 → 第 4 轮 → 无 P0/P1 就 codex 035
+- 2026-11-17 #13 只读 自审第 4 轮：P1×1（测验一律「投了不能改」不对：TDLib 改票只看 has_revoting_disabled_，`PollManager.cpp:905,1240-1262`）已修，照 revotable 读；人定 6 措辞「投了不能改」要改，大总管问人中；P2 补 request_managed_bot；P3 契约多处补写。未编译，等名额（arch 用着）。停止线从头算：下一轮第 5 轮
+- 2026-11-17 人改定人定 6：计划行照投票实际设置写能不能改，测验另写「投后会公布答案」；契约已改（actions.md 原条标注 + 新增一行「人改定」，content-tree.md 指过去）
+- 2026-11-17 #13 只读 自审第 5 轮：P1×1（契约说票数要再取才更新、13a 要接 updatePoll——错：updatePoll 只给机器人，用户账号走 updateMessageContent，早已实时更新；TDLib api.tl:12058、PollManager.cpp:484-499 核实）已改契约 + 加快照测试；P2 KeyboardKind 加 unknown 兜底（kind 改成带 type 判别）；P3 契约多处。未编译
+- 2026-11-17 #13 只读 自审第 6 轮（加一个视角逐条核 TDLib 说法：约 30 条属实，2 处小错——tl:4293→4292、历史修订记录加「已更正」，另补测验答案「自己发起的也有」）：多视角无 P0/P1（第 5 轮之后连续第 1 轮）；P2 修：quiz 换开放集合 kind（硬规矩 2）、「谁投了」守卫真正写进 poll() 注释并加快照测试；P3 修：13b 归属、入口写全、标点规则只留一条通则、Keyboard 注释、KeyboardKind derive 体例、basic.json 重复键、测试注释行号。未编译
+- 2026-11-17 #13 只读 自审第 7 轮：无 P0/P1，与第 6 轮连续两轮，自审收敛。P2 修：membership_required 读法说错事实（TDLib 比的是投票发出时间，现在加入也投不了；源码核实）、登录网址读地址、认不出的投票类型全文也提示、mask / 按键提示的投票分支写全字段、夹具补各兜底变体；P2 留 issue：新类型没登记 redact 表、暗号测试没塞按钮。未编译；下一步：名额 → 大总管提交 → codex 035

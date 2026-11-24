@@ -1,6 +1,5 @@
 ---
 source: src/atg-core/tests/snapshots.rs
-assertion_line: 51
 expression: "json_pretty(&world(\"basic\").docs())"
 ---
 {
@@ -1199,7 +1198,40 @@ expression: "json_pretty(&world(\"basic\").docs())"
             "type": "text",
             "text": "几点出发？"
           }
-        ]
+        ],
+        "options": [
+          {
+            "index": 0,
+            "text": [
+              {
+                "type": "text",
+                "text": "七点"
+              }
+            ],
+            "votes": 1,
+            "percent": 50
+          },
+          {
+            "index": 1,
+            "text": [
+              {
+                "type": "text",
+                "text": "八点"
+              }
+            ],
+            "votes": 1,
+            "percent": 50
+          }
+        ],
+        "total": 2,
+        "results_visible": true,
+        "anonymous": false,
+        "multiple": false,
+        "revotable": true,
+        "kind": {
+          "type": "regular"
+        },
+        "closed": false
       }
     },
     "tail": {}

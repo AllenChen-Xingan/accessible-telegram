@@ -54,6 +54,15 @@ pub(super) fn full(m: &Message, reveal: bool) -> String {
 /// 内容的全文：附件照名称的说法放在前面，正文原样（`super::full` 的正文部分）
 pub(super) fn full_content(c: &Content, reveal: bool) -> String {
     let body = full_spans(&c.body, reveal);
+    // 投票的全文自己排：题目、说明文字、逐项、总人数、解析（#13；说明紧跟题目，同名称）。18+ 遮挡的说法同下
+    if let Some(a @ Attachment::Poll { .. }) = &c.attachment {
+        let full = super::interactive::poll_full(a, body.trim(), reveal);
+        return if c.sensitive && !reveal {
+            format!("{full}，{HIDDEN}")
+        } else {
+            full
+        };
+    }
     let label = c.attachment.as_ref().map(|a| {
         let (l, spoiler) = attachment(a, reveal);
         if (spoiler || c.sensitive) && !reveal {
@@ -66,7 +75,24 @@ pub(super) fn full_content(c: &Content, reveal: bool) -> String {
         (None, true) => "空消息".to_owned(),
         (None, false) => body,
         (Some(l), true) => l,
-        (Some(l), false) => format!("{l}，{body}"),
+        (Some(l), false) => join(&l, &body),
+    }
+}
+
+/// 句末这些标点之后不再接分隔号（免得念成「？，」「？；」，大总管定 2026-11-17）。名称、全文、投票共用这一份
+pub(super) const ENDS: [char; 10] = ['？', '?', '！', '!', '。', '.', '…', '：', ':', '；'];
+
+/// 「附件说法，正文」：附件说法自己以标点结尾（投票题目「几点出发？」）就不再接逗号
+fn join(label: &str, body: &str) -> String {
+    glue(label, "，", body)
+}
+
+/// 两段拼起来：前一段以标点（[`ENDS`] 或「，」）结尾就直接接，否则加 `sep`。名称、全文、投票共用这一条
+pub(super) fn glue(a: &str, sep: &str, b: &str) -> String {
+    if a.ends_with(ENDS) || a.ends_with('，') {
+        format!("{a}{b}")
+    } else {
+        format!("{a}{sep}{b}")
     }
 }
 
@@ -99,7 +125,7 @@ fn is_punct(c: char) -> bool {
 /// 遮住处先放占位符，最后看两边：紧挨着别的字才补逗号（原文自己的空格、标点、换行照留）
 const MASK: char = '\u{FFFC}';
 
-fn full_spans(list: &[Span], reveal: bool) -> String {
+pub(super) fn full_spans(list: &[Span], reveal: bool) -> String {
     let mut raw = String::new();
     for s in list {
         full_span(&mut raw, s, reveal);
@@ -180,7 +206,24 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
     let body = body.trim().trim_end_matches(['。', '，', ',']).trim_end();
     // V13（011 B18-5，#68）：投票题目里的隐藏内容也算进整条的按键提示；与正文走同一条 `spans`
     let poll_hidden = match &c.attachment {
-        Some(Attachment::Poll { question }) => spans(question, reveal).1,
+        Some(Attachment::Poll {
+            question,
+            options,
+            explanation,
+            // 其余字段都不带行内树；写全不用 `..`：以后加了带文字的字段，这里编不过，逼着决定要不要遮（自审第 7 轮）
+            total: _,
+            results_visible: _,
+            anonymous: _,
+            multiple: _,
+            revotable: _,
+            kind: _,
+            closed: _,
+            blocked: _,
+        }) => {
+            spans(question, reveal).1
+                || spans(explanation, reveal).1
+                || super::interactive::options_hidden(options, reveal)
+        }
         Some(_) | None => false,
     };
     let mut hidden = body_hidden || poll_hidden;
@@ -198,7 +241,7 @@ pub(super) fn content(c: &Content, reveal: bool) -> (String, bool) {
         (None, true) => "空消息".to_owned(),
         (None, false) => body.to_owned(),
         (Some(l), true) => l,
-        (Some(l), false) => format!("{l}，{body}"),
+        (Some(l), false) => join(&l, body),
     };
     (text, hidden)
 }
@@ -239,7 +282,8 @@ fn attachment(a: &Attachment, reveal: bool) -> (String, bool) {
         Attachment::Location => "位置".to_owned(),
         Attachment::Venue { title } => labeled("地点", title),
         Attachment::Contact { name } => labeled("联系人", name),
-        Attachment::Poll { question } => labeled("投票", &spans(question, reveal).0),
+        // 名称只读题目（第九节：名称只放谁、说了什么、几点；说明文字在正文里，照常接在后面）；选项、票数、性质在详情与全文里
+        Attachment::Poll { question, .. } => labeled("投票", &spans(question, reveal).0),
         Attachment::Call {
             video,
             duration,

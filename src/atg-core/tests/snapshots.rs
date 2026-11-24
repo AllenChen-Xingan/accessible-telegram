@@ -453,3 +453,123 @@ fn partly_hidden_links_agree_across_outputs() {
     }
     assert!(checked >= 4, "夹具里套着剧透的链接太少：{checked}");
 }
+
+/// #13 只读：投票全貌（选项、票数、你选的、匿名 / 多选 / 测验 / 已结束 / 不能投）与按钮（内联、键盘；收起键盘不建；
+/// 受限的消息不带按钮）——名称、详情、全文、JSON 四层
+#[test]
+fn interactive_layers() {
+    let docs = world("interactive").docs();
+    insta::assert_snapshot!(format!(
+        "# brief\n{}\n# detail\n{}\n# full\n{}\n# json\n{}",
+        briefs(&docs),
+        layer(&docs, speech::detail, &cx()),
+        layer(&docs, speech::full, &cx()),
+        json_pretty(&docs),
+    ));
+}
+
+/// 投票选项里的剧透：不展开时不进读法、不进 data；展开后照出（#13）
+#[test]
+fn poll_option_spoiler_is_masked() {
+    let docs = world("hidden").docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 3002))
+        .expect("夹具里的投票");
+    for said in [
+        brief(poll, &cx()),
+        speech::detail(poll, &cx()),
+        speech::full(poll, &cx()),
+        json::line(poll, &cx()),
+    ] {
+        assert!(!said.contains("庚辛"), "选项里的剧透漏了：{said}");
+    }
+    assert!(speech::full(poll, &revealed()).contains("庚辛"));
+    assert!(json::line(poll, &revealed()).contains("庚辛"));
+}
+
+/// 全文照原样读题目与选项：连续相同表情合并（「3 个👍」）只改名称（`speech/content.rs` `merge_emoji`），
+/// 全文不合并（codex 035 第 1 轮 #2）
+#[test]
+fn poll_full_keeps_repeated_emoji() {
+    let src = std::fs::read_to_string(format!(
+        "{}/fixtures/speech/interactive.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let mut events: Vec<serde_json::Value> = serde_json::from_str(&src).unwrap();
+    let m = events
+        .iter_mut()
+        .find(|e| e["message"]["id"] == 4001)
+        .unwrap();
+    let poll = &mut m["message"]["content"]["poll"];
+    poll["question"] =
+        serde_json::json!({"@type": "formattedText", "text": "选👍👍👍", "entities": []});
+    poll["options"][0]["text"] =
+        serde_json::json!({"@type": "formattedText", "text": "好的👍👍👍", "entities": []});
+    let docs = World::from_json(&serde_json::to_string(&events).unwrap())
+        .unwrap()
+        .docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 4001))
+        .unwrap();
+    let full = speech::full(poll, &cx());
+    assert!(full.contains("选👍👍👍"), "全文题目被改写：{full}");
+    assert!(full.contains("好的👍👍👍"), "全文选项被改写：{full}");
+    assert!(!full.contains("3 个👍"), "全文不该合并表情：{full}");
+    assert!(brief(poll, &cx()).contains("3 个👍"), "名称照旧合并");
+}
+
+/// 票数变化对用户账号走 `updateMessageContent`（`updatePoll` 只给机器人，`td_api.tl:12059`；TDLib
+/// `PollManager::notify_on_poll_update` 对普通账号调 `on_external_update_message_content`）：store 整块换内容，
+/// 投票跟着读全，不用再取那条消息（#13 自审第 5 轮）
+#[test]
+fn poll_counts_follow_update_message_content() {
+    let src = std::fs::read_to_string(format!(
+        "{}/fixtures/speech/interactive.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let mut events: Vec<serde_json::Value> = serde_json::from_str(&src).unwrap();
+    let mut content =
+        events.iter().find(|e| e["message"]["id"] == 4001).unwrap()["message"]["content"].clone();
+    content["poll"]["options"][0]["voter_count"] = serde_json::json!(9);
+    content["poll"]["options"][0]["vote_percentage"] = serde_json::json!(90);
+    content["poll"]["total_voter_count"] = serde_json::json!(10);
+    events.push(
+        serde_json::json!({"@type": "updateMessageContent", "chat_id": -1001,
+        "message_id": 4001, "new_content": content}),
+    );
+    let docs = World::from_json(&serde_json::to_string(&events).unwrap())
+        .unwrap()
+        .docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 4001))
+        .unwrap();
+    let full = speech::full(poll, &cx());
+    assert!(full.contains("七点，9 票，90%"), "{full}");
+    assert!(full.contains("共 10 人投票"), "{full}");
+}
+
+/// 「谁投了」（`recent_voter_ids`）有意不收：夹具 4001 的投票与选项上都带了投票人 424242，树、JSON、读法里都不能出现
+/// （隐私守卫在 `tdjson/interactive.rs` 的 `poll()`；#13 自审第 6 轮）
+#[test]
+fn voters_never_reach_the_tree() {
+    let docs = world("interactive").docs();
+    let poll = docs
+        .iter()
+        .find(|d| matches!(d, Doc::Message(m) if m.id.message_id == 4001))
+        .unwrap();
+    for out in [
+        json::line(poll, &cx()),
+        json::line(poll, &revealed()),
+        brief(poll, &cx()),
+        speech::detail(poll, &cx()),
+        speech::full(poll, &revealed()),
+    ] {
+        assert!(!out.contains("424242"), "投票人漏了：{out}");
+        assert!(!out.contains("voter"), "投票人字段漏了：{out}");
+    }
+}
