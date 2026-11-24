@@ -22,6 +22,7 @@ const DONE: &[&str] = &[
     "play",
     "react",
     "reactions",
+    "vote",
     "transcribe",
     "pending",
     "delete",
@@ -476,6 +477,8 @@ fn send_usage_paths() {
         &["react", "abc", "5", "👍"][..],
         &["react", "777", "5"][..],
         &["reactions", "777", "5", "-n", "0"][..],
+        &["vote", "777", "5"][..],
+        &["vote", "777", "5", "x"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);
@@ -488,6 +491,7 @@ fn send_usage_paths() {
         &["--fake", "x", "resend", "777", "5"][..],
         &["--fake", "x", "react", "777", "5", "👍"][..],
         &["--fake", "x", "reactions", "777", "5"][..],
+        &["--fake", "x", "vote", "777", "5", "1"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);

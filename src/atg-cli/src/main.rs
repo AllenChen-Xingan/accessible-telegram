@@ -66,6 +66,7 @@ mod usage;
 // 语音的组合动作只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod voice;
+mod vote;
 // 直跑只有真实后端起；不编 TDLib 时只有单测与执行方用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod watch;
@@ -130,6 +131,7 @@ fn main() -> ExitCode {
         Command::Send(a) => run_send(&cli.global, format, &a, started),
         Command::Forward(a) => forwarding::run(&cli.global, format, &a, started),
         Command::SendFile(a) => send_file::run(&cli.global, format, &a, started),
+        Command::Vote(a) => vote::run(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
         Command::React(a) => react::run(&cli.global, format, &a, started),
         Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),

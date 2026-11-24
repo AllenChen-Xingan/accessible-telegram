@@ -9,6 +9,11 @@
 - 2026-11-24 全套过（717 过 0 败，atg-core+cli 684；两种 clippy 0；三个 check 脚本过）；大总管核过准 `--force-secrets`（只限 interactive.rs:148）
 - codex 035 第 1 轮 P2×2：#2 属实（全文误用 spans 合并表情）→ 红测试 `poll_full_keeps_repeated_emoji` 已写、改法在 scratchpad fix2.py 待红后应用；#1 驳回（「只读出」是 13b 按下的规矩）→ PR 遗留「待人实听」。记录 docs/reviews/035 已起草。等名额（arch 之后）
 - #2 先红后绿已改（检查点 73e182d，大总管提交）；codex 035 第 2 轮零发现 → 收敛。记录 035 与 README 索引行已写；PR 说明 `_tmp/20261116-b20/pr-13-readonly.md` 占位全填、遗留加 #165、更正票数变化的说法。下一步：大总管提交记录 → 开 PR → 13b（动闸，先报）
+- 大总管提交 9e39148、开 PR #168（只读那半）。13b 计划 MAIN `_tmp/20261124-b21/plan-13b.md` 已报（press / vote 两命令，闸拦截逻辑不改，交出口加 getCallbackQueryAnswer、setPollAnswer；要人定 4 条：回调真机测不了、撤票不做、机器人没回话报成功、拆不拆 PR）；顺带更正 PR #168「人定 6 待重认」已过时（actions.md:403 已人改定）。等大总管回「开工」
+- 2026-11-24 大总管定：13b 拆两 PR（先投票 codex 062、后按钮 codex 065）；回调只假后端测；撤票不做；没回话报成功。分支 feat/13b-vote（从 9e39148）。#168 已 squash 合 main（c48ff54）→ 审查范围暂用 `feat/13-poll-buttons...HEAD`，大总管下次检查点合 main 后再改 `origin/main...HEAD`
+- 13b-1 投票代码已写（core send/vote.rs+tests、SealedKind::Vote、4 个 why；CLI vote.rs+tests；四份契约），未编译，排名额（gui 之后）。error.rs 593 行，PR 说明里提「再加 why 要拆」
+- 合 main（e107844，冲突 actions.md / 现状页由我解）后全绿 703 过。自审 13b-1 第 1 轮（origin/main...HEAD）：P1×1（许改票已投过时整组替换没拦没说）→ 照 react 默认拒 `vote_would_replace`、`--replace` 放行、计划列 `replaces`、复核比对；P2 修 5 留 1（交出后到点无测试，需 fake.rs 加挂起分支，压基线）；P3 修 6。error.rs 599 行。未编译，等名额
+- 自审第 2 轮（replaces 只列会被撤掉的，追加不拒）、第 3 轮（上一票还在提交时拒投，tree 加 pending）都无 P0/P1 → 自审收敛（857c91e、87bba7f、96695ef；合 main dda9d52）。codex 062：第 1 轮 P1（并发无互斥，按威胁模型最高 P2、我选照 P1 改，InFlight）P2（content-tree 清单）→ 46ea4f2；第 2、3 轮零发现 → 收敛。记录 062 + README 行已写；PR 说明 MAIN `_tmp/20261124-b21/pr-13b-vote.md` 占位全填。下一步：大总管提交记录 → 开 PR（一级评审）→ 13b-2 按钮（codex 065）
 
 ## b20 接手（2026-11-16）
 

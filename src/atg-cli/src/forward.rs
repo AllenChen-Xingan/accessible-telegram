@@ -44,7 +44,7 @@ pub const EXECUTOR_GONE_SEND_ZH: &str = "替你执行的进程中途断了，发
 fn is_l2(command: &str) -> bool {
     matches!(
         command,
-        "send" | "resend" | "react" | "forward" | "pending_cancel" | "delete" | "edit"
+        "send" | "resend" | "react" | "vote" | "forward" | "pending_cancel" | "delete" | "edit"
     )
 }
 

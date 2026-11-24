@@ -90,6 +90,15 @@ pub(super) fn react(request: &Value) -> Result<ReactArgs, CoreError> {
     })
 }
 
+/// `setPollAnswer`（#13）：（会话、消息 id、0 起的选项编号）
+pub(super) fn vote(request: &Value) -> Result<(i64, i64, Vec<i32>), CoreError> {
+    Ok((
+        request["chat_id"].as_i64().ok_or_else(bad)?,
+        request["message_id"].as_i64().ok_or_else(bad)?,
+        part(request, "option_ids")?,
+    ))
+}
+
 /// `forwardMessages`（#10）：（目标会话、话题、来源会话、消息 id、选项、复制、去说明文字）
 pub(super) struct ForwardArgs {
     pub chat: i64,
