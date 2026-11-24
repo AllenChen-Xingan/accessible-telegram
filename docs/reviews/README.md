@@ -39,6 +39,9 @@
 | 045 | 2026-11-16 | #97 #98 #100 #40 第四批：标记原子发布、tty 读看停止标志、内核故障即报断开、密码缓冲区按容量清零（codex · diff 类） | 四轮：P1×5 属实已修、P2 留 #116；第 3、4 轮无 P0/P1，收敛 → `045_batch4-97-98-100-40-codex.md` |
 | 023 | 2026-11-14 | #60 R1a 拆 `gate.rs`、`send.rs`（只挪不改；codex · diff 类 · 三轮） | 第 1 轮 P1×1 驳回（两点范围把 main 的新提交显示成回退）；第 2 轮起改三点范围，第 2、3 轮零发现，收敛 → `023_r1a-split-gate-send-codex.md` |
 | 025 | 2026-11-13 | #59 转写进树（store 转写表、凭据与裁决、投影、读法、遮挡；codex · 逐文件审） | 第 1 轮仅 P2×3 及「不符」1 条：全部属实，已改；第 2 轮通过，满足停止线 → `025_stt-tree-codex.md` |
+| 040 | 2026-11-17 | GUI 唯一真相源与规约（`specs/gui/`、012、004 `decision.md`、013；b20 随 Touch ID 删除改直接发送、L2 发送流程 `focus.md` 第六节；codex · 五轮；先 atg-review 自审 11 轮） | 提出 14（P1×6、P2×8）：全部属实、全部已改，无驳回；第 4、5 轮无 P0/P1，满足停止线；无剩余 P2。core / 契约缺口登记 012 第八节（#77 #115 #118 #119 #120） → `040_gui-ssot-codex.md` |
+| 042 | 2026-11-14 | 无障碍最佳实践与先例调研（findings-a11y、sources ## ga11y；codex · 三轮） | 提出 12（P1×1、P2×11）：全部属实、全部已改，无驳回；第 2、3 轮无 P0/P1，满足停止线；第 3 轮 3 条 P2 直接改、未再复核 → `042_findings-a11y-codex.md` |
+| 043 | 2026-11-14 | GPUI 应用架构与组件先例调研（findings-components、quill-index、exp010；codex · 六轮） | 提出 17（P1×8、P2×9）：属实 15、部分属实 1、驳回 1（settings_ui 挂接，摘录截断所致，第 2 轮 codex 接受）；全部已改；第 5、6 轮无 P0/P1，满足停止线 → `043_gui-components-codex.md` |
 | 032 | 2026-11-16 | #9 表情回应 `react` / `reactions`（合 main 后直发；codex · diff 类） | 第 1 轮 P1×1（交出不复核）P2×2；第 2 轮（三点范围、重数停止线）P1×2（复核用旧 synced、到点解锁）P2×3：属实 6、部分属实 1、交人裁决 1（统计入树 → #128）；第 3 轮 P1×2 P2×1（同类第三次，人定威胁模型：构造时序竞态最高 P2 → #131）；第 4 轮 P1×1 P2×1；第 5 轮仅 P2×1（契约删确认残留，合 main 后已改）；第 6 轮零发现；第 5、6 轮无 P0/P1，收敛，无剩余 P2 → `032_react-9-codex.md` |
 | 039 | 2026-11-16 | #59 3c `transcribe` 命令（Doc::Transcription、stt_unavailable、辅助程序查找、lease::Guard；codex · diff） | 第 1 轮仅 P2×2，全部属实：途中更新改成闸门、补 18+ 途中变化与守卫共存测试；第 2 轮仅 P2×2（同两截的剩余：下载闸门、假后端「没开不推」）开 issue；两轮无 P0/P1，满足停止线 → `039_transcribe-codex.md` |
 | 044 | 2026-11-14 | #60 R3a 测试共用夹具 testkit 第一刀（codex · diff 类 · 两轮） | 第 1 轮 P2×2 属实（删残留失败时交出旧目录；一处临时目录被误当成文件）已改；第 2 轮零发现，收敛 → `044_r3a-testkit-codex.md` |
@@ -63,3 +66,4 @@
 | 061 | 2026-11-17 | #137 修 22 条 rustdoc 警告（私有项、特性下断链、同名歧义），CI 加两步 `cargo doc -D warnings`（codex · diff 类） | 两轮零发现，收敛 → `061_137-rustdoc-links-codex.md` |
 | 063 | 2026-11-24 | #42 开发版开强化运行时（OpenSSL 静态链、libtdjson 签名、rpath 指常驻软链接、`--options runtime`、`check-harden.sh`；codex · diff 类，effort high，按契约 / 安全口径） | 第 1 轮 P1×1、P2×3，第 2 轮 P2×2，都已改；第 3 轮零发现，收敛 → `063_42-hardened-runtime-codex.md` |
 | 066 | 2026-11-24 | #60 R8 小零件归一：`lock`、时钟与时区（新模块 `clock`）、原子写各留一份；`mark_running` 改原子写（codex · diff 类） | 两轮无 P0/P1，收敛（P2 共 4 条都是注释与记录，已改）→ `066_r8-dedupe-codex.md` |
+| 064 | 2026-11-24 | #169 M3.1 第一刀：`atg-gui-spec`（界面的表 + 纯函数投影，不依赖 GPUI；先多视角自审 5 轮；codex · diff 类） | 三轮：第 1 轮 P1×1 P2×3、第 3 轮 P2×1，全部属实已修；第 2、3 轮无 P0/P1，收敛 → `064_gui-spec-pr1-codex.md` |
