@@ -11,7 +11,6 @@ use atg_core::tree::{SCHEMA_V, Time};
 use serde_json::{Value, json};
 use std::io::Write;
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// CLI 自有码（`specs/contracts/errors.md` 第一节第 1 小节）
 #[derive(Clone, Copy)]
@@ -278,13 +277,12 @@ pub fn text_line(s: &str) {
 
 /// `at`：RFC3339 UTC，毫秒，以 `Z` 结尾
 pub fn now_rfc3339_ms() -> String {
-    let d = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = Time(i64::try_from(d.as_secs()).unwrap_or(i64::MAX)).rfc3339();
+    // 取「现在」用 core 那一份（#60 R8）；时钟早于 1970 年同原来一样按 0
+    let ms = atg_core::clock::now_ms();
+    let secs = Time(ms.div_euclid(1000)).rfc3339();
     // `…:SSZ` → `…:SS.mmmZ`
     let base = secs.strip_suffix('Z').unwrap_or(&secs);
-    format!("{base}.{:03}Z", d.subsec_millis())
+    format!("{base}.{:03}Z", ms.rem_euclid(1000))
 }
 
 /// 一行外壳：`{"v","kind","at","data"}`。
