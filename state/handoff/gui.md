@@ -6,7 +6,7 @@
 - **做到哪**：计划已批（第五节 6 条全按建议定，2026-11-24）。PR-1 代码已写完并编过：`src/atg-gui-spec/`（aid · a11y · text · project · schema + `gui-schema` 程序 · 金样测试 · 投影快照测试）、`scripts/schema-stamp.py` + `scripts/tests/test_schema_stamp.py`、`.42cog/cog.md` 与 `src/README.md` 各加一行。PR-2 的 core 文件清单已交大总管转 arch（MAIN `_tmp/20261124-b21/plan-m31-pr2-core.md`）
 - **名额**：PR-1 用完已归还（2026-11-24）
 - **PR-1**：PR #177 已合进 main（b9f6459，squash，2026-11-24）
-- **PR-2 状态**（2026-11-24）：4 笔已提交（c9c08ba ① 夹具 + check-fixtures · c948271 ② core · a38bfca ③ cli · b850609 ④ 99001；① 单独跑 check-fixtures 会红，④ 才修好，PR 说明要写）。atg-review 第 1 轮（origin/main...HEAD）无 P0/P1，P2×8 全部属实、当场修了（最要紧：history/ 里的 .DS_Store 会让场景整个报 fixture_bad），**修复还没编译**，等名额 → 提交 → 第 2 轮 → codex 068。改动：
+- **PR-2 状态**（2026-11-24）：自审 4 轮（第 2 轮 P1：cli.md 没跟上；第 3、4 轮无 P0/P1 → **停**）。第 4 轮之后的小修（提示语、规约措辞）**还没编译**，等名额 → 提交 → codex 068（origin/main...HEAD）→ PR。issue：#183（CI 不跑 release）。留着没改：`atg-cli/src/main.rs` 第 62 行注释「假后端场景还没做」已过时，main.rs 冻结（要挪进 lib.rs），等挪完再顺手改。改动：
   - 夹具 `src/atg-core/fixtures/scenarios/{basic-4-chats,empty}/`；`scripts/check-fixtures.py` + `scripts/tests/test_check_fixtures.py`（15 条，过）
   - core：`fake/scenario.rs`（新）、`fake.rs` 接入、`config.rs` 的 `private_temp_dir` + `TempDirGuard`、`testkit::temp_dir` 改调它
   - cli：`fake_run.rs`（新）、`session.rs` 的 chats / history `--fake` 分支、`main.rs`、`args.rs`；测试 `tests/fake_scenario.rs`（新）、`tests/cli.rs` 两条改

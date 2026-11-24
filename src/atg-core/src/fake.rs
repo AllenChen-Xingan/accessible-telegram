@@ -4,7 +4,7 @@
 //! `classify` → 序号 → 三线合成 → 事件流。所以假后端测到的监督、序号、故障广播就是正式的那份。
 //! 不碰 tdlib-rs 的全局收线程，测试可以并行跑多个。
 //!
-//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）与假时钟留给用到它的块（CLI `--fake`）。
+//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）由 `scenario.rs` 读、装进来（`atg-cli --fake`，#169）；假时钟与时间线留给用到它的块。
 //!
 //! 登录（第 4 块）：[`FakeBackend::set_auth`] 给一个假账号 [`FakeAuth`]，`start` 后自己推到 `wait_phone`
 //! （已登录的推到 `ready`）；每步提交按账号核对，对了就推下一步的授权状态（TDLib JSON 形状，带提示字段，

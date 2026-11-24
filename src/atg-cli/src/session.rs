@@ -8,8 +8,8 @@
 //! - 两种都一样：档案缺标记、目录里却留着东西（库、文件、发送状态……），拒绝启动（`internal{profile_marker_missing}`），
 //!   不按选项补写种类（#61）
 //!
-//! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake` 的场景目录还没做（要假时钟与时间线，
-//! `testing.md` 第一节第 3 小节，留给用到它的块；`chats` 的逻辑由假后端单测覆盖）。
+//! 后端：编进 TDLib（`--features tdlib`）才有真实后端；`--fake <场景>` 现在只有 `chats`、`history` 接上了（`fake_run`，#169），
+//! 别的命令带它报 `not_implemented`（要假时钟与时间线的，留给用到它的块；场景格式见 `testing.md` 第一节第 3 小节）。
 //! 起不来时照样调 `shutdown` 收尾（客户端建好之后才失败的情况，`td.rs` 头部）。
 
 use crate::args::Global;
@@ -116,7 +116,7 @@ pub fn run(g: &Global, job: Job, on_step: &mut dyn FnMut(AuthStep)) -> Result<Va
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: job_name(job),
-            message_zh: "假后端的场景目录还没做，登录请连测试服务器：--test-dc",
+            message_zh: "假后端场景现在只接了 chats、history，登录请连测试服务器：--test-dc",
         });
     }
     // 没编进 TDLib 就在碰档案目录之前说清楚
@@ -235,7 +235,7 @@ pub fn download(
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: "download",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+            message_zh: "假后端场景现在只接了 chats、history；这个命令要用真实账号或测试服务器（--test-dc）",
         });
     }
     #[cfg(not(feature = "tdlib"))]
@@ -265,7 +265,7 @@ pub fn play_prepare(
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: "play",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+            message_zh: "假后端场景现在只接了 chats、history；这个命令要用真实账号或测试服务器（--test-dc）",
         });
     }
     #[cfg(not(feature = "tdlib"))]
@@ -302,7 +302,7 @@ pub fn transcribe(
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: "transcribe",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+            message_zh: "假后端场景现在只接了 chats、history；这个命令要用真实账号或测试服务器（--test-dc）",
         });
     }
     #[cfg(not(feature = "tdlib"))]
@@ -335,7 +335,7 @@ pub fn watch(
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: "watch",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+            message_zh: "假后端场景现在只接了 chats、history；这个命令要用真实账号或测试服务器（--test-dc）",
         });
     }
     #[cfg(not(feature = "tdlib"))]
@@ -373,7 +373,7 @@ pub fn links(
     if g.fake.is_some() {
         return Err(Fail::NotImplemented {
             command: "links",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+            message_zh: "假后端场景现在只接了 chats、history；这个命令要用真实账号或测试服务器（--test-dc）",
         });
     }
     #[cfg(not(feature = "tdlib"))]
@@ -535,7 +535,7 @@ pub(crate) fn l2_run(
             format,
             &Fail::NotImplemented {
                 command,
-                message_zh: "假后端的场景目录还没做；要用测试服务器（--test-dc）",
+                message_zh: "假后端场景现在只接了 chats、history；这个命令要用测试服务器（--test-dc）",
             },
         );
     }

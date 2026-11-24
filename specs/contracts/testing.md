@@ -22,7 +22,7 @@
 
 - 实现同一个 `Backend` 特征（`actions.md`），**全部动作**都有；没实现的返回 `internal` 并在测试里报出来，不许静默
 - 数据来自夹具目录里的一个**场景**（第 3 小节）
-- **事件时间线可编排**：场景里写好「第几毫秒推什么事件」，用**注入的假时钟**推进，不真等
+- **事件时间线可编排**：场景里写好「第几毫秒推什么事件」，用**注入的假时钟**推进，不真等——**还没实现**（场景的 `timeline.jsonl` 加载器不读，见第 3 小节；用到它的块再做）
 - **记账**：每次调用记下来（动作名、参数、凭据的开出方式），测试可以断言「`send_text` 被调了 0 次」
 - 可以注入故障：某个动作返回指定错误；收线程「崩溃」（广播故障信号）
 - 不碰 tdlib-rs 的全局收线程（架构方案第一节第 3 小节末条），所以测试可以并行跑多个假后端
@@ -57,7 +57,7 @@ src/atg-core/fixtures/
 - 跳过、不读的：点开头的（访达的 `.DS_Store`、`._101.jsonl`，编辑器的 `.swp`）、不以 `.jsonl` 结尾的（`101.jsonl~`）、目录（哪怕叫 `202.jsonl/`）、文件名不是 UTF-8 的
 - 场景一律当作「已登录、已连接」装进假后端；`timeline.jsonl` 还没实现，不读
 
-会报 `internal{fixture_bad}` 的（第 2–5 条每种写法在加载器的单测 `every_bad_shape_is_fixture_bad` 里各有一例；第 1 条另有 `missing_dir_is_fixture_bad`；第 6 条单测造不出来，只靠代码审）：
+会报 `internal{fixture_bad}` 的（第 1–5 条在加载器的单测 `every_bad_shape_is_fixture_bad` 里各有例子，第 1 条的「目录不在」另见 `missing_dir_is_fixture_bad`；第 6 条单测里不造：CI 若以 root 跑，文件权限拦不住读，测出来不稳，只靠代码审）：
 
 1. 场景目录或 `me.json` 不在（开发构建里场景名打错也是这一条：报错不区分「没这个场景」和「内容坏了」）
 2. `me.json` 不是合法 JSON、不是 `user`、没有整数 `id`
@@ -66,9 +66,9 @@ src/atg-core/fixtures/
 5. 历史里某行不是 `message`、没有整数 `id`，或 `chat_id` 和文件名不符
 6. 读不了（权限等）
 
-只是**约定**、加载器不查的：历史文件对应的会话应在 `chats.jsonl` 里（不在也照样装进去，只是拉列表时看不到它）；历史行序从新到旧（照 TDLib `getChatHistory` 的返回顺序；`atg-cli history` 的输出是从旧到新，命令自己倒过来，见 `cli.md`）。主列表的顺序**不看 `chats.jsonl` 的行序**，看每个会话 `positions` 里 `chatListMain` 那一项的 `order`（从大到小，同 TDLib）；没有这一项或 `order` 为 `"0"` 的会话不进主列表，也不报错——写新场景时每个会话都要带上它。
+只是**约定**、加载器不查的：历史文件对应的会话必须也在 `chats.jsonl` 里——不在的话历史虽然读进来了，却**哪条命令都取不到**（`history` 先按 id 取会话，报 `not_found{chat}`；这个错不是 `fixture_bad`，别按上面六条去查）；历史行序从新到旧（照 TDLib `getChatHistory` 的返回顺序；`atg-cli history` 的输出是从旧到新，命令自己倒过来，见 `cli.md`）。主列表的顺序**不看 `chats.jsonl` 的行序**，看每个会话 `positions` 里 `chatListMain` 那一项的 `order`（从大到小，同 TDLib）；没有这一项或 `order` 为 `"0"` 的会话不进主列表，也不报错——写新场景时每个会话都要带上它。
 
-排查：`fixture_bad` 不带是哪个文件。先对照上面六条；`python3 scripts/check-fixtures.py` **只查隐私**（名字、号码、链接、id 区间），不查这些形状，帮不上；能用的手段是拿最小场景（只有 `me.json`）起步、一个文件一个文件加，每加一个跑一次 `atg-cli --fake <目录> chats`。
+排查：`fixture_bad` 不带是哪个文件。先对照上面六条；`python3 scripts/check-fixtures.py` **只查隐私**（名字、号码、链接、id 区间），不查这些形状，帮不上；能用的手段是拿最小场景（只有 `me.json`）起步、一个文件一个文件加，每加一个跑一次 `cargo run -p atg-cli -- --fake ./<目录> chats`（开发构建；用装好的发布版二进制只能给路径）。
 
 名字、路径与档案：
 
@@ -115,6 +115,7 @@ src/atg-core/fixtures/
 | 钥匙访问（本机，非 CI） | 本人 Apple Development 身份 + 标识 `atg.dev` 签的程序（`scripts/dev-sign.sh`）读正式、测试档案的钥匙 → 不弹框直接拿到，**重编一次再读仍不弹**（N2，按 007 改写）；没用这个身份签的（临时签名、自签名证书如 atg-dev、未签名）、同身份但标识不是 `atg.dev` 的 → 拿不到**由 Apple Development 版新建的**条目（`config-privacy.md` 第一节第 3 小节；临时签名 / atg-dev 版见 exp005 取证 10 ③，同身份别的标识见 `docs/experiments/exp006-keychain-migrate/` 结论 3）。迁移过来的 `test`、`main` 真条目仍认旧 atg-dev 版，不拿它们测这一条。不测「静默签名拿不到」——它拿得到，人已接受（007 A1） |
 | 强化运行时（本机，非 CI） | `bash scripts/check-harden.sh [atg-cli 的路径]`（#42，只收 atg-cli：它的 `version` 没有副作用）：两版都先得照常起；照常签的版本带 `runtime` 标志、`DYLD_INSERT_LIBRARIES` 注入不进去；`ATG_DEV_HARDEN=0` 签的对照版能注入（证明检查本身有效）；带 TDLib 的程序 rpath 有 `~/.atg-dev/tdlib/lib`、照常起，把库换成临时签名的副本 → dyld 拒载。退出码 0 才算过。改了 `scripts/dev-sign.sh`、`src/tdlib-build/build.sh`、两个 `build.rs`，或重编过 TDLib 之后跑一次 |
 | 外部打开 | 非 `http(s)` 链接、可执行类文件一律拒；打开不经 shell |
+| 场景加载器与夹具隐私（#169） | `atg-core` 的 `fake::scenario` 单测：第 3 小节第 1–5 条报 `fixture_bad`、`history/` 杂项各按自己那条规则跳过、名字与路径（按构建档各一条）；`scripts/tests/test_check_fixtures.py`：`check-fixtures.py` 每条规则在改坏的副本上红 |
 
 本机跑测试的前提：`cargo test` 经 `.cargo/config.toml` 的 runner（cargo 运行测试程序前先调的包装脚本 `scripts/dev-sign-run.sh`）先用开发身份签名（#42 起默认开强化运行时）；带 TDLib 的程序按写进程序的 rpath（`~/.atg-dev/tdlib/lib`）找库，runner 设的 `DYLD_LIBRARY_PATH` 在强化运行时下被忽略，只对 `ATG_DEV_HARDEN=0` 签的调试版有用。除上表「钥匙访问」一行外，单测不碰钥匙串：本机没有开发身份时可设 `ATG_DEV_SIGN=0` 跳过签名，CI 里自动跳过。「钥匙访问」这行和测试服务器层（`live_`，第 1、5 小节）要读钥匙串，**必须签名**，设了 `ATG_DEV_SIGN=0` 会弹框或读不到。
 

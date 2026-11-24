@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn every_bad_shape_is_fixture_bad() {
-        // 每一条拒绝路径各一例（规约 testing.md 第一节第 3 小节列的情形）
+        // 规约 testing.md 第一节第 3 小节第 1–5 条的各种写法；第 1 条的「目录不在」另见 missing_dir_is_fixture_bad，第 6 条不造
         let cases: &[(&str, &[(&str, &str)])] = &[
             ("缺 me.json", &[("chats.jsonl", CHAT)]),
             ("me.json 不是 JSON", &[("me.json", "{")]),

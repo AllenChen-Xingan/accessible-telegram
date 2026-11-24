@@ -47,7 +47,7 @@ pub fn run(g: &Global, format: Format, started: Instant) -> ExitCode {
             format,
             &Fail::NotImplemented {
                 command: "serve",
-                message_zh: "假后端的场景目录还没做；serve 要用真实账号或测试服务器（--test-dc）",
+                message_zh: "假后端场景现在只接了 chats、history；serve 要用真实账号或测试服务器（--test-dc）",
             },
         ));
     }
