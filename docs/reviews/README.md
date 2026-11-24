@@ -71,4 +71,4 @@
 | 067 | 2026-11-24 | #60 R4 第一步：会话参数与 `saved` 解析收进 `history` 一份；`saved` 改问 `me()`，对外错误码 `internal`（`me_unknown`）→ 照 `me()` 报（codex · diff 类） | 第 1 轮 P2×1（交接页）已改，第 2 轮零发现，收敛 → `067_r4-target-step1-codex.md` |
 | 069 | 2026-11-24 | #60 R3b 第一刀：造 TDLib JSON 的测试助手收进 `testkit::td_json`，7 个测试文件换用（只动测试；codex · diff 类） | 两轮零发现，收敛 → `069_r3b-td-json-codex.md` |
 | 070 | 2026-11-24 | #60 R4 第二步 2a：edit、pending、delete、forwarding、send-file、vote 接上 `chat_arg` / `resolve_chat`（行为不变；codex · diff 类） | 两轮零发现，收敛 → `070_r4b-chat-arg-codex.md` |
-| 068 | 2026-11-24 | #169 M3.1 第二刀：场景夹具 + 加载器 + `atg-cli --fake`（先多视角自审 4 轮；codex · diff 类） | 第 1 轮 P2×4、第 2 轮 P2×2，全部属实已修；两轮无 P0/P1；第 2 轮后改了代码，待第 3 轮确认 → `068_scenario-fake-codex.md` |
+| 068 | 2026-11-24 | #169 M3.1 第二刀：场景夹具 + 加载器 + `atg-cli --fake`（先多视角自审 4 轮；codex · diff 类） | 三轮：P2×7 全部属实，已修 6、留 issue 1（第 3 轮 #1）；第 2、3 轮无 P0/P1，第 3 轮后不再改代码，收敛 → `068_scenario-fake-codex.md` |
