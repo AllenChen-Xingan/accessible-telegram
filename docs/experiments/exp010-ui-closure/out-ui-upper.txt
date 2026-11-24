@@ -1,0 +1,25 @@
+gpui                         Apache-2.0           95315
+ui                           GPL-3.0-or-later     31642
+theme                        GPL-3.0-or-later     5957
+gpui_macros                  Apache-2.0           3478
+sum_tree                     Apache-2.0           3327
+scheduler                    Apache-2.0           3215
+bench_metrics                Apache-2.0           2234
+zlog                         Apache-2.0           1710
+gpui_util                    Apache-2.0           834
+http_client                  Apache-2.0           669
+ztracing                     Apache-2.0           558
+derive_refineable            Apache-2.0           548
+component                    GPL-3.0-or-later     530
+collections                  Apache-2.0           418
+icons                        GPL-3.0-or-later     360
+syntax_theme                 GPL-3.0-or-later     345
+ui_macros                    GPL-3.0-or-later     239
+refineable                   Apache-2.0           132
+menu                         GPL-3.0-or-later     37
+ztracing_macro               Apache-2.0           7
+gpui_shared_string           Apache-2.0           0
+mode=upper starts=['ui'] minus=[] (base mode=normal)
+internal crates: 21 lines: 151555 external deps (not expanded): 91
+GPL: ['component', 'icons', 'menu', 'syntax_theme', 'theme', 'ui', 'ui_macros']
+heavy-crate hits: []

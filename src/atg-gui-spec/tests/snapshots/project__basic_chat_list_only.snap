@@ -1,0 +1,13 @@
+---
+source: src/atg-gui-spec/tests/project.rs
+expression: "snap(&tree, \"speech/basic\")"
+---
+# gui-schema v1 · gpui projection · fixture speech/basic
+Window window
+  Navigation region-chats "会话"
+    List chats "会话" focused
+      ListItem chat:101 "林小雨，2 条未读，明天改到八点" pos=1/3
+      ListItem chat:-1001 "周末爬山群，5 条未读，1 条提到你，周大山：联系人，领队 老王" pos=2/3
+      ListItem chat:-1002 "示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水" pos=3/3
+  Main region-messages "消息"
+  Status status "已连接"
