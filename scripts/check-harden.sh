@@ -94,7 +94,8 @@ if has "${libs}" libtdjson; then
   rel="$(cat "${f}"; printf x)"
   rel="${rel%x}"
   rel="${rel%$'\n'}"
-  [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* ]] || prep "src/tdlib-build/dev-link 的内容不对"
+  # 规则同 build.sh：字符白名单（C locale）、不以 / 开头、不含 ..
+  (LC_ALL=C; [[ "${rel}" =~ ^[A-Za-z0-9._/-]+$ && "${rel}" != /* && "${rel}" != *..* ]]) || prep "src/tdlib-build/dev-link 的内容不对"
   rp="${HOME}/${rel}/lib"
   loads="$(otool -l "${bin}")" || prep "otool -l 读不了程序"
   if has "${loads}" "path ${rp} "; then ok "rpath 有 ${rp}"; else bad "rpath 里没有 ${rp}"; fi

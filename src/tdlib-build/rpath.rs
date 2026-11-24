@@ -25,13 +25,14 @@ fn main() {
     // 规则（三处同一条，见 src/tdlib-build/README.md）：整个文件 = 一行路径 + 可有可无的一个换行；不 trim。
     // 不合规则就让构建失败，不悄悄产出一个找不到 libtdjson 的程序（同两份 shell 的「报错退出」）
     let rel = DEV_LINK.strip_suffix('\n').unwrap_or(DEV_LINK);
-    let bad = rel.is_empty()
-        || rel.starts_with('/')
-        || rel.contains("..")
-        || rel.contains(char::is_whitespace);
+    // 字符只许 ASCII 字母、数字和 . _ / -（白名单）：空白、非 ASCII 与 shell 那边的判法一致；逗号也拒，
+    // 因为下面 `-Wl,-rpath,…` 会把逗号当成参数分隔符（#170 codex 072）
+    let allowed = |b: u8| b.is_ascii_alphanumeric() || b"._/-".contains(&b);
+    let bad =
+        rel.is_empty() || !rel.bytes().all(allowed) || rel.starts_with('/') || rel.contains("..");
     assert!(
         !bad,
-        "src/tdlib-build/dev-link 的内容不对：要恰好一行相对家目录的路径，不带空白、不以 / 开头、不含 ..（见同目录 README.md）"
+        "src/tdlib-build/dev-link 的内容不对：要恰好一行相对家目录的路径，只许字母、数字和 . _ / -，不以 / 开头、不含 ..（见同目录 README.md）"
     );
     let Some(home) = std::env::var_os("HOME") else {
         panic!("没有 HOME，写不了 TDLib 的 rpath（不写的话程序找不到 libtdjson）");
