@@ -97,6 +97,41 @@ pub enum SendingState {
     Failed,
 }
 
+/// 对一条消息能做什么（`getMessageProperties`，一次取齐；TDLib 按会话、身份、时间窗判，本项目不自己算）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MessageCaps {
+    /// `can_be_replied`：能在本会话里回复它
+    pub can_reply: bool,
+    /// `can_be_deleted_for_all_users`：能给会话里所有人删（收藏夹、过了时限的不行；**还没发出的 TDLib 说行**，
+    /// `MessagesManager.cpp:8352-8354`，`delete` 自己拦）
+    pub can_delete_for_all: bool,
+    /// `can_be_edited`：能改它的文字
+    pub can_edit: bool,
+    /// `can_be_forwarded`：能转发（来源会话禁止转发时为假；#10）
+    pub can_forward: bool,
+}
+
+/// 谁点了哪个表情回应（`addedReaction`，`td_api.tl:7927`）：只放 id，名字投影时填（[`crate::project::reactor`]）
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct AddedReaction {
+    pub kind: crate::tree::ReactionKind,
+    pub sender: SenderId,
+    /// 是不是我自己点的
+    pub outgoing: bool,
+    /// Unix 秒
+    pub date: i64,
+}
+
+/// 一页「谁点了回应」（`addedReactions`，`td_api.tl:7933`）。`next_offset` 为空 = 没有更多
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct AddedReactions {
+    pub total: u32,
+    pub items: Vec<AddedReaction>,
+    pub next_offset: String,
+}
+
 /// 失败消息的发送状态（`messageSendingStateFailed`，`td_api.tl:3458-3465`）：`resend` 准备时逐项查
 #[derive(Debug, Clone, PartialEq)]
 pub struct FailedInfo {

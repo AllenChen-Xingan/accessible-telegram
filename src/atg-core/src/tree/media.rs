@@ -1,6 +1,7 @@
 //! 媒体相关的节点：带文件的附件共用的小类型（`specs/content-tree.md` 第三节第 3 小节）、播放状态（`Doc::Playback`）、
-//! 语音的转写（`Transcript`）。
+//! 语音的转写（`Transcript`）、`transcribe` 这一次的结果（`Doc::Transcription`）。
 
+use crate::model::MsgId;
 use serde::Serialize;
 
 /// 附件背后的那个文件。图片、视频、圆视频、音频、文件以后都挂这一个类型（M3.7），现在只有语音用。
@@ -65,6 +66,39 @@ pub struct Transcript {
 pub enum TranscriptSource {
     /// 本机端侧模型（`atg-audio` 的 `stt`）
     Local,
+}
+
+/// `transcribe` 这一次的结果（`Doc::Transcription`；`docs/experiments/exp008-local-stt/design.md` 第三节第 1 条之后：
+/// 是「本次结果」，不是转写表里存的那份——重转为空时本次是 `no_speech`，表里的旧转写不动）。
+/// 含转写原文：`Debug` 只在测试里派生，别处登记在 `redact.rs`
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub struct Transcription {
+    /// 这条语音**现在的** id（提交时换过 id 的是新 id）
+    pub id: MsgId,
+    /// 语音被标为 18+ 遮挡：没展开时 [`crate::tree::mask`] 把 `outcome` 换成 `hidden`，读法也不读（大总管定 2026-11-14）
+    pub sensitive: bool,
+    pub outcome: Outcome,
+}
+
+impl Transcription {
+    /// 这一次要不要遮住文字（18+ 遮挡、没展开）：遮挡（`mask`）、读法、CLI 的提示都只按它判
+    pub fn hidden(&self, reveal: bool) -> bool {
+        self.sensitive && !reveal
+    }
+}
+
+/// 这一次转出了什么
+#[derive(Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(Debug))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Outcome {
+    /// 有字（这一份也写进了转写表）
+    Text(Transcript),
+    /// 跑成功了但没听出内容（不写表，不覆盖表里已有的）
+    NoSpeech,
+    /// 18+ 遮挡没展开：文字不输出（只由 `mask` 产出）
+    Hidden,
 }
 
 /// 一段识别结果（时间是秒，从语音开头算）

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """正本比对（issue #60，规则见 specs/architecture-rules.md 第 2 条）：契约里的表和代码，谁是正本、另一边逐项比。
 
-前四条是「文档里手写的一张表」对「代码里的正本」；workspace 一条查目录与工作区成员规则是否相容。对不上 → 退出码 1，并说出哪一项差了什么。
+前四条是「文档里手写的一张表」对「代码里的正本」；workspace 一条查目录与工作区成员规则是否相容；testkit 一条查测试夹具不会进正式构建。对不上 → 退出码 1，并说出哪一项差了什么。
 
   python3 scripts/check-sources.py            # 全部
   python3 scripts/check-sources.py --only error-codes,exit-codes
@@ -13,8 +13,9 @@
 | subcommands | src/atg-cli/src/args.rs `enum Command` | specs/contracts/cli.md 第一节第 2 小节子命令表 |
 | versions    | src/atg-core/src/tree/mod.rs `SCHEMA_V` · src/atg-core/src/ipc.rs `PROTOCOL_V` | cli.md / content-tree.md 里的外壳例子 `"v":N` · config-privacy.md 的请求例子 |
 | workspace   | 根 Cargo.toml `members = ["src/atg-*"]` | src/ 下每个 `atg-*` 目录都得有 Cargo.toml（否则整个工作区的 cargo 命令失败；守则第 10 条） |
+| testkit     | `atg-core` 的 `testkit` 特性只给测试（`src/atg-core/src/testkit.rs`） | 根与每个 `src/atg-*/Cargo.toml`：只许在 dev-dependencies 里开它；正式依赖、`[features]`、`default`、`workspace.dependencies` 都不许带（#108） |
 
-只用标准库。解析是正则，靠的是现有写法；写法变了解析不出 → 报「解析不出」并红，不会悄悄变绿。
+只用标准库（testkit 一条用 `tomllib`，要 Python ≥ 3.11）。其余几条解析是正则，靠的是现有写法；写法变了解析不出 → 报「解析不出」并红，不会悄悄变绿。
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ import argparse
 import os
 import re
 import sys
+import tomllib
 
 ERROR_RS = "src/atg-core/src/error.rs"
 OUT_RS = "src/atg-cli/src/out.rs"
@@ -303,12 +305,110 @@ def check_workspace(root: str) -> list[str]:
             and not os.path.isfile(os.path.join(src, d, "Cargo.toml"))]
 
 
+TESTKIT = "testkit"
+# 正式构建会用到的依赖表（dev-dependencies 不在其中：测试才用）
+_PROD_DEPS = ("dependencies", "build-dependencies")
+
+
+def _manifests(root: str) -> list[str]:
+    src = os.path.join(root, "src")
+    if not os.path.isdir(src):
+        raise Unparsed("没有 src/ 目录")
+    rels = ["Cargo.toml"] + [f"src/{d}/Cargo.toml" for d in sorted(os.listdir(src))
+                             if d.startswith("atg-") and os.path.isfile(os.path.join(src, d, "Cargo.toml"))]
+    out = []
+    for rel in rels:
+        if os.path.isfile(os.path.join(root, rel)):
+            out.append(rel)
+    return out
+
+
+def _prod_dep_tables(t: dict) -> list[tuple[str, dict]]:
+    tabs = [(k, t.get(k) or {}) for k in _PROD_DEPS]
+    for tgt, v in (t.get("target") or {}).items():
+        tabs += [(f"target.'{tgt}'.{k}", (v or {}).get(k) or {}) for k in _PROD_DEPS]
+    ws = (t.get("workspace") or {}).get("dependencies")
+    if ws:
+        tabs.append(("workspace.dependencies", ws))  # 成员 `workspace = true` 继承它，等于正式依赖也带上
+    return tabs
+
+
+def _pkg(name: str, spec, ws_deps: dict) -> str:
+    """一条依赖真正指向哪个包：`package = …` 改名的取它；`workspace = true` 继承的先查根 workspace.dependencies
+    里同名那条（根上也可能改了名，codex 046 第 1 轮 #1）；都没有就是键名"""
+    if isinstance(spec, dict):
+        if spec.get("package"):
+            return spec["package"]
+        if spec.get("workspace") is True:
+            base = ws_deps.get(name)
+            if isinstance(base, dict) and base.get("package"):
+                return base["package"]
+    return name
+
+
+def _dev_dep_tables(t: dict) -> list[tuple[str, dict]]:
+    tabs = [("dev-dependencies", t.get("dev-dependencies") or {})]
+    for tgt, v in (t.get("target") or {}).items():
+        tabs.append((f"target.'{tgt}'.dev-dependencies", (v or {}).get("dev-dependencies") or {}))
+    return tabs
+
+
+def check_testkit(root: str) -> list[str]:
+    # 正本：testkit 只给测试。正式构建一旦开了它，测试夹具（建临时目录、建档案）就进了二进制。
+    # 靠两样：① 只在 dev-dependencies 里开（下面逐表查）；② 根 Cargo.toml 的 resolver 是 "2" 或 "3"——只有这样，
+    # dev-dependencies 开的特性才不会合并进 `cargo build` 的正式构建（resolver 1 会合并，那时 ① 查了也白查）。
+    # 只管清单；`--all-features`、`--features atg-core/testkit` 这类命令行开法不经清单，打正式包的命令不许这么写
+    errs = []
+    root_t = None
+    core_t = None
+    ws_deps: dict = {}
+    for rel in _manifests(root):  # 根 Cargo.toml 排第一：先拿到 workspace.dependencies，成员的继承才认得出
+        try:
+            t = tomllib.loads(read(root, rel))
+        except tomllib.TOMLDecodeError as e:
+            raise Unparsed(f"{rel} 不是合法的 TOML：{e}")
+        if rel == "Cargo.toml":
+            root_t = t
+            ws_deps = (t.get("workspace") or {}).get("dependencies") or {}
+        # 这份清单里指向 atg-core 的本地名（键名；改名的 `core = { package = "atg-core" }` 本地名是 core）
+        local = set()
+        for where, deps in _prod_dep_tables(t) + _dev_dep_tables(t):
+            for name, spec in deps.items():
+                if _pkg(name, spec, ws_deps) == "atg-core":
+                    local.add(name)
+        for where, deps in _prod_dep_tables(t):
+            for name, spec in deps.items():
+                if not isinstance(spec, dict):
+                    continue
+                if _pkg(name, spec, ws_deps) == "atg-core" and TESTKIT in (spec.get("features") or []):
+                    errs.append(f"{rel} [{where}] 的 {name} 开了 testkit：只许在 dev-dependencies 里开")
+        is_core = (t.get("package") or {}).get("name") == "atg-core"
+        if is_core:
+            core_t = t
+        for feat, vals in (t.get("features") or {}).items():
+            for v in vals or []:
+                if is_core and feat != TESTKIT and v == TESTKIT:
+                    errs.append(f"{rel} [features] {feat} 连带打开了 testkit（{feat} = [... \"{v}\" ...]）")
+                m = re.fullmatch(r"([A-Za-z0-9_-]+)\??/testkit", v)
+                if m and m.group(1) in local:
+                    errs.append(f"{rel} [features] {feat} 连带打开了 {m.group(1)}/testkit（{m.group(1)} 就是 atg-core）："
+                                "用这个特性构建，夹具就进了正式二进制")
+    # 正本得在：atg-core 声明了 testkit 特性。没有就是改名或删了，这条检查会空转——报解析不出，不悄悄变绿
+    if core_t is None or TESTKIT not in (core_t.get("features") or {}):
+        raise Unparsed("src/atg-core/Cargo.toml 的 [features] 里没有 testkit：特性改名或删了要同步改这条检查")
+    resolver = str(((root_t or {}).get("workspace") or {}).get("resolver", ""))
+    if resolver not in ("2", "3"):
+        errs.append(f"根 Cargo.toml 的 workspace.resolver 是 {resolver or '（没写，按 1 算）'}：要 \"2\" 或 \"3\"，"
+                    "否则 dev-dependencies 开的 testkit 会合并进正式构建")
+    return errs
+
 CHECKS = {
     "error-codes": check_error_codes,
     "exit-codes": check_exit_codes,
     "subcommands": check_subcommands,
     "versions": check_versions,
     "workspace": check_workspace,
+    "testkit": check_testkit,
 }
 
 
@@ -324,7 +424,7 @@ def main() -> int:
             ap.error(f"没有这条检查：{name}")
         try:
             errs = CHECKS[name](a.root)
-        except (Unparsed, OSError) as e:
+        except (Unparsed, OSError, UnicodeDecodeError) as e:
             errs = [f"解析不出：{e}"]
         print(f"{'✓' if not errs else '✗'} {name}" + ("" if not errs else f"（{len(errs)} 处）"))
         for e in errs:

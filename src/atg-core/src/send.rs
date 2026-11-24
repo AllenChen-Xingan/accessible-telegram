@@ -29,9 +29,9 @@
 //! 代号：「发N」「B17-2」见 `docs/research/003_send-receive-prior-art/`；「M2.1」等是 `docs/plan/002_roadmap.md` 的块，
 //! 「T04」是 `specs/tasks.md` 的任务（发消息）。
 //!
-//! 文件分工：本文件放各步共用的底座（凭条 [`Submitted`]、确认框里的说明句、交出失败 / 超时按「结果未知」记账、
+//! 文件分工：本文件放各步共用的底座（凭条 [`Submitted`]、给人看的会话说法、交出失败 / 超时按「结果未知」记账、
 //! 计划行的目标部分）；`send/text.rs` 发文字（准备 → 交出 → 等结果的全程）；`send/outcome.rs` 等结果与记账
-//! （[`fn@wait`]、[`finish`]）；`send/resending.rs` 重发。计划行（`plan_json` / `resend_plan_json`）各随自己的计划类型，R6 时一起换成 `Doc::Plan`
+//! （[`fn@wait`]、[`finish`]）；`send/resending.rs` 重发；`send/react.rs` 表情回应。计划行（`plan_json` / `resend_plan_json`）各随自己的计划类型，R6 时一起换成 `Doc::Plan`
 
 use crate::backend::Backend;
 use crate::config::ServerKind;
@@ -40,13 +40,18 @@ use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
 use crate::link::{Envelope, EventStream, block_on_timeout};
 use crate::model::{ChatId, ChatKind, CoreEvent, Message, MsgId, ReplyRef, Topic};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+pub mod file;
+pub mod forward;
 mod outcome;
-mod resending;
+pub mod react;
+pub(crate) mod resending;
 mod text;
 
 pub use outcome::{Waited, finish, wait};
+pub use react::react_plan_json;
 pub use resending::{
     Fed, ResendItem, ResendOutcome, ResendPlan, ResendReply, prepare_resend, resend,
     resend_and_wait, resend_plan_json,
@@ -89,6 +94,16 @@ impl<'a> Sealed<'a> {
     pub(crate) fn into_kind(self) -> SealedKind<'a> {
         self.kind
     }
+    /// `deleteMessages`：只由 [`crate::delete`] 在闸验过凭据之后造
+    pub(crate) fn delete(request: &'a Value) -> Self {
+        let kind = SealedKind::Delete { request };
+        Self { kind }
+    }
+    /// `editMessageText`：只由 [`crate::edit`] 在闸验过凭据之后造
+    pub(crate) fn edit(request: &'a Value) -> Self {
+        let kind = SealedKind::Edit { request };
+        Self { kind }
+    }
 }
 
 pub(crate) enum SealedKind<'a> {
@@ -96,15 +111,27 @@ pub(crate) enum SealedKind<'a> {
     Message { request: &'a Value, preview: bool },
     /// `resendMessages`：请求 JSON（TDLib 形状；摘要算过的就是它）
     Resend { request: &'a Value },
+    /// `addMessageReaction` / `removeMessageReaction`（看请求的 `@type`）：请求 JSON，摘要算过的就是它
+    React { request: &'a Value },
+    /// `deleteMessages`（`chat_id` · `message_ids` · `revoke`）：撤销待发消息、给所有人删除
+    Delete { request: &'a Value },
+    /// `forwardMessages`（#10）：请求 JSON，摘要算过的就是它；应答同重发（[`Answer::Resent`]）
+    Forward { request: &'a Value },
+    /// `editMessageText`（`chat_id` · `message_id` · `input_message_content`）：改自己发的一条（#8 B）
+    Edit { request: &'a Value },
 }
 
 /// 交出口的应答
 #[allow(clippy::large_enum_variant)]
 pub enum Answer {
-    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息
+    /// `sendMessage`：待发的那条（临时 id）；预览时是 TDLib 造的假消息。`editMessageText`：服务器改完后的那条
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
+    /// 应答只有 `ok` 的（表情回应）
+    Done,
+    /// `deleteMessages`：TDLib 回了 `ok`
+    Deleted,
 }
 
 /// 交出之后拿到的凭条：确认方式 + 临时 id。只能由本模块造出；等到结果后**必须**交给 [`finish`]（它吃掉凭条）
@@ -114,6 +141,9 @@ pub enum Answer {
 pub struct Submitted {
     mode: ConfirmMode,
     temp: MsgId,
+    /// 批量计划里这条的 id（[`crate::gate::Gated::log_items`]：重发是重发前的旧 id，#83；转发是来源里那条的 id，#10）：
+    /// [`finish`] 据此按条记留痕、带 `old_id`，进防重复的还只改这一条的指纹
+    old: Option<i64>,
 }
 
 impl Submitted {
@@ -148,7 +178,7 @@ pub fn target_zh(t: &ChatTarget) -> String {
 
 // ───────────────────────── 交出出了岔子：按「结果未知」记账（发文字、重发共用）─────────────────────────
 
-fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
+pub(crate) fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
     match b.gate().use_test_dc() {
         Some(true) => Ok(ServerKind::Test),
         Some(false) => Ok(ServerKind::Main),
@@ -161,11 +191,22 @@ fn server_of(b: &impl Backend) -> Result<ServerKind, CoreError> {
 /// 交出口回了错：分清「TDLib 明确拒了、没发出」和「请求可能已经交出、只是没等到应答」。
 /// 后一种（连接断了、内核关了、请求中止、应答转不回来）按结果未知记账并报 `send_outcome_unknown`——
 /// 记成失败会让直发防重复放过重跑，对方就收到两条（自审第 1 轮 P1）
-fn submit_failed<B: Backend>(
+pub(crate) fn submit_failed<B: Backend>(
     b: &B,
     mode: ConfirmMode,
     plan: &dyn Gated,
     e: CoreError,
+) -> CoreError {
+    submit_failed_for(b, mode, plan, e, None)
+}
+
+/// 同 [`submit_failed`]，留痕另记动在哪条已有消息上（`final_id`；编辑用，codex 031 #2）
+pub(crate) fn submit_failed_for<B: Backend>(
+    b: &B,
+    mode: ConfirmMode,
+    plan: &dyn Gated,
+    e: CoreError,
+    target: Option<i64>,
 ) -> CoreError {
     let maybe_left = matches!(
         e,
@@ -177,7 +218,7 @@ fn submit_failed<B: Backend>(
     );
     if maybe_left {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+            .after_outcome(mode, plan, 0, target, Outcome::Unknown, None);
         CoreError::SendOutcomeUnknown {
             chat_id: Some(plan.target()),
             temp_message_id: 0,
@@ -185,37 +226,41 @@ fn submit_failed<B: Backend>(
         }
     } else {
         b.gate()
-            .after_outcome(mode, plan, 0, None, Outcome::Failed, Some(&e));
+            .after_outcome(mode, plan, 0, target, Outcome::Failed, Some(&e));
         e
     }
 }
 
 /// 交出（验凭据 → 复核 → 交给 TDLib）也算进同一个上限：TDLib 迟迟不回交出的应答时，命令与 serve 不许一直卡着
-/// （codex 016 第 1 轮 #3）。到点还没回 → 可能已经交出，按结果未知记账并报 `send_outcome_unknown`（`timeout`）
+/// （codex 016 第 1 轮 #3）。到点时看 `handed`（交出前由 `fut` 置真，见 [`text::send_text`]）：
+/// 已交出 → 可能已经发出，按结果未知记账并报 `send_outcome_unknown`（`timeout`）；
+/// 还没交出（卡在交出前的复核里）→ 什么都没发，不记账、报 `network`，可以重跑（#80，与 `react_within` 同一口径）
 fn submit_within<B: Backend, T>(
     b: &B,
     plan: &dyn Gated,
     mode: ConfirmMode,
     timeout: Duration,
+    handed: &AtomicBool,
     fut: impl std::future::Future<Output = Result<T, CoreError>>,
 ) -> Result<T, CoreError> {
-    match crate::link::block_on_timeout(fut, timeout) {
-        Some(r) => r,
-        None => {
-            b.gate()
-                .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
-            Err(CoreError::SendOutcomeUnknown {
-                chat_id: Some(plan.target()),
-                temp_message_id: 0,
-                why: UnknownWhy::Timeout,
-            })
-        }
+    if let Some(r) = crate::link::block_on_timeout(fut, timeout) {
+        return r;
     }
+    if !handed.load(Ordering::SeqCst) {
+        return Err(CoreError::Network { td: None });
+    }
+    b.gate()
+        .after_outcome(mode, plan, 0, None, Outcome::Unknown, None);
+    Err(CoreError::SendOutcomeUnknown {
+        chat_id: Some(plan.target()),
+        temp_message_id: 0,
+        why: UnknownWhy::Timeout,
+    })
 }
 
 // ───────────────────────── 计划行的目标部分（两种计划行共用）─────────────────────────
 
-fn target_json(t: &ChatTarget) -> Value {
+pub(crate) fn target_json(t: &ChatTarget) -> Value {
     json!({
         "chat_id": t.id,
         "kind": t.kind,

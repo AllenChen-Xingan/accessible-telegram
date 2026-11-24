@@ -1,7 +1,7 @@
 //! `gate`：发送闸——L2 动作（发送、重发……）的唯一入口。规约正本：`specs/contracts/actions.md` 第一节第 4、5 小节。
 //!
 //! 等级（`actions.md` 第一节第 2 小节）：**L0** = 只读或只影响本机，随便调（发送前的准备、预览都是）；**L2** = 发给
-//! 别人、撤不回（发送、重发、删除），只能凭一次性凭据交出，且绝不自动重试。
+//! 别人（发送、重发、删除、表情回应、转发；除表情回应外都撤不回），只能凭一次性凭据交出，且绝不自动重试。
 //!
 //! - **凭据** [`ConfirmToken`] 只能由 [`Gate::issue`] 开出：构造函数不公开，不实现 `Clone` / `Copy` /
 //!   `Serialize` / `Deserialize`，后端发送时按值吃掉它；60 秒（单调时钟：不受人改系统时间影响，改时间续不了期）；每张凭据带一个随机数，验过就记进本进程的「已用」表，同一张不能用两次；凭据本身**绝不交给
@@ -15,9 +15,10 @@
 //!   开凭据时查一次，交出前（[`Gate::verify`]）再查一次
 //! - **摘要**：交给 TDLib 那份请求的 JSON 字节 + 自己的账号 id + 服务器类别，SHA-256（[`digest`]）。凭据绑目标 + 摘要。
 //!   账号与服务器也算进去：开凭据之后换了号或换了服务器，旧凭据就对不上，不会被拿去替另一个账号发
-//! - **直发防重复**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A）：见 [`GuardStore`]
+//! - **直发防重复**（`docs/research/003_send-receive-prior-art/decision.md` B17-2，人选 A）：见 [`GuardStore`]。一份计划可以带
+//!   好几个指纹（[`Gated::intents`]，转发每条一个，#10）：任一命中整份拒，整份一起认领；按条的结果只改那一条的指纹
 //! - **直发留痕**：档案目录 `direct-send.log`，一条直发一行（时间、进程种类、进程号、会话 id、临时与最终消息 id、
-//!   类型、结果），不记内容与名字，保留 30 天；写不进去就拒绝直发
+//!   类型、结果；表情回应另记消息 id 与可能挤掉几个；批量重发、转发按条记、带 `old_id`，转发另记来源会话 id），不记内容与名字，保留 30 天；写不进去就拒绝直发
 //!
 //! 威胁边界同规约：闸防「走正规接口时出错或越权」，防不了能改本仓代码的程序。
 //!
@@ -100,6 +101,8 @@ pub struct ConfirmToken {
     nonce: u64,
     issued: Instant,
     mode: ConfirmMode,
+    /// 开凭据时带了 `--again`：交出前的查重放行这一次（#77）
+    again: bool,
 }
 
 impl ConfirmMode {
@@ -145,12 +148,36 @@ pub trait Gated: Sealed {
     fn target(&self) -> ChatId;
     /// 凭据绑的摘要（[`digest`]）
     fn digest(&self) -> [u8; 32];
-    /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要
+    /// 防重复用的「意图摘要」：去掉每次都变的字段（`sending_id`）后的摘要。闸只经 [`Gated::intents`] 读它（默认实现）；
+    /// 覆写了 `intents` 的多指纹计划不会被读这个值
     fn intent(&self) -> [u8; 32];
+    /// 防重复按哪几个指纹拦（#10）：默认就是 [`Gated::intent`] 一个。一次动好几条、每条都可能单独重来的（转发），
+    /// 每条一个——换一批、取子集也拦得住其中结果未知的那条。有几个时与 [`Gated::log_items`] 一一对应、同序
+    fn intents(&self) -> Vec<[u8; 32]> {
+        vec![self.intent()]
+    }
     /// 进不进直发防重复（B17-2）。重发不进：对象是某条失败消息的 id，重发后旧 id 就没了，同一条重发不了两次
     fn dedup(&self) -> bool;
     /// 留痕里的内容类型（`text` / `resend`……），不是内容本身
     fn kind(&self) -> &'static str;
+    /// 留痕里另记的 `reaction`：动在哪条消息上、按最坏情况可能挤掉我原先点的几个回应（`None` = 拿不准）。只有表情回应有；只记 id 与个数
+    fn log_target(&self) -> Option<(i64, Option<usize>)> {
+        None
+    }
+    /// 留痕里另记的来源会话（`from_chat_id`）：只有转发有（#10）；只记 id
+    fn log_source(&self) -> Option<ChatId> {
+        None
+    }
+    /// 一次请求动好几条时各条的 id：批量重发是重发前的旧 id（#83），转发是来源会话里那条的 id（#10）。留痕按条记，每条一行、
+    /// 带 `old_id`；有多个 [`Gated::intents`] 时与它一一对应、同序（按条记账靠位置对上）。单条的计划是空表
+    fn log_items(&self) -> Vec<i64> {
+        Vec::new()
+    }
+    /// 留痕里另记的文件（`file`）：按图片还是按文件发（`photo` / `document`）与字节数。只有发文件有（#12）；
+    /// 不记路径、文件名、说明文字
+    fn log_file(&self) -> Option<(&'static str, u64)> {
+        None
+    }
 }
 
 /// 摘要：请求 JSON 的字节（不做 Unicode 规范化）+ 自己的账号 id + 服务器类别，SHA-256
@@ -206,6 +233,35 @@ pub enum Outcome {
 
 // ───────────────────────── 防重复记录 ─────────────────────────
 
+/// 什么算命中：同会话同指纹、上次不是「明确失败」，取最近一条。开凭据时的早拒与交出前的认领共用这一份判定（#77）
+fn latest_hit<'a>(entries: &'a [GuardEntry], chat: ChatId, fp: &str) -> Option<&'a GuardEntry> {
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
+        .max_by_key(|e| e.at)
+}
+
+/// 多指纹计划（#10）命中好几条时报哪条：拦截等级最高的优先（结果未知 / 已提交那类拦 24 小时，先于已发出那类的 10 分钟；
+/// 按类别比，不比剩下还拦多久），同类取最新。
+/// 报文里的「几秒前、什么结果」是人决定等一等还是加 `--again` 的依据，报成已发出会把结果未知的那条也放过去
+pub(crate) fn worst_hit<'a>(
+    entries: &'a [GuardEntry],
+    chat: ChatId,
+    fps: &[String],
+) -> Option<&'a GuardEntry> {
+    // 看全部还算数的匹配记录：同一个指纹上，较早的「结果未知」可能被后来 --again 的「已发出」压在下面，
+    // 只取每个指纹最新的那条就会把它漏掉（codex 033 第 2 轮 #2）
+    entries
+        .iter()
+        .filter(|e| e.chat_id == chat && e.state != Outcome::Failed && fps.contains(&e.fp))
+        .max_by_key(|e| {
+            (
+                matches!(e.state, Outcome::Unknown | Outcome::Submitted),
+                e.at,
+            )
+        })
+}
+
 /// 一条防重复记录：时间、会话、指纹、状态。**不记内容、不记名字**
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardEntry {
@@ -256,12 +312,44 @@ impl GuardStore {
             .collect()
     }
 
-    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条
+    /// 窗口内同会话同指纹、上次不是「明确失败」的最近一条（单指纹的便捷版；闸的早拒用 [`Self::hit_any`]，交出前那次见 [`Self::claim_all`]）
     pub fn hit(&self, now: i64, chat: ChatId, fp: &str) -> std::io::Result<Option<GuardEntry>> {
-        Ok(Self::live(now, self.load()?)
-            .into_iter()
-            .filter(|e| e.chat_id == chat && e.fp == fp && e.state != Outcome::Failed)
-            .max_by_key(|e| e.at))
+        Ok(latest_hit(&Self::live(now, self.load()?), chat, fp).cloned())
+    }
+
+    /// [`Self::hit`] 的多指纹版：命中好几条时报 [`worst_hit`]
+    pub fn hit_any(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fps: &[String],
+    ) -> std::io::Result<Option<GuardEntry>> {
+        Ok(worst_hit(&Self::live(now, self.load()?), chat, fps).cloned())
+    }
+
+    /// 交出前的查重与登记一步做完（#77）：读一次 → 不带 `again` 就查命中 → 记「已提交」→ 写一次。一份计划可能带好几个
+    /// 指纹（#10）：先查全部，任一命中就整个不认领、什么都不写，返回 `Ok(Err(那条))`（[`worst_hit`]）；都没命中才一起记。
+    /// 调用方攥着闸的锁调（进程内不交错；跨进程有档案锁）
+    pub fn claim_all(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fps: &[String],
+        again: bool,
+    ) -> std::io::Result<Result<(), GuardEntry>> {
+        let mut entries = Self::live(now, self.load()?);
+        if !again && let Some(hit) = worst_hit(&entries, chat, fps) {
+            return Ok(Err(hit.clone()));
+        }
+        for fp in fps {
+            entries.push(GuardEntry {
+                at: now,
+                chat_id: chat,
+                fp: fp.clone(),
+                state: Outcome::Submitted,
+            });
+        }
+        self.save(&entries).map(Ok)
     }
 
     pub fn record(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
@@ -279,20 +367,33 @@ impl GuardStore {
 
     /// 把最近一条「已提交」的改成结果；找不到就补一条
     pub fn settle(&self, now: i64, chat: ChatId, fp: &str, state: Outcome) -> std::io::Result<()> {
+        self.settle_all(now, chat, &[fp.to_owned()], state)
+    }
+
+    /// [`Self::settle`] 的多指纹版（#10）：读一次、逐个改、写一次
+    pub fn settle_all(
+        &self,
+        now: i64,
+        chat: ChatId,
+        fps: &[String],
+        state: Outcome,
+    ) -> std::io::Result<()> {
         // 同 [`Self::record`]：读不了就不覆盖（「已提交」留着，照样按结果未知拦）
         let mut entries = Self::live(now, self.load()?);
-        match entries
-            .iter_mut()
-            .rev()
-            .find(|e| e.chat_id == chat && e.fp == fp && e.state == Outcome::Submitted)
-        {
-            Some(e) => e.state = state,
-            None => entries.push(GuardEntry {
-                at: now,
-                chat_id: chat,
-                fp: fp.to_owned(),
-                state,
-            }),
+        for fp in fps {
+            match entries
+                .iter_mut()
+                .rev()
+                .find(|e| e.chat_id == chat && &e.fp == fp && e.state == Outcome::Submitted)
+            {
+                Some(e) => e.state = state,
+                None => entries.push(GuardEntry {
+                    at: now,
+                    chat_id: chat,
+                    fp: fp.clone(),
+                    state,
+                }),
+            }
         }
         self.save(&entries)
     }

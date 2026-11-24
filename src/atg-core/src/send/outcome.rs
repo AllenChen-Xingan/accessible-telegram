@@ -20,25 +20,25 @@ pub enum Waited {
     Unknown(UnknownWhy),
 }
 
-/// 这条事件说的是不是这几条待发消息之一的下落
-fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
+/// 这条事件说了这几条待发消息里哪些的下落（一次删几条只来一条 `messages_deleted`，所以可能不止一条）
+fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Vec<(MsgId, Waited)> {
     match ev {
         CoreEvent::SendSucceeded { old_id, message } if temps.contains(old_id) => {
-            Some((*old_id, Waited::Succeeded(message.clone())))
+            vec![(*old_id, Waited::Succeeded(message.clone()))]
         }
         CoreEvent::SendFailed {
             old_id,
             message,
             error,
             can_retry,
-        } if temps.contains(old_id) => Some((
+        } if temps.contains(old_id) => vec![(
             *old_id,
             Waited::Failed {
                 message: message.clone(),
                 error: error.clone(),
                 can_retry: *can_retry,
             },
-        )),
+        )],
         // 发3：待发那条被删，TDLib 不来失败。谁会删：人在别的设备上删了它、会话变得不可访问、TDLib 重发前先删旧的。
         // 为什么「被删」反而可能已送达：请求可能早已到了服务器，删除只停本机的等待，服务器的成功应答照样回来
         // （TDLib 1.8.69 `MessagesManager.cpp:27848-27851`）。所以按结果未知报、不许重发——当成失败会让人重发出第二条
@@ -48,9 +48,10 @@ fn verdict(ev: &CoreEvent, temps: &[MsgId]) -> Option<(MsgId, Waited)> {
             ..
         } => temps
             .iter()
-            .find(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
-            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted))),
-        _ => None,
+            .filter(|t| t.chat_id == *chat_id && message_ids.contains(&t.message_id))
+            .map(|t| (*t, Waited::Unknown(UnknownWhy::PendingDeleted)))
+            .collect(),
+        _ => vec![],
     }
 }
 
@@ -79,11 +80,12 @@ pub fn wait(
             }
             Some(Some(batch)) => {
                 for env in batch {
-                    if let Some((id, w)) = verdict(&env.event, temps)
-                        && let Some(i) = temps.iter().position(|t| *t == id)
-                        && got[i].is_none()
-                    {
-                        got[i] = Some(w);
+                    for (id, w) in verdict(&env.event, temps) {
+                        if let Some(i) = temps.iter().position(|t| *t == id)
+                            && got[i].is_none()
+                        {
+                            got[i] = Some(w);
+                        }
                     }
                     on_event(env);
                 }
@@ -97,14 +99,32 @@ pub fn wait(
 
 /// 等到结果后交给闸记账（直发的防重复记录与留痕）
 pub fn finish<B: Backend>(b: &B, plan: &dyn Gated, sub: Submitted, w: &Waited) {
-    let Submitted { mode, temp } = sub;
-    let (outcome, final_id, err) = match w {
+    let Submitted { mode, temp, old } = sub;
+    let (outcome, final_id, err) = verdict_of(w);
+    match old {
+        // 批量重发的一条：按条记、带旧 id（#83）
+        Some(old) => b.gate().after_item(
+            mode,
+            plan,
+            old,
+            temp.message_id,
+            final_id,
+            outcome,
+            err.map(CoreError::code),
+        ),
+        None => b
+            .gate()
+            .after_outcome(mode, plan, temp.message_id, final_id, outcome, err),
+    }
+}
+
+/// 下落 → 记账用的结果、正式 id、错误（[`finish`] 与重发按条记账共用）
+fn verdict_of(w: &Waited) -> (Outcome, Option<i64>, Option<&CoreError>) {
+    match w {
         Waited::Succeeded(m) => (Outcome::Succeeded, Some(m.id.message_id), None),
         Waited::Failed { message, error, .. } => {
             (Outcome::Failed, Some(message.id.message_id), Some(error))
         }
         Waited::Unknown(_) => (Outcome::Unknown, None, None),
-    };
-    b.gate()
-        .after_outcome(mode, plan, temp.message_id, final_id, outcome, err);
+    }
 }

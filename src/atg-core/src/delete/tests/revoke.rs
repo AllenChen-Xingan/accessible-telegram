@@ -1,0 +1,220 @@
+//! 假后端走「给所有人删除」的全流程（#8，M2.7；数据全是编的，名字取自 fixtures/names.txt）
+use super::*;
+use crate::fake::Cap;
+
+fn mid(chat: i64, id: i64) -> MsgId {
+    MsgId {
+        chat_id: chat,
+        message_id: id,
+    }
+}
+
+fn refused(why: RefusedWhy) -> CoreError {
+    CoreError::ActionRefused { why }
+}
+
+#[test]
+fn own_sent_message_is_deleted_for_everyone_directly() {
+    let b = rig(false);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[5, 5], SendOrigin::Cli)).unwrap();
+    assert_eq!(plan.action(), Action::Delete);
+    assert_eq!(plan.mode(), ConfirmMode::DirectMode);
+    let j = plan.json();
+    assert_eq!(j["action"], "delete");
+    assert_eq!(
+        j["items"],
+        json!([{"message_id": 5, "text": "atg 测试 已发", "hidden_chars": 0}])
+    );
+    assert_eq!(j["note_zh"], DELETE_NOTE_ZH);
+    let token = b.gate().issue(&plan, false).unwrap();
+    assert_eq!(
+        block_on(delete(&b, &plan, token)).unwrap(),
+        ConfirmMode::DirectMode
+    );
+    // 重复的 id 只删一次；`revoke=true` = 给所有人
+    assert_eq!(
+        deletes(&b),
+        vec![Call::Delete {
+            chat: FRIEND,
+            ids: vec![5],
+            revoke: true
+        }]
+    );
+}
+
+#[test]
+fn saved_messages_are_refused_on_both_servers() {
+    for test_dc in [false, true] {
+        let b = rig(test_dc);
+        let e = block_on(prepare_delete(&b, ME, &[5], SendOrigin::Cli)).unwrap_err();
+        assert_eq!(e, refused(RefusedWhy::Saved));
+        assert_eq!(e.code(), "forbidden");
+        assert!(deletes(&b).is_empty());
+    }
+}
+
+#[test]
+fn someone_elses_message_is_refused() {
+    let b = rig(false);
+    let mut m = own(FRIEND, 6, "atg 测试 对方发的", Value::Null);
+    m["is_outgoing"] = json!(false);
+    m["sender_id"] = json!({"@type": "messageSenderUser", "user_id": FRIEND});
+    b.set_history(
+        FRIEND,
+        vec![own(FRIEND, 5, "atg 测试 已发", Value::Null), m],
+    );
+    let e = block_on(prepare_delete(&b, FRIEND, &[5, 6], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e, refused(RefusedWhy::NotOwn));
+}
+
+#[test]
+fn what_tdlib_will_not_revoke_is_refused() {
+    let b = rig(false);
+    // 还在待发的：TDLib 说能给所有人删（假后端照真的来），核心自己拦——该用 `pending cancel`（自审 #8 A P1）
+    assert!(
+        block_on(b.message_caps(mid(FRIEND, 1_048_577)))
+            .unwrap()
+            .can_delete_for_all
+    );
+    let e = block_on(prepare_delete(&b, FRIEND, &[1_048_577], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e, refused(RefusedWhy::NotSent));
+    // 发送失败的：没送到对方，同样不给所有人删
+    let failed = json!({"@type": "messageSendingStateFailed", "error": {"@type": "error", "code": 400, "message": "X"},
+        "can_retry": true, "need_another_sender": false, "need_another_reply_quote": false,
+        "need_drop_reply": false, "required_paid_message_star_count": 0, "retry_after": 0.0});
+    b.set_history(
+        FRIEND,
+        vec![
+            own(FRIEND, 8, "atg 测试 失败", failed),
+            own(FRIEND, 5, "atg 测试 已发", Value::Null),
+        ],
+    );
+    let e = block_on(prepare_delete(&b, FRIEND, &[8], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e, refused(RefusedWhy::NotSent));
+    // 过了时限等：TDLib 说不行就不行，本项目不自己算
+    b.deny(mid(FRIEND, 5), Cap::DeleteForAll);
+    let e = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e, refused(RefusedWhy::NotRevocable));
+    let e = block_on(prepare_delete(&b, FRIEND, &[99], SendOrigin::Cli)).unwrap_err();
+    assert_eq!(e.code(), "not_found");
+    assert!(deletes(&b).is_empty());
+}
+
+#[test]
+fn non_text_message_can_be_deleted_without_text() {
+    let b = rig(false);
+    let mut m = own(FRIEND, 7, "", Value::Null);
+    m["content"] = json!({"@type": "messagePhoto", "caption": {"@type": "formattedText", "text": "atg 测试 图", "entities": []},
+        "photo": {"@type": "photo", "has_stickers": false, "sizes": []}});
+    b.set_history(FRIEND, vec![m]);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[7], SendOrigin::Cli)).unwrap();
+    assert_eq!(plan.items()[0].text, None);
+    let token = b.gate().issue(&plan, false).unwrap();
+    block_on(delete(&b, &plan, token)).unwrap();
+    assert_eq!(deletes(&b).len(), 1);
+}
+
+#[test]
+fn edited_after_prepare_is_refused_before_submit() {
+    let b = rig(false);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&plan, false).unwrap();
+    b.set_history(FRIEND, vec![own(FRIEND, 5, "atg 测试 改过", Value::Null)]);
+    let e = block_on(delete(&b, &plan, token)).unwrap_err();
+    assert_eq!(
+        e,
+        CoreError::InvalidSend {
+            why: InvalidSendWhy::Changed
+        }
+    );
+    assert!(deletes(&b).is_empty());
+}
+
+#[test]
+fn no_longer_revocable_at_submit_is_refused() {
+    let b = rig(false);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&plan, false).unwrap();
+    b.deny(mid(FRIEND, 5), Cap::DeleteForAll);
+    let e = block_on(delete(&b, &plan, token)).unwrap_err();
+    assert_eq!(e, refused(RefusedWhy::NotRevocable));
+    assert!(deletes(&b).is_empty());
+}
+
+#[test]
+fn plans_of_the_other_kind_are_not_interchangeable() {
+    let b = rig(false);
+    let c = block_on(prepare_cancel(&b, FRIEND, &[1_048_577], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&c, false).unwrap();
+    let e = block_on(delete(&b, &c, token)).unwrap_err();
+    assert_eq!(e.code(), "internal");
+    // 删除的凭据拿去撤销：同样拒，闸没被耗掉也什么都没删
+    let d = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&d, false).unwrap();
+    assert_eq!(
+        block_on(cancel(&b, &d, token)).unwrap_err().code(),
+        "internal"
+    );
+    assert!(deletes(&b).is_empty());
+}
+
+#[test]
+fn disconnect_while_submitting_is_outcome_unknown() {
+    let b = rig(false);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[5], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&plan, false).unwrap();
+    b.fail_next("delete", CoreError::Disconnected);
+    let e = block_on(delete(&b, &plan, token)).unwrap_err();
+    assert_eq!(e.code(), "send_outcome_unknown");
+}
+
+fn photo(chat: i64, id: i64, caption: &str, file: i64) -> Value {
+    let mut m = own(chat, id, "", Value::Null);
+    m["content"] = json!({"@type": "messagePhoto", "caption": {"@type": "formattedText", "text": caption, "entities": []},
+        "photo": {"@type": "photo", "has_stickers": false, "sizes": [{"@type": "photoSize", "type": "x",
+            "photo": {"@type": "file", "id": file}, "width": 1, "height": 1, "progressive_sizes": []}]}});
+    m
+}
+
+/// codex 030 #1：附件没有可比的正文，改了说明或换了图也得认出来，整批不删
+#[test]
+fn attachment_changed_after_prepare_is_refused() {
+    // 换了图、说明没变：图片节点不带文件，靠 TDLib 更新的 `edit_date` 认
+    let mut swapped = photo(FRIEND, 7, "atg 测试 图", 32);
+    swapped["edit_date"] = json!(1_792_756_000);
+    for changed in [photo(FRIEND, 7, "atg 测试 改过的说明", 31), swapped] {
+        let b = rig(false);
+        b.set_history(FRIEND, vec![photo(FRIEND, 7, "atg 测试 图", 31)]);
+        let plan = block_on(prepare_delete(&b, FRIEND, &[7], SendOrigin::Cli)).unwrap();
+        let token = b.gate().issue(&plan, false).unwrap();
+        b.set_history(FRIEND, vec![changed]);
+        let e = block_on(delete(&b, &plan, token)).unwrap_err();
+        assert_eq!(
+            e,
+            CoreError::InvalidSend {
+                why: InvalidSendWhy::Changed
+            }
+        );
+        assert!(deletes(&b).is_empty());
+    }
+}
+
+/// 对方听了自己发的语音不是编辑：照删
+#[test]
+fn voice_listened_meanwhile_still_deletes() {
+    let voice = |listened: bool| {
+        let mut m = own(FRIEND, 9, "", Value::Null);
+        m["content"] = json!({"@type": "messageVoiceNote", "is_listened": listened,
+            "caption": {"@type": "formattedText", "text": "", "entities": []},
+            "voice_note": {"@type": "voiceNote", "duration": 3, "waveform": "", "mime_type": "audio/ogg",
+                "voice": {"@type": "file", "id": 41}}});
+        m
+    };
+    let b = rig(false);
+    b.set_history(FRIEND, vec![voice(false)]);
+    let plan = block_on(prepare_delete(&b, FRIEND, &[9], SendOrigin::Cli)).unwrap();
+    let token = b.gate().issue(&plan, false).unwrap();
+    b.set_history(FRIEND, vec![voice(true)]);
+    block_on(delete(&b, &plan, token)).unwrap();
+    assert_eq!(deletes(&b).len(), 1);
+}

@@ -23,6 +23,12 @@ use std::future::Future;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
+/// `pending cancel` 交出删除之后等这几条的下落 · 删待发消息 TDLib 当场推 `updateDeleteMessages`，赶上已发出的结果也在
+/// 一两秒内；5 秒内都没来按未知报 · `cli.md` `pending`
+pub const CANCEL_WAIT: Duration = Duration::from_secs(5);
+/// `pending cancel` 遇上「没赶上、已发出」的，再等多久看它的正式 id 有没有被删（TDLib 把删除换成了正式 id 时，
+/// 删除的更新紧跟在发出成功之后）· 1 秒够两条更新先后到 · `cli.md` `pending`
+pub const CANCEL_RACE_WAIT: Duration = Duration::from_secs(1);
 /// `chats` 等授权线离开「等参数」· TDLib 起来要一会儿 · `cli.md` `chats`
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 /// 等补发完（`chats` / `history`）· 未读位置要等补发完才准 · `cli.md`：超时 10 秒

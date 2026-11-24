@@ -80,10 +80,14 @@ pub fn core_exit(e: &CoreError) -> u8 {
         E::Network { .. } | E::Disconnected => 4,
         E::RateLimited { .. } | E::AccountLimited { .. } => 5,
         E::NotFound { .. } => 6,
-        E::Forbidden { .. } | E::InvalidInput { .. } | E::InvalidSend { .. } => 7,
+        E::Forbidden { .. }
+        | E::ActionRefused { .. }
+        | E::InvalidInput { .. }
+        | E::InvalidSend { .. } => 7,
         E::SendRefused { .. } | E::Cancelled => 8,
         E::ProfileBusy { .. } | E::DbKeyInvalid { .. } => 9,
         E::SendOutcomeUnknown { .. } => 10,
+        E::SttUnavailable { .. } => 11,
         E::Internal { .. } | E::Unknown { .. } => 1,
     }
 }
@@ -106,7 +110,9 @@ pub fn core_error_data(e: &CoreError) -> Value {
     let extra = match e {
         CoreError::AuthWrongState { expected } => json!({ "expected": to_value(expected) }),
         CoreError::RateLimited { retry_after_s, .. } => json!({ "retry_after_s": retry_after_s }),
-        CoreError::NotFound { what, .. } | CoreError::Internal { what } => json!({ "what": what }),
+        CoreError::NotFound { what, .. }
+        | CoreError::Internal { what }
+        | CoreError::SttUnavailable { what } => json!({ "what": what }),
         CoreError::ProfileBusy { holder: Some(h) } => json!({ "holder": to_value(h) }),
         CoreError::DbKeyInvalid { source } => json!({ "source": to_value(source) }),
         CoreError::SendRefused { reason, last } => {
@@ -126,6 +132,7 @@ pub fn core_error_data(e: &CoreError) -> Value {
             json!({ "chat_id": chat_id, "temp_message_id": temp_message_id, "why": to_value(why) })
         }
         CoreError::InvalidSend { why } => json!({ "why": to_value(why) }),
+        CoreError::ActionRefused { why } => json!({ "why": to_value(why) }),
         CoreError::Unknown { td } => json!({ "td_code": td.code }),
         _ => json!({}),
     };
@@ -149,6 +156,7 @@ pub fn emit_send_unknown(
     format: Format,
     chat_id: Option<i64>,
     message_zh: &str,
+    extra: Value,
 ) -> u8 {
     let e = CoreError::SendOutcomeUnknown {
         chat_id,
@@ -158,9 +166,13 @@ pub fn emit_send_unknown(
     let mut data = core_error_data(&e);
     data["message_zh"] = json!(message_zh);
     data["retryable"] = json!(false);
+    // 各命令自己的附加字段（如 forward 的 `from_chat_id`、逐条 `items`，以及点名了 id 的 `message_zh`）
+    if let (Some(d), Value::Object(x)) = (data.as_object_mut(), extra) {
+        d.extend(x);
+    }
     match format {
+        Format::Text => sink.out(data["message_zh"].as_str().unwrap_or(message_zh)),
         Format::Json => emit_to(sink, &envelope("error", data)),
-        Format::Text => sink.out(message_zh),
     }
     core_exit(&e)
 }
@@ -334,6 +346,24 @@ mod tests {
         assert!(at.ends_with('Z'));
     }
 
+    /// `stt_unavailable.what` 三处对齐：码的正本在 `atg_audio::stt::what`，`errors.md` 那一行逐个登记，
+    /// `atg-core` 的提示逐个有专门的修法（只有 `unavailable` 走兜底）
+    #[test]
+    fn stt_unavailable_whats_match_everywhere() {
+        use atg_audio::stt::what;
+        let spec = include_str!("../../../specs/contracts/errors.md");
+        let row = spec
+            .lines()
+            .find(|l| l.starts_with("| `stt_unavailable`"))
+            .unwrap_or_else(|| panic!("errors.md 没有 stt_unavailable 行"));
+        let hint = |w: &'static str| CoreError::SttUnavailable { what: w }.message_zh();
+        let fallback = hint("__none__");
+        for w in what::ALL {
+            assert!(row.contains(&format!("`{w}`")), "errors.md 没登记 {w}");
+            assert_eq!(hint(w) == fallback, w == what::UNAVAILABLE, "{w} 的提示");
+        }
+    }
+
     #[test]
     fn exit_codes_match_contract() {
         assert_eq!(Code::Usage.exit(), 2);
@@ -356,6 +386,12 @@ mod tests {
             (CoreError::Forbidden { td: None }, 7),
             (CoreError::AuthPhoneNotForProfile, 3),
             (CoreError::Cancelled, 8),
+            (
+                CoreError::SttUnavailable {
+                    what: "helper_not_found",
+                },
+                11,
+            ),
             (
                 CoreError::ProfileBusy {
                     holder: Some(Holder::Gui),

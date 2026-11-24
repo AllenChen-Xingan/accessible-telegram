@@ -148,8 +148,7 @@ fn real_helper_exits_when_parent_gone_before_start() {
 }
 
 fn real_helper() -> PathBuf {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    locate(root.parent().and_then(|p| p.parent())).expect("先跑 build.sh")
+    locate().expect("先跑 build.sh")
 }
 
 /// 用 `kill -0` 看进程还在不在，最多等 `within`；到点还在就强杀并回 false

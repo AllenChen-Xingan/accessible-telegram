@@ -294,6 +294,38 @@ pub fn play_prepare(
     }
 }
 
+/// `transcribe`：选档案、起真实后端、取凭据 → 下载 → 解码 → 本机转写 → 提交、关后端。v0 不转发（arch 定 2026-11-13）
+pub fn transcribe(
+    g: &Global,
+    q: &crate::voice::VoiceQuery,
+    locales: Vec<String>,
+    started: std::time::Instant,
+) -> Result<atg_core::tree::Transcription, Fail> {
+    if g.fake.is_some() {
+        return Err(Fail::NotImplemented {
+            command: "transcribe",
+            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
+        });
+    }
+    #[cfg(not(feature = "tdlib"))]
+    {
+        let _ = (q, locales, started);
+        Err(Fail::NotImplemented {
+            command: "transcribe",
+            message_zh: "这个版本没编进 TDLib：cargo build -p atg-cli --features tdlib",
+        })
+    }
+    #[cfg(feature = "tdlib")]
+    {
+        // 先找辅助程序：找不到、不安全就不起后端
+        let helper = atg_audio::stt::locate().map_err(crate::voice::transcribe::helper_fail)?;
+        let opts = crate::voice::transcribe::SttOpts { helper, locales };
+        let profile = open_profile(g)?;
+        let b = td_backend()?;
+        crate::voice::transcribe::run(&b, &profile, q, &opts, &crate::signals::STOP, started)
+    }
+}
+
 /// `watch`：选档案、起真实后端、订阅到 Ctrl+C（输出由 `watch` 自己写标准输出，回退出码）
 pub fn watch(
     g: &Global,
@@ -447,9 +479,31 @@ pub fn resend(
     )
 }
 
+/// `pending` / `pending_cancel` 直跑（撤销是 L2，与发送一样直发）
+pub fn pending(
+    g: &Global,
+    format: crate::args::Format,
+    command: &'static str,
+    params: &serde_json::Value,
+    started: std::time::Instant,
+) -> u8 {
+    l2_run(g, format, command, started, &mut |b, stream, feed, sink| {
+        crate::pending::execute(
+            b,
+            stream,
+            feed,
+            command,
+            params.clone(),
+            sink,
+            format,
+            started,
+        )
+    })
+}
+
 /// [`l2_run`] 交给每条发送类命令的那一段：拿到已起好的后端、事件流、Store，输出写进给它的出口，返回退出码
 #[cfg(feature = "tdlib")]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::td::TdBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -459,7 +513,7 @@ type L2Body<'a> = dyn FnMut(
 
 /// 不编 TDLib 时只为通过类型检查（`l2_run` 在那种构建里直接报 `not_implemented`，用不到它）
 #[cfg(not(feature = "tdlib"))]
-type L2Body<'a> = dyn FnMut(
+pub(crate) type L2Body<'a> = dyn FnMut(
         &atg_core::fake::FakeBackend,
         &mut atg_core::link::EventStream,
         &mut crate::chats::Feed,
@@ -467,9 +521,9 @@ type L2Body<'a> = dyn FnMut(
     ) -> u8
     + 'a;
 
-/// 发送类命令（`send`、`resend`）的直跑外壳：选档案 → 起真实后端→
-/// 直发时先出开场提示与 `status` 行 → 跑 `body` → 关后端
-fn l2_run(
+/// 发送类命令（`send`、`resend`、`react`、`pending cancel`、`delete`、`edit`，以及同一外壳的 `pending` 列表、`reactions`）的
+/// 直跑外壳：选档案 → 起真实后端 → 跑 `body` → 关后端（一律直发，不出开场提示与 `status` 行，#113）
+pub(crate) fn l2_run(
     g: &Global,
     format: crate::args::Format,
     command: &'static str,

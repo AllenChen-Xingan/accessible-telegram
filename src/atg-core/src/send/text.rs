@@ -140,7 +140,7 @@ pub(crate) fn text_request(
 /// `sending_id`：我们自定的一个数，TDLib 原样放回这条待发消息的状态里（`messageSendingStatePending.sending_id`）。
 /// 「待发」那条的新消息更新可能比带临时 id 的应答先到，那时还不知道哪个临时 id 是自己这次的（同一进程里可能同时
 /// 有别的发送）；带上它就能认出来（发7）。每次随机，所以防重复的「意图摘要」要把它清零，否则同一句话每次指纹都不同
-fn random_sending_id() -> Result<i32, CoreError> {
+pub(super) fn random_sending_id() -> Result<i32, CoreError> {
     let mut b = [0u8; 4];
     getrandom::fill(&mut b).map_err(|_| CoreError::Internal { what: "random" })?;
     // 正数、非 0（0 在 TDLib 里表示「没给」）
@@ -236,7 +236,7 @@ async fn preview_check<B: Backend>(b: &B, plan: &TextPlan) -> Result<(), CoreErr
         Answer::Message(m) => {
             check_kept(plan, &m).map_err(|reason| CoreError::SendRefused { reason, last: None })
         }
-        Answer::Resent(_) => Err(CoreError::Internal {
+        Answer::Resent(_) | Answer::Done | Answer::Deleted => Err(CoreError::Internal {
             what: "preview_answer_shape",
         }),
     }
@@ -272,10 +272,24 @@ pub async fn send_text<B: Backend>(
     plan: &TextPlan,
     token: ConfirmToken,
 ) -> Result<Submitted, CoreError> {
-    let mode = b.gate().verify(token, plan)?;
+    hand_over(b, plan, token, &AtomicBool::new(false)).await
+}
+
+/// [`send_text`] 本体；`handed` 在真交出之前置真（[`submit_within`] 到点时据此分「没交出」与「结果未知」，#80）
+async fn hand_over<B: Backend>(
+    b: &B,
+    plan: &TextPlan,
+    token: ConfirmToken,
+    handed: &AtomicBool,
+) -> Result<Submitted, CoreError> {
+    let (mode, again) = b.gate().verify_again(token, plan)?;
     // 发6②：准备到交出之间最长 60 秒、还等了人确认，被回复那条可能已被删、被挪话题
     preview_check(b, plan).await?;
-    b.gate().before_submit(mode, plan)?;
+    // 交出前的复核到此为止。为什么到点只会落在这之前或交出之后：`block_on_timeout` 只在 future 停在 await 时
+    // 才看期限，从这里到交给 TDLib（`before_submit` 的读写文件、`send_limits::submit` 第一次 poll 就同步交出）
+    // 中间没有 await，打断不了。置在 `before_submit` 之前也无妨：它拒了就直接返回错误，不会走到「到点」那一支
+    handed.store(true, Ordering::SeqCst);
+    b.gate().before_submit_again(mode, plan, again)?;
     let sealed = Sealed {
         kind: SealedKind::Message {
             request: &plan.request,
@@ -283,8 +297,12 @@ pub async fn send_text<B: Backend>(
         },
     };
     match crate::send_limits::submit(b, sealed).await {
-        Ok(Answer::Message(m)) => Ok(Submitted { mode, temp: m.id }),
-        Ok(Answer::Resent(_)) => Err(CoreError::Internal {
+        Ok(Answer::Message(m)) => Ok(Submitted {
+            mode,
+            temp: m.id,
+            old: None,
+        }),
+        Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
             what: "send_answer_shape",
         }),
         Err(e) => Err(submit_failed(b, mode, plan, e)),
@@ -301,7 +319,15 @@ pub fn send_and_wait<B: Backend>(
     on_event: &mut dyn FnMut(Envelope),
 ) -> Result<(ConfirmMode, MsgId, Waited), CoreError> {
     let started = std::time::Instant::now();
-    let sub = submit_within(b, plan, plan.mode, timeout, send_text(b, plan, token))?;
+    let handed = AtomicBool::new(false);
+    let sub = submit_within(
+        b,
+        plan,
+        plan.mode,
+        timeout,
+        &handed,
+        hand_over(b, plan, token, &handed),
+    )?;
     let (mode, temp) = (sub.mode, sub.temp);
     let w = wait(
         stream,

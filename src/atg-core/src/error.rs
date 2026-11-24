@@ -103,6 +103,63 @@ pub enum InvalidSendWhy {
     NeedsOther,
     /// 重发要付星（付费发送不做）
     Paid,
+    /// 表情回应给的不是一个 emoji（空、太长、全是 ASCII、带空白或除 U+FE0F / U+200D 外看不见的字符；#9）
+    ReactionInvalid,
+    /// 要去掉的回应我没点过（#9）
+    ReactionNotChosen,
+    /// 加上这个回应可能把我原先点的别的回应挤掉（每条能点几个有上限），没给 `--replace`（#9）
+    ReactionWouldReplace,
+    /// 拿不准这条上我已点了哪些回应（没等到同步完，或私聊、加密聊天以外的会话里服务器没给全名单），加上可能把它挤掉（#9）
+    ReactionStateUnknown,
+    /// 要撤销的那条不是自己的待发消息（已发出、失败了、或本来就不是自己发的）
+    NotPending,
+    /// 要撤销的待发消息里有不是纯文字的（带附件）：正文给不了人确认、也绑不进凭据，不撤（codex 029 #3）
+    NotText,
+    /// 会话里待发的超过一次能撤的上限（`delete::MAX_IDS`）：不截断、不分批，整批不撤（codex 029 #1）
+    TooMany,
+    /// 一条都没转出去（#10）：准备时有一条不能转（`messageProperties.can_be_forwarded` 为假，如来源会话开了禁止转发），
+    /// 整批不交出；或交出后 TDLib 说每一条都转不了（应答全是 null）
+    NotForwardable,
+    /// 一次要转的超过上限（`send::forward::MAX_IDS`）：不截断、不分批，整批不转（#10）
+    ForwardTooMany,
+    /// 目标是加密聊天：TDLib 转进加密聊天一律改成复制（`send_copy` 恒为真，`td_api.tl:13177`），对方看到的消息不带原作者，
+    /// 像是本人写的；本应用只做带原发送人的转发，所以整批不转（#10）
+    ForwardToSecretChat,
+    /// 交给 TDLib 之后它说其中几条转不了（应答里是 null），别的各有结果（#10；一条都没转出是 `NotForwardable`）
+    NotForwarded,
+    /// 要删 / 要改的那条在准备计划之后、交出之前变了（被编辑过）：计划里的正文已不对，什么都不动（#8）
+    Changed,
+    /// 要改的不是纯文字消息（带附件）：说明文字的编辑（`editMessageCaption`）第二批再做（#8 B，大总管定 2026-11-17）。
+    /// 机读码与撤销的同名（`not_text`），说明不同
+    #[serde(rename = "not_text")]
+    EditNotText,
+    /// 新的文字和原来一样：本地先拦，不让服务器报 `MESSAGE_NOT_MODIFIED`（#8 B）
+    Unchanged,
+    /// 这个文件不许发（#12 人定）：不在「下载」「桌面」「文稿」里（按解析符号链接后的真实路径；这三个文件夹以外的路径
+    /// 不存在也报它），文件名像密钥，在本应用的数据目录里，或有别的硬链接（链接数大于 1）
+    FileNotAllowed,
+    /// 文件超过 50 MB（#12 人定）
+    FileTooLarge,
+    /// 在三个许可文件夹里，但不是普通文件（目录、设备……）、不存在或读不了（文件夹以外的报 `FileNotAllowed`）
+    NotAFile,
+    /// 说明文字超过上限（`send::file::CAPTION_MAX`）
+    CaptionTooLong,
+}
+
+/// 不能删 / 不能改（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`、`edit_prepare`，#8）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefusedWhy {
+    /// 收藏夹里的消息 TDLib 不许给所有人删（`MessagesManager.cpp:8346`）
+    Saved,
+    /// 不是自己发的：本应用只删、只改自己的（大总管定 2026-11-17，待人看）
+    NotOwn,
+    /// 还没发出（待发或发送失败）：待发的用 `pending cancel`；失败的没送到对方，不用给所有人删，也改不了
+    NotSent,
+    /// TDLib 说这条不能给所有人删（过了时限、会话不许等）
+    NotRevocable,
+    /// TDLib 说这条不能改（`can_be_edited` 为假：过了编辑时限、转发来的、带键盘等，#8 B）
+    NotEditable,
 }
 
 /// 取钥匙失败的来源（`db_key_invalid.source`）
@@ -198,7 +255,16 @@ pub enum CoreError {
     InvalidSend {
         why: InvalidSendWhy,
     },
+    /// 机读码 `forbidden`：这条不能删 / 不能改，带 `why`
+    ActionRefused {
+        why: RefusedWhy,
+    },
     Cancelled,
+    /// 本机缺能力、要人去装或去设置（退出码 11 那一档，arch 定 2026-11-14）：本机语音转文字用不了——辅助程序找不到、
+    /// 不安全、起不来、版本不对，或系统的语言模型没装（#59，design 第三节第 4、6、7 条）。`what` 只放写死的码
+    SttUnavailable {
+        what: &'static str,
+    },
     /// 406（附件都不建）或本项目自己的 bug。`what` 只放写死的说明，不放运行时的值
     Internal {
         what: &'static str,
@@ -222,7 +288,7 @@ impl CoreError {
             Self::RateLimited { .. } => "rate_limited",
             Self::AccountLimited { .. } => "account_limited",
             Self::NotFound { .. } => "not_found",
-            Self::Forbidden { .. } => "forbidden",
+            Self::Forbidden { .. } | Self::ActionRefused { .. } => "forbidden",
             Self::InvalidInput { .. } | Self::InvalidSend { .. } => "invalid_input",
             Self::Network { .. } => "network",
             Self::Disconnected => "disconnected",
@@ -231,6 +297,7 @@ impl CoreError {
             Self::SendRefused { .. } => "send_refused",
             Self::SendOutcomeUnknown { .. } => "send_outcome_unknown",
             Self::Cancelled => "cancelled",
+            Self::SttUnavailable { .. } => "stt_unavailable",
             Self::Internal { .. } => "internal",
             Self::Unknown { .. } => "unknown",
         }
@@ -264,7 +331,9 @@ impl CoreError {
             | Self::SendRefused { .. }
             | Self::SendOutcomeUnknown { .. }
             | Self::InvalidSend { .. }
+            | Self::ActionRefused { .. }
             | Self::Cancelled
+            | Self::SttUnavailable { .. }
             | Self::Internal { .. } => None,
         }
     }
@@ -328,6 +397,24 @@ impl CoreError {
                 InvalidSendWhy::EmptyText => "要发的内容是空的",
                 InvalidSendWhy::TooLong => "要发的内容太长（超过 64 KB）",
                 InvalidSendWhy::NotFailed => "这条消息不是发送失败的，不用重发",
+                InvalidSendWhy::NotText => {
+                    "待发的消息里有不是纯文字的（带附件），给不出全文让你确认，本应用不撤；什么都没撤销"
+                }
+                InvalidSendWhy::TooMany => {
+                    "这个会话里待发的超过 100 条，一次撤不完，本应用不分批撤；什么都没撤销"
+                }
+                InvalidSendWhy::NotPending => {
+                    "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
+                }
+                InvalidSendWhy::Changed => {
+                    "那条消息在列出计划之后、真正动手之前被编辑过，计划里的正文已经不对；什么都没动，请重新发起"
+                }
+                InvalidSendWhy::EditNotText => {
+                    "这条不是纯文字消息（带附件），本应用暂时只改纯文字消息的正文；什么都没改"
+                }
+                InvalidSendWhy::Unchanged => {
+                    "新的文字和原来一样，不用改（本应用只改文字，不能只去掉格式）；什么都没改"
+                }
                 InvalidSendWhy::CannotRetry => "这条消息 Telegram 说不能重发",
                 InvalidSendWhy::NeedsOther => {
                     "这条要换个身份发（比如以频道名义）或换引用才能重发，本应用暂不支持"
@@ -335,8 +422,69 @@ impl CoreError {
                 InvalidSendWhy::Paid => {
                     "这条重发要付 Telegram Stars（Telegram 的付费星星），本应用不做付费发送"
                 }
+                InvalidSendWhy::ReactionInvalid => "表情回应请给一个 emoji，如 👍",
+                InvalidSendWhy::ReactionNotChosen => {
+                    "这条消息上你没点过这个回应；emoji 写法可能不同（如 ❤ 与 ❤️），照消息详情里显示的抄"
+                }
+                InvalidSendWhy::ReactionWouldReplace => {
+                    "这条消息上你已点了别的回应，再点可能把它挤掉；确要换请明确说要替换"
+                }
+                InvalidSendWhy::ReactionStateUnknown => {
+                    "拿不准这条消息上你已点了哪些回应，再点可能把原来的挤掉；确要点请明确说要替换"
+                }
+                InvalidSendWhy::NotForwardable => {
+                    "要转的消息里有不能转发的（来源会话可能禁止转发）；什么都没转"
+                }
+                InvalidSendWhy::ForwardTooMany => "一次最多转 20 条，本应用不分批转；什么都没转",
+                InvalidSendWhy::ForwardToSecretChat => {
+                    "不能转进加密聊天：Telegram 会把它变成复制、不带原作者，对方会以为是你写的；什么都没转"
+                }
+                InvalidSendWhy::NotForwarded => {
+                    "有的消息 Telegram 说转不了（结尾说明点了是哪几条），别的各有结果；不要整批加 --again 重转，那会把已转出的再转一遍"
+                }
+                InvalidSendWhy::FileNotAllowed => {
+                    "这个文件不许发：只许发「下载」「桌面」「文稿」三个文件夹里的；文件名像密钥（如 .env、id_rsa、.pem）的、本应用数据目录里的、有别的硬链接的也不许（硬链接的可复制一份到这三个文件夹再发）。路径写错、引号里的 ~ 没展开也会这样报，请写完整路径，如 /Users/你的用户名/Downloads/文件名；什么都没发"
+                }
+                InvalidSendWhy::FileTooLarge => "文件超过 50 MB，本应用不发；什么都没发",
+                InvalidSendWhy::NotAFile => {
+                    "找不到这个文件，或它不是普通文件（比如是文件夹），或读不了；什么都没发"
+                }
+                InvalidSendWhy::CaptionTooLong => {
+                    "说明文字太长：最多 1024 个 UTF-16 码元（多数汉字算 1 个，emoji 常算 2 个）；什么都没发"
+                }
+            },
+            Self::ActionRefused { why } => match why {
+                RefusedWhy::Saved => "收藏夹里的消息不能给所有人删；什么都没删",
+                RefusedWhy::NotOwn => "只能删或改自己发的消息；什么都没动",
+                RefusedWhy::NotSent => {
+                    "这条还没发出：待发的可等它发出后再删或再改，或用 pending cancel 撤销后重发；发送失败的没送到对方，不用给所有人删，也改不了，可 resend 或重发；什么都没动"
+                }
+                RefusedWhy::NotRevocable => {
+                    "Telegram 说这条不能给所有人删（可能过了 Telegram 定的能删时限，或这个会话不许）；什么都没删"
+                }
+                RefusedWhy::NotEditable => {
+                    "Telegram 说这条不能改（可能过了 Telegram 定的能改时限，一般是发出后 48 小时；或是转发来的）；什么都没改"
+                }
             },
             Self::Cancelled => "已取消",
+            // 按 `what` 给修法（码的正本在 `errors.md` 的 `stt_unavailable` 行；写法由 `atg-audio` 的 `stt::locate` 出）
+            Self::SttUnavailable { what } => match *what {
+                "helper_not_found" => {
+                    "找不到本机转写程序 atg-stt：开发时先跑 src/atg-audio/stt-helper/build.sh；不在仓库里运行时设环境变量 ATG_STT_HELPER 指向它"
+                }
+                "helper_env_invalid" => {
+                    "环境变量 ATG_STT_HELPER 要写 atg-stt 的完整路径（以 / 开头）、指向能执行的文件，请改正或去掉它"
+                }
+                "helper_not_runnable" => {
+                    "找到的 atg-stt 不是能执行的文件，请重跑 src/atg-audio/stt-helper/build.sh"
+                }
+                "helper_unsafe" => {
+                    "atg-stt 不属于你，或别人能改它，为安全不执行：用自己的账号重跑 src/atg-audio/stt-helper/build.sh 编一份新的；是自己的文件只是权限太宽，就 chmod 755 它"
+                }
+                _ => {
+                    "本机语音转文字用不了（系统没有中文、英文的语音识别模型，或转写程序 atg-stt 起不来、和本程序版本不配）：先在系统设置的「键盘 › 听写」里打开听写、加上中文和英文，等它下完模型再试；从源码运行的再重跑 src/atg-audio/stt-helper/build.sh"
+                }
+            },
             Self::Internal { .. } => "程序内部出错",
             Self::Unknown { .. } => "出现了无法识别的错误",
         }

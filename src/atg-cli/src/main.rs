@@ -25,25 +25,39 @@ mod chats;
 // 期限有的只在真实后端路径上用；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod deadlines;
+mod delete;
 mod download;
+mod edit;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod history;
+// 会话租约只有执行方与直跑的 `watch` 用；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod lease;
 mod login;
 mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod play;
-// 发送的流程只有真实后端与单测调
+// 转发与表情回应的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod forwarding;
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod react;
+// 待发消息与发送的流程只有真实后端与单测调
+#[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
+mod pending;
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod send;
+mod send_file;
 // 执行方只有真实后端起；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod serve;
 mod session;
 mod signals;
 mod speech;
+mod transcribe;
 // 终端读写只有真实后端用得到（假后端场景还没做）；不编 TDLib 时它们是死代码
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod tty;
@@ -113,10 +127,18 @@ fn main() -> ExitCode {
         Command::Chats(a) => run_chats(&cli.global, format, &a, started),
         Command::History(a) => run_history(&cli.global, format, &a, started),
         Command::Send(a) => run_send(&cli.global, format, &a, started),
+        Command::Forward(a) => forwarding::run(&cli.global, format, &a, started),
+        Command::SendFile(a) => send_file::run(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
+        Command::React(a) => react::run(&cli.global, format, &a, started),
+        Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),
+        Command::Pending(a) => run_pending(&cli.global, format, a, started),
+        Command::Delete(a) => delete::run(&cli.global, format, a, started),
+        Command::Edit(a) => edit::run(&cli.global, format, a, started),
         Command::Links(a) => run_links(&cli.global, format, &a, started),
         Command::Download(a) => download::run(&cli.global, format, &a, started),
         Command::Play(a) => play::run(&cli.global, format, &a, started),
+        Command::Transcribe(a) => transcribe::run(&cli.global, format, &a, started),
         Command::Serve => serve::run(&cli.global, format, started),
         Command::Watch(a) => run_watch(&cli.global, format, &a, started),
         // speech 只读夹具文件，不起后端；带 --fake 多半是用错了，不悄悄忽略
@@ -424,6 +446,30 @@ fn run_watch(g: &args::Global, format: Format, a: &args::WatchArgs, started: Ins
         Ok(code) => ExitCode::from(code),
         Err(f) => fail_with(format, &f),
     }
+}
+
+/// `pending` / `pending cancel`：档案被占就转给执行方（列表看执行方进程里的待发；撤销由执行方的闸开凭据）
+fn run_pending(
+    g: &args::Global,
+    format: Format,
+    a: args::PendingArgs,
+    started: Instant,
+) -> ExitCode {
+    if let Some(f) = no_redact(g, "pending") {
+        return fail_with(format, &f);
+    }
+    let tz = g.tz.clone();
+    let (command, params) = match a.sub {
+        None => ("pending", json!(pending::PendingParams { tz })),
+        Some(args::PendingCmd::Cancel { chat, dry_run }) => (
+            "pending_cancel",
+            json!(pending::CancelParams { chat, dry_run }),
+        ),
+    };
+    if let Some(code) = forward::try_forward(g, format, command, &params) {
+        return ExitCode::from(code);
+    }
+    ExitCode::from(session::pending(g, format, command, &params, started))
 }
 
 /// `links`：一行一个链接（`kind:"link"`）+ 一行 `result`。不标已读。档案被占就转给执行方

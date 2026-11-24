@@ -20,6 +20,7 @@
 //!
 //! - **发送**（M2.1 / M2.2，T04）：`gate`（发送闸）· `me` · `chat_target` · `can_reply` · `failed_info` 是准备时的 L0 查询；
 //!   唯一的交出口 `submit` 只收 [`Sealed`]（只能由 `atg-core::send` 在闸验过凭据后造出），流程在 [`crate::send`]
+//! - **表情回应**（#9）：加 / 删走同一个交出口（[`crate::send::react`]）；`added_reactions` 是 L0 只读
 //!
 //! 其余动作后续块加在这里，两份实现一起加。
 //!
@@ -31,13 +32,13 @@ use crate::config::Profile;
 use crate::error::CoreError;
 use crate::gate::Gate;
 use crate::link::EventStream;
-use crate::model::FailedInfo;
+use crate::model::{AddedReactions, FailedInfo, MessageCaps};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
 use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, Lines, NetState};
-use crate::tree::{FileRef, UserStatus};
+use crate::tree::{FileRef, ReactionKind, UserStatus};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -132,6 +133,11 @@ pub trait Backend {
     /// 文件 id 为 0 / TDLib 找不到 → `not_found{what:"file"}`；回来了却没下完 → `internal{what:"download_incomplete"}`
     async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError>;
 
+    /// 一条带文件的待发消息上传到哪了（L0；#12 等结果时按进度续等）。消息不在、不带文件、后端不知道 → `None`
+    async fn upload_progress(&self, _id: MsgId) -> Result<Option<Upload>, CoreError> {
+        Ok(None)
+    }
+
     /// 标已听 / 已看（`openMessageContent`，**L1**：对方会看到；`actions.md` `mark_listened`）。只从 `play --mark-listened`
     /// 与以后 GUI 的播放调。**阅后即焚按 L2，本函数不管**：调用方先查 `Message::self_destruct`，L2 确认没做之前不许调
     async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError>;
@@ -145,13 +151,29 @@ pub trait Backend {
     /// 目标会话的种类、名字、是不是话题群（`getChat`；超级群另查 `getSupergroup.is_forum`）。找不到 → `not_found`
     async fn chat_target(&self, chat: ChatId) -> Result<ChatTarget, CoreError>;
 
-    /// 这条消息能不能在本会话里回复（`getMessageProperties.can_be_replied`）。不在 → `not_found`
-    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError>;
+    /// 对这条消息能做什么（`getMessageProperties`）。不在 → `not_found`
+    async fn message_caps(&self, id: MsgId) -> Result<MessageCaps, CoreError>;
+
+    /// 这条消息能不能在本会话里回复（[`Backend::message_caps`] 的 `can_reply`）
+    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError> {
+        Ok(self.message_caps(id).await?.can_reply)
+    }
 
     /// 这条消息的失败态（`messageSendingStateFailed`）；不是失败的 → `None`。不在 → `not_found`
     async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError>;
 
-    /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览）或 `resendMessages`。[`Sealed`] 只能由
+    /// 谁点了这条消息的回应（`getMessageAddedReactions` `td_api.tl:13802`，L0 只读）。`kind` 为空 = 各种都要；
+    /// `offset` 首页给空串，之后给上一页的 `next_offset`；`limit` 1–100（调用方先查）
+    async fn added_reactions(
+        &self,
+        id: MsgId,
+        kind: Option<&ReactionKind>,
+        offset: &str,
+        limit: u32,
+    ) -> Result<AddedReactions, CoreError>;
+
+    /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览）、`resendMessages`、`addMessageReaction` /
+    /// `removeMessageReaction`（应答 [`Answer::Done`]）。[`Sealed`] 只能由
     /// [`crate::send`] 在闸验过凭据后造（预览除外：预览不发），crate 外调不到
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError>;
 
@@ -209,6 +231,13 @@ impl HistoryReq {
 pub struct Downloaded {
     pub path: PathBuf,
     pub size: u64,
+}
+
+/// [`Backend::upload_progress`] 的结果：已上传的字节数（`remoteFile.uploaded_size`）、传完了没有（`is_uploading_completed`）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Upload {
+    pub uploaded: u64,
+    pub done: bool,
 }
 
 /// [`Backend::chats_load`] 的结果

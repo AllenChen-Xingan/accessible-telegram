@@ -5,19 +5,36 @@ use std::process::{Command, Output};
 
 /// 已做的子命令（`version` 另测）
 const DONE: &[&str] = &[
-    "login", "auth", "logout", "chats", "speech", "history", "links", "watch", "send", "resend",
-    "serve", "download", "play",
+    "login",
+    "auth",
+    "logout",
+    "chats",
+    "speech",
+    "history",
+    "links",
+    "watch",
+    "send",
+    "resend",
+    "forward",
+    "send-file",
+    "serve",
+    "download",
+    "play",
+    "react",
+    "reactions",
+    "transcribe",
+    "pending",
+    "delete",
+    "edit",
 ];
 
 /// 契约第一节第 2 小节表里还没做的子命令
 const PLACEHOLDERS: &[&str] = &[
     "me",
-    "pending",
     "status",
     "next-unread",
     "open",
     "mute",
-    "delete",
     "show",
     "search",
     "draft",
@@ -168,6 +185,18 @@ fn download_and_play_shell_paths_without_tdlib() {
         (&["download", "群", "1"][..], "usage", 2),
         (
             &["--fake", "basic", "download", "saved", "1"][..],
+            "not_implemented",
+            1,
+        ),
+        (&["transcribe", "群", "1"][..], "usage", 2),
+        (
+            &["transcribe", "saved", "1", "--lang", "fr"][..],
+            "usage",
+            2,
+        ),
+        // 假后端判在找辅助程序之前：没装辅助程序的机器上也是 not_implemented
+        (
+            &["--fake", "basic", "transcribe", "saved", "1"][..],
             "not_implemented",
             1,
         ),
@@ -341,8 +370,7 @@ fn speech_json_lines_end_with_result() {
 
 #[test]
 fn speech_bad_input_is_usage_and_does_not_echo() {
-    let dir = std::env::temp_dir().join(format!("atg-cli-speech-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = atg_core::testkit::temp_dir("cli-speech");
     let not_array = dir.join("暗号目录-not-array.json");
     std::fs::write(&not_array, r#"{"暗号":"内容"}"#).unwrap();
     let not_json = dir.join("not-json.json");
@@ -417,6 +445,7 @@ fn redact_refused_until_done() {
         &["watch", "--redact"][..],
         &["download", "saved", "1", "--redact"][..],
         &["play", "saved", "1", "--redact"][..],
+        &["transcribe", "saved", "1", "--redact"][..],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(1), "{args:?}");
@@ -430,8 +459,7 @@ fn redact_refused_until_done() {
 /// `--fake`（场景目录未做）报 not_implemented。正文不进标准错误以外的地方
 #[test]
 fn send_usage_paths() {
-    let dir = std::env::temp_dir().join(format!("atg-cli-send-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = atg_core::testkit::temp_dir("cli-send-usage");
     let big = dir.join("big.txt");
     std::fs::write(&big, vec![b'a'; 70 * 1024]).unwrap();
     let bin = dir.join("bin.txt");
@@ -445,6 +473,9 @@ fn send_usage_paths() {
         &["send", "777", "--text-file", bin][..],
         &["send", "abc", "--text", "好的"][..],
         &["resend", "777"][..],
+        &["react", "abc", "5", "👍"][..],
+        &["react", "777", "5"][..],
+        &["reactions", "777", "5", "-n", "0"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);
@@ -455,6 +486,8 @@ fn send_usage_paths() {
     for args in [
         &["--fake", "x", "send", "777", "--text", "好的"][..],
         &["--fake", "x", "resend", "777", "5"][..],
+        &["--fake", "x", "react", "777", "5", "👍"][..],
+        &["--fake", "x", "reactions", "777", "5"][..],
     ] {
         let out = run(args);
         let ls = lines(&out);

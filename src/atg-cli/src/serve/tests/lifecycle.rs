@@ -9,11 +9,11 @@ fn secrets_and_unknown_commands_are_not_executed() {
     let (code, f) = s.ask(Format::Json, "auth", &json!({"sub": "code"}));
     assert_eq!(code, 2);
     assert!(f.out[0].contains("\"usage\""));
-    let (code, f) = s.ask(Format::Json, "delete", &json!({}));
+    let (code, f) = s.ask(Format::Json, "show", &json!({}));
     assert_eq!(code, 1);
     let v: Value = serde_json::from_str(&f.out[0]).unwrap();
     assert_eq!(v["data"]["code"], "not_implemented");
-    assert_eq!(v["data"]["command"], "delete");
+    assert_eq!(v["data"]["command"], "show");
     // 发送的参数形状不对：不执行
     let (code, f) = s.ask(Format::Json, "send", &json!({}));
     assert_eq!(code, 1);
@@ -363,4 +363,119 @@ fn forwarded_watch_ends_when_stdout_reader_leaves() {
     wait_call(&b, &Call::ChatClose(1));
     stop.store(true, Ordering::SeqCst);
     assert_eq!(server.join().unwrap(), 0);
+}
+
+/// 执行方自己的日志（标准错误那几行）收起来，测试里看订阅者表现在几个
+#[derive(Clone, Default)]
+struct Log(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl Sink for Log {
+    fn out(&mut self, _: &str) {}
+    fn err(&mut self, line: &str) {
+        self.0.lock().unwrap().push(line.to_owned());
+    }
+}
+
+impl Log {
+    /// 执行方报过的「watch 接入 / 离开（现有 N 个）」各行的 N，按先后（接入、摘掉都是一件一件处理的）
+    fn counts(&self, what: &str) -> Vec<usize> {
+        let tag = format!("watch {what}（现有 ");
+        let ls = self.0.lock().unwrap();
+        ls.iter()
+            .filter_map(|l| {
+                l.split(tag.as_str())
+                    .nth(1)?
+                    .split(' ')
+                    .next()?
+                    .parse()
+                    .ok()
+            })
+            .collect()
+    }
+
+    /// 等执行方记下第 `i` 行（从 0 数）「watch {what}」，回那时的订阅者数。按事件等，不靠时序
+    fn nth(&self, what: &str, i: usize) -> usize {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(&n) = self.counts(what).get(i) {
+                return n;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "执行方没记下第 {i} 行 watch {what}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// 屏障：挂一个 watch，等执行方把它接入做完（含 `--chat` 开会话、记日志），回那时的订阅者数。
+    /// 只等 `sync_done` 不够：它先于挂上订阅者发出
+    fn join(
+        &self,
+        p: &Profile,
+        params: Value,
+    ) -> (Shared, &'static AtomicBool, JoinHandle<u8>, usize) {
+        let before = self.counts("接入").len();
+        let (out, stop, h) = watch_client(p, params);
+        (out, stop, h, self.nth("接入", before))
+    }
+}
+
+/// 两个 watch 订阅同一会话（`config-privacy.md` 第一节第 2 小节）：只开一次；先走的那个摘掉后、
+/// 另一个还挂着时一次都不关；最后走的才关，只关一次
+#[test]
+fn two_watches_on_same_chat_share_one_open() {
+    use atg_core::fake::Call;
+    let p = profile("watch-share", ServerKind::Main);
+    let b = Arc::new(backend());
+    let stop = Arc::new(AtomicBool::new(false));
+    let log = Log::default();
+    let (st, pc, bb, mut own) = (stop.clone(), p.clone(), b.clone(), log.clone());
+    let server = std::thread::spawn(move || {
+        serve(
+            &*bb,
+            &pc,
+            Format::Json,
+            &st,
+            &mut own,
+            fast(),
+            Instant::now(),
+        )
+    });
+    let path = ipc::socket_path(&p);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !matches!(ipc::connect_at(&path), Connect::Ok(_)) {
+        assert!(Instant::now() < deadline, "执行方没起来");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let params = json!({"chat": "1", "reveal": false});
+    let (_out1, stop1, c1, _) = log.join(&p, params.clone());
+    let (_out2, stop2, c2, n) = log.join(&p, params);
+    assert_eq!(n, 2);
+    let opens = || {
+        b.calls()
+            .iter()
+            .filter(|c| **c == Call::ChatOpen(1))
+            .count()
+    };
+    let closes = || {
+        b.calls()
+            .iter()
+            .filter(|c| **c == Call::ChatClose(1))
+            .count()
+    };
+    assert_eq!(opens(), 1, "第二个不再开");
+
+    stop1.store(true, Ordering::SeqCst);
+    assert_eq!(c1.join().unwrap(), 0);
+    // 同步点：等执行方记下「watch 离开（现有 1 个）」= 第一个已摘掉、第二个还挂着（按事件等，慢机器上也稳）
+    assert_eq!(log.nth("离开", 0), 1);
+    assert_eq!(closes(), 0, "第二个还挂着，先走的不关");
+
+    stop2.store(true, Ordering::SeqCst);
+    assert_eq!(c2.join().unwrap(), 0);
+    wait_call(&b, &Call::ChatClose(1));
+    stop.store(true, Ordering::SeqCst);
+    assert_eq!(server.join().unwrap(), 0);
+    assert_eq!((opens(), closes()), (1, 1));
 }

@@ -1,7 +1,9 @@
 //! `gate` 的测试：开凭据、复核、防重复记录、直发留痕、限流冷却。
 
 use super::*;
-use std::sync::atomic::{AtomicU32, Ordering};
+
+/// 发文件的留痕字段（#12）
+mod file_log;
 
 struct Plan {
     target: ChatId,
@@ -84,16 +86,9 @@ fn plan(target: ChatId, d: u8) -> Plan {
     }
 }
 
+// 留这一层而不让调用处直接用 testkit：目录名保持 `atg-gate-<tag>-…`（认得出是闸的测试），6 处调用也不用改
 fn temp_dir(tag: &str) -> PathBuf {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let d = std::env::temp_dir().join(format!(
-        "atg-gate-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = fs::remove_dir_all(&d);
-    fs::create_dir_all(&d).unwrap();
-    d
+    crate::testkit::temp_dir(&format!("gate-{tag}"))
 }
 
 const ME: Me = Me {
@@ -189,6 +184,7 @@ fn token_binds_target_and_digest_once_within_ttl() {
         nonce,
         issued: Instant::now(),
         mode: ConfirmMode::DirectMode,
+        again: false,
     };
     assert_eq!(
         reason(g.verify(forged, &p).unwrap_err()),
@@ -278,6 +274,46 @@ fn duplicate_record_expires_after_window() {
     s.record(2000 + UNKNOWN_HOLD_S + 5, 777, "cd", Outcome::Submitted)
         .unwrap();
     assert_eq!(s.load().unwrap().len(), 1);
+}
+
+/// 多指纹（#10）：任一命中就整个不认领、什么都不写；都没命中才一起记；收尾逐个改
+#[test]
+fn claim_all_is_all_or_nothing() {
+    let dir = temp_dir("claim-all");
+    let s = GuardStore::new(dir.join(GUARD_FILE));
+    let fps = |v: &[&str]| v.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+    s.record(1000, 777, "b", Outcome::Unknown).unwrap();
+    // "b" 在拦截期：整批拒，"a"、"c" 不记
+    assert!(
+        s.claim_all(1001, 777, &fps(&["a", "b", "c"]), false)
+            .unwrap()
+            .is_err()
+    );
+    assert!(s.hit(1001, 777, "a").unwrap().is_none());
+    assert!(s.hit(1001, 777, "c").unwrap().is_none());
+    // 不含 "b" 的一批照记；--again 连 "b" 也放行
+    assert!(
+        s.claim_all(1002, 777, &fps(&["a", "c"]), false)
+            .unwrap()
+            .is_ok()
+    );
+    assert!(s.claim_all(1003, 777, &fps(&["b"]), true).unwrap().is_ok());
+    // 收尾：只改给到的那几个，"a" 失败就不再拦，"c" 停在「已提交」照拦
+    s.settle_all(1004, 777, &fps(&["a"]), Outcome::Failed)
+        .unwrap();
+    assert!(s.hit(1005, 777, "a").unwrap().is_none());
+    assert!(s.hit(1005, 777, "c").unwrap().is_some());
+}
+
+/// 同一指纹上较早的「结果未知」不被后来 --again 的「已发出」盖住（codex 033 第 2 轮 #2）
+#[test]
+fn worst_hit_sees_older_unknown_under_newer_success() {
+    let dir = temp_dir("worst-older");
+    let s = GuardStore::new(dir.join(GUARD_FILE));
+    s.record(1000, 777, "a", Outcome::Unknown).unwrap();
+    s.record(1100, 777, "a", Outcome::Succeeded).unwrap();
+    let hit = s.hit_any(1200, 777, &["a".to_owned()]).unwrap().unwrap();
+    assert_eq!(hit.state, Outcome::Unknown);
 }
 
 #[test]
@@ -407,4 +443,122 @@ fn flood_wait_blocks_the_next_send() {
         g.issue(&plan(778, 2), false),
         Err(CoreError::RateLimited { .. })
     ));
+}
+
+/// 查重与登记在交出前一步做完（#77）：两份同内容计划都在对方登记之前拿到凭据，第二份交出前被拒，
+/// 什么都不写；带 `--again` 的放行。同一份计划先开过带 `--again`、没交出的凭据，再开不带的：不沿用那次放行
+#[test]
+fn duplicate_is_claimed_right_before_submit() {
+    let (g, dir) = gate(false);
+    let (a, b) = (plan(777, 6), plan(777, 6));
+    let ta = g.issue(&a, false).unwrap();
+    let tb = g.issue(&b, false).unwrap();
+    let ma = g.verify(ta, &a).unwrap();
+    g.before_submit(ma, &a).unwrap();
+    let mb = g.verify(tb, &b).unwrap();
+    assert_eq!(
+        reason(g.before_submit(mb, &b).unwrap_err()),
+        SendRefusedReason::DuplicateRecent
+    );
+    let entries = |d: &Path| -> usize {
+        serde_json::from_str::<Vec<GuardEntry>>(&fs::read_to_string(d.join(GUARD_FILE)).unwrap())
+            .unwrap()
+            .len()
+    };
+    assert_eq!(entries(&dir), 1, "被拒的那份不登记");
+    let log = fs::read_to_string(dir.join(DIRECT_LOG_FILE)).unwrap();
+    assert_eq!(log.lines().count(), 1, "被拒的那份不留痕");
+    assert_eq!(g.direct_sent(), 1);
+
+    // --again：放行（放行绑在这张凭据上，经 verify_again 带到交出）
+    let c = plan(777, 6);
+    let tc = g.issue(&c, true).unwrap();
+    let (mc, again) = g.verify_again(tc, &c).unwrap();
+    assert!(again);
+    g.before_submit_again(mc, &c, again).unwrap();
+    assert_eq!(entries(&dir), 2);
+
+    // 放行不串到别的凭据（codex 048 第 1 轮 #1）：同一份计划，普通凭据 A 先验、停在复核；带 --again 的 B 再验、
+    // 复核失败没交出；这时别的同内容发送先交出了。A 交出前照拦，B 的放行拿不走
+    let f = plan(777, 5);
+    let ta = g.issue(&f, false).unwrap();
+    let (ma, a_again) = g.verify_again(ta, &f).unwrap();
+    let tb = g.issue(&f, true).unwrap();
+    let (_mb, b_again) = g.verify_again(tb, &f).unwrap();
+    assert!(b_again);
+    let other = Plan {
+        target: 777,
+        digest: [50; 32],
+        intent: [5; 32],
+    };
+    let to = g.issue(&other, false).unwrap();
+    let mo = g.verify(to, &other).unwrap();
+    g.before_submit(mo, &other).unwrap();
+    assert_eq!(
+        reason(g.before_submit_again(ma, &f, a_again).unwrap_err()),
+        SendRefusedReason::DuplicateRecent
+    );
+}
+
+/// 一次请求动好几条的计划（批量重发）：留痕按条记（#83）
+struct Batch(Plan, Vec<i64>);
+impl Sealed for Batch {}
+impl Gated for Batch {
+    fn target(&self) -> ChatId {
+        self.0.target
+    }
+    fn digest(&self) -> [u8; 32] {
+        self.0.digest
+    }
+    fn intent(&self) -> [u8; 32] {
+        self.0.intent
+    }
+    fn dedup(&self) -> bool {
+        false
+    }
+    fn kind(&self) -> &'static str {
+        "resend"
+    }
+    fn log_items(&self) -> Vec<i64> {
+        self.1.clone()
+    }
+}
+
+/// 交出前每条一行「已提交」；结果按条记（含 TDLib 说不能重发的那条）；请求整个失败 / 到点时每条一行
+#[test]
+fn batch_plans_log_one_line_per_item() {
+    let (g, dir) = gate(false);
+    let p = Batch(plan(777, 3), vec![11, 12, 13]);
+    let t = g.issue(&p, false).unwrap();
+    let mode = g.verify(t, &p).unwrap();
+    g.before_submit(mode, &p).unwrap();
+    g.after_item(mode, &p, 11, -21, Some(31), Outcome::Succeeded, None);
+    g.after_item(mode, &p, 12, 0, None, Outcome::Failed, Some("not_resent"));
+    g.after_item(mode, &p, 13, -23, None, Outcome::Unknown, None);
+    let lines = |d: &Path| -> Vec<serde_json::Value> {
+        fs::read_to_string(d.join(DIRECT_LOG_FILE))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    };
+    let v = lines(&dir);
+    assert_eq!(v.len(), 6);
+    for (i, old) in [11, 12, 13].into_iter().enumerate() {
+        assert_eq!(v[i]["old_id"], old);
+        assert_eq!(v[i]["result"], "submitted");
+        assert_eq!(v[i + 3]["old_id"], old);
+    }
+    assert_eq!(v[3]["final_id"], 31);
+    assert_eq!(v[4]["error"], "not_resent");
+    assert_eq!(v[5]["result"], "unknown");
+
+    // 请求整个没等到（没有临时 id）：每条各一行
+    let t = g.issue(&p, false).unwrap();
+    let mode = g.verify(t, &p).unwrap();
+    g.before_submit(mode, &p).unwrap();
+    g.after_outcome(mode, &p, 0, None, Outcome::Unknown, None);
+    let v = lines(&dir);
+    assert_eq!(v.len(), 12);
+    assert!(v[9..].iter().all(|l| l["result"] == "unknown"));
 }

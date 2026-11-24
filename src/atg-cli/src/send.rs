@@ -80,14 +80,14 @@ pub fn send_params(a: &crate::args::SendArgs, tz: Option<&str>) -> Result<SendPa
 }
 
 /// 正文上限（`--text`、`--text-file`、经本机接口转来的都查；core 的准备步骤还会再查一次）
-fn check_len(text: &str) -> Result<(), Fail> {
+pub(crate) fn check_len(text: &str) -> Result<(), Fail> {
     if u64::try_from(text.len()).unwrap_or(u64::MAX) > TEXT_MAX_BYTES {
         return Err(Fail::Usage("正文要在 64 KB 以内"));
     }
     Ok(())
 }
 
-fn read_text_file(p: &std::path::Path) -> Result<String, Fail> {
+pub(crate) fn read_text_file(p: &std::path::Path) -> Result<String, Fail> {
     let meta = std::fs::metadata(p).map_err(|_| Fail::Usage("--text-file 读不了"))?;
     if !meta.is_file() || meta.len() > TEXT_MAX_BYTES {
         return Err(Fail::Usage("--text-file 要是 64 KB 以内的普通文件"));
@@ -108,7 +108,7 @@ pub fn resend_params(a: &crate::args::ResendArgs, tz: Option<&str>) -> Result<Re
 }
 
 /// `saved` → 自己的收藏夹：问 `me()`（闸判收藏夹用的也是它），不等事件流里 TDLib 登录后推来的 `my_id` 选项
-fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::model::ChatId, Fail> {
+pub(crate) fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::model::ChatId, Fail> {
     match chat {
         ChatRef::Id(id) => Ok(id),
         ChatRef::Saved => bounded(b, b.me(), QUERY_TIMEOUT)
@@ -117,12 +117,12 @@ fn resolve<B: Backend>(b: &B, chat: ChatRef) -> Result<atg_core::model::ChatId, 
     }
 }
 
-fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
+pub(crate) fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
     ChatRef::parse(s).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))
 }
 
 /// L2 的错误：`retryable` 一律为假；`extra` 平铺进去
-fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra: Value) -> u8 {
+pub(crate) fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra: Value) -> u8 {
     let mut data = out::core_error_data(e);
     data["retryable"] = json!(false);
     if let (Some(d), Value::Object(x)) = (data.as_object_mut(), extra) {
@@ -135,7 +135,7 @@ fn l2_fail(sink: &mut dyn Sink, format: Format, e: &CoreError, extra: Value) -> 
     out::core_exit(e)
 }
 
-fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
+pub(crate) fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
     match f {
         Fail::Core(e) => l2_fail(sink, format, e, json!({})),
         other => out::fail_with_to(sink, format, other),
@@ -143,15 +143,22 @@ fn fail_any(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
 }
 
 /// 一条消息的读法上下文（同 `history`；CLI 没有按键）
-fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
+pub(crate) fn ctx(tz: Option<&str>) -> Result<SpeechCtx, Fail> {
     history::speech_ctx(tz, false)
 }
 
 /// 把一条消息放进 store 再投影（被回复那条：store 里不一定有它）。store = 本进程的消息与会话缓存；投影
 /// （`atg_core::project`）= 从 store 生成要读、要打印的内容树，只读 store 里已有的；store 只收经 `pump` 喂的输入。
+fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
+    let id = m.id;
+    remember(feed, m);
+    project::message(feed.store(), id)
+}
+
+/// 把单独取来的一条消息放进 store（`send` 回显、`transcribe` 取凭据共用）。store 里已有就不动（它随更新保持最新）。
 /// 单条消息没有专门的输入，借「打开会话 + 这一页历史到了」放进去：这里的 `ticket` 是**历史请求凭据**
 /// （`HistoryTicket`，防旧应答盖新的），与发送闸的确认凭据无关；只动本进程的 store，不是 TDLib 的 `openChat`，不标已读
-fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
+pub(crate) fn remember(feed: &mut Feed, m: Message) {
     let id = m.id;
     if feed.store().message(id).is_none() {
         feed.pump_mut().apply(Input::OpenChat {
@@ -163,11 +170,10 @@ fn project_one(feed: &mut Feed, m: Message) -> Option<Doc> {
             messages: vec![m],
         });
     }
-    project::message(feed.store(), id)
 }
 
 /// 回显一条消息（JSON：`kind:"message"` 一行；文字：一句读法）——同 `history`
-fn echo(sink: &mut dyn Sink, format: Format, cx: &SpeechCtx, doc: &Doc) {
+pub(crate) fn echo(sink: &mut dyn Sink, format: Format, cx: &SpeechCtx, doc: &Doc) {
     match format {
         Format::Json => {
             let mut line = atg_core::json::value(doc, cx);
@@ -180,7 +186,7 @@ fn echo(sink: &mut dyn Sink, format: Format, cx: &SpeechCtx, doc: &Doc) {
     }
 }
 
-fn confirm_zh(m: ConfirmMode) -> &'static str {
+pub(crate) fn confirm_zh(m: ConfirmMode) -> &'static str {
     match m {
         ConfirmMode::TestExempt => "测试服务器发收藏夹，不用确认",
         ConfirmMode::DirectMode => "直接发，不确认",
@@ -342,7 +348,7 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &TextPlan, reply_brief: 
     }
 }
 
-fn finish_line(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
+pub(crate) fn finish_line(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
     match format {
         Format::Json => emit_to(sink, &envelope("result", data)),
         Format::Text => sink.out(zh),

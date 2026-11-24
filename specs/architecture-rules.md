@@ -29,4 +29,4 @@
 
 9. **审查要给明确范围**：`atg-review` 是 `.claude/workflows/atg-review.js` 这个多视角自检工作流（在 Claude Code 里用 `/atg-review <范围>` 或工作流工具调用）。跑它时写明审什么——参数传字符串，或传 `{"target": "…"}` 都行；什么都不给会直接报错（`.claude/workflows/atg-review.js` 的 `resolveTarget`，#41：以前不给就悄悄去审整个 `src/`）。codex 评审同理，交代里写死范围。
 
-10. **新 crate、新顶层目录**：`src/` 下以 `atg-` 开头的目录**必须**是 Rust crate（根 `Cargo.toml` 的 `members = ["src/atg-*"]` 会把它当成员，没有 `Cargo.toml` 的话整个工作区的 cargo 命令都会失败）。脚本、Swift 辅助程序这类东西放进用它的 crate 里的子目录，或放进不以 `atg-` 开头的目录（先例 `src/tdlib-build`）。
+10. **新 crate、新顶层目录**：`src/` 下以 `atg-` 开头的目录**必须**是 Rust crate（根 `Cargo.toml` 的 `members = ["src/atg-*"]` 会把它当成员，没有 `Cargo.toml` 的话整个工作区的 cargo 命令都会失败）。脚本、Swift 辅助程序这类东西放进用它的 crate 里的子目录，或放进不以 `atg-` 开头的目录（先例 `src/tdlib-build`）。**测试共用夹具**（`atg-core` 的 cargo 特性 `testkit`：建临时目录、测试档案）**只许在 `[dev-dependencies]`**（只在编测试时才用的依赖）**里开**：`atg-core` 的 `[features]` 里只声明 `testkit = []`；正式依赖（`dependencies`、`build-dependencies`，含 `target.*` 下的）、`workspace.dependencies`、别的特性（含 `default`）都不许连带打开它；根 `Cargo.toml` 的 `resolver` 必须是 `"2"` 或 `"3"`（resolver 1 会把 dev 依赖的特性合并进正式构建）。打正式包的命令不用 `--all-features`。`check-sources.py` 的 `testkit` 一条查清单（#108）。

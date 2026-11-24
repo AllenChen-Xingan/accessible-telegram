@@ -84,8 +84,9 @@ pub enum Command {
     Logout,
     /// 自己是谁
     Me(Rest),
-    /// 待发出的消息；`pending cancel CHAT_ID MSG_ID` 撤销一条
-    Pending(Rest),
+    /// 列出待发出的消息（本应用总开着本地库：上次没发完的会在任何一条命令启动时自动续发，跑这条也一样）；
+    /// `pending cancel CHAT_ID` 尽力撤销这个会话里全部待发消息：请求已到服务器的照样送达、之后给所有人撤回。同 send 直发、不确认
+    Pending(PendingArgs),
     /// 内核 / 授权 / 连接状态
     Status(Rest),
     /// 列会话，一行一个，顺序同官方客户端。会等服务器把离线期间漏掉的更新（新消息、未读数）补送完再出，
@@ -103,9 +104,21 @@ pub enum Command {
     Open(Rest),
     /// 静音 / 取消静音
     Mute(Rest),
-    /// 删除消息（给所有人）
-    Delete(Rest),
-    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），确认后逐条等结果。确认方式同 send
+    /// 给所有人删除自己发的消息：先列出要删哪几条（kind:"plan"），然后立即删除，不再询问
+    Delete(DeleteArgs),
+    /// 改自己发的一条纯文字消息：先列出原文与新文（kind:"plan"），然后立即改，不再询问
+    Edit(EditArgs),
+    /// 给一条消息加上（或 --remove 去掉）一个 emoji 回应。先输出一行 plan，和 send 一样直接点、不确认。
+    /// 测试服务器上只许收藏夹
+    React(ReactArgs),
+    /// 看谁点了这条消息的回应，一行一个（kind:"reactor"）
+    Reactions(ReactionsArgs),
+    /// 把一个会话里的一条或几条消息转发到另一个会话（带原发送人；一次最多 20 条）。先输出一行 plan，直接转、不确认；
+    /// 逐条等结果。测试服务器上只许转给收藏夹
+    Forward(ForwardArgs),
+    /// 发一个文件或图片（只许「下载」「桌面」「文稿」里的、50 MB 以内）。先输出一行 plan，直接发、不确认；按上传进度等结果
+    SendFile(crate::send_file::SendFileArgs),
+    /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
     Show(Rest),
@@ -121,6 +134,8 @@ pub enum Command {
     Draft(Rest),
     /// 前台放一条语音：标准输入收控制命令，标准输出逐行出状态（默认不标已听；档案被占时不转发）
     Play(PlayArgs),
+    /// 本机把一条语音转成文字（不外发、不标已听；档案被占时不转发）
+    Transcribe(TranscribeArgs),
     /// 只打印读法：夹具（TDLib 更新的 JSON 数组）→ 树 → 读法，不联网
     Speech(SpeechArgs),
     /// 机读自描述
@@ -231,7 +246,42 @@ pub struct LinksArgs {
     pub reveal: bool,
 }
 
-/// 一条消息：会话 + 消息 id（`download`、`play` 共用；以后 `transcribe` 也用）
+/// `react` 的参数
+#[derive(Args)]
+pub struct ReactArgs {
+    #[command(flatten)]
+    pub msg: MsgRef,
+    /// 一个 emoji，如 👍（v0 只收 emoji；自定义表情、付费星星不做）
+    #[arg(value_name = "EMOJI")]
+    pub emoji: String,
+    /// 去掉自己点过的这个回应
+    #[arg(long)]
+    pub remove: bool,
+    /// 这条上你已点了别的回应时照样点：每条能点几个有上限（非 Telegram Premium 会员 1 个），超了 Telegram 会去掉你最早点的那个
+    #[arg(long, conflicts_with = "remove")]
+    pub replace: bool,
+    /// 只输出要点什么，不点
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `reactions` 的参数
+#[derive(Args)]
+pub struct ReactionsArgs {
+    #[command(flatten)]
+    pub msg: MsgRef,
+    /// 只看这一个 emoji 的
+    #[arg(long, value_name = "EMOJI")]
+    pub emoji: Option<String>,
+    /// 一页最多几个（1–100）
+    #[arg(short = 'n', long = "limit", default_value_t = 50)]
+    pub limit: u32,
+    /// 接着上一页（上一页结尾行的 next_cursor）
+    #[arg(long, value_name = "C")]
+    pub cursor: Option<String>,
+}
+
+/// 一条消息：会话 + 消息 id（`download`、`play`、`transcribe`、`react`、`reactions` 共用）
 #[derive(Args)]
 pub struct MsgRef {
     /// 会话 id，或 saved（自己的收藏夹）
@@ -259,6 +309,26 @@ pub struct PlayArgs {
     pub mark_listened: bool,
 }
 
+/// `transcribe` 的参数
+#[derive(Args)]
+pub struct TranscribeArgs {
+    #[command(flatten)]
+    pub at: MsgRef,
+    /// 只用这一种语言的模型（不给时中文、英文都跑，取置信度高的）
+    #[arg(long, value_enum)]
+    pub lang: Option<Lang>,
+    /// 被标为敏感内容（18+）的语音也输出转写文字；不加时照转，但只说「隐藏内容」
+    #[arg(long)]
+    pub reveal: bool,
+}
+
+/// `transcribe --lang` 的取值
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Lang {
+    Zh,
+    En,
+}
+
 /// `send` 的参数。正文只从 `--text` / `--text-file` 来，不从标准输入读（标准输入可能是 AI 拼进来的管道）
 #[derive(Args)]
 #[command(group(clap::ArgGroup::new("body").required(true).args(["text", "text_file"])))]
@@ -283,19 +353,98 @@ pub struct SendArgs {
     pub again: bool,
 }
 
+/// `forward` 的参数
+#[derive(Args)]
+pub struct ForwardArgs {
+    /// 来源会话 id，或 saved（自己的收藏夹）
+    #[arg(value_name = "FROM_CHAT", allow_hyphen_values = true)]
+    pub from: String,
+    /// 要转的消息 id（来源会话里的，用 history 输出的 message_id；一条或几条，最多 20 条）
+    // 不开 allow_hyphen_values：可变长参数开了它会把后面的 --to、--dry-run、--again 也吞成 id（codex 033 第 1 轮 #1）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..)]
+    pub ids: Vec<i64>,
+    /// 转给哪个会话：id，或 saved
+    #[arg(long, value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub to: String,
+    /// 只输出要转什么，不转
+    #[arg(long)]
+    pub dry_run: bool,
+    /// 这一批里有哪条最近已转给同一会话就整批拦下（已转出的 10 分钟内；结果不明的 24 小时内）；确要再转加它——
+    /// 它对这一批里每一条都不再查重，结果不明的那条也会再转一次
+    #[arg(long)]
+    pub again: bool,
+}
+
 /// `resend` 的参数
 #[derive(Args)]
 pub struct ResendArgs {
     /// 会话 id，或 saved（自己的收藏夹）
     #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
     pub chat: String,
+    // `allow_hyphen_values` = 以「-」开头的词也当作值收，不当作选项。会话 id 要开（群、频道的 id 是负数）；这里不开：
+    // 可变长参数开了它会把后面的 `--dry-run` 等选项吞成 id（#153）。消息 id 都是正数，用不着
     /// 要重发的失败消息 id（一条或几条）。用 send 失败时那行 error 里的 message_id——失败后 TDLib 会给它换一个新
     /// id，不是最初的那个，也不是 temp_message_id
-    #[arg(value_name = "MSG_ID", required = true, num_args = 1.., allow_hyphen_values = true)]
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..)]
     pub ids: Vec<i64>,
     /// 只输出要重发什么，不重发
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// `edit` 的参数
+#[derive(Args)]
+pub struct EditArgs {
+    /// 会话 id，或 saved（自己的收藏夹；收藏夹里的不限时）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要改的消息 id（history 输出里的 message_id；只能是自己发的、已发出的纯文字消息）
+    #[arg(value_name = "MSG_ID")]
+    pub message_id: i64,
+    /// 改成的文字（只有纯文字；原文带的格式会丢）
+    #[arg(long, value_name = "T")]
+    pub text: Option<String>,
+    /// 从文件读改成的文字（UTF-8，64 KB 以内；Telegram 一条最多 4096 字，超了交出后被拒）
+    #[arg(long, value_name = "PATH")]
+    pub text_file: Option<std::path::PathBuf>,
+    /// 只输出要怎么改，不改
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `delete` 的参数
+#[derive(Args)]
+pub struct DeleteArgs {
+    /// 会话 id（数字；收藏夹里的消息不能给所有人删）
+    #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+    pub chat: String,
+    /// 要删的消息 id（history 输出里的 message_id；只能是自己发的、已发出的；一次最多 100 条）
+    #[arg(value_name = "MSG_ID", required = true, num_args = 1..=100)]
+    pub ids: Vec<i64>,
+    /// 只输出要删什么，不删
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// `pending` 的参数
+#[derive(Args)]
+pub struct PendingArgs {
+    #[command(subcommand)]
+    pub sub: Option<PendingCmd>,
+}
+
+#[derive(Subcommand)]
+pub enum PendingCmd {
+    /// 尽力撤销这个会话里此刻全部待发消息（临时 id 每次启动都重编，不按 id 选）：先输出一行要撤销哪几条、
+    /// 每条正文（kind:"plan"），随即交出，等这几条的下落
+    Cancel {
+        /// 会话 id，或 saved（自己的收藏夹）
+        #[arg(value_name = "CHAT_ID", allow_hyphen_values = true)]
+        chat: String,
+        /// 只输出要撤销什么，不撤销
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// `speech` 的参数（`specs/contracts/cli.md`）。`--fixture` 是单个读法夹具文件。`--scenario` 现在**没有**，名字预留给以后的场景目录
@@ -404,6 +553,11 @@ impl Command {
             Command::Open(_) => "open",
             Command::Mute(_) => "mute",
             Command::Delete(_) => "delete",
+            Command::Edit(_) => "edit",
+            Command::React(_) => "react",
+            Command::Reactions(_) => "reactions",
+            Command::Forward(_) => "forward",
+            Command::SendFile(_) => "send-file",
             Command::Resend(_) => "resend",
             Command::Show(_) => "show",
             Command::Search(_) => "search",
@@ -411,6 +565,7 @@ impl Command {
             Command::Watch(_) => "watch",
             Command::Draft(_) => "draft",
             Command::Play(_) => "play",
+            Command::Transcribe(_) => "transcribe",
             Command::Speech(_) => "speech",
             Command::Schema(_) => "schema",
             Command::Serve => "serve",
@@ -418,3 +573,6 @@ impl Command {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -19,22 +19,27 @@
 //! [`FakeBackend::set_history`] 给某会话的消息（TDLib `message` 对象）。`history` 照 TDLib 的切法（`offset` 为 0
 //! 不含 `from` 那条、往旧；负 `offset` 含它、另给比它新的），返回从新到旧；[`FakeBackend::stall_history`] 让接下来
 //! 几次只回起点那一条；[`FakeBackend::short_first_history`] 让每个会话第一次只回 1 条（TDLib 首次常这样）。`message_get` 从同一份消息里找。
+//!
+//! 文件分工（#60 R7）：根上留共用状态（[`FakeBackend`] 的字段、收线程）、几个各处都用的内部助手（`started`、`injected`、
+//! `ready_or_401`、`find_message`……）和 `Backend` 的实现；`Backend` 方法的主体放在子模块，根上一行转给它的 `do_*`。
+//! `script.rs` 测试用的设置方法 · `login.rs` 登录 · `read.rs` 会话与历史 · `submit.rs` 交出口 · `edit.rs` 编辑 ·
+//! `files.rs` 文件与语音 · `upload.rs` 上传进度 · `caps.rs` 消息能力 · `call.rs` 记账
 
 use crate::auth::{self, AuthPrompt};
 use crate::backend::{
-    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, already_subscribed,
+    Backend, ChatsLoad, Downloaded, HistoryReq, StatusReport, Upload, already_subscribed,
 };
-use crate::config::{Profile, ProfileLock, ServerKind};
+use crate::config::{Profile, ProfileLock};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
-use crate::model::FailedInfo;
+use crate::model::{AddedReactions, FailedInfo, MessageCaps};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
 use crate::secret::Secret;
-use crate::send::{Answer, Sealed, SealedKind};
+use crate::send::{Answer, Sealed};
 use crate::status::{AuthStep, CoreState, NetState};
-use crate::tree::FileRef;
+use crate::tree::{FileRef, ReactionKind};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -43,9 +48,18 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 mod call;
+mod caps;
+mod edit;
 mod files;
+mod login;
+mod read;
+mod script;
+mod submit;
+mod upload;
 
 pub use call::Call;
+pub use caps::Cap;
+pub use login::FakeAuth;
 
 /// 一次真发送之后「TDLib」怎么推结果
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,21 +87,6 @@ pub enum FakeStart {
     Fail(CoreError),
     /// 一直不应答（测故障时等待中的请求会不会返回）
     Hang,
-}
-
-/// 假账号：登录各步该输什么。测试数据，值都是编的
-#[derive(Clone, Default)]
-pub struct FakeAuth {
-    pub phone: String,
-    pub code: String,
-    /// 号码之后先要设登录邮箱：（邮箱，邮箱里的验证码）。之后不再要短信验证码
-    pub email: Option<(String, String)>,
-    /// 二步验证：（密码，提示语）
-    pub password: Option<(String, String)>,
-    /// 号码还没注册（测试服务器被清空后会这样）
-    pub needs_registration: bool,
-    /// 起来就已登录
-    pub logged_in: bool,
 }
 
 enum Feed {
@@ -123,6 +122,7 @@ pub struct FakeBackend {
     histories: Mutex<HashMap<ChatId, Vec<Value>>>,
     /// `file_download` 回什么：`None` = TDLib 回来了但没下完；没登记 = 找不到
     files: Mutex<HashMap<i32, Option<Downloaded>>>,
+    uploads: Mutex<VecDeque<Upload>>, // `upload_progress` 按次回的进度（`fake/upload.rs`，#12）
     /// 每个会话第一次 `history` 只回 1 条
     short_first: Mutex<Option<std::collections::HashSet<ChatId>>>,
     /// 停住：（先照常应答几次，再连着几次只回起点那一条）——TDLib 正从服务器拉、一直没拉到的样子
@@ -134,7 +134,7 @@ pub struct FakeBackend {
     /// 自己的用户 id（`me()`）；没设 → 401
     me_id: Mutex<Option<i64>>,
     forums: Mutex<Vec<ChatId>>,
-    no_reply: Mutex<Vec<MsgId>>,
+    denied: Mutex<Vec<(MsgId, caps::Cap)>>, // 被关掉的能力，见 `fake/caps.rs`
     /// 接下来的几次预览是否「把回复去掉」（按次取，取完照常保留）
     preview_drops: Mutex<VecDeque<bool>>,
     /// 下一次预览时先跑它（测「凭据已验过、复核预览还没回」那一刻发生的事）
@@ -192,57 +192,20 @@ impl FakeBackend {
             forum_topics: Mutex::new(HashMap::new()),
             histories: Mutex::new(HashMap::new()),
             files: Mutex::new(HashMap::new()),
+            uploads: Mutex::new(VecDeque::new()),
             short_first: Mutex::new(None),
             stall: Mutex::new((0, 0)),
             cap: Mutex::new(None),
             gate,
             me_id: Mutex::new(None),
             forums: Mutex::new(Vec::new()),
-            no_reply: Mutex::new(Vec::new()),
+            denied: Mutex::new(Vec::new()),
             preview_drops: Mutex::new(VecDeque::new()),
             preview_hook: Mutex::new(None),
             send_script: Mutex::new(VecDeque::new()),
             next_id: Mutex::new(1_000_000),
             submitted: Mutex::new(Vec::new()),
         })
-    }
-
-    /// 自己的用户 id（收藏夹的会话 id 同它）
-    pub fn set_me(&self, user_id: i64) {
-        *lock(&self.me_id) = Some(user_id);
-        // 同 TDLib：登录后推 `updateOption my_id`
-        self.push(json!({"@type": "updateOption", "name": "my_id",
-            "value": {"@type": "optionValueInteger", "value": user_id.to_string()}}));
-    }
-
-    /// 这个会话是话题群
-    pub fn set_forum(&self, chat: ChatId) {
-        lock(&self.forums).push(chat);
-    }
-
-    /// 这条消息不能回复
-    pub fn set_no_reply(&self, id: MsgId) {
-        lock(&self.no_reply).push(id);
-    }
-
-    /// 接下来几次预览是否把回复去掉（TDLib 遇到被回复那条不在 / 不能回复时就这样，发6）
-    /// 下一次预览（交给 TDLib 的 `only_preview`）回来之前先跑 `hook`
-    pub fn on_next_preview(&self, hook: impl FnOnce() + Send + 'static) {
-        *lock(&self.preview_hook) = Some(Box::new(hook));
-    }
-
-    pub fn script_previews(&self, drops: &[bool]) {
-        lock(&self.preview_drops).extend(drops.iter().copied());
-    }
-
-    /// 接下来几次真发送的结果
-    pub fn script_sends(&self, s: Vec<FakeSend>) {
-        lock(&self.send_script).extend(s);
-    }
-
-    /// 真交出去的请求（预览不算）
-    pub fn submitted(&self) -> Vec<Value> {
-        lock(&self.submitted).clone()
     }
 
     fn new_id(&self) -> i64 {
@@ -278,121 +241,6 @@ impl FakeBackend {
         })
     }
 
-    /// 真发一条之后按剧本推结果（推在应答之前：结果比应答先到，发4）
-    fn play_send(&self, chat: ChatId, temp: i64, request: &Value) {
-        let step = lock(&self.send_script)
-            .pop_front()
-            .unwrap_or(FakeSend::Succeed);
-        match step {
-            FakeSend::Succeed => {
-                let id = self.new_id();
-                let m = self.own_message(chat, id, request, Value::Null);
-                // 发出的那条留在会话里（之后 `message_get` / `failed_info` 找得到）
-                lock(&self.histories)
-                    .entry(chat)
-                    .or_default()
-                    .push(m.clone());
-                self.push(json!({"@type": "updateMessageSendSucceeded", "old_message_id": temp, "message": m}));
-            }
-            FakeSend::Fail {
-                code,
-                message,
-                can_retry,
-            } => {
-                let id = self.new_id();
-                let err = json!({"@type": "error", "code": code, "message": message});
-                let st = json!({"@type": "messageSendingStateFailed", "error": err.clone(),
-                    "can_retry": can_retry, "need_another_sender": false, "need_another_reply_quote": false,
-                    "need_drop_reply": false, "required_paid_message_star_count": 0, "retry_after": 0.0});
-                let m = self.own_message(chat, id, request, st);
-                // 失败的那条留在会话里（重发时要找得到）
-                lock(&self.histories)
-                    .entry(chat)
-                    .or_default()
-                    .push(m.clone());
-                self.push(json!({"@type": "updateMessageSendFailed", "old_message_id": temp, "message": m, "error": err}));
-            }
-            FakeSend::Delete => self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
-                "message_ids": [temp], "is_permanent": true, "from_cache": false})),
-            FakeSend::Silent | FakeSend::Reject(_) => {}
-        }
-        self.settle();
-    }
-
-    /// 给一个假账号（`start` 之前设）
-    pub fn set_auth(&self, a: FakeAuth) {
-        *lock(&self.auth) = Some(a);
-    }
-
-    /// 给某个列表排好会话（按 TDLib 的顺序交出；每个会话是几条 TDLib JSON 更新，如 `updateNewChat` +
-    /// `updateChatPosition`）。再调一次是追加
-    pub fn set_chats(&self, list: ChatList, chats: Vec<Vec<Value>>) {
-        lock(&self.chats).entry(list).or_default().extend(chats);
-    }
-
-    /// `chat_get(id)` 时推这几条更新（`updateNewChat`、发送人的 `updateUser`……）；没设的会话 → `not_found`
-    pub fn set_chat(&self, id: ChatId, updates: Vec<Value>) {
-        lock(&self.chat_info).insert(id, updates);
-    }
-
-    /// `forum_topic_get(chat, topic)` 回这个话题（TDLib `forumTopic` 对象）；没设的 → `not_found`
-    pub fn set_forum_topic(&self, chat: ChatId, topic_id: i64, topic: Value) {
-        lock(&self.forum_topics).insert((chat, topic_id), topic);
-    }
-
-    /// 某会话的全部消息（TDLib `message` 对象，顺序无所谓）
-    pub fn set_history(&self, chat: ChatId, messages: Vec<Value>) {
-        lock(&self.histories).insert(chat, messages);
-    }
-
-    /// 每个会话第一次 `history` 只回 1 条（之后照常）
-    pub fn short_first_history(&self) {
-        *lock(&self.short_first) = Some(std::collections::HashSet::new());
-    }
-
-    /// 接下来 `n` 次 `history` 只回起点那一条，之后照常
-    pub fn stall_history(&self, n: u32) {
-        *lock(&self.stall) = (0, n);
-    }
-
-    /// 先照常应答 `ok` 次，再连着 `n` 次只回起点那一条，之后照常
-    pub fn stall_history_after(&self, ok: u32, n: u32) {
-        *lock(&self.stall) = (ok, n);
-    }
-
-    /// 每次 `history` 最多回 `c` 条（离起点最近的）
-    pub fn cap_history(&self, c: usize) {
-        *lock(&self.cap) = Some(c);
-    }
-
-    /// 前 `n` 次 `chats_load` 照常应答，之后一直不应答（测断网时加载卡住）
-    pub fn hang_chats_load_after(&self, n: u32) {
-        *lock(&self.chats_load_answers) = Some(n);
-    }
-
-    /// 推一条连接状态（`connectionStateReady` 这类类型名）
-    pub fn push_net(&self, td_type: &str) {
-        self.push(json!({
-            "@type": "updateConnectionState",
-            "state": { "@type": td_type },
-        }));
-    }
-
-    /// 等收线程处理完已喂进去的更新（最多 5 秒；收线程没了就不等）
-    fn settle(&self) {
-        let (tx, rx) = mpsc::channel();
-        if lock(&self.feed).send(Feed::Barrier(tx)).is_ok() {
-            let _ = rx.recv_timeout(Duration::from_secs(5));
-        }
-    }
-
-    /// 注入「一直不应答」（测期限）：`fail_next(动作, CoreError::Internal { what: HANG })`
-    pub const HANG: &str = "fake_hang";
-    /// 下一次 `action`（记账里的名字）回这个错误，一次性
-    pub fn fail_next(&self, action: &'static str, e: CoreError) {
-        lock(&self.fail_next).push((action, e));
-    }
-
     fn take_failure(&self, action: &'static str) -> Option<CoreError> {
         let mut f = lock(&self.fail_next);
         let i = f.iter().position(|(a, _)| *a == action)?;
@@ -412,69 +260,6 @@ impl FakeBackend {
         .await?
     }
 
-    fn kind(&self) -> ServerKind {
-        lock(&self.run)
-            .as_ref()
-            .map_or(ServerKind::Main, |(p, _)| p.kind())
-    }
-
-    fn account(&self) -> Result<FakeAuth, CoreError> {
-        lock(&self.auth).clone().ok_or(CoreError::Internal {
-            what: "fake_no_account",
-        })
-    }
-
-    /// 一个登录动作的公共部分：记账 → 注入的错误 → 内核故障。过了才轮到账号核对
-    async fn auth_call(&self, action: &'static str) -> Result<FakeAuth, CoreError> {
-        lock(&self.calls).push(Call::Auth(action));
-        self.injected(action).await?;
-        self.account()
-    }
-
-    fn push_state(&self, state: Value) {
-        self.push(json!({ "@type": "updateAuthorizationState", "authorization_state": state }));
-    }
-
-    fn push_wait_code(&self, a: &FakeAuth, via: &str, can_resend: bool) {
-        let next = if can_resend {
-            json!({ "@type": "authenticationCodeTypeSms", "length": a.code.len() })
-        } else {
-            Value::Null
-        };
-        self.push_state(json!({
-            "@type": "authorizationStateWaitCode",
-            "code_info": {
-                "@type": "authenticationCodeInfo",
-                "phone_number": a.phone,
-                "type": { "@type": via, "length": a.code.len() },
-                "next_type": next,
-                "timeout": 0,
-            },
-        }));
-    }
-
-    /// 验证码（或邮箱验证码）对了之后的下一步
-    fn push_after_code(&self, a: &FakeAuth) {
-        if a.needs_registration {
-            self.push_state(json!({ "@type": "authorizationStateWaitRegistration" }));
-        } else {
-            self.push_after_registration(a);
-        }
-    }
-
-    fn push_after_registration(&self, a: &FakeAuth) {
-        match &a.password {
-            Some((_, hint)) => self.push_state(json!({
-                "@type": "authorizationStateWaitPassword",
-                "password_hint": hint,
-                "has_recovery_email_address": false,
-                "has_passport_data": false,
-                "recovery_email_address_pattern": "",
-            })),
-            None => self.push_auth("authorizationStateReady"),
-        }
-    }
-
     fn step(&self) -> AuthStep {
         self.shared.lines().auth
     }
@@ -488,49 +273,6 @@ impl FakeBackend {
                 what: "not_started",
             })
         }
-    }
-
-    pub fn set_start(&self, s: FakeStart) {
-        *lock(&self.start) = s;
-    }
-
-    /// `shutdown` 时收线程不给 `authorizationStateClosed`（测超时）
-    pub fn set_close_hangs(&self, on: bool) {
-        *lock(&self.close_hangs) = on;
-    }
-
-    /// 喂一条 TDLib JSON 形状的更新
-    pub fn push(&self, update: Value) {
-        let _ = lock(&self.feed).send(Feed::Update(update));
-    }
-
-    /// 喂一条授权状态更新（`authorizationStateWaitPhoneNumber` 这类类型名）
-    pub fn push_auth(&self, td_type: &str) {
-        self.push(json!({
-            "@type": "updateAuthorizationState",
-            "authorization_state": { "@type": td_type },
-        }));
-    }
-
-    /// 让收线程崩溃（panic）
-    pub fn crash(&self) {
-        let _ = lock(&self.feed).send(Feed::Crash);
-    }
-
-    /// 让来源断掉（收线程没等到 Closed 就退出）
-    pub fn end(&self) {
-        let _ = lock(&self.feed).send(Feed::End);
-    }
-
-    /// 等收线程退出（测试里要确定故障已广播完再断言时用）
-    pub fn join_receiver(&self) {
-        if let Some(h) = lock(&self.receiver).take() {
-            let _ = h.join();
-        }
-    }
-
-    pub fn calls(&self) -> Vec<Call> {
-        lock(&self.calls).clone()
     }
 }
 
@@ -609,200 +351,51 @@ impl Backend for FakeBackend {
     }
 
     async fn auth_submit_phone(&self, phone: &Secret) -> Result<(), CoreError> {
-        self.started()?;
-        let phone = auth::prepare_phone(self.step(), self.kind(), phone)?;
-        let a = self.auth_call("phone").await?;
-        let want = auth::normalize_phone(a.phone.as_bytes())?;
-        if phone.expose() != want.expose() {
-            return Err(map_td_error(400, "PHONE_NUMBER_INVALID"));
-        }
-        if a.email.is_some() {
-            self.push_state(json!({
-                "@type": "authorizationStateWaitEmailAddress",
-                "allow_apple_id": false,
-                "allow_google_id": false,
-            }));
-        } else {
-            self.push_wait_code(&a, "authenticationCodeTypeTelegramMessage", true);
-        }
-        Ok(())
+        self.do_auth_submit_phone(phone).await
     }
 
     async fn auth_submit_code(&self, code: &Secret) -> Result<(), CoreError> {
-        self.started()?;
-        auth::AuthAction::Code.check(self.step())?;
-        let a = self.auth_call("code").await?;
-        if !same(code, &a.code) {
-            return Err(map_td_error(400, "PHONE_CODE_INVALID"));
-        }
-        self.push_after_code(&a);
-        Ok(())
+        self.do_auth_submit_code(code).await
     }
 
     async fn auth_resend_code(&self) -> Result<(), CoreError> {
-        self.started()?;
-        auth::AuthAction::Resend.check(self.step())?;
-        let a = self.auth_call("resend").await?;
-        if !self.shared.auth_prompt().can_resend {
-            // TDLib：没有下一种方式时重发被拒
-            return Err(map_td_error(400, "SEND_CODE_UNAVAILABLE"));
-        }
-        self.push_wait_code(&a, "authenticationCodeTypeSms", false);
-        Ok(())
+        self.do_auth_resend_code().await
     }
 
     async fn auth_submit_email(&self, address: &Secret) -> Result<(), CoreError> {
-        self.started()?;
-        auth::AuthAction::Email.check(self.step())?;
-        let a = self.auth_call("email").await?;
-        let Some((want, code)) = &a.email else {
-            return Err(map_td_error(400, "EMAIL_NOT_ALLOWED"));
-        };
-        if !same(address, want) {
-            return Err(map_td_error(400, "EMAIL_INVALID"));
-        }
-        self.push_state(json!({
-            "@type": "authorizationStateWaitEmailCode",
-            "allow_apple_id": false,
-            "allow_google_id": false,
-            "code_info": {
-                "@type": "emailAddressAuthenticationCodeInfo",
-                "email_address_pattern": "e***@example.com",
-                "length": code.len(),
-            },
-            "email_address_reset_state": null,
-        }));
-        Ok(())
+        self.do_auth_submit_email(address).await
     }
 
     async fn auth_submit_email_code(&self, code: &Secret) -> Result<(), CoreError> {
-        self.started()?;
-        auth::AuthAction::EmailCode.check(self.step())?;
-        let a = self.auth_call("email_code").await?;
-        let ok = a.email.as_ref().is_some_and(|(_, want)| same(code, want));
-        if !ok {
-            return Err(map_td_error(400, "EMAIL_CODE_INVALID"));
-        }
-        self.push_after_code(&a);
-        Ok(())
+        self.do_auth_submit_email_code(code).await
     }
 
     async fn auth_submit_password(&self, password: &Secret) -> Result<(), CoreError> {
-        self.started()?;
-        auth::AuthAction::Password.check(self.step())?;
-        let a = self.auth_call("password").await?;
-        let ok = a
-            .password
-            .as_ref()
-            .is_some_and(|(want, _)| same(password, want));
-        if !ok {
-            return Err(map_td_error(400, "PASSWORD_HASH_INVALID"));
-        }
-        self.push_auth("authorizationStateReady");
-        Ok(())
+        self.do_auth_submit_password(password).await
     }
 
     async fn auth_register(&self) -> Result<(), CoreError> {
-        self.started()?;
-        auth::prepare_register(self.step(), self.kind())?;
-        let a = self.auth_call("register").await?;
-        self.push_after_registration(&a);
-        Ok(())
+        self.do_auth_register().await
     }
 
     async fn logout(&self) -> Result<(), CoreError> {
-        self.started()?;
-        auth::prepare_logout(self.step())?;
-        self.auth_call("logout").await?;
-        self.push_auth("authorizationStateLoggingOut");
-        self.push_auth("authorizationStateClosing");
-        self.push_auth("authorizationStateClosed");
-        Ok(())
+        self.do_logout().await
     }
 
     async fn chats_load(&self, list: &ChatList, limit: u32) -> Result<ChatsLoad, CoreError> {
-        self.started()?;
-        // 本地检查拦下的不记账（同登录那组）
-        if let ChatList::Unknown { .. } = list {
-            return Err(CoreError::InvalidInput { td: None });
-        }
-        lock(&self.calls).push(Call::ChatsLoad {
-            list: list.clone(),
-            limit,
-        });
-        let hang = match lock(&self.chats_load_answers).as_mut() {
-            Some(0) => true,
-            Some(n) => {
-                *n -= 1;
-                false
-            }
-            None => false,
-        };
-        let injected = self.take_failure("chats_load");
-        link::guard(self.shared.clone(), async move {
-            if hang {
-                std::future::pending::<()>().await;
-            }
-            match injected {
-                Some(e) => Err(e),
-                None => Ok(()),
-            }
-        })
-        .await??;
-        if self.step() != AuthStep::Ready {
-            return Err(map_td_error(401, "Unauthorized"));
-        }
-        let batch: Vec<Vec<Value>> = {
-            let mut all = lock(&self.chats);
-            let q = all.entry(list.clone()).or_default();
-            let n = q.len().min(usize::try_from(limit).unwrap_or(usize::MAX));
-            q.drain(..n).collect()
-        };
-        if batch.is_empty() {
-            return Ok(ChatsLoad::End);
-        }
-        for update in batch.into_iter().flatten() {
-            self.push(update);
-        }
-        self.settle();
-        Ok(ChatsLoad::Loaded)
+        self.do_chats_load(list, limit).await
     }
 
     async fn chat_get(&self, chat: ChatId) -> Result<(), CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::ChatGet(chat));
-        self.ready_or_401("chat_get").await?;
-        let Some(updates) = lock(&self.chat_info).get(&chat).cloned() else {
-            return Err(CoreError::NotFound {
-                what: "chat",
-                td: None,
-            });
-        };
-        for u in updates {
-            self.push(u);
-        }
-        self.settle();
-        Ok(())
+        self.do_chat_get(chat).await
     }
 
     async fn chat_open(&self, chat: ChatId) -> Result<(), CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::ChatOpen(chat));
-        self.ready_or_401("chat_open").await?;
-        if !lock(&self.chat_info).contains_key(&chat) {
-            return Err(CoreError::NotFound {
-                what: "chat",
-                td: None,
-            });
-        }
-        Ok(())
+        self.do_chat_open(chat).await
     }
 
     async fn chat_close(&self, chat: ChatId) -> Result<(), CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::ChatClose(chat));
-        self.ready_or_401("chat_close").await?;
-        Ok(())
+        self.do_chat_close(chat).await
     }
 
     async fn forum_topic_get(
@@ -810,115 +403,15 @@ impl Backend for FakeBackend {
         chat: ChatId,
         topic_id: i64,
     ) -> Result<ForumTopicState, CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::ForumTopicGet(chat, topic_id));
-        self.ready_or_401("forum_topic_get").await?;
-        let t = lock(&self.forum_topics).get(&(chat, topic_id)).cloned();
-        t.map(|t| crate::tdjson::forum_topic(&t))
-            .ok_or(CoreError::NotFound {
-                what: "forum_topic",
-                td: None,
-            })
+        self.do_forum_topic_get(chat, topic_id).await
     }
 
     async fn history(&self, req: HistoryReq) -> Result<Vec<Message>, CoreError> {
-        self.started()?;
-        req.check()?;
-        lock(&self.calls).push(Call::History(req));
-        self.ready_or_401("history").await?;
-        if !lock(&self.chat_info).contains_key(&req.chat) {
-            return Err(CoreError::NotFound {
-                what: "chat",
-                td: None,
-            });
-        }
-        let mut all: Vec<Value> = lock(&self.histories)
-            .get(&req.chat)
-            .cloned()
-            .unwrap_or_default();
-        let id = |v: &Value| v["id"].as_i64().unwrap_or(0);
-        all.sort_by_key(|v| std::cmp::Reverse(id(v)));
-        // 照 TDLib 1.8.69 的切法（`td/telegram/OrderedMessage.cpp` `OrderedMessages::get_history`）：
-        // - `from` 为 0：从最新一条起（含它）往旧
-        // - `offset` 为 0：**不含** `from` 那条，从比它旧的起
-        // - `offset` 为 -k：`from` 那条算进去，另给比它新的 k-1 条，再往旧接上
-        let from_end = req.from == 0;
-        let k = usize::try_from(-i64::from(req.offset)).unwrap_or(0);
-        let newer_n = k.saturating_sub(1);
-        let mut newer: Vec<Value> = all
-            .iter()
-            .filter(|v| !from_end && id(v) > req.from)
-            .cloned()
-            .collect();
-        let skip = newer.len().saturating_sub(newer_n);
-        let newer = newer.split_off(skip);
-        let older: Vec<Value> = all
-            .iter()
-            .filter(|v| from_end || id(v) < req.from || (k > 0 && id(v) == req.from))
-            .cloned()
-            .collect();
-        // 停住：只回起点那一条（有的话），一条新的都不给——内存里只有它、更早的还在后台拉
-        let stalled = {
-            let mut st = lock(&self.stall);
-            if st.0 > 0 {
-                st.0 -= 1;
-                false
-            } else {
-                let s = st.1 > 0;
-                st.1 = st.1.saturating_sub(1);
-                s
-            }
-        };
-        // 从最新一条起时「起点」就是最新那条
-        let at_from = || {
-            if from_end {
-                all.first().cloned()
-            } else {
-                all.iter().find(|v| id(v) == req.from).cloned()
-            }
-        };
-        if stalled {
-            return Ok(at_from().iter().map(crate::tdjson::message).collect());
-        }
-        // TDLib 首次常只回 1 条（内存里只有挨着起点的那一条）：TDLib 给的总是连着起点的一段，所以是离起点最近的那条
-        let short = lock(&self.short_first)
-            .as_mut()
-            .is_some_and(|seen| seen.insert(req.chat));
-        if short {
-            let one = older.first().cloned().or_else(|| newer.last().cloned());
-            return Ok(one.iter().map(crate::tdjson::message).collect());
-        }
-        // 限了条数：留离起点最近的那几条（往新时是起点和紧挨着它的新的，往旧时是紧挨着它的旧的）
-        let (newer, older) = match *lock(&self.cap) {
-            Some(c) if k > 0 => {
-                let keep_newer = c.saturating_sub(1).min(newer.len());
-                let newer = newer[newer.len() - keep_newer..].to_vec();
-                let older = older.into_iter().take(c - keep_newer).collect();
-                (newer, older)
-            }
-            Some(c) => (newer, older.into_iter().take(c).collect()),
-            None => (newer, older),
-        };
-        let mut out: Vec<Value> = newer.into_iter().chain(older).collect();
-        out.truncate(usize::try_from(req.limit).unwrap_or(usize::MAX));
-        Ok(out.iter().map(crate::tdjson::message).collect())
+        self.do_history(req).await
     }
 
     async fn message_get(&self, id: MsgId) -> Result<Message, CoreError> {
-        self.started()?;
-        lock(&self.calls).push(Call::MessageGet(id));
-        self.ready_or_401("message_get").await?;
-        lock(&self.histories)
-            .get(&id.chat_id)
-            .and_then(|ms| {
-                ms.iter()
-                    .find(|v| v["id"].as_i64() == Some(id.message_id))
-                    .map(crate::tdjson::message)
-            })
-            .ok_or(CoreError::NotFound {
-                what: "message",
-                td: None,
-            })
+        self.do_message_get(id).await
     }
 
     async fn file_download(&self, file: FileRef) -> Result<Downloaded, CoreError> {
@@ -927,6 +420,10 @@ impl Backend for FakeBackend {
 
     async fn mark_listened(&self, id: MsgId) -> Result<(), CoreError> {
         self.do_mark_listened(id).await
+    }
+
+    async fn upload_progress(&self, id: MsgId) -> Result<Option<Upload>, CoreError> {
+        self.do_upload_progress(id).await
     }
 
     fn wait_net(&self, timeout: Duration, pred: &dyn Fn(&NetState) -> bool) -> Option<NetState> {
@@ -975,14 +472,10 @@ impl Backend for FakeBackend {
         })
     }
 
-    async fn can_reply(&self, id: MsgId) -> Result<bool, CoreError> {
+    async fn message_caps(&self, id: MsgId) -> Result<MessageCaps, CoreError> {
         self.started()?;
-        self.ready_or_401("can_reply").await?;
-        self.find_message(id).ok_or(CoreError::NotFound {
-            what: "message",
-            td: None,
-        })?;
-        Ok(!lock(&self.no_reply).contains(&id))
+        self.ready_or_401("message_caps").await?;
+        self.caps(id)
     }
 
     async fn failed_info(&self, id: MsgId) -> Result<Option<FailedInfo>, CoreError> {
@@ -996,111 +489,17 @@ impl Backend for FakeBackend {
     }
 
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
-        self.started()?;
-        self.ready_or_401("submit").await?;
-        match req.into_kind() {
-            SealedKind::Message { request, preview } => {
-                let chat = request["chat_id"].as_i64().unwrap_or(0);
-                lock(&self.calls).push(Call::Submit {
-                    chat,
-                    preview,
-                    resend: false,
-                });
-                if !lock(&self.chat_info).contains_key(&chat) {
-                    return Err(CoreError::NotFound {
-                        what: "chat",
-                        td: None,
-                    });
-                }
-                if preview {
-                    let hook = lock(&self.preview_hook).take();
-                    if let Some(hook) = hook {
-                        hook();
-                    }
-                    let mut r = request.clone();
-                    if lock(&self.preview_drops).pop_front().unwrap_or(false) {
-                        r["reply_to"] = Value::Null;
-                    }
-                    let m = self.own_message(chat, 0, &r, Value::Null);
-                    return Ok(Answer::Message(crate::tdjson::message(&m)));
-                }
-                let rejected = {
-                    let mut script = lock(&self.send_script);
-                    match script.front() {
-                        Some(FakeSend::Reject(e)) => {
-                            let e = e.clone();
-                            script.pop_front();
-                            Some(e)
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(e) = rejected {
-                    return Err(e);
-                }
-                lock(&self.submitted).push(request.clone());
-                let temp = self.new_id();
-                let pending = self.own_message(
-                    chat,
-                    temp,
-                    request,
-                    json!({"@type": "messageSendingStatePending", "sending_id": request["options"]["sending_id"].clone()}),
-                );
-                self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
-                self.play_send(chat, temp, request);
-                Ok(Answer::Message(crate::tdjson::message(&pending)))
-            }
-            SealedKind::Resend { request } => {
-                let chat = request["chat_id"].as_i64().unwrap_or(0);
-                let ids: Vec<i64> = request["message_ids"]
-                    .as_array()
-                    .map(|a| a.iter().filter_map(Value::as_i64).collect())
-                    .unwrap_or_default();
-                lock(&self.calls).push(Call::Submit {
-                    chat,
-                    preview: false,
-                    resend: true,
-                });
-                let mut out = Vec::new();
-                for id in ids {
-                    let old = self.find_message(MsgId {
-                        chat_id: chat,
-                        message_id: id,
-                    });
-                    let ok = old
-                        .as_ref()
-                        .and_then(crate::tdjson::failed_info)
-                        .is_some_and(|f| f.can_retry);
-                    let Some(old) = old.filter(|_| ok) else {
-                        out.push(None);
-                        continue;
-                    };
-                    lock(&self.submitted).push(
-                        json!({"@type": "resendMessages", "chat_id": chat, "message_ids": [id]}),
-                    );
-                    let temp = self.new_id();
-                    let request = json!({"input_message_content": {"text": old["content"]["text"].clone()},
-                        "topic_id": old["topic_id"].clone(), "reply_to": null});
-                    let pending = self.own_message(
-                        chat,
-                        temp,
-                        &request,
-                        json!({"@type": "messageSendingStatePending", "sending_id": 0}),
-                    );
-                    // TDLib 重发时先删掉失败那条（不是撤回），再造一条待发的
-                    lock(&self.histories)
-                        .entry(chat)
-                        .or_default()
-                        .retain(|m| m["id"].as_i64() != Some(id));
-                    self.push(json!({"@type": "updateDeleteMessages", "chat_id": chat,
-                        "message_ids": [id], "is_permanent": true, "from_cache": false}));
-                    self.push(json!({"@type": "updateNewMessage", "message": pending.clone()}));
-                    self.play_send(chat, temp, &request);
-                    out.push(Some(crate::tdjson::message(&pending)));
-                }
-                Ok(Answer::Resent(out))
-            }
-        }
+        self.do_submit(req).await
+    }
+
+    async fn added_reactions(
+        &self,
+        id: MsgId,
+        kind: Option<&ReactionKind>,
+        offset: &str,
+        limit: u32,
+    ) -> Result<AddedReactions, CoreError> {
+        self.do_added_reactions(id, kind, offset, limit).await
     }
 
     fn shutdown(&self, timeout: Duration) -> Result<(), CoreError> {
@@ -1120,8 +519,9 @@ impl Backend for FakeBackend {
             }
         }
         if self.shared.wait_closed(timeout) {
-            // 正常关闭：拿掉标记、放掉档案锁（同一进程里可以再开这个档案）
+            // 正常关闭：先收尾交出未完成标记（#88，放锁之前），再拿掉标记、放掉档案锁（同一进程里可以再开这个档案）
             if let Some((p, l)) = lock(&self.run).as_mut() {
+                self.gate().limits().closed(timeout);
                 p.mark_clean();
                 *l = None;
             }
@@ -1145,9 +545,4 @@ impl FakeBackend {
         }
         Ok(())
     }
-}
-
-/// 输入与假账号里的值一样（逐字节）
-fn same(given: &Secret, want: &str) -> bool {
-    given.expose() == want.as_bytes()
 }

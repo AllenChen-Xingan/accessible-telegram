@@ -15,7 +15,8 @@ const ALL_DOCS: &[&str] = &[
     "chat_item",
     "status",
     "unknown",
-    // alert 不来自 TDLib，由 snapshots.rs 的 alert_brief 覆盖；playback 也不来自 TDLib，由 speech/playback.rs 的单测覆盖
+    // alert 不来自 TDLib，由 snapshots.rs 的 alert_brief 覆盖；playback、transcription 也不来自 TDLib，由 speech/playback.rs、atg-cli 的 transcribe 单测覆盖
+    // reactor 来自 getMessageAddedReactions 的应答（不是更新），由 src/send/react/tests.rs 的 reactor_speech 覆盖
 ];
 
 fn doc_name(d: &Doc) -> &'static str {
@@ -27,6 +28,8 @@ fn doc_name(d: &Doc) -> &'static str {
         Doc::Alert(_) => "alert",
         Doc::Status(_) => "status",
         Doc::Playback(_) => "playback",
+        Doc::Reactor(_) => "reactor",
+        Doc::Transcription(_) => "transcription",
         Doc::Unknown(_) => "unknown",
     }
 }
@@ -218,6 +221,8 @@ impl Seen {
             | Doc::Alert(_)
             | Doc::Status(_)
             | Doc::Playback(_)
+            | Doc::Reactor(_)
+            | Doc::Transcription(_)
             | Doc::Unknown(_) => {}
         }
     }
