@@ -314,7 +314,7 @@ impl Drop for Stop<'_> {
 }
 
 /// 转写。
-/// - `pcm`：[`SAMPLE_RATE`] 单声道（[`crate::decode`] 出的那份）
+/// - `pcm`：[`SAMPLE_RATE`] 单声道（[`crate::decode()`] 出的那份）
 /// - `locales`：要跑的语种（如 `zh-CN`、`en-US`），至少一个；**顺序有意义**：置信度相等时取排前的
 /// - `cancel`：调用方立（CLI 是 Ctrl+C 的标志，GUI 传自己的）
 ///

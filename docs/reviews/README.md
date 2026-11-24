@@ -53,6 +53,7 @@
 | 051 | 2026-11-17 | #60 R7 第三刀：拆 `store/mod.rs`，改状态的私有方法挪进 `store/write.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；抽查「不符」1 条（交接页计数笔误）已改 → `051_r7-store-codex.md` |
 | 033 | 2026-11-17 | #10 转发 `forward`（直发；含闸支持一份计划多个防重复指纹，一级评审；codex · diff 类） | 自审 6 轮（第 5、6 轮无 P0/P1）；codex 第 1 轮 P1×1（`MSG_ID` 吞后置选项）P2×3，属实 4，已改 3、1 条并入 #128；第 2 轮仅 P2×2（代跑断开逐条列、worst_hit 漏看较早的未知），已改；第 3 轮零发现；第 2、3 轮无 P0/P1，收敛，无剩余 P2 → `033_forward-10-codex.md` |
 | 034 | 2026-11-17 | #12 发文件 / 图片 `send-file`（直发；闸只加留痕字段 `file{kind,size}`，一级评审；codex · diff 类） | 自审 2 轮（都无 P0/P1）；codex 第 1 轮仅 P2×3（中间文件夹换链接、改扩展名绕过防重复、进度查询越过时限）、第 2 轮仅 P2×2（按文件发没关类型识别、进度查询挡住结果事件），全属实已改；第 1、2 轮无 P0/P1，收敛；合 main 后三点范围第 3 轮确认，仅 P2×2（悬空链接探存在性、10 分钟没算交出段）→ issue → `034_send-file-12-codex.md` |
+| 035 | 2026-11-24 | #13 只读那半：投票读全、消息上的按钮读出（不动闸；codex · diff 类 · 两轮） | 第 1 轮 P2×2（全文误用名称层 spans 合并表情，已改；复制按钮读内容，驳回进待人实听）；第 2 轮零发现，收敛 → `035_poll-buttons-13-codex.md` |
 | 052 | 2026-11-17 | #60 R7 第四刀：拆 `tests/reducer.rs`，改成 `tests/reducer/` 下 9 个文件、按主题分（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛；77 = 77 → `052_r7-tests-reducer-codex.md` |
 | 053 | 2026-11-17 | #60 R7 第五刀：拆 cli `history.rs`，links 进 `history/links.rs`、读法与渲染进 `history/render.rs`（只挪不改；codex · diff 类 · 两轮） | 第 1、2 轮各 P2×1（010、交接页里导出个数与行数写错），都属实已改；两轮无 P0/P1，收敛 → `053_r7-history-codex.md` |
 | 054 | 2026-11-17 | #60 R7 第六刀：拆 cli `watch.rs`，出口与订阅者进 `watch/hub.rs`（只挪不改；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `054_r7-watch-codex.md` |
@@ -62,4 +63,6 @@
 | 058 | 2026-11-17 | #60 R3a 第三刀：剩下的测试临时目录助手换成 testkit（含 #8、#10 带进来的 4 处；codex · diff 类 · 两轮） | 两轮零发现，收敛 → `058_r3a-testkit-3-codex.md` |
 | 059 | 2026-11-17 | #60 R7 第八刀：拆 core `fake.rs`（设置方法、登录、会话与历史各挪一个子文件，trait 方法一行转发，只挪不改）；R3a 收尾（codex · diff 类） | 两轮零发现（第 1 轮抽查不符 1 条，行数，已改），收敛 → `059_r7-fake-codex.md` |
 | 060 | 2026-11-17 | #60 R7 第九刀：拆 core `td.rs`（内联 `mod real` 挪成 `td/real.rs`，再拆 start、login、read，trait 方法一行转发，只挪不改；codex · diff 类） | 两轮零发现，收敛 → `060_r7-td-codex.md` |
+| 061 | 2026-11-17 | #137 修 22 条 rustdoc 警告（私有项、特性下断链、同名歧义），CI 加两步 `cargo doc -D warnings`（codex · diff 类） | 两轮零发现，收敛 → `061_137-rustdoc-links-codex.md` |
+| 063 | 2026-11-24 | #42 开发版开强化运行时（OpenSSL 静态链、libtdjson 签名、rpath 指常驻软链接、`--options runtime`、`check-harden.sh`；codex · diff 类，effort high，按契约 / 安全口径） | 第 1 轮 P1×1、P2×3，第 2 轮 P2×2，都已改；第 3 轮零发现，收敛 → `063_42-hardened-runtime-codex.md` |
 | 064 | 2026-11-24 | #169 M3.1 第一刀：`atg-gui-spec`（界面的表 + 纯函数投影，不依赖 GPUI；先多视角自审 5 轮；codex · diff 类） | 三轮：第 1 轮 P1×1 P2×3、第 3 轮 P2×1，全部属实已修；第 2、3 轮无 P0/P1，收敛 → `064_gui-spec-pr1-codex.md` |

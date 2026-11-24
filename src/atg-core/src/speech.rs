@@ -22,6 +22,7 @@
 use crate::tree::*;
 
 mod content;
+mod interactive;
 mod playback;
 pub mod reaction;
 use reaction::reactions;
@@ -153,7 +154,7 @@ pub fn chat_brief_with(c: &ChatItem, reveal: bool) -> String {
 }
 
 /// 详情（`--detail`，R3–R5 定了这些不进名称、进详情）：日期 · 回复谁 · 转发自 · 已编辑 · 表情回应 · 话题名 ·
-/// 自己发的送达状态，有哪项说哪项，用「；」分段。系统消息、撤回占位只有日期；别的节点没有详情（空串）。
+/// 自己发的送达状态 · 转写 · 投票的性质与按钮（#13），有哪项说哪项，用「；」分段。系统消息、撤回占位只有日期；别的节点没有详情（空串）。
 /// **句子是 AI 草稿，待人实听**（`specs/style/` 没定详情的说法）
 pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
     match doc {
@@ -182,6 +183,34 @@ pub fn detail(doc: &Doc, cx: &SpeechCtx) -> String {
                 parts.push(delivery(d).to_owned());
             }
             parts.extend(content::transcript_detail(m, cx.reveal));
+            // #13：投票的性质、按钮逐个
+            if let Some(Attachment::Poll {
+                options,
+                results_visible,
+                anonymous,
+                multiple,
+                revotable,
+                kind,
+                closed,
+                blocked,
+                ..
+            }) = &m.content.attachment
+            {
+                parts.push(interactive::poll_detail(&interactive::PollFacts {
+                    options: options.len(),
+                    voted: options.iter().any(|o| o.chosen),
+                    results_visible: *results_visible,
+                    anonymous: *anonymous,
+                    multiple: *multiple,
+                    revotable: *revotable,
+                    kind,
+                    closed: *closed,
+                    blocked: blocked.as_ref(),
+                }));
+            }
+            if let Some(k) = &m.buttons {
+                parts.push(interactive::buttons_detail(k));
+            }
             parts.join("；")
         }
         Doc::Service(sv) => date(sv.date, cx),

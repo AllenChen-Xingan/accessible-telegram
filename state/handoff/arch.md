@@ -1,5 +1,41 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 接手（2026-11-24）
+
+- 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`
+- **#166（#137）**：只读核过 f5777f5 的合并：`origin/main...HEAD` 只剩 #137 的 16 个文件，没有冲突标记，`ci.yml` 两步 doc 都在（45、50 行）。CI 里 arch、arch-guard 已过，check 还在跑
+- **#42（arch-42）**：基点 36d2cea，main 只多一个提交 #163；和我 11 处未提交改动只在本页重叠，其他文件 #163 都没动。建议合 main，冲突只会出在本页
+- 大总管定：先不合 main，提交检查点时一起合
+- ✅ #166 CI 全绿（arch、arch-guard、check）
+- ✅ #42 名额内跑完：
+  - TDLib 重编 6 分 41 秒，放在 `_build/20261124-104209`；OpenSSL 静态链入；用开发身份（带团队号）签；`~/.atg-dev/tdlib` 已建
+  - 全量检查：fmt、两种 clippy、test（713 过、0 败、5 忽略）、no-debug、sources 都过。doc 红、file-size 超线 1 个，都是基点早于 #137、#163 的缘故
+  - `check-harden.sh`：修了一处 pipefail 与 `grep -q` 一起用时把判断弄反的毛病，重跑全过
+  - 测试服务器冒烟：直接跑，库按 rpath 找到，状态到 wait_phone，退出码 0，没弹框
+- 已归还名额；提交草稿已报大总管
+- 已只读审完 gui PR-2 三处并报大总管：① 同意；② 要改，临时档案的新建目录要做成正式代码里的共用能力，并保证不碰钥匙串；③ 要改，只在 debug 构建里按名字找场景，名字只许 `[a-z0-9-]+`
+- ✅ 检查点 4f19c0e，合 main 83f3487（本页冲突由 arch 解，两边都留）；issue #167（config.rs 构建机路径）已由大总管开
+- ✅ 正式档案只读冒烟（人同意，经大总管）：`chats -n 5` 退出码 0、不弹框；`me` 报 not_implemented（命令本身没做）。内容没进任何文件
+- 多视角自审第 1 轮（`origin/main...HEAD`）：P1×1，P2×11，P3×9。已改的：
+  - P1：build.sh 不再把团队号写进 build-info、也不打印，改记 `signed=dev_identity_with_team`；本机已有那份 build-info 也改了
+  - P2：
+    - README 写明先要签名身份、#42 以前的旧构建要重编，删掉「照旧带 DYLD_LIBRARY_PATH」，补软链接全机共享的说明
+    - exp005「已定 C」和 007 加改定记录；exp005 补记写上实测结果
+    - 004 第三节（build-info 字段、软链接位置、坑 3）和 cog.md 跟上
+    - testing.md 第一节第 4 小节加「强化运行时」一行，runner 那句也改了
+    - check-harden 的准备步骤失败时退 2
+    - `path` 和 `link` 认可用构建的标准统一，都收进 `latest_prefix`
+  - P3：login-main.sh 和 login.exp 不再依赖 DYLD；check-harden 加上可执行位、写明前置条件；config-privacy 写明旧版怎么处理；两处日期改成 2026-11-24（人定 11-17）；改了一个多余条件；README 加了术语表指针
+  - 不改，报给大总管开 issue（P2）：两个 build.rs 内容一样，rpath 路径又在 4 处各写一遍，没有一处是正本
+- 改后已核：build.sh path 和 link 正常，check-harden 全过，file-size 超线 0。没改 Rust，cargo 没重跑
+- 自审修改已提交为 0dd890e；#170（build.rs 重复）已开
+- ✅ codex 063（`origin/main...HEAD`，diff 类、effort high，契约攻击面写进 focus，大总管认可）：
+  - 第 1 轮：P1×1、P2×3，修正 2dc9ba3
+  - 第 2 轮：P2×2，修正 cc136f8
+  - 第 3 轮：零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/42-pr-arch.md`。写明了合并后 MAIN 要重编 TDLib，以及 `me` 是 not_implemented
+- 下一步：大总管提交收敛记录、开 PR。之后做 R7 / R3a 余下的刀（`plan-next-arch.md`），先报大总管
+
 ## b20 接手（2026-11-16）
 
 - **手上**：#108（本分支 `chore/108-testkit-gate`，未提交：check-sources.py · test_sources.py · architecture-rules.md 第 10 条 · 未跟踪 docs/reviews/046）。自测 83 条全过；对真仓库 testkit 一条红（「[features] 里没有 testkit」），是故意的锚定，等 #110 合并后转绿。codex 046：第 1 轮 P1×1 已修，第 2 轮全零；第 3 轮提示词已写，没跑
@@ -411,3 +447,46 @@
 - ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
   - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
 - PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
+
+## #137：rustdoc 链接（2026-11-17，工作副本 `atg-wt/arch-137`，分支 `docs/137-rustdoc-links`，从 refactor/r7-td 的 2a17a44 起）
+
+计划已批：MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`（先做 #137，再做 #42）。
+
+- 修法：链到私有项的、只在某种特性下才断的，改成反引号；同名歧义（`decode` 既是模块 `pub mod decode`，又是经 `pub use decode::decode` 导出的函数）加 `()`，让 rustdoc 只找函数，链接还在。代码一行不动
+- CI：在 `ci.yml` 加两步 `RUSTDOCFLAGS="-D warnings" cargo doc`（一步 `--workspace --no-deps`，一步 `-p atg-core --features tdlib-api,testkit --no-deps`）。门槛文件（改了要人加 `baseline:loosen` 标签才放行的那几份，清单是 `scripts/check-file-size.py` 的 `GATE_FILES`，规矩见 `specs/architecture-rules.md` 第 1 条）里没有 `ci.yml`，所以不用挂标签（大总管已批）。
+  - 不覆盖 atg-cli 在 `tdlib` 特性下的代码：它要链接 TDLib 库，而 atg-cli 没有「只拉类型、不链接」的特性，CI 的 clippy 也是同样的空缺。已开成 #164（给 atg-cli 加一个只开 `atg-core/tdlib-api` 的特性，补上 clippy 和 doc），排在 #42 之后
+- 评审范围：`2a17a44...HEAD`。本副本起点在 #163（拆 td.rs）的分支上，好让数链接时看到的是拆完的 td；#163 合进 main、大总管把 main 合进本分支以后，范围改成 `origin/main...HEAD`（换基要换 codex 的 name）
+- 数出来 22 条（比 issue 多）：atg-core 16 条链到私有项、2 条 `TdBackend` 只在不开特性时断，atg-audio 4 条（1 条私有项、3 条 `decode` 同名歧义）。全改：私有项和 `TdBackend` 改反引号，`decode` 加 `()`（仍是链接）
+- ✅ 全量检查全过（领名额跑，已还）：两遍 `RUSTDOCFLAGS=-D warnings cargo doc` 零警告，fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources；`ci.yml` 用 ruby 解析过
+- 检查点 49fe0b8（大总管提交）
+- 多视角自审第 1 轮：P0/P1 零
+  - P2×2：① CI 第二步没开 `testkit`，测试夹具的文档没被查过，已改成 `tdlib-api,testkit`；② atg-cli 的 `tdlib` 特性下的代码没被查，CI 加不了，已在注释和本页写明，大总管开了 #164
+  - P3×6，改了 5 条（CI 注释、本页措辞）。不改 1 条：`td.rs` 头注释里的 `TdBackend` 开了特性也不再能跳转，要做到「开特性才有链接」得写 `cfg_attr(doc = …)`，为一条链接不值得
+- ✅ 重跑 `RUSTDOCFLAGS=-D warnings cargo doc -p atg-core --features tdlib-api,testkit --no-deps` 零警告（领名额跑，已还）
+- ✅ codex 061（`2a17a44...HEAD`，name `d137`）两轮零发现，收敛。隐私扫描密钥类命中 7 条，全是 `ConfirmToken` 类型标注，大总管逐条核过，按共同规矩 15 加 `--force-secrets`。记录 `docs/reviews/061_137-rustdoc-links-codex.md`
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/137-pr-arch.md`
+- 之后：#163 合并后大总管合 main，到时只解冲突、跑检查，不重审；然后做 #42
+
+## #42：开发版开强化运行时（2026-11-17，工作副本 `atg-wt/arch-42`，分支 `fix/42-hardened-runtime`，从 main 36d2cea 起）
+
+人定（2026-11-17，经大总管）：改 exp005 当时「缓做」的建议，现在做。开关 `ATG_DEV_HARDEN=0` 可以用；软链接放 `~/.atg-dev/tdlib`。计划见 MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`。
+
+- `src/tdlib-build/build.sh`：
+  - OpenSSL 改成静态链（`OPENSSL_USE_STATIC_LIBS=TRUE`），编完用 `otool` 核
+  - 用开发身份给 libtdjson 签名（在算 sha256 之前签）；`build-info.txt` 加 `openssl_link=static`、`signed_team=`
+  - 维护软链接 `~/.atg-dev/tdlib`：路径已存在、但不是软链接时报错，不覆盖；新增子命令 `link`
+  - `ATG_TDLIB_SRC` 可以指定本地 TDLib 仓库（工作副本里没有 `resources/` 时用）
+- `scripts/dev-sign.sh`：默认加 `--options runtime`；`ATG_DEV_HARDEN=0` 关掉，只在调试时用；不加 `get-task-allow`
+  - 空数组照 bash 3.2 的写法处理
+- 新文件 `src/atg-cli/build.rs`、`src/atg-core/build.rs`：开了 `tdlib` 特性、在 macOS 上时，写 rpath `$HOME/.atg-dev/tdlib/lib`
+- 新文件 `scripts/check-harden.sh`，核四件事：
+  - 签名带 runtime 标志
+  - 注入对照：普通签名版能注入（说明这个检查本身有效），强化运行时版注入不进去
+  - 程序链了 libtdjson 时，rpath 在、照常能起
+  - 换成临时签名的库会被拒载
+- 文档：`src/README.md`、`src/atg-cli/README.md`、`dev-sign-run.sh` 头注释、`specs/contracts/config-privacy.md`（第 71 行和变更记录）、exp005 补记
+- 注意：
+  - 重编放进 arch-42 自己的 `_build/<时间戳>/`，不动 MAIN 的 `_build/20261025-171733`
+  - 软链接会指向 arch-42 里的新前缀。PR 合进 main 后，要在 MAIN 再编一次（或者用 `build.sh link` 指到 MAIN 的新构建），不然副本删了以后链接就断了
+  - #42 之前签的旧版（还在磁盘上的）照样能被注入，强化运行时管不到它们
+- 状态：b21 跑完名额内的验证，检查点 4f19c0e（大总管提交），已合 main；详情见本页顶上「b21 接手」

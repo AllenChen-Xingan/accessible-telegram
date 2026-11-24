@@ -39,7 +39,7 @@ pub struct FileSource {
     pub reply_to: Option<i64>,
 }
 
-/// 一份已定稿的文件发送。快照在它被丢掉时删（[`Drop`]），交出后结果未知、失败但能重发的除外（[`FilePlan::keep_snapshot`]）
+/// 一份已定稿的文件发送。快照在它被丢掉时删（[`Drop`]），交出后结果未知、失败但能重发的除外（`FilePlan::keep_snapshot`）
 #[cfg_attr(test, derive(Debug))]
 pub struct FilePlan {
     target: ChatTarget,
