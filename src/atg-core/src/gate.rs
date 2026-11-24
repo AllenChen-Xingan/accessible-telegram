@@ -26,8 +26,9 @@
 //! 的 `decision.md` 拍板卡与 `README.md` 第一节条目；「N7」「D1」= `docs/plan/005_decisions-b3.md` / `003_decisions-b2.md` 表里那一行。
 //! 测试号段 `99966` 是 Telegram 给测试服务器留的号码前缀（[`crate::auth::TEST_PHONE_PREFIX`]）
 
-use crate::config::ServerKind;
+use crate::config::{ServerKind, write_atomic};
 use crate::error::{CoreError, Holder, SendRefusedReason};
+use crate::lock;
 use crate::logline::{self, Field};
 use crate::model::{ChatId, UserId};
 use crate::secret::Secret;
@@ -36,11 +37,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use std::collections::HashSet;
 use std::fs;
+// `Write`、`OpenOptionsExt` 这两条 gate.rs 自己不用：`gate/check.rs` 经 `use super::*` 拿去写直发留痕，别删
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 mod check;
 mod display;
@@ -71,15 +73,9 @@ const GUARD_KEY_LABEL: &[u8] = b"atg.send-guard.v1";
 
 type HmacSha256 = Hmac<Sha256>;
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// 现在的 Unix 秒
+/// 现在的 Unix 秒。名字留着给闸和发送限额用，实现是全 crate 共用的那一份（#60 R8）
 pub fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+    crate::clock::now_s()
 }
 
 // ───────────────────────── 凭据 ─────────────────────────
@@ -397,22 +393,6 @@ impl GuardStore {
         }
         self.save(&entries)
     }
-}
-
-/// 先写同目录的临时文件（0600）再改名：中途崩了也不会留下半个文件
-pub fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
-    {
-        let mut f = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(body)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

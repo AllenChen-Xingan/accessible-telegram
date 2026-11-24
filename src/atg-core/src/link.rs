@@ -12,7 +12,9 @@
 //! 不引异步运行时：请求的应答由 tdlib-rs 的一次性信道唤醒，任何执行器都行；这里自带一个极小的 [`block_on`]。
 
 use crate::auth::AuthPrompt;
+use crate::clock::now_ms;
 use crate::error::CoreError;
+use crate::lock;
 use crate::logline::{self, Field};
 use crate::model::CoreEvent;
 use crate::status::{AuthStep, CoreState, Lines, NetState};
@@ -26,7 +28,7 @@ use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -80,10 +82,6 @@ pub struct Shared {
     /// 发送闸的那份发送限制（[`Shared::watch_send_limits`] 交进来）：发送失败事件里的受限 / 限流当场记下并落盘。
     /// 放在这里，是因为这是所有事件的唯一入口——超时后才到的失败只进 store、不再经过发送流程（codex 016 第 3、4 轮）
     send_limits: std::sync::OnceLock<Arc<crate::send_limits::SendLimits>>,
-}
-
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Shared {
@@ -466,12 +464,6 @@ fn stamp(e: CoreEvent) -> CoreEvent {
         },
         other => other,
     }
-}
-
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
 // ───────────────────────── 事件流 ─────────────────────────

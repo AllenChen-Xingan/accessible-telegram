@@ -26,8 +26,9 @@
 //!   是旧状态、照常放行）
 
 use crate::backend::Backend;
+use crate::config::write_atomic;
 use crate::error::{CoreError, SendRefusedReason};
-use crate::gate::{unix_now, write_atomic};
+use crate::gate::unix_now;
 use crate::logline;
 use crate::model::{CoreEvent, MsgId};
 use crate::send::{Answer, Sealed};

@@ -4,6 +4,8 @@
 # 为什么（issue #38，exp005「乙本体」第 2 条）：免得忘签。cargo 运行程序前先调 runner，
 #   所以 `cargo run` / `cargo test` 直接运行的程序都会先经 scripts/dev-sign.sh 签好再跑。
 #   集成测试里自己再起的二进制（CARGO_BIN_EXE_*）不经 runner、不签名；要碰钥匙串的得自己签。
+# #42 起签名默认开强化运行时：带 TDLib 的程序按 rpath（~/.atg-dev/tdlib/lib）找库，下面设的 DYLD_LIBRARY_PATH 会被
+#   忽略；这一段留着，只给 ATG_DEV_HARDEN=0 签的调试版用（它不开强化运行时，还认这个变量）。
 # ⚠️ 本脚本由系统 shell 执行，macOS 启动系统程序时会删掉所有 DYLD_* 变量，DYLD_LIBRARY_PATH 传不进来。
 #   所以 TDLib 库目录改用 ATG_TDLIB_LIB 传；没设就依次用 "$LOCAL_TDLIB_PATH/lib"（编译时链接的那份，变量名不带
 #   DYLD_ 不会被删）、`src/tdlib-build/build.sh path` 打印的「最近编好的 TDLib 前缀/lib」。都没有就不设，

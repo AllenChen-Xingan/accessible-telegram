@@ -6,9 +6,10 @@
 #
 # 用法（仓库根，先编好、签好 target/debug/atg-cli，见 src/atg-cli/README.md）：
 #   ATG_LIVE=1 ATG_SMOKE_PHONE="$(grep '^ATG_TEST_PHONE=' .env.local | cut -d= -f2)" \
-#     ATG_TDLIB_LIB="$LOCAL_TDLIB_PATH/lib" expect src/atg-cli/live/login.exp target/debug/atg-cli
-# 注意：/usr/bin/expect 是系统程序，macOS 启动它时会删掉 DYLD_LIBRARY_PATH，所以库目录换名 ATG_TDLIB_LIB 传进来，
-# 在脚本里再设回去。ATG_SMOKE_PHONE 只给本脚本用（atg-cli 自己只从 .env.local 读 ATG_TEST_PHONE，不认环境变量）。
+#     expect src/atg-cli/live/login.exp target/debug/atg-cli
+# 库按程序里的 rpath（~/.atg-dev/tdlib/lib）找（#42）。只有 ATG_DEV_HARDEN=0 签的调试版才用得上库目录变量：
+# /usr/bin/expect 是系统程序，macOS 启动它时会删掉 DYLD_LIBRARY_PATH，所以那时库目录换名 ATG_TDLIB_LIB 传进来，
+# 在脚本里再设回去；不设就不管。ATG_SMOKE_PHONE 只给本脚本用（atg-cli 自己只从 .env.local 读 ATG_TEST_PHONE，不认环境变量）。
 # 标准输出（JSON 行）由 atg-cli 自己写；本脚本看到的是终端（/dev/tty）那一侧。
 # 退出码：0 = 登录成功、错码原因可读、登出成功；其余 = 哪一步没过（见末尾）。
 
@@ -16,7 +17,7 @@ set timeout 60
 if {[info exists env(ATG_LIVE)] == 0 || $env(ATG_LIVE) ne "1"} { puts "要设 ATG_LIVE=1"; exit 2 }
 set phone $env(ATG_SMOKE_PHONE)
 if {![regexp {^99966([1-3])[0-9]{4}$} $phone -> dc]} { puts "ATG_SMOKE_PHONE 不是测试号"; exit 2 }
-set env(DYLD_LIBRARY_PATH) $env(ATG_TDLIB_LIB)
+if {[info exists env(ATG_TDLIB_LIB)]} { set env(DYLD_LIBRARY_PATH) $env(ATG_TDLIB_LIB) }
 set code [string repeat $dc 5]
 set bin [lindex $argv 0]
 log_user 1
