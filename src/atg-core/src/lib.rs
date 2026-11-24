@@ -75,6 +75,7 @@
 
 pub mod auth;
 pub mod backend;
+pub mod clock;
 pub mod config;
 pub mod delete;
 pub mod edit;
@@ -105,3 +106,8 @@ pub mod tdjson;
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;
 pub mod tree;
+
+/// 取互斥锁；锁中毒（别的线程拿着锁时 panic 了）照样取出里面的值。全 crate 共用这一份（#60 R8；`docs/plan/010` 第二节 S13）
+pub(crate) fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}

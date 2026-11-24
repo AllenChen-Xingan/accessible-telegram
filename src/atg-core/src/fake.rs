@@ -33,6 +33,7 @@ use crate::config::{Profile, ProfileLock};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
+use crate::lock;
 use crate::model::{AddedReactions, FailedInfo, MessageCaps};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
@@ -43,7 +44,7 @@ use crate::tree::{FileRef, ReactionKind};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -144,10 +145,6 @@ pub struct FakeBackend {
     next_id: Mutex<i64>,
     /// 真交出去的请求（测试核对交给「TDLib」的就是确认过的那份）
     submitted: Mutex<Vec<Value>>,
-}
-
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl FakeBackend {
