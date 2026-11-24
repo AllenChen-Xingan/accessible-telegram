@@ -6,7 +6,8 @@
 //!   请求只有会话、消息、第几个按钮与按钮文字，交出口在 td 层现取那条消息、核对文字、拿数据再交（`parse_request`）。
 //!   机器人的回话经 [`Answer::Callback`] 回来；机器人没回话报成功（大总管定 2026-11-24）
 //! - **键盘文字按钮**（`text`）：按下就是以你的名义发出按钮上的字——调用方拿 [`Press::Keyboard`] 的文字走 `send_text`
-//!   （闸、防重复、留痕照 `send`）。会话的键盘已换成别的消息上的，照样发、计划里说一句（人定 B，2026-11-24）
+//!   （闸、防重复、留痕照 `send`）。不是私聊时回复键盘所在那条（机器人隐私模式下才收得到）。会话的键盘已换成别的消息上的、
+//!   已收起的，照样发、计划里说一句（人定 B，2026-11-24）
 //! - **网址 / 登录网址 / 复制文字 / 用户**：只读出，不按（人定）
 //! - 其余一律拒（`button_not_supported`）
 //!
@@ -105,7 +106,8 @@ pub enum Press {
 }
 
 /// 会话此刻的键盘（键盘是会话级的，同一时刻只有一套，`reply_markup_message_id` 标在哪条上）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum KeyboardNow {
     /// 就在这条上
     Here,
@@ -131,6 +133,16 @@ fn nth(m: &Message, n: usize) -> Result<(KeyboardKind, Button), CoreError> {
 /// 交给闸与交出口的请求（本应用自己的形状，不是 TDLib 的：交出口据它现取数据再调 `getCallbackQueryAnswer`）
 fn callback_request(id: MsgId, n: usize, text: &str) -> Value {
     json!({"@type": "pressCallback", "chat_id": id.chat_id, "message_id": id.message_id, "button": n, "text": text})
+}
+
+/// TDLib 的这个错 = 机器人没回话（按下已送到，大总管定报成功）。交出口用。TDLib 把服务器的 `BOT_RESPONSE_TIMEOUT`
+/// 改写成 502「The bot is not responding」再交上来（`CallbackQueriesManager.cpp` `GetBotCallbackAnswerQuery::on_error`，
+/// 自审 13b-2 第 2 轮 P1）；原串也认，防 TDLib 以后不改写
+// 只有真后端（`tdlib-api`）的交出口调；不编 TDLib 时只有单测用它
+#[cfg_attr(not(feature = "tdlib-api"), allow(dead_code))]
+pub(crate) fn bot_silent(code: i32, message: &str) -> bool {
+    (code == 502 && message == "The bot is not responding")
+        || message.contains("BOT_RESPONSE_TIMEOUT")
 }
 
 /// 交出口拆请求：（会话、消息 id、第几个按钮、按钮文字）。真后端、假后端共用
@@ -292,7 +304,7 @@ pub fn press_within<B: Backend>(
     }
 }
 
-/// 计划行（`kind:"plan"` 的 `data`，`actions.md` 第一节第 6 小节 `PressPlan`）。不带回调数据
+/// 计划行（`kind:"plan"` 的 `data`，`actions.md` 第一节第 6 小节 `CallbackPlan`）。不带回调数据
 pub fn press_plan_json(plan: &CallbackPlan) -> Value {
     let sender = match &plan.sender {
         SenderId::User(u) => json!({"type": "user", "user_id": u}),

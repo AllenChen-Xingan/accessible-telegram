@@ -63,7 +63,9 @@ pub struct PressParams {
 pub fn check(p: &PressParams) -> Result<(), Fail> {
     history::chat_arg(&p.chat)?;
     if p.button == 0 {
-        return Err(Fail::Usage("按钮从 1 数起：详情里读的第几个按钮"));
+        return Err(Fail::Usage(
+            "按钮从 1 数起：history --detail 详情里每个按钮前念的「第 N 个」",
+        ));
     }
     Ok(())
 }
@@ -167,11 +169,6 @@ fn run_press<B: Backend>(
             keyboard,
             ..
         } => {
-            let keyboard = match keyboard {
-                press::KeyboardNow::Here => "here",
-                press::KeyboardNow::Replaced => "replaced",
-                press::KeyboardNow::Hidden => "hidden",
-            };
             let sp = SendParams {
                 chat: chat_id.to_string(),
                 text,
@@ -183,7 +180,7 @@ fn run_press<B: Backend>(
                 press: Some(KeyPress {
                     button: p.button,
                     message_id: p.message_id,
-                    keyboard: keyboard.to_owned(),
+                    keyboard,
                 }),
             };
             Ok(crate::send::execute_send(
@@ -204,14 +201,18 @@ fn read_only(chat_id: i64, p: &PressParams, button: &Button, started: Instant) -
             ("login_url", json!(url), format!("以你的身份登录网站 {url}"))
         }
         ButtonAction::CopyText { text } => ("copy_text", json!(text), format!("复制文字：{text}")),
-        ButtonAction::User { user_id } => ("user", json!(user_id), format!("用户 id {user_id}")),
+        ButtonAction::User { user_id } => (
+            "user",
+            json!(user_id),
+            format!("按下会打开这个用户的资料，用户 id {user_id}"),
+        ),
         _ => ("other", Value::Null, String::new()),
     };
     let data = json!({"command": "press", "chat_id": chat_id, "message_id": p.message_id,
         "button": p.button, "pressed": false, "read_only": {"type": kind, "text": button.text, "value": value},
         "elapsed_ms": crate::elapsed_ms(started)});
     let zh = format!(
-        "只读出，没按：第 {} 个按钮「{}」，{zh}",
+        "只读出，没按（本应用不替你按这种按钮，要用就自己去打开或复制）：第 {} 个按钮「{}」，{zh}",
         p.button,
         button.text.trim()
     );
@@ -245,7 +246,10 @@ fn callback<B: Backend>(
     );
     match format {
         Format::Json => emit_to(sink, &envelope("plan", press::press_plan_json(plan))),
-        Format::Text => sink.out(&format!("将{what}；不用确认")),
+        // 按下会怎样也要说：直发不再确认，这一句是人动手前唯一一次知情（自审第 2 轮 P2）
+        Format::Text => sink.out(&format!(
+            "将{what} = 把按钮上看不见的数据交给机器人、聊天里不出现，机器人可能回话或弹窗，回话带网页地址会自动打开；不用确认"
+        )),
     }
     let base = json!({"command": "press", "chat_id": plan.target().id, "message_id": p.message_id,
         "button": p.button});
@@ -276,7 +280,7 @@ fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, 
         return (Value::Null, "机器人没回话".to_owned(), false);
     };
     let mut said = if r.text.trim().is_empty() {
-        "机器人回了空话".to_owned()
+        "机器人回话了，没带文字（按下已送到）".to_owned()
     } else if r.alert {
         format!("机器人回话（弹窗）：{}", r.text.trim())
     } else {
@@ -287,7 +291,7 @@ fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, 
         if openable(&r.url) {
             open(&r.url);
             opened = true;
-            said.push_str(&format!("；已打开网址 {}", r.url));
+            said.push_str(&format!("；已把网址交给系统打开：{}", r.url));
         } else {
             said.push_str(&format!("；回话带的地址不是网页，没打开：{}", r.url));
         }

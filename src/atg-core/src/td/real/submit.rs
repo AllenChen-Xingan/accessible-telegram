@@ -161,7 +161,9 @@ impl TdBackend {
                                     Ok(Some(a))
                                 }
                                 // 机器人没回话：按下已送到（大总管定 2026-11-24：报成功、附一句没回话）
-                                Err(e) if e.message.contains("BOT_RESPONSE_TIMEOUT") => Ok(None),
+                                Err(e) if crate::send::press::bot_silent(e.code, &e.message) => {
+                                    Ok(None)
+                                }
                                 Err(e) => Err(e),
                             }
                         },

@@ -58,9 +58,8 @@ pub struct KeyPress {
     /// 第几个按钮（1 起）与那条消息的 id
     pub button: usize,
     pub message_id: i64,
-    /// 会话此刻的键盘：`here` 就在那条上 / `replaced` 已换成别的 / `hidden` 已收起。后两种照原文字发（人定 B 2026-11-24），
-    /// 计划里说一句
-    pub keyboard: String,
+    /// 会话此刻的键盘（序列化为 `here` / `replaced` / `hidden`）。后两种照原文字发（人定 B 2026-11-24），计划里说一句
+    pub keyboard: atg_core::send::press::KeyboardNow,
 }
 
 /// 一次 `resend` 要的东西
@@ -372,10 +371,11 @@ fn emit_plan(
             let head = press
                 .map(|k| {
                     // 照旧文字发出去：机器人可能已不认这句话，但它照样以你的名义出现在会话里
-                    let swap = match k.keyboard.as_str() {
-                        "replaced" => "键盘已更换，照原文字发，机器人可能已不认这句；",
-                        "hidden" => "键盘已收起，照原文字发，机器人可能已不认这句；",
-                        _ => "",
+                    use atg_core::send::press::KeyboardNow;
+                    let swap = match k.keyboard {
+                        KeyboardNow::Replaced => "键盘已更换，照原文字发，机器人可能已不认这句；",
+                        KeyboardNow::Hidden => "键盘已收起，照原文字发，机器人可能已不认这句；",
+                        KeyboardNow::Here => "",
                     };
                     format!(
                         "按 id {} 那条的第 {} 个键盘按钮 = 以你的名义发出按钮上的字；{swap}",

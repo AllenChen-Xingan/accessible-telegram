@@ -285,3 +285,14 @@ fn rejected_submit_is_logged_as_failed_with_message_id() {
     assert!(log.contains("\"result\":\"failed\""), "{log}");
     assert!(log.contains("\"final_id\":5"), "{log}");
 }
+
+/// 自审 13b-2 第 2 轮 P1：TDLib 收到服务器的 `BOT_RESPONSE_TIMEOUT` 先改写成 502「The bot is not responding」再交上来
+/// （`CallbackQueriesManager.cpp` `GetBotCallbackAnswerQuery::on_error`）。认不出就会按「失败」报，而按下其实已送到——
+/// 失败不进防重复，人再按一次机器人就收到两次
+#[test]
+fn bot_silence_is_recognised_as_tdlib_reports_it() {
+    assert!(bot_silent(502, "The bot is not responding"));
+    assert!(bot_silent(400, "BOT_RESPONSE_TIMEOUT"));
+    assert!(!bot_silent(400, "MESSAGE_ID_INVALID"));
+    assert!(!bot_silent(502, "Bad Gateway"));
+}

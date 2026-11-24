@@ -148,7 +148,7 @@ impl InvalidSendWhy {
                 "你已投过这个投票，这次会把你现在投的换掉（不是加上）；什么都没投"
             }
             InvalidSendWhy::ButtonNotFound => {
-                "这条消息上没有这个按钮：写详情里读的第几个按钮（从 1 起）；什么都没按"
+                "这条消息上没有这个按钮：写 history --detail 详情里每个按钮前念的「第 N 个」（从 1 起）；什么都没按"
             }
             InvalidSendWhy::ButtonNotSupported => {
                 "这种按钮本应用不按（如要密码、付款、交出手机号或位置的），请在手机上按；什么都没按"
