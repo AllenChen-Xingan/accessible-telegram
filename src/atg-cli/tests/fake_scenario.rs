@@ -1,22 +1,37 @@
 //! `--fake <场景>`：跑真二进制，`chats` / `history` 在场景 `basic-4-chats` 上的输出；缺场景报 `internal{fixture_bad}`；
-//! 不留一次性档案目录。另有「这条路不碰钥匙串」的文本门槛（arch 审定的三层证明之一；另两层是类型与调用路径，见 `src/fake_run.rs` 文件头）。
+//! 不留一次性档案目录（每次跑都按子进程号核，见 `run`）。另有「这条路不碰钥匙串」的文本门槛（arch 审定的三层证明之一；另两层是类型与调用路径，见 `src/fake_run.rs` 文件头）。
 
 use serde_json::Value;
-use std::process::{Command, Output};
-use std::sync::Mutex;
+use std::process::{Command, Output, Stdio};
 
-/// 本文件里起进程的测试串行跑：「前后比一比临时目录」不能看到别的测试同时建的目录
-static SERIAL: Mutex<()> = Mutex::new(());
-
-fn serial() -> std::sync::MutexGuard<'static, ()> {
-    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+/// 跑一次真二进制。跑完核这个子进程自己的一次性档案目录都已删掉：一次性档案建在
+/// `系统临时目录/atg-fake-<子进程号>-<n>`（`config::private_temp_dir`），按子进程号找。只看自己这个子进程的，
+/// 不比整个临时目录——同一台机器上别的测试、别的会话同时在跑时，临时目录里随时会有别人的 `atg-fake-*`
+fn run(args: &[&str]) -> Output {
+    let child = Command::new(env!("CARGO_BIN_EXE_atg-cli"))
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("跑得起来");
+    let pid = child.id();
+    let out = child.wait_with_output().expect("等得到结束");
+    let left = leftovers(pid);
+    assert!(left.is_empty(), "一次性档案目录没删干净：{left:?}");
+    out
 }
 
-fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_atg-cli"))
-        .args(args)
-        .output()
-        .expect("跑得起来")
+/// 系统临时目录里属于这个进程号的 `atg-fake-` 目录
+fn leftovers(pid: u32) -> Vec<String> {
+    let prefix = format!("atg-fake-{pid}-");
+    std::fs::read_dir(std::env::temp_dir())
+        .map(|it| {
+            it.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with(&prefix))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn lines(out: &Output) -> Vec<Value> {
@@ -35,24 +50,8 @@ fn basic4() -> String {
     )
 }
 
-/// 系统临时目录里 `atg-fake-` 开头的目录
-fn fake_dirs() -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(std::env::temp_dir())
-        .map(|it| {
-            it.filter_map(|e| e.ok())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .filter(|n| n.starts_with("atg-fake-"))
-                .collect()
-        })
-        .unwrap_or_default();
-    v.sort();
-    v
-}
-
 #[test]
 fn chats_on_scenario_lists_four_chats_in_order() {
-    let _s = serial();
-    let before = fake_dirs();
     let out = run(&["chats", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
@@ -73,15 +72,12 @@ fn chats_on_scenario_lists_four_chats_in_order() {
         end["data"]["synced"], true,
         "场景是已连接的，不该等到同步超时"
     );
-    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 #[test]
 fn history_on_scenario_takes_negative_chat_id() {
     // 群「周末爬山群」已读到 2001：落在第一条未读 2002（F2 落点 = 进会话落在第一条未读，`specs/contracts/cli.md`
     // `history` 行、`docs/plan/003_decisions-b2.md` F2），比它新的没有了
-    let _s = serial();
-    let before = fake_dirs();
     let out = run(&["history", "-1001", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
@@ -103,14 +99,11 @@ fn history_on_scenario_takes_negative_chat_id() {
         end["data"]["synced"], true,
         "场景是已连接的，不该等到同步超时"
     );
-    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 #[test]
 fn history_saved_resolves_to_my_own_chat() {
     // `saved` 换成自己的用户 id（R4：问后端 me()）；场景里收藏夹是会话 9「我自己」
-    let _s = serial();
-    let before = fake_dirs();
     let out = run(&["history", "saved", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
@@ -127,24 +120,18 @@ fn history_saved_resolves_to_my_own_chat() {
     assert!(ids.contains(&5001) && ids.contains(&5002), "{ids:?}");
     let end = ls.last().unwrap();
     assert_eq!(end["data"]["chat_id"], 9);
-    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 /// 别的测试都按路径给场景；按名字找只在开发构建里有，这里单测这一条路
 #[cfg(debug_assertions)]
 #[test]
 fn scenario_by_name_works_in_debug_builds() {
-    let _s = serial();
-    let before = fake_dirs();
     let out = run(&["chats", "--fake", "basic-4-chats"]);
     assert_eq!(out.status.code(), Some(0));
-    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 #[test]
 fn missing_scenario_is_fixture_bad_and_leaves_nothing() {
-    let _s = serial();
-    let before = fake_dirs();
     let out = run(&["chats", "--fake", "/nonexistent/atg-scenario"]);
     // internal 的退出码是 1（cli.md 第一节第 4 小节）
     assert_eq!(out.status.code(), Some(1));
@@ -152,7 +139,6 @@ fn missing_scenario_is_fixture_bad_and_leaves_nothing() {
     assert_eq!(ls.len(), 1);
     assert_eq!(ls[0]["data"]["code"], "internal");
     assert_eq!(ls[0]["data"]["what"], "fixture_bad");
-    assert_eq!(fake_dirs(), before);
 }
 
 // ───── 不碰钥匙串：文本门槛 ─────
