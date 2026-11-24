@@ -8,7 +8,7 @@
 > - 契约：`testing.md` 第一节第 3 小节（场景解析规则正本）、`cli.md` 的 `--fake` 一行、`errors.md` 三个新码
 >
 > 依据文件：`specs/contracts/testing.md`、`specs/contracts/cli.md`、`specs/architecture-rules.md`，关注点文件（不入库）。effort medium。
-> **最新一轮：第 1 轮（2026-11-24）· 总评「修改」· 无 P0/P1，连续第 1 轮，待第 2 轮确认。** 留作 issue 的 P2：无（本轮 P2 都当场修了）。
+> **最新一轮：第 2 轮（2026-11-24）· 总评「修改」（只有 P2×2，已当场修）· 第 1、2 轮连续无 P0/P1，满足停止线；第 2 轮后又改了代码，待第 3 轮确认。** 留作 issue 的 P2：无（两轮的 P2 都当场修了）。
 > 之前：**多视角自审 4 轮**（`atg-review`，范围同上）——第 2 轮有 P1（`cli.md` 没跟上 `--fake` 的现状），第 3、4 轮无 P0/P1，停。衍生 issue：#183（CI 不跑 release 测试）。另：全套测试 8 遍里偶发红过 1 遍、没抓到名字，循环 20 遍复现不出；顺带把「跑完不留临时目录」的核对收窄到只看本子进程（同机别的会话同时跑测试会撞）。
 
 ## 第 1 轮（2026-11-24）· 总评「修改」
@@ -42,3 +42,32 @@
 ### 是否再审
 
 本轮无 P0/P1，只连续 1 轮 → 再审一轮确认。
+
+## 第 2 轮（2026-11-24）· 总评「修改」
+
+原文：`_tmp/reviews-068/068-scenario-fake-codex-2.md`（不入库）。范围同上，HEAD = `ed31497`（第 1 轮修复）。`result: P0×0 P1×0 P2×2 P3×0`。
+本轮 P0/P1：0 · 停止线：本轮与上一轮都无 P0/P1 → **满足** · 留作 issue 的 P2：无（当场修了）
+
+### 上一轮处理的验证结果
+
+codex 逐条核了第 1 轮四项，都已落实：id 规则按对象种类、`fixture-` 缩略图占位、`os.walk` 的错误回调、`cli.md` 写明 `version` / `speech` 的例外。另核实假后端 `start` 会 `profile.lock(…)`（第 1 轮「无法核实」的那条）。
+
+- **P2｜`src/atg-cli/src/args.rs:37` 第 1 轮 #4 的修法没同步到帮助文字**（第 2 轮 #1）
+  - 核实：属实。`--fake` 的帮助文字和 `fake_run.rs` 文件头仍写「别的命令报 not_implemented」
+  - 处理：两处都改成指向 `cli.md` 的 `--fake` 一行（正本），不再各自维护一份命令清单
+- **P2｜`scripts/check-fixtures.py:38` 保留域名带查询、片段时误报**（第 2 轮 #2）
+  - 核实：属实，而且反过来还有一个漏报：旧正则把 `?`、`#` 之后也算进主机名，所以 `https://example.invalid?q=1` 被误报；`https://example.com.evil.net?q=example.invalid` 的「主机名」以 `.invalid` 结尾，反倒被放过
+  - 处理：用 `urllib.parse.urlsplit` 取主机名；补自测两条（保留域名带查询 / 片段 / 端口放行；真域名带 `?q=example.invalid` 仍红）。拿提交里的旧版脚本跑这两条，都红
+
+### 引用抽查
+
+- codex 列的「不符」：无
+- codex 列的「核实属实」：8 条
+
+### 修复后的验证
+
+`scripts/tests` 全部 OK（`test_check_fixtures` 18 → 20 条）；`check-fixtures.py` 在全部夹具上 0 处命中。`args.rs` 只改了帮助文字（doc 注释）：编译、clippy 过，`atg-cli` 测试 270 过 0 败，`--help` 里显示的是新文字。
+
+### 是否再审
+
+第 1、2 轮连续无 P0/P1，已满足停止线；但第 2 轮之后又改了代码（`check-fixtures.py` 的取主机名、帮助文字），最后这份要有人审过（大总管定）→ 第 3 轮确认：无 P0/P1、且不再改代码，才开 PR。

@@ -1,5 +1,5 @@
 //! `--fake <场景>` 的共用一步：解析场景 → 建假后端、装数据 → 建一次性测试档案（arch 审定，2026-11-24）。
-//! 场景格式与加载器的正本在 `atg_core::fake::Scenario`；现在只有 `chats`、`history` 走这里，别的命令照旧 `not_implemented`。
+//! 场景格式与加载器的正本在 `atg_core::fake::Scenario`；现在只有 `chats`、`history` 走这里；别的命令带 `--fake` 报什么，正本是 `specs/contracts/cli.md` 的 `--fake` 一行。
 //!
 //! 一次性档案：系统临时目录下新建的私有目录（0700），`Profile::create(dir, "main", Test)`，跑这件事的时候照常拿它的
 //! `atg.lock`；[`FakeRun`] 一丢（跑完、出错、提前返回）目录就删。不碰人的正式档案目录。

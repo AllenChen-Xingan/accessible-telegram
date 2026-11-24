@@ -34,8 +34,8 @@ pub struct Global {
     /// 本地档案名
     #[arg(long, global = true, value_name = "NAME", default_value = "main")]
     pub profile: String,
-    /// 用假后端（夹具场景名或场景目录路径），不联网，用一次性测试档案。现在 chats、history 能用，别的命令报 not_implemented；
-    /// 场景名只在开发构建里认（发布构建要给路径）
+    /// 用假后端（夹具场景名或场景目录路径），不联网，用一次性测试档案。现在 chats、history 能用；
+    /// 别的命令带它报什么见 specs/contracts/cli.md 的 --fake 一行。场景名只在开发构建里认（发布构建要给路径）
     #[arg(long, global = true, value_name = "SCENARIO")]
     pub fake: Option<OsString>,
     /// 输出格式

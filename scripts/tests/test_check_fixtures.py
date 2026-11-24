@@ -157,6 +157,19 @@ class CheckFixtures(unittest.TestCase):
         finally:
             os.chmod(locked, 0o700)
 
+    def test_reserved_link_with_query_or_fragment_is_green(self):
+        # 保留域名带查询、片段、端口都是正常写法，不许误报（codex 068 第 2 轮 #2）
+        self.put_lines("scenarios/s/history/101.jsonl", [
+            msg(1003, text="看 https://example.invalid?q=1 和 https://example.invalid#section"),
+            msg(1004, text="还有 https://example.invalid:8443/p?x=1#y"),
+        ])
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_real_link_with_query_is_still_red(self):
+        self.put_lines("scenarios/s/history/101.jsonl", [msg(text="看 https://example.com.evil.net?q=example.invalid")])
+        self.assert_red("url")
+
     def test_bad_json_line_is_red(self):
         with open(os.path.join(self.fx, "scenarios/s/users.jsonl"), "w", encoding="utf-8") as f:
             f.write('{"@type": "user", \n')

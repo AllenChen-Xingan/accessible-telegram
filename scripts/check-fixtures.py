@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from urllib.parse import urlsplit
 
 FIXTURES = os.path.join("src", "atg-core", "fixtures")
 NAMES = "names.txt"
@@ -35,7 +36,7 @@ RESERVED_HOSTS = ("example.com", "example.org", "example.net")
 CN_MOBILE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 INTL_PHONE = re.compile(r"\+\d[\d -]{9,}\d")
 EMAIL = re.compile(r"[\w.+-]+@([\w-]+(?:\.[\w-]+)+)")
-URL = re.compile(r"(?:https?://|\bt\.me/|\btelegram\.me/)([^\s/\"'<>)]*)", re.I)
+URL = re.compile(r"(?:https?://|\bt\.me/|\btelegram\.me/)[^\s\"'<>)]*", re.I)
 
 
 def load_names(root: str) -> set[str]:
@@ -78,9 +79,10 @@ class Checker:
             if not reserved_host(m.group(1)):
                 self.bad(where, "email", f"邮箱域名 {m.group(1)} 不是保留域名")
         for m in URL.finditer(s):
-            full = m.group(0).lower()
-            host = m.group(1) if full.startswith("http") else full.split("/")[0]
-            if not reserved_host(host):
+            full = m.group(0)
+            # 按 URL 结构取主机名：查询（?）、片段（#）、端口、用户信息都不算主机（codex 068 第 2 轮 #2）
+            host = urlsplit(full).hostname if full.lower().startswith("http") else full.split("/")[0]
+            if not reserved_host(host or ""):
                 self.bad(where, "url", f"链接 {m.group(0)[:60]} 不是保留域名")
 
     def walk(self, v, where: str) -> None:
