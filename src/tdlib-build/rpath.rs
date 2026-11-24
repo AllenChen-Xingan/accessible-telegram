@@ -28,11 +28,17 @@ fn main() {
     // 字符只许 ASCII 字母、数字和 . _ / -（白名单）：空白、非 ASCII 与 shell 那边的判法一致；逗号也拒，
     // 因为下面 `-Wl,-rpath,…` 会把逗号当成参数分隔符（#170 codex 072）
     let allowed = |b: u8| b.is_ascii_alphanumeric() || b"._/-".contains(&b);
-    let bad =
-        rel.is_empty() || !rel.bytes().all(allowed) || rel.starts_with('/') || rel.contains("..");
+    // 前后各补一个 / 再查（同两份 shell）：`//` = 开头的 /、末尾的 / 或连着的 /；`/./` = 有 . 这一段。
+    // 末尾带 / 的路径会让 `ln` 和 check-harden 的拼法对不上（codex 072 第 2 轮）
+    let framed = format!("/{rel}/");
+    let bad = rel.is_empty()
+        || !rel.bytes().all(allowed)
+        || rel.contains("..")
+        || framed.contains("//")
+        || framed.contains("/./");
     assert!(
         !bad,
-        "src/tdlib-build/dev-link 的内容不对：要恰好一行相对家目录的路径，只许字母、数字和 . _ / -，不以 / 开头、不含 ..（见同目录 README.md）"
+        "src/tdlib-build/dev-link 的内容不对：要恰好一行相对家目录的路径，只许字母、数字和 . _ / -，每一段非空、不是 . 也不含 ..（不以 / 开头或结尾、没有 //；见同目录 README.md）"
     );
     let Some(home) = std::env::var_os("HOME") else {
         panic!("没有 HOME，写不了 TDLib 的 rpath（不写的话程序找不到 libtdjson）");
