@@ -3,7 +3,7 @@
 > 2026-11-14 · AI 起草 · 状态：**草稿 v0**（三份调研已并进，2026-11-14）。⏳ = 要实测、要人听，或在等组件重评
 > 管：界面上每类元素进树时的**角色、名称、提示语、状态、稳定标识、动作**；树导出的规范化格式
 > 读者有两类，读的是同一棵树（`.42cog/cog.md`「一棵无障碍树，两类读者」）：VoiceOver 用户，和只读树、不看像素就能操作界面的 agent（`.42cog/intent.md`「AI 友好」第 ② 条）
-> 机读正本（移交后）：契约表 `a11y`，由 `atg-gui --schema` 的 `elements` 段导出（`docs/plan/012_gui-ssot.md` 第二节第 5、14 行）
+> 机读正本（移交后）：契约表 `a11y`，由 `atg-gui-spec` 的 `gui-schema` 程序导出成界面自描述的 `elements` 段（`atg-gui --schema` 只原样转发；`docs/plan/012_gui-ssot.md` 第二节第 5、14 行）
 > **部分已移交（2026-11-24，#169）**：第三节「机读契约」那张表（M3.1 的 8 类元素的角色、标识种类、名称来源、角色描述、能不能操作）由 `atg-gui-spec` 的契约表 `a11y::TABLE` 生成，别手改；其余规则、格式、正反例，和第三节「元素表 v0」里还没移交的行，仍在本文手写
 
 ## 一、十二条总规矩
@@ -57,18 +57,18 @@
 
 ### 机读契约（已移交：M3.1 的 8 类元素）
 
-正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述以这段为准；下面「元素表 v0」里同名的行只留提示语、状态、动作、出处这些还没进表的列。
+正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述只在这段；下面「元素表 v0」里对应的行（窗口 → `window`，区块 → `region_chats` / `region_messages`，会话列表 → `chat_list`，会话项 → `chat_item`，消息列表 → `message_list`，消息项、系统消息项、撤回占位三行都 → `message_item`，状态栏 → `status_bar`）这两列只写「见上表」和 macOS 层的映射（还没进表），其余列照旧手写。「能操作」= 能获焦或能被选中，`check-a11y-tree.py`（待写）对这类元素查角色、名称、标识三样；标识种类后的数字是什么，见第二节。
 
 <!-- 由 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements` 生成，别手改：开始 -->
 
 | 元素 | 角色 | 标识种类 | 名称来自 | 角色描述 | 能操作 |
 |---|---|---|---|---|---|
-| `window` | `Window` | `window` | 无（窗口名走 NSWindow 标题：文案 `app_title`「无障碍 Telegram」） | — | 否 |
+| `window` | `Window` | `window` | 无（窗口名走 NSWindow 标题：文案 `app_title`「无障碍 Telegram」+ 新消息提醒 + 用户状态） | — | 否 |
 | `region_chats` | `Navigation` | `region-chats` | 文案 `chats`「会话」 | — | 否 |
-| `chat_list` | `List` | `chats` | 文案 `chats`「会话」 | — | 是 |
+| `chat_list` | `List` | `chats` | 文案 `chats`「会话」+ 新消息提醒 | — | 是 |
 | `chat_item` | `ListItem` | `chat:…`（1 个数字） | `speech::chat_brief` | — | 是 |
 | `region_messages` | `Main` | `region-messages` | 文案 `messages`「消息」 | — | 否 |
-| `message_list` | `List` | `messages:…`（1 个数字） | 文案 `messages`「消息」 | — | 是 |
+| `message_list` | `List` | `messages:…`（1 个数字） | 文案 `messages`「消息」+ 新消息提醒 | — | 是 |
 | `message_item` | `ListItem` | `msg:…`（2 个数字） | `speech::brief` | 文案 `message_role`「消息」 | 是 |
 | `status_bar` | `Status` | `status` | `speech::brief` | — | 否 |
 
@@ -78,14 +78,14 @@
 
 | 元素 | 角色（macOS） | 名称来自 | 提示语 | 状态 | 动作（agent 怎么按） | 出处 |
 |---|---|---|---|---|---|---|
-| 窗口 | 根节点 `Window` → macOS 上是**不带标题的 AXGroup**（`ak:node.rs:306-313`：根带标题 VO 会坏）；VoiceOver 读的窗口名是 **NSWindow 的标题**，经 GPUI 设窗口标题 | 窗口标题 = 文案「无障碍 Telegram」+ `speech` 的新消息提醒（`Alert`）+ 用户状态（`Status`） | — | — | — | 001 拍板 3 ⑥；`errors.md` 第一节第 4 小节；findings-gpui 第 2.3 节 |
-| 区块（会话区、消息区） | `Navigation` / `Main` → AXGroup + 地标（VO 转子可跳） | 文案「会话」「消息」 | — | — | — | findings-gpui 第 2.3 节（Zed #60397 同法）；⏳ 人听地标是否多余 |
-| 会话列表 | `List`（AXList） | 文案「会话」+ 新消息提醒 | — | 焦点；active descendant = 选中项 | 设焦点（AX Focus）后 ↑↓ 等键（`keymap.md`） | 001 拍板 1；exp003 |
-| 会话项 | `ListItem`（AXGroup，exp003 实测） | `speech::chat_brief` | ⏳ | 选中；位置 / 总数（只进 GPUI 层） | 回车 = 打开（`keymap.md`） | T02；003 R2 |
-| 消息列表 | `List`（AXList） | 文案「消息」+ 新消息提醒 | — | 同会话列表 | 同会话列表 | 001 拍板 2；exp003b-v2 |
-| 消息项 | `ListItem`（AXGroup），`role_description` 设「消息」（macOS 上是 AXRoleDescription，VoiceOver 读「消息」不读「组」；卡 G15 人选 B，2026-11-16；文案表取） | `speech::brief` | 详情提示「按 D 听详情」（键从按键表取）。有隐藏内容时正文里另有「隐藏内容，按 D 展开」（读法的 `expand_key`）——两句说的是同一个键，各在各的位置（名称 / 提示语），不重复 | 选中；位置 / 总数 | D = 读详情，有隐藏内容同时展开，再按收起（B19-6）；回车 = 阅读视图 | 001 拍板 3 B；003 R1；M3.5 |
-| 系统消息项 | 同消息项 | `speech::brief`（`Doc::Service`） | — | 同上 | — | `content-tree.md` 第三节第 4 小节 |
-| 撤回占位 | 同消息项 | `speech::brief`（`Doc::Tombstone`） | — | 同上 | — | 001 拍板 7；003 R7 |
+| 窗口 | 见上表 `window`；macOS 上是**不带标题的 AXGroup**（`ak:node.rs:306-313`：根带标题 VO 会坏）；VoiceOver 读的窗口名是 **NSWindow 的标题**，经 GPUI 设窗口标题 | 见上表 `window` | — | — | — | 001 拍板 3 ⑥；`errors.md` 第一节第 4 小节；findings-gpui 第 2.3 节 |
+| 区块（会话区、消息区） | 见上表 `region_chats` · `region_messages`；AXGroup + 地标（VO 转子可跳） | 见上表 `region_chats` · `region_messages` | — | — | — | findings-gpui 第 2.3 节（Zed #60397 同法）；⏳ 人听地标是否多余 |
+| 会话列表 | 见上表 `chat_list`；AXList | 见上表 `chat_list` | — | 焦点；active descendant = 选中项 | 设焦点（AX Focus）后 ↑↓ 等键（`keymap.md`） | 001 拍板 1；exp003 |
+| 会话项 | 见上表 `chat_item`；AXGroup（exp003 实测） | 见上表 `chat_item` | ⏳ | 选中；位置 / 总数（只进 GPUI 层） | 回车 = 打开（`keymap.md`） | T02；003 R2 |
+| 消息列表 | 见上表 `message_list`；AXList | 见上表 `message_list` | — | 同会话列表 | 同会话列表 | 001 拍板 2；exp003b-v2 |
+| 消息项 | 见上表 `message_item`；AXGroup；角色描述在 macOS 上是 AXRoleDescription，VoiceOver 读「消息」不读「组」（卡 G15 人选 B：把「组」换成「消息」） | 见上表 `message_item` | 详情提示「按 D 听详情」（键从按键表取）。有隐藏内容时正文里另有「隐藏内容，按 D 展开」（读法的 `expand_key`）——两句说的是同一个键，各在各的位置（名称 / 提示语），不重复 | 选中；位置 / 总数 | D = 读详情，有隐藏内容同时展开，再按收起（B19-6）；回车 = 阅读视图 | 001 拍板 3 B；003 R1；M3.5 |
+| 系统消息项 | 见上表 `message_item`；同消息项（`Doc::Service`） | 见上表 `message_item` | — | 同上 | — | `content-tree.md` 第三节第 4 小节 |
+| 撤回占位 | 见上表 `message_item`；同消息项（`Doc::Tombstone`） | 见上表 `message_item` | — | 同上 | — | 001 拍板 7；003 R7 |
 | 日期分隔 | `Heading`（VO+Cmd+H 能按日期跳；清单 S14） | `speech` 的日期读法（树节点待加，`content-tree.md` 第三节第 1 小节「以后加」已列） | — | — | — | 清单 S14 |
 | 第一条未读的消息项 | 同消息项 | `speech::brief`，名称前加「未读：」（树节点或投影字段待加，012 第八节第 1 条） | 同消息项 | 同消息项 | 同消息项 | 003 F2；B19-7 |
 | 未读分隔线 | 不可聚焦的装饰（不进 ↑↓ 顺序、不是 Tab 站） | — | — | — | — | B19-7 |
@@ -95,7 +95,7 @@
 | 搜索结果 | `List` + `ListItem`（同 `NavList`，卡 G17 人选 A） | 列表名「搜索结果」+ 结果数（`speech`）；消息项 = `speech::brief`，会话项 = `speech::chat_brief` | — | 同 `NavList` | 回车打开；Esc 回搜索框 | M4.5 |
 | 链接列表 | `List` + `ListItem`（同 `NavList`） | 列表名文案「链接」；项 = 链接文字 + 地址（`message_links`；隐藏的链接读「隐藏内容」，`content-tree.md` 第八节） | — | 同 `NavList` | 回车 = 打开（过 `open_link` 的确认） | M3.5 |
 | 帮助页 | `List` + `ListItem` | 列表名文案「快捷键」；第一项是使用前提（关快速导航，B19-3），其余每项「<键的读法>：<说明>」 | — | 同 `NavList` | Esc 回去 | `keymap.md` 第六节 |
-| 状态栏 | `Status`（AXGroup / AXApplicationStatus；VO 读法未实测） | `speech` 读 `Doc::Status` | — | — | — | T10 |
+| 状态栏 | 见上表 `status_bar`；AXGroup / AXApplicationStatus（VO 读法未实测） | 见上表 `status_bar` | — | — | — | T10 |
 | 播报节点 | `Status`，不可见，经 `parent_node().set_live()` 设 Live | 要播的那句（来自 `speech`）；**名称和值设同一句**（`announce.md` 第四节：AccessKit 0.27 改了触发字段） | — | Live：Polite / Assertive | — | exp001；`announce.md` |
 | 阅读视图 | ⏳ `Document` 或只读 `MultilineTextInput`。⚠️ 若选只读输入框，`keymap.md` 的 `list_focused` 谓词里的 `!TextInput` 要改成「可编辑的输入框」，否则阅读视图里的 `l`、Esc 失效 | `speech::full` | — | 焦点 | Esc 回原处 | M3.5 |
 | 确认框 | `AlertDialog`（AXWindow / AXDialog；业界附在窗口上的确认用 AXSheet，⏳ 选哪个） | 只有两种：打开链接（完整网址，域名单独读出）/ 附件（文件名、类型）（`actions.md` `open_link` / `open_file`）；打开即读正文（APG alertdialog）。发送、删除、重发不弹框，计划改由播报读（`announce.md` `send_plan`，#113） | — | 模态（经 `parent_node().set_modal()`） | 确认 / 取消两个 `Button` | M3.5、M3.7；`actions.md` 第一节第 2 小节「L1 外部」 |
@@ -121,7 +121,7 @@
 <角色> <标识> "<名称>" [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
 ```
 
-`roledesc` 只在应用自己设了角色描述时写（同 macOS 层；消息项设「消息」，卡 G15 人选 B，2026-11-24 起两层都写）。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
+`roledesc` 只在应用自己设了角色描述时写（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）。两层都写这一项，位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
 
 **macOS 层**（`<场景>.macos.txt`），每行：
 
@@ -139,7 +139,7 @@
 
 **两层共同**：
 
-- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`
+- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`，借来的夹具写成 `speech/<名>`；靠这一格区分它和真窗口导出
 - 去掉几何位置、时间戳、GPUI 内部节点号（每次都变）；节点用标识定位
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）只写角色，`check-a11y-tree.py` 只对能操作的角色查标识

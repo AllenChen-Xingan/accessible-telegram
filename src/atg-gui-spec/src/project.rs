@@ -1,4 +1,4 @@
-//! 纯函数投影：界面输入（会话列表、打开的会话里的消息、用户状态）+ 界面状态 [`UiState`] → 无障碍树 [`A11yNode`]，
+//! 界面投影（第二步）：界面输入（会话列表、打开的会话里的消息、用户状态）+ 界面状态 [`UiState`] → 无障碍树 [`A11yNode`]，
 //! 再按 `specs/gui/a11y-tree.md` 第四节的 GPUI 层格式渲染成文本。
 //!
 //! 这一层是「视图模型 → 每个元素该设的角色、名称、标识、状态」（`docs/plan/012_gui-ssot.md` 第四节），CI 里快照测它；
@@ -6,7 +6,8 @@
 //!
 //! - 名称一律来自 `atg_core::speech`（带数据的）或文案表（不带数据的），这里不拼句子（守则 3）
 //! - 位置照设 `pos=`，名称里不放位置（`a11y-tree.md` 第一节第 4 条）
-//! - 输入是已经投影好的 `Doc`（`atg_core::project::chat_list` / `window` 的输出），这里不碰 `Store`，不缓存任何东西
+//! - 两步投影别混：第一步在 core，`atg_core::project`（`chat_list` / `window`）把 `Store` 投成内容树 `Doc`；
+//!   第二步在这里，`Doc` + 界面状态投成无障碍树。这里不碰 `Store`，不缓存任何东西
 //! - 现在的 [`UiState`] 只有 M3.1 要的三样；完整字段表见 012 第三节第 2 小节，随用到的块再加
 
 use crate::a11y::{Element, NameFrom, Role, spec};
@@ -85,6 +86,8 @@ impl A11yNode {
 fn text_name(e: Element) -> Option<String> {
     match spec(e).name {
         NameFrom::Text(t) => Some(t.zh().to_owned()),
+        // 提醒那段要 `speech` 给拼接口（M4.3）；接上之前只给文案，不在界面里拼句子（守则 3）
+        NameFrom::TextWithAlert(t) => Some(t.zh().to_owned()),
         // 根节点不带名称（窗口名在 NSWindow 标题上）；读法来源的由调用处现算
         NameFrom::WindowTitle(_) | NameFrom::ChatBrief | NameFrom::Brief => None,
     }

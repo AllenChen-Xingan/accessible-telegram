@@ -10,7 +10,6 @@ import unittest
 from _common import REPO, run
 
 STAMP = os.path.join(REPO, "scripts", "schema-stamp.py")
-GOLDEN = os.path.join(REPO, "src", "atg-gui-spec", "tests", "golden", "gui-schema.json")
 
 
 class SchemaStamp(unittest.TestCase):
@@ -64,10 +63,6 @@ class SchemaStamp(unittest.TestCase):
             f.write("[1, 2")
         self.assertEqual(run(STAMP, "check", self.f).returncode, 1)
 
-    def test_repo_golden_is_stamped(self):
-        # 仓里的界面自描述金样必须盖过章（CI 经 arch.yml 的自测跑到这里）；文件不在也算红，不跳过
-        r = run(STAMP, "check", GOLDEN)
-        self.assertEqual(r.returncode, 0, r.stdout)
 
 
 if __name__ == "__main__":

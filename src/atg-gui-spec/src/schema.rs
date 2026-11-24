@@ -3,12 +3,16 @@
 //!
 //! 带版本号 `v`（[`GUI_SCHEMA_V`]）和内容哈希 `x-content-hash`（[`GUI_SCHEMA_HASH`]）。门槛两道：
 //! - 金样：`tests/golden/gui-schema.json` 与生成结果逐字比（`tests/golden.rs`）
-//! - 盖章：`python3 scripts/schema-stamp.py check src/atg-gui-spec/tests/golden/gui-schema.json`（CI）——内容变了
+//! - 盖章：`python3 scripts/schema-stamp.py check src/atg-gui-spec/tests/golden/gui-schema.json`（CI：`arch.yml` 单独一步）——内容变了
 //!   哈希没跟着改就红，逼人有意识地决定要不要升 `v`
 //!
 //! 改了表之后的更新步骤：① 按下面的口径决定升不升 `GUI_SCHEMA_V`；② `cargo run -p atg-gui-spec --bin gui-schema >
 //! src/atg-gui-spec/tests/golden/gui-schema.json`；③ `python3 scripts/schema-stamp.py stamp` 同一文件，把打印出的哈希抄进
 //! [`GUI_SCHEMA_HASH`]；④ 再跑一次 ②，金样测试与盖章都绿。
+//!
+//! 为什么哈希要手抄成常量、不让程序自己算：手抄这一步是故意加的一道关。程序自己算的话，内容一变哈希就跟着变，
+//! 金样重生成就绿了，没人会停下来想 `v` 要不要加一；手抄逼改表的人在抄的那一刻做这个决定。第 ④ 步重跑 ②，
+//! 是因为金样里的哈希取自常量，常量改了金样要跟着重出。
 //!
 //! 升版本的口径同 `specs/content-tree.md` 第八节：加字段、加取值不加一；改名、删、改义加一。
 
@@ -21,13 +25,22 @@ use serde_json::{Value, json};
 pub const GUI_SCHEMA_V: u32 = 1;
 
 /// 内容哈希（`scripts/schema-stamp.py` 的算法：去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位）
-pub const GUI_SCHEMA_HASH: &str = "6a3834991b1e76a7";
+pub const GUI_SCHEMA_HASH: &str = "8c023670543d95a4";
 
 /// 生成自描述
 pub fn schema() -> Value {
     json!({
         "v": GUI_SCHEMA_V,
         "x-content-hash": GUI_SCHEMA_HASH,
+        "about": {
+            "v": "本自描述的版本号：改名、删字段、改义时加一；加字段、加取值不加",
+            "x-content-hash": "内容哈希（去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位），内容变了它就变",
+            "ids": "稳定标识（macOS 的 AXIdentifier）的种类。写法：kind，后面跟 arity 个十进制整数，每个前面加一个冒号，如 msg:-100123:4567；数字是什么见 specs/gui/a11y-tree.md 第二节",
+            "roles": "树里会出现的角色（AccessKit 的角色名）",
+            "elements": "每类元素：role 角色、id 用哪种标识、name 名称从哪来、role_description 角色描述取哪条文案（null 为不设）、operable 能不能获焦或被选中",
+            "elements.name": "text:<文案>：就是这条文案；text+alert:<文案>：文案加新消息提醒（提醒还没接上时只有文案）；speech:<读法>：由 atg-core 的这条读法现算；window_title:<文案>+alert+status：根节点不带名称，窗口名在 NSWindow 标题上（文案 + 新消息提醒 + 用户状态）",
+            "texts": "固定文案表：key 与中文"
+        },
         "ids": IdKind::ALL.iter().map(|k| json!({ "kind": k.prefix(), "arity": k.arity() })).collect::<Vec<_>>(),
         "roles": Role::ALL.iter().map(|r| r.name()).collect::<Vec<_>>(),
         "elements": TABLE.iter().map(|s| json!({
@@ -50,11 +63,12 @@ pub const MD_END: &str = "<!-- 生成段结束 -->";
 fn name_md(n: NameFrom) -> String {
     match n {
         NameFrom::WindowTitle(t) => format!(
-            "无（窗口名走 NSWindow 标题：文案 `{}`「{}」）",
+            "无（窗口名走 NSWindow 标题：文案 `{}`「{}」+ 新消息提醒 + 用户状态）",
             t.key(),
             t.zh()
         ),
         NameFrom::Text(t) => format!("文案 `{}`「{}」", t.key(), t.zh()),
+        NameFrom::TextWithAlert(t) => format!("文案 `{}`「{}」+ 新消息提醒", t.key(), t.zh()),
         NameFrom::ChatBrief => "`speech::chat_brief`".into(),
         NameFrom::Brief => "`speech::brief`".into(),
     }
@@ -106,7 +120,7 @@ mod tests {
         for t in TextId::ALL {
             let used = TABLE.iter().any(|s| {
                 s.role_description == Some(t)
-                    || matches!(s.name, NameFrom::Text(x) | NameFrom::WindowTitle(x) if x == t)
+                    || matches!(s.name, NameFrom::Text(x) | NameFrom::TextWithAlert(x) | NameFrom::WindowTitle(x) if x == t)
             });
             assert!(used, "{t:?} 没有被契约表引用");
         }

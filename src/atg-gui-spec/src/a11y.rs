@@ -51,10 +51,14 @@ impl Role {
 /// 名称从哪来（`a11y-tree.md` 第一节第 2 条：只从读法或文案表来）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameFrom {
-    /// 没有名称（根节点：窗口名在 NSWindow 标题上，这里给的是标题的文案）
+    /// 根节点不带名称；窗口名走 NSWindow 标题 = 这条文案 + 新消息提醒（`Doc::Alert`）+ 用户状态（`Doc::Status`）
+    /// （`a11y-tree.md` 元素表 v0 窗口一行）。提醒与状态那两段由 `speech` 出，三段怎么拼也归 `speech`（接口待加，M4.3）
     WindowTitle(TextId),
     /// 文案表里的一条
     Text(TextId),
+    /// 文案 + 新消息提醒（列表名里写新消息数：第一节第 6 条）。提醒那段由 `speech` 出、怎么拼归 `speech`
+    /// （接口待加，M4.3）；接上之前界面只给文案
+    TextWithAlert(TextId),
     /// `atg_core::speech::chat_brief`
     ChatBrief,
     /// `atg_core::speech::brief`（消息、系统消息、撤回占位、状态都是它）
@@ -64,8 +68,9 @@ pub enum NameFrom {
 impl NameFrom {
     pub fn key(self) -> String {
         match self {
-            NameFrom::WindowTitle(t) => format!("window_title:{}", t.key()),
+            NameFrom::WindowTitle(t) => format!("window_title:{}+alert+status", t.key()),
             NameFrom::Text(t) => format!("text:{}", t.key()),
+            NameFrom::TextWithAlert(t) => format!("text+alert:{}", t.key()),
             NameFrom::ChatBrief => "speech:chat_brief".into(),
             NameFrom::Brief => "speech:brief".into(),
         }
@@ -77,9 +82,9 @@ impl NameFrom {
 pub enum Element {
     Window,
     RegionChats,
-    RegionMessages,
     ChatList,
     ChatItem,
+    RegionMessages,
     MessageList,
     /// 消息项、系统消息项、撤回占位共用这一行（同一个标识种类，撤回后标识不变、名称变）
     MessageItem,
@@ -96,7 +101,7 @@ pub struct ElementSpec {
     pub name: NameFrom,
     /// 角色描述（macOS AXRoleDescription）；只在应用自己设时有
     pub role_description: Option<TextId>,
-    /// 能操作（能获焦或能被选中）：`check-a11y-tree.py` 对这类元素查角色、名称、标识三样（第一节第 1 条）
+    /// 能操作（能获焦或能被选中）：`check-a11y-tree.py`（待写，PR-3）将对这类元素查角色、名称、标识三样（第一节第 1 条）
     pub operable: bool,
 }
 
@@ -125,7 +130,7 @@ pub const TABLE: [ElementSpec; 8] = [
         key: "chat_list",
         role: Role::List,
         id: IdKind::Chats,
-        name: NameFrom::Text(TextId::Chats),
+        name: NameFrom::TextWithAlert(TextId::Chats),
         role_description: None,
         operable: true,
     },
@@ -152,7 +157,7 @@ pub const TABLE: [ElementSpec; 8] = [
         key: "message_list",
         role: Role::List,
         id: IdKind::Messages,
-        name: NameFrom::Text(TextId::Messages),
+        name: NameFrom::TextWithAlert(TextId::Messages),
         role_description: None,
         operable: true,
     },
@@ -199,9 +204,9 @@ mod tests {
     const ELEMENTS: [Element; 8] = [
         Element::Window,
         Element::RegionChats,
-        Element::RegionMessages,
         Element::ChatList,
         Element::ChatItem,
+        Element::RegionMessages,
         Element::MessageList,
         Element::MessageItem,
         Element::StatusBar,

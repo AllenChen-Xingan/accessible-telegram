@@ -2,7 +2,7 @@
 //!
 //! 写法 `<种类>[:<数字>]*`：种类是小写字母和连字符，数字是十进制整数、可带负号（超级群 id 以 `-100` 开头）。
 //! 界面代码只经 [`aid`] 拿标识，不手拼字符串（`check-gui-strings.py` 将来扫）。种类和每种带几个数字
-//! 由 [`IdKind`] 定，[`crate::schema`] 把这张表原样导出，`scripts/check-a11y-tree.py` 照它核快照里的标识。
+//! 由 [`IdKind`] 定，[`crate::schema`] 把这张表原样导出，`scripts/check-a11y-tree.py`（待写，PR-3）将照它核快照里的标识；现在只有本文件的单测在管。
 //!
 //! 现在只有 M3.1 用到的种类；加一种就加一个变体，[`IdKind::ALL`] 与 `match` 不写 `_ =>`，漏一处编不过。
 
@@ -30,13 +30,13 @@ pub enum IdKind {
 }
 
 impl IdKind {
-    /// 全部种类，按 `a11y-tree.md` 第二节表里的顺序
+    /// 全部种类，按树里从上到下的顺序（与 `a11y::TABLE` 一致）
     pub const ALL: [IdKind; 8] = [
         IdKind::Window,
         IdKind::RegionChats,
-        IdKind::RegionMessages,
         IdKind::Chats,
         IdKind::Chat,
+        IdKind::RegionMessages,
         IdKind::Messages,
         IdKind::Msg,
         IdKind::Status,
