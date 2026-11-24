@@ -61,4 +61,4 @@
 | 059 | 2026-11-17 | #60 R7 第八刀：拆 core `fake.rs`（设置方法、登录、会话与历史各挪一个子文件，trait 方法一行转发，只挪不改）；R3a 收尾（codex · diff 类） | 两轮零发现（第 1 轮抽查不符 1 条，行数，已改），收敛 → `059_r7-fake-codex.md` |
 | 060 | 2026-11-17 | #60 R7 第九刀：拆 core `td.rs`（内联 `mod real` 挪成 `td/real.rs`，再拆 start、login、read，trait 方法一行转发，只挪不改；codex · diff 类） | 两轮零发现，收敛 → `060_r7-td-codex.md` |
 | 061 | 2026-11-17 | #137 修 22 条 rustdoc 警告（私有项、特性下断链、同名歧义），CI 加两步 `cargo doc -D warnings`（codex · diff 类） | 两轮零发现，收敛 → `061_137-rustdoc-links-codex.md` |
-| 066 | 2026-11-24 | #60 R8 小零件归一：`lock`、时钟与时区（新模块 `clock`）、原子写各留一份；`mark_running` 改原子写（codex · diff 类） | 第 1 轮 P2×2（注释与边界记录）已改，待第 2 轮 → `066_r8-dedupe-codex.md` |
+| 066 | 2026-11-24 | #60 R8 小零件归一：`lock`、时钟与时区（新模块 `clock`）、原子写各留一份；`mark_running` 改原子写（codex · diff 类） | 两轮无 P0/P1，收敛（P2 共 4 条都是注释与记录，已改）→ `066_r8-dedupe-codex.md` |
