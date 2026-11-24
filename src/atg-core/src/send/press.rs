@@ -35,7 +35,11 @@ pub struct CallbackPlan {
     /// 发这条消息的（一般是机器人）：计划里写明按的是谁的按钮
     sender: SenderId,
     request: Value,
+    /// 凭据绑的：整份请求（含按钮文字）
     digest: [u8; 32],
+    /// 防重复认的：会话、消息、第几个按钮，**不含按钮文字**（人定「同一条消息同一个按钮」；机器人按下后常改标签，
+    /// codex 065 第 1 轮 #1）
+    intent: [u8; 32],
     origin: SendOrigin,
     mode: ConfirmMode,
 }
@@ -75,9 +79,9 @@ impl Gated for CallbackPlan {
     fn digest(&self) -> [u8; 32] {
         self.digest
     }
-    // 请求里没有每次都变的字段：同一条消息同一个按钮 = 同一个意图（人定：进防重复）
+    // 同一条消息同一个按钮 = 同一个意图（人定：进防重复），按钮改了字也算同一个
     fn intent(&self) -> [u8; 32] {
-        self.digest
+        self.intent
     }
     fn dedup(&self) -> bool {
         true
@@ -187,7 +191,11 @@ pub async fn prepare_press<B: Backend>(
         (KeyboardKind::Inline, ButtonAction::Callback) => {
             let mode = b.gate().mode_for(target.id)?;
             let request = callback_request(id, n, &button.text);
-            let digest = gate::digest(&request, me.user_id, server_of(b)?);
+            let server = server_of(b)?;
+            let digest = gate::digest(&request, me.user_id, server);
+            let same_button = json!({"@type": "pressCallback", "chat_id": id.chat_id,
+                "message_id": id.message_id, "button": n});
+            let intent = gate::digest(&same_button, me.user_id, server);
             Ok(Press::Callback(CallbackPlan {
                 target,
                 message: id,
@@ -196,6 +204,7 @@ pub async fn prepare_press<B: Backend>(
                 sender: m.sender,
                 request,
                 digest,
+                intent,
                 origin,
                 mode,
             }))

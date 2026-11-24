@@ -309,3 +309,27 @@ fn unknown_keyboard_kind_is_not_supported() {
         InvalidSendWhy::ButtonNotSupported
     );
 }
+
+/// codex 065 第 1 轮 #1：防重复认「同一条消息同一个按钮」（人定），不认按钮文字——机器人按下后常把「提交」改成「处理中」、
+/// 数据照旧，换了字再按也得拦下，`--again` 才放行
+#[test]
+fn relabelled_button_is_still_the_same_button() {
+    let r = rig("relabel", false, 0);
+    let plan = callback(&r, BOT, 1);
+    press_once(&r, &plan, false).unwrap();
+    r.b.set_history(BOT, vec![inline_msg(BOT, 5, "处理中"), reply_msg(BOT, 6)]);
+    let again = callback(&r, BOT, 1);
+    assert_eq!(again.text(), "处理中");
+    let e = press_once(&r, &again, false).unwrap_err();
+    assert!(
+        matches!(
+            e,
+            CoreError::SendRefused {
+                reason: SendRefusedReason::DuplicateRecent,
+                ..
+            }
+        ),
+        "{e:?}"
+    );
+    assert!(press_once(&r, &again, true).is_ok());
+}
