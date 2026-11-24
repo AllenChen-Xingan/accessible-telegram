@@ -379,3 +379,35 @@
 - codex 059 第 1 轮（`f5ca5b2...HEAD`，name `r7fk`）：零发现。抽查「不符」1 条：010 写 script.rs 156 行，自审时补了两行头注释，实际 158，已改。记录 `docs/reviews/059_r7-fake-codex.md`
 - codex 059 第 2 轮：零发现，连续两轮无 P0/P1，收敛
 - PR 说明草稿：`_tmp/20261116-b20/r7-fake-pr-arch.md`（MAIN 下）
+
+## R7 第九刀：拆 core `td.rs`（2026-11-17，工作副本 `atg-wt/arch-td`，分支 `refactor/r7-td`，从 main f5ca5b2 起）
+
+大总管批的切法：`td/real/submit.rs` 一字不动，因为 msg2 要往里加 issue #13 的两步（13a 投票、13b 按钮）。基线和 PR 3（fake）会冲突，谁后合谁解，两边都合完基线应该一项不剩。codex 060。
+
+- 第一步：内联的 `mod real { … }`（原第 34–798 行）用脚本 `_tmp/20261117-r7td/split.py` 原样挪成 `td/real.rs`，缩进退 4 格；`td.rs` 剩 36 行
+- 第二步：照 fake 的写法，再拆出 `td/real/start.rs`（108 行）、`login.rs`（80 行）、`read.rs`（139 行）
+  - 根上 16 个方法各留一行，转给 `do_*`；`td/real.rs` 剩 539 行
+  - 内部助手留在根上，不改可见性。原计划要挪进 `call.rs`，不挪了，大总管已同意
+- rustfmt 合回一行的有 7 处，清单在 `_tmp/20261117-r7td/reflow.md`，要写进 PR 说明（格式变、内容不变）
+- 加一次只读真机冒烟（大总管要求）
+  - 正式档案，拆前 f5ca5b2 和本分支各跑一遍：`chats`、`history saved`、`links saved <id>`（走 `message_get`）
+  - 只比对输出，只报哈希、行数、键名；输出比完即删
+  - 脚本：`_tmp/20261117-r7td/smoke.sh`
+- 文档：010 的 td 行（保留了「原计划」）、R7 行、第五节末尾「基线」那句
+- ✅ 全量检查全过（领了名额跑，已归还）：fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources
+  - tdlib-api 的 clippy 报 `real.rs` 有 4 处导入没用上（`Claim`，以及 `config`、`gate`、`secret` 的 `self`，已随 `start` 挪走），删掉了
+- ✅ 只读冒烟（正式档案，6 次 rc=0，没有档案锁问题）
+  - `history saved`、`links saved <id>`：拆前拆后只差 `.at`、`elapsed_ms`
+  - `chats` 第一次按行号比对不上：两次跑之间会话顺序变了
+  - 补跑 `smoke2.sh`，顺序是拆后、拆前、拆后，按 `chat_id` 配对：三次运行两两比较（3 组），集合、顺序、各键的值全都相同（不算 `.at`、`elapsed_ms`、`first_chat_ms`）
+  - 输出、解出的源码、二进制都已删掉
+- 检查点 c89a35a（大总管提交）；证据 MAIN 下 `_tmp/20261116-b20/r7-td-moved-arch.txt`：没被识别为挪动的 104 行只有头注释、导入、`mod`、16 行转发、`do_*` 签名和 7 处合行
+- 本节提到的 `_tmp/…` 脚本和清单都是一次性材料，不入库；合行清单与证据的正本写进 PR 说明
+- 多视角自审第 1 轮：P0/P1 零；P2×1（010 第五节末尾那句写得像基线已清空，已改成条件句）；P3×11，改了 8 条
+  - 其中一条：删掉 `config` 的 `self` 导入后，`TdConfig` 有两条文档链接 `config::default_*` 会断，已改写成 `crate::config::…`
+  - 另 3 条不改：`real.rs:40`「见这两个子模块」是原文带过来的（只挪不改，不动）；`td/real/` 下 `*_impl`、`submit_sealed` 和 `do_*` 两套命名并存，因为 `submit.rs` 不许动，等 #13 合并后另开 issue 统一；010 和交接页的说明已补
+- 自审修正 7bf60cb；大总管合了 origin/main（#162 fake 已在 main 36d2cea）。冲突：基线解成空（大总管）；010 的 fake 行取 main 的、td 行取本分支的，R7 行和第五节末尾写「基线已清空」；交接页两节都留（arch 解）
+- ✅ c41e790 上全量检查全过（领名额跑，已还）：test 713 过 0 败 5 忽略，file-size 超线 0，基线已空
+- ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
+  - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
