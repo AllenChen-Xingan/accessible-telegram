@@ -60,8 +60,8 @@ pub const NEW_PREFIX_ZH: &str = "新消息，";
 /// 「正在输入」的读法（F6：播一次「对方正在输入」；不带名字）
 pub const TYPING_ZH: &str = "对方正在输入";
 
-/// 现在（Unix 毫秒）：core 那一份（#60 R8），在这里转出，调用方写法不变
-pub use atg_core::tree::time::now_ms;
+/// 现在（Unix 毫秒）：用 core 那一份（#60 R8），这里重新导出（`pub use`），调用方照旧写 `watch::now_ms`
+pub use atg_core::clock::now_ms;
 
 /// 解析好的参数
 #[derive(Debug, Clone, Copy)]

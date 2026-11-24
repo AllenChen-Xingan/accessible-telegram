@@ -26,9 +26,9 @@
 //! 的 `decision.md` 拍板卡与 `README.md` 第一节条目；「N7」「D1」= `docs/plan/005_decisions-b3.md` / `003_decisions-b2.md` 表里那一行。
 //! 测试号段 `99966` 是 Telegram 给测试服务器留的号码前缀（[`crate::auth::TEST_PHONE_PREFIX`]）
 
-use crate::config::ServerKind;
-use crate::config::write_atomic;
+use crate::config::{ServerKind, write_atomic};
 use crate::error::{CoreError, Holder, SendRefusedReason};
+use crate::lock;
 use crate::logline::{self, Field};
 use crate::model::{ChatId, UserId};
 use crate::secret::Secret;
@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use std::collections::HashSet;
 use std::fs;
-// 下面两条 gate.rs 自己不用，是给经 `use super::*` 取导入的 `gate/check.rs` 用的（写直发留痕）
+// `Write`、`OpenOptionsExt` 这两条 gate.rs 自己不用：`gate/check.rs` 经 `use super::*` 拿去写直发留痕，别删
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -73,11 +73,9 @@ const GUARD_KEY_LABEL: &[u8] = b"atg.send-guard.v1";
 
 type HmacSha256 = Hmac<Sha256>;
 
-use crate::lock;
-
 /// 现在的 Unix 秒。名字留着给闸和发送限额用，实现是全 crate 共用的那一份（#60 R8）
 pub fn unix_now() -> i64 {
-    crate::tree::time::now_s()
+    crate::clock::now_s()
 }
 
 // ───────────────────────── 凭据 ─────────────────────────

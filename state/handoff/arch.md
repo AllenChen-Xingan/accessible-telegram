@@ -4,11 +4,18 @@
 
 - #42 那一段记在 `atg-wt/arch-42` 的现状页里（PR #173），合进 main 后两边合成一份
 - 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r8-arch.md`。`gate::unix_now` 名字留着，只改函数体（大总管定）
-- 已改（未编译，待领名额）：
+- 检查点 44250a7（大总管提交）。全量检查在 44250a7 上全过：两种 clippy、test（718 过、0 败、5 忽略）、两遍 doc、fmt、no-debug、file-size（超线 0）、sources。第一遍编译时 gate/check.rs 缺了两个导入，已补上，重跑之前打过招呼
+- 检查点里的改动：
   - `lock<T>` 原来 5 份，收成 `lib.rs` 里一份 `pub(crate)`；fake、gate、link、td/lifecycle、td/real 各换成一行 `use`，子模块不改。msg2 在改的 `td/real/submit.rs`、`td/requests.rs` 没碰
   - 「现在」和时区收进 `tree::time`（`pub mod time`）：新增 `now_s`、`now_ms`，`local_offset_at` 从 cli 的 `speech` 挪过来，那条测试也跟着挪；`gate::unix_now`、`link`、cli 的 `out::now_rfc3339_ms` 改调它；cli 的 `watch::now_ms` 改成一行 `pub use`，调用方（serve、session、topics）不改，比计划少碰 3 个文件
   - `write_atomic` 从 `gate` 挪到 `config`；非原子的 `write_private` 删掉，`mark_running` 改用原子写。这是一处行为变化，PR 里要单列一句，说明它为什么无害，以及和 #61 的关系
   - 010：补了 3 个 ✅，S10、S13、S17、R8 也标上；b20 的旧计划已收档
+- 自审第 1 轮（`origin/main...HEAD`）：P0/P1 零，P2×3，P3×12。改了：
+  - 时钟和时区改放新模块 `atg_core::clock`（大总管批的，守则 4）。原因是 `tree` 只放数据；`tree/time` 恢复成私有，和 main 一样
+  - 010 的 S10、S13、S17 不再打 ✅（那一栏的 ✅ 表示「有 CI 比对」），改写「已收（R8）」，并补上原来几份、现在留着的别名；`tree/mod.rs` 那一行不打 ✅，写明 R6 之前要先拆
+  - `write_atomic` 改成 `pub(crate)`，说明写准；`mark_running` 的注释写准了残留临时文件的情况
+  - 导入挪到文件顶部的导入区；gate 那行注释点名是哪两条导入；`转出` 改成「重新导出（`pub use`）」；代号补上出处
+  - 改完还没编译，待领名额
 
 ## b20 接手（2026-11-16）
 

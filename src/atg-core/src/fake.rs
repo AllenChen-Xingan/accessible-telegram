@@ -33,6 +33,7 @@ use crate::config::{Profile, ProfileLock};
 use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::link::{self, EventStream, Shared, Step};
+use crate::lock;
 use crate::model::{AddedReactions, FailedInfo, MessageCaps};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
 use crate::model::{ChatTarget, Me};
@@ -145,8 +146,6 @@ pub struct FakeBackend {
     /// 真交出去的请求（测试核对交给「TDLib」的就是确认过的那份）
     submitted: Mutex<Vec<Value>>,
 }
-
-use crate::lock;
 
 impl FakeBackend {
     /// 新建并立刻起收线程（测试可以在 `start` 之前就喂更新）

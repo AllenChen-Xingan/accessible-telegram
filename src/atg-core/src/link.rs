@@ -12,7 +12,9 @@
 //! 不引异步运行时：请求的应答由 tdlib-rs 的一次性信道唤醒，任何执行器都行；这里自带一个极小的 [`block_on`]。
 
 use crate::auth::AuthPrompt;
+use crate::clock::now_ms;
 use crate::error::CoreError;
+use crate::lock;
 use crate::logline::{self, Field};
 use crate::model::CoreEvent;
 use crate::status::{AuthStep, CoreState, Lines, NetState};
@@ -81,8 +83,6 @@ pub struct Shared {
     /// 放在这里，是因为这是所有事件的唯一入口——超时后才到的失败只进 store、不再经过发送流程（codex 016 第 3、4 轮）
     send_limits: std::sync::OnceLock<Arc<crate::send_limits::SendLimits>>,
 }
-
-use crate::lock;
 
 impl Shared {
     /// 新建共享状态与它唯一的事件流（`subscribe()` 交出去，一个后端只许一个订阅者）
@@ -465,8 +465,6 @@ fn stamp(e: CoreEvent) -> CoreEvent {
         other => other,
     }
 }
-
-use crate::tree::time::now_ms;
 
 // ───────────────────────── 事件流 ─────────────────────────
 

@@ -14,6 +14,7 @@ use crate::error::{CoreError, Holder, map_td_error};
 use crate::gate::Gate;
 use crate::keystore::KeyStore;
 use crate::link::{self, EventStream, Shared, Step};
+use crate::lock;
 use crate::logline::{self, Field};
 use crate::model::{AddedReactions, FailedInfo, MessageCaps};
 use crate::model::{ChatId, ChatList, ForumTopicState, Message, MsgId};
@@ -44,8 +45,6 @@ mod upload;
 
 /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
 static INSTANCE: AtomicBool = AtomicBool::new(false);
-
-use crate::lock;
 
 /// 真实后端的配置
 pub struct TdConfig {

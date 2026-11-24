@@ -4,6 +4,7 @@
 //! 成功提交成运行中，中途失败由守卫退回没起，下次还能再起。关过之后仍算运行中、不再起：
 //! 同一进程要再开这个档案，得换一个新的后端实例（受 `td.rs` 的一进程一个名额管）。
 
+use crate::lock;
 use std::sync::Mutex;
 
 pub(super) enum Run<R> {
@@ -27,8 +28,6 @@ impl<R> Run<R> {
         }
     }
 }
-
-use crate::lock;
 
 /// 起步中的占位：[`Claim::commit`] 之前丢掉就退回没起
 pub(super) struct Claim<'a, R> {

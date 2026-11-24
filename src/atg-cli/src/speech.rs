@@ -10,9 +10,9 @@
 
 use crate::args::{Format, SpeechArgs, SpeechLevel};
 use crate::out::{self, Code, emit, envelope, fail, text_line};
+use atg_core::clock::{local_offset_at, now_s};
 use atg_core::speech::{SpeechCtx, brief};
 use atg_core::tdjson::World;
-use atg_core::tree::time::{local_offset_at, now_s};
 use serde_json::json;
 use std::process::ExitCode;
 use std::time::Instant;

@@ -15,7 +15,7 @@ pub mod mask;
 mod media;
 mod reaction;
 pub mod text;
-pub mod time;
+mod time;
 mod top;
 
 pub use interactive::{

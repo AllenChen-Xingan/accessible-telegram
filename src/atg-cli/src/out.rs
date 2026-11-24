@@ -278,7 +278,7 @@ pub fn text_line(s: &str) {
 /// `at`：RFC3339 UTC，毫秒，以 `Z` 结尾
 pub fn now_rfc3339_ms() -> String {
     // 取「现在」用 core 那一份（#60 R8）；时钟早于 1970 年同原来一样按 0
-    let ms = atg_core::tree::time::now_ms();
+    let ms = atg_core::clock::now_ms();
     let secs = Time(ms.div_euclid(1000)).rfc3339();
     // `…:SSZ` → `…:SS.mmmZ`
     let base = secs.strip_suffix('Z').unwrap_or(&secs);
