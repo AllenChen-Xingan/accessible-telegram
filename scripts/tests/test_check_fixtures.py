@@ -130,6 +130,33 @@ class CheckFixtures(unittest.TestCase):
         self.put_lines("scenarios/s/history/101.jsonl", [m])
         self.assertEqual(self.check().returncode, 0, self.check().stdout)
 
+    def test_negative_user_or_message_id_is_red(self):
+        # 只有会话 id 许负；user、message 自己的 id 不许（codex 068 第 1 轮 #1）
+        self.put_lines("scenarios/s/users.jsonl", [user(uid=-5)])
+        self.assert_red("ids")
+        self.put_lines("scenarios/s/users.jsonl", [])
+        self.put_lines("scenarios/s/history/101.jsonl", [msg(mid=-1001)])
+        self.assert_red("ids")
+
+    def test_placeholder_minithumbnail_is_green(self):
+        m = msg()
+        m["content"] = {"@type": "messagePhoto", "photo": {"minithumbnail": {"data": "fixture-thumb-1"}}}
+        self.put_lines("scenarios/s/history/101.jsonl", [m])
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root 不受目录权限限制，造不出读不了")
+    def test_unreadable_subdir_is_red_even_if_others_scan(self):
+        # 一个子目录读不了、别的照常：不许报 0 处命中（codex 068 第 1 轮 #3）
+        locked = os.path.join(self.fx, "scenarios", "locked")
+        os.makedirs(locked)
+        self.put_lines("scenarios/locked/chats.jsonl", [chat()])
+        os.chmod(locked, 0)
+        try:
+            self.assert_red("read")
+        finally:
+            os.chmod(locked, 0o700)
+
     def test_bad_json_line_is_red(self):
         with open(os.path.join(self.fx, "scenarios/s/users.jsonl"), "w", encoding="utf-8") as f:
             f.write('{"@type": "user", \n')

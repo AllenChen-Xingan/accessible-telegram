@@ -11,6 +11,7 @@
   ids       user / chat / message 的 id，及 chat_id、user_id、message_id、supergroup_id、basic_group_id：
             只许 0–99999；会话 id 可为负（-1…-99999），超级群与频道是 -100 后面接上 1–99999 的数（字符串拼接：-1001 是超级群 1，不是 -100+1）
   files     minithumbnail.data、文件 remote.id / remote.unique_id 只许空串或 fixture- 开头的占位
+  read      夹具目录里有读不了的子目录或文件（不悄悄跳过）
 
 用法：python3 scripts/check-fixtures.py [--root <仓库根>]
 只用标准库。规则只防无心之失（真号码、真名字、真链接被顺手带进夹具），不防专门构造的绕过。
@@ -106,11 +107,14 @@ class Checker:
                 if isinstance(x, bool):
                     pass
                 elif isinstance(x, int) and (k in ID_KEYS or (k == "id" and t in ID_OBJECTS)):
-                    if not id_ok("chat_id" if (k == "id" and t == "chat") else k, x):
+                    # 对象自己的 id 按对象种类走对应的规则：只有会话 id 许负（codex 068 第 1 轮 #1）
+                    rule = {"chat": "chat_id", "user": "user_id", "message": "message_id"}.get(t, k) if k == "id" else k
+                    if not id_ok(rule, x):
                         self.bad(w, "ids", f"{k}={x} 不在保留区间")
                 if k == "minithumbnail" and isinstance(x, dict):
-                    if (x.get("data") or "") != "":
-                        self.bad(w, "files", "minithumbnail.data 不为空")
+                    data = x.get("data") or ""
+                    if data and not str(data).startswith("fixture-"):
+                        self.bad(w, "files", "minithumbnail.data 不是空串或 fixture- 占位")
                 if k == "remote" and isinstance(x, dict):
                     for f in ("id", "unique_id"):
                         val = x.get(f) or ""
@@ -147,7 +151,11 @@ def main() -> int:
         print(f"✗ 读不了 names.txt：{e}")
         return 1
     n = 0
-    for dirpath, _dirs, files in os.walk(base):
+    # 子目录读不了不许被悄悄跳过：记成错误（codex 068 第 1 轮 #3），否则只要别处扫到了 JSON 就会安静变绿
+    def walk_error(e: OSError) -> None:
+        c.bad(os.path.relpath(getattr(e, "filename", base) or base, a.root), "read", f"目录读不了（{e.strerror or e}）")
+
+    for dirpath, _dirs, files in os.walk(base, onerror=walk_error):
         for fn in sorted(files):
             if not fn.endswith((".json", ".jsonl")):
                 continue
