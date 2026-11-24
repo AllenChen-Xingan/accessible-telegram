@@ -45,7 +45,8 @@ ATG_LIVE=1 cargo run -p atg-core --features tdlib --example live_wait_phone
 #    ~/.atg-dev/tdlib/lib 找 libtdjson。~/.atg-dev/tdlib 是全机一个的软链接，指向最后一次编的那份 _build/<时间戳>/tdlib——
 #    哪个工作副本编过就指向哪个副本；那份被删了（删了副本或它的 _build），所有副本的程序都起不来，这时在还在的副本里
 #    跑 bash src/tdlib-build/build.sh link（或重编）。调试要挂 lldb 时：ATG_DEV_HARDEN=0 bash scripts/dev-sign.sh <程序>
-#    再直接跑，库照样按 rpath 找。核注入被挡住：bash scripts/check-harden.sh <程序>）
+#    再直接跑，库照样按 rpath 找。核注入被挡住：cargo build -p atg-cli --features tdlib
+#    后 bash scripts/check-harden.sh target/debug/atg-cli——只收 atg-cli，它的 version 没有副作用；上面的例子不收）
 ```
 
 依赖怎么接、CI 管到哪、怎么把 `tdlib-rs/` 的改动推回 fork：`docs/plan/004_tdlib-patch.md` 第二、三节。

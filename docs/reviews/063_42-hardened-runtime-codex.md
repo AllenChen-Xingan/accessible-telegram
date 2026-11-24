@@ -29,3 +29,19 @@
 ### 是否再审
 
 本轮有 P1，改完再审一轮（带上第 1 轮原文和本记录）。
+
+## 第 2 轮（2026-11-24）· 总评「修改」
+
+原文：MAIN 下 `_tmp/20261124-b21/r42-codex/r42-codex-2.md`（不入库）。HEAD = 2dc9ba3。`result: P0×0 P1×0 P2×2 P3×0`。
+本轮 P0/P1：0 · 停止线：连续第 1 轮 · 留作 issue 的 P2：无（两条都改了）
+
+- 上一轮复核：#1、#2、#4 已落实；#3 签名读取那半已修，准备步骤的退出码还差一处（即本轮 #1）
+- **P2 #1 属实，已改**：两段生成 C 源文件的 `cat > … <<'C'` 没接 `prep`，盘满或写不进时 `set -e` 会以 1 退出，和「有一项不符」混在一起。两处都补了 `|| prep`。核过：把 `TMPDIR` 指到只读目录，退出码 2
+- **P2 #2 属实，已改**：`src/README.md` 在 `live_wait_phone` 那段里写的是 `check-harden.sh <程序>`，照着传那个例子程序会退 2。改成「`cargo build -p atg-cli --features tdlib` 后传 `target/debug/atg-cli`；只收 atg-cli，上面的例子不收」
+- 无法核实 1 条：最终程序是不是只有一条 rpath（产物不在准读范围）。改成让脚本自己核：`check-harden.sh` 的 TDLib 段加一项「rpath 只有这一条」（数 `LC_RPATH`），别的 rpath（如 tdlib-rs 的 `OUT_DIR`、`@loader_path`）一出现就判不符。本机跑过：1 条，通过
+- 抽查属实 4 条：同第 1 轮那 4 点（`ATG_DEV_HARDEN` 只认精确的 `0`、先签后算哈希且 build-info 不记身份、非软链接不覆盖、`build.rs` 的条件）
+- 改后已核：`check-harden.sh` 全过（共 9 项）
+
+### 是否再审
+
+本轮无 P0/P1，是连续第 1 轮；改完再审一轮，确认是否连续第 2 轮。

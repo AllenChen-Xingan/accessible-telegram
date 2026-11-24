@@ -30,7 +30,7 @@ fail=0
 ok() { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; fail=1; }
 
-cat >"${tmp}/mark.c" <<'C'
+cat >"${tmp}/mark.c" <<'C' || prep "写 mark.c 失败"
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -39,7 +39,7 @@ __attribute__((constructor)) static void mark(void) {
   if (p) { int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0600); if (fd >= 0) { write(fd, "injected\n", 9); close(fd); } }
 }
 C
-cat >"${tmp}/launch.c" <<'C'
+cat >"${tmp}/launch.c" <<'C' || prep "写 launch.c 失败"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -89,6 +89,9 @@ if has "${libs}" libtdjson; then
   rp="${HOME}/.atg-dev/tdlib/lib"
   loads="$(otool -l "${bin}")" || prep "otool -l 读不了程序"
   if has "${loads}" "path ${rp} "; then ok "rpath 有 ${rp}"; else bad "rpath 里没有 ${rp}"; fi
+  # 只许这一条：别的 rpath（如 tdlib-rs 的 OUT_DIR、@loader_path）可能先被搜到，那里同用户可写（codex 063 第 2 轮）
+  n_rpath="$(awk '/cmd LC_RPATH/{n++} END{print n+0}' <<<"${loads}")"
+  if [[ "${n_rpath}" == 1 ]]; then ok "rpath 只有这一条"; else bad "rpath 有 ${n_rpath} 条，不只 ${rp}"; fi
   # 换库：临时签名的 libtdjson 副本放进另一个目录，把 rpath 改指那里。准备失败按约定退 2，不和「有一项不符」混
   real="$(cd "${rp}" && pwd -P)" || prep "软链接 ${rp} 不在（先 bash src/tdlib-build/build.sh 或 build.sh link）"
   mkdir -p "${tmp}/fake-lib" && cp "${real}"/libtdjson.*.dylib "${tmp}/fake-lib/" || prep "拷 libtdjson 失败"
