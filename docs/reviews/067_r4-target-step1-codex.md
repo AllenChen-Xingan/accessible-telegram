@@ -10,6 +10,7 @@
 >
 > 分两步做，避开 msg2 的 13b；两个 `target.rs`、`ChatRef` 挪进 core、send 那一族、`-n` 常量都在第二步。effort medium。
 > 依据（`--context`）：`react.rs`、`serve.rs`、`download.rs`、`play.rs`、`transcribe.rs`、`send.rs`、`deadlines.rs`、core `fake.rs`，让 codex 自己追「哪条命令的错误码变了」。隐私扫描：干净（11 条提示都是「提示」这个词，不是隐私）。
+> **状态：第 2 轮（2026-11-24）· 总评「通过」· 第 1、2 轮连续无 P0/P1 → 满足停止线，收敛。留作 issue 的 P2：无（已知遗留的测试并入 #175，第二步补）。**
 > **focus**（大总管要求）：① 契约和代码对不对得上；② 有没有哪条命令的错误码变了却没写进清单。
 > 之前：
 > - **多视角自审 1 轮**（8c76222）：P1×2，都是同一件事：`errors.md` 码表里其实登记着 `me_unknown`，子串搜索被 `send_outcome_unknown` 淹掉了，修订记录还写错了。已改。P2×7、P3×5 大多改了（e354eae）
@@ -31,3 +32,25 @@
 ### 是否再审
 
 本轮无 P0/P1，是连续第 1 轮；再审一轮确认。
+
+## 第 2 轮（2026-11-24）· 总评「通过」
+
+原文：MAIN 下 `_tmp/20261124-b21/r4-codex/r4a-codex-2.md`（不入库）。HEAD = 3b4bb53。`result: P0×0 P1×0 P2×0 P3×0`。
+本轮 P0/P1：0 · 停止线：满足（第 1、2 轮连续无 P0/P1）· 留作 issue 的 P2：无
+
+- 上一轮复核：交接页已改成实际范围，第二步写全了，评审记录也同步了
+- 无发现
+- 抽查属实 8 条：
+  - `resolve_chat` 经 `bounded` 调 `me()`
+  - 查询期限 10 秒，按内核故障与否报 `disconnected` / `network`
+  - `errors.md` 已删 `me_unknown`；在读到的范围里，「5 秒」「等 my_id」这些字样只出现在历史记录或测试背景里
+  - `cli.md` 清单完整，send 那一族只用来对照
+  - `react` / `reactions` 解析完马上 `load_chat`，没有逻辑依赖被删掉的那次 drain
+  - `watch` 和原来的实现逐项一致
+  - 测试钉死 `auth_required`
+  - 交接页
+- 无法核实 1 条：同第 1 轮，`download` / `play` / `transcribe` 中间要经过 `session.rs`，这个文件不在准读范围（`voice/mod.rs:91` 能看到它调了 `resolve_chat`）
+
+### 是否再审
+
+不再审：连续两轮无 P0/P1，收敛。

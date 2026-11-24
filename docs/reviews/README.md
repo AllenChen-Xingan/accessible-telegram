@@ -63,4 +63,4 @@
 | 061 | 2026-11-17 | #137 修 22 条 rustdoc 警告（私有项、特性下断链、同名歧义），CI 加两步 `cargo doc -D warnings`（codex · diff 类） | 两轮零发现，收敛 → `061_137-rustdoc-links-codex.md` |
 | 063 | 2026-11-24 | #42 开发版开强化运行时（OpenSSL 静态链、libtdjson 签名、rpath 指常驻软链接、`--options runtime`、`check-harden.sh`；codex · diff 类，effort high，按契约 / 安全口径） | 第 1 轮 P1×1、P2×3，第 2 轮 P2×2，都已改；第 3 轮零发现，收敛 → `063_42-hardened-runtime-codex.md` |
 | 066 | 2026-11-24 | #60 R8 小零件归一：`lock`、时钟与时区（新模块 `clock`）、原子写各留一份；`mark_running` 改原子写（codex · diff 类） | 两轮无 P0/P1，收敛（P2 共 4 条都是注释与记录，已改）→ `066_r8-dedupe-codex.md` |
-| 067 | 2026-11-24 | #60 R4 第一步：会话参数与 `saved` 解析收进 `history` 一份；`saved` 改问 `me()`，对外错误码 `internal`（`me_unknown`）→ 照 `me()` 报（codex · diff 类） | 第 1 轮 P2×1（交接页）已改，待第 2 轮 → `067_r4-target-step1-codex.md` |
+| 067 | 2026-11-24 | #60 R4 第一步：会话参数与 `saved` 解析收进 `history` 一份；`saved` 改问 `me()`，对外错误码 `internal`（`me_unknown`）→ 照 `me()` 报（codex · diff 类） | 第 1 轮 P2×1（交接页）已改，第 2 轮零发现，收敛 → `067_r4-target-step1-codex.md` |
