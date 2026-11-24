@@ -1,4 +1,6 @@
-# 评审 065 · #13 13b-2 按按钮（`press`，直发；「只有闸能发」清单加 `get_callback_query_answer`）（codex · read-only · diff 类）
+# 评审 065 · #13 13b-2 按按钮（`press`，直发；「只有闸能发」清单加 `get_callback_query_answer`）（codex · gpt-6-astra · read-only · diff 类）
+
+> **最新一轮：第 3 轮（2026-11-24）· 总评「修改」· 无 P0/P1**。第 1 轮 P1×1（改标签绕过防重复），已改；停止线从第 2 轮起算，第 2、3 轮连续无 P0/P1，**满足，收敛**。剩余 P2×1（第 3 轮 #1）交大总管开 issue。
 
 > 对象：`origin/main...HEAD`（三点；已合 main，含 #179 #181）。重点写在 `_tmp/reviews-065/focus.md`（不入库）。
 > 之前做了多视角自审 4 轮（atg-review）：
@@ -64,3 +66,29 @@
 ### 是否再审
 
 要再审：改完开第 3 轮确认。
+
+## 第 3 轮（2026-11-24）· 总评「修改」
+
+原文：`_tmp/reviews-065/press-13b-codex-3.md`（不入库）。范围含 f39c438，`--previous` 带第 2 轮原文、`--response` 带本记录。模型 gpt-6-astra，read-only，effort medium（`result: P0×0 P1×0 P2×1 P3×0`）。隐私扫描同第 2 轮那 27 条，同一批文件、同一批行号，大总管准过。
+本轮 P0/P1：0 条 · 停止线：**满足**（第 2、3 轮连续无 P0/P1）· 留作 issue 的 P2：1 条
+
+- **P2｜src/atg-cli/src/press.rs:107 回调按钮结果未知时，套用了消息的「下次启动会自动补发」**（第 3 轮 #1）
+  - 核实：属实。`fail_line` 直接用 `CoreError::message_zh()`，而 `send_outcome_unknown` 的通用说法是「没发出的下次启动会自动补发」。回调按钮没有待发队列，也不会补按，这句会让人干等。errors.md 那一行「是否可重试」一栏已写了 press 的下一步，但中文提示没跟上。
+  - 处理：停止线已满足，这条按规矩交大总管开 issue，不在本块改：要给 press 专门写一句结果未知的说法，并限定 errors.md 里「自动补发」的适用范围。issue 草稿在 MAIN `_tmp/20261124-b21/issue-press-unknown-wording.md`。
+
+### 引用抽查
+
+- 核实属实：6 条
+  - 第 2 轮修法：`system_open` 回成败，`opened` 据此设置；
+  - 失败出口的测试；
+  - 意图与凭据摘要分开；
+  - `verify_again` → `recheck` → `before_submit_again`；
+  - 编号数法一致；
+  - 开网址的限定。
+- 不符：0 条
+- 无法核实：1 条，同前两轮
+
+### 是否再审
+
+不再审：收敛。
+

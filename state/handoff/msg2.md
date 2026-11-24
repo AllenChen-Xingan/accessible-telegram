@@ -15,6 +15,7 @@
 - 合 main（e107844，冲突 actions.md / 现状页由我解）后全绿 703 过。自审 13b-1 第 1 轮（origin/main...HEAD）：P1×1（许改票已投过时整组替换没拦没说）→ 照 react 默认拒 `vote_would_replace`、`--replace` 放行、计划列 `replaces`、复核比对；P2 修 5 留 1（交出后到点无测试，需 fake.rs 加挂起分支，压基线）；P3 修 6。error.rs 599 行。未编译，等名额
 - 自审第 2 轮（replaces 只列会被撤掉的，追加不拒）、第 3 轮（上一票还在提交时拒投，tree 加 pending）都无 P0/P1 → 自审收敛（857c91e、87bba7f、96695ef；合 main dda9d52）。codex 062：第 1 轮 P1（并发无互斥，按威胁模型最高 P2、我选照 P1 改，InFlight）P2（content-tree 清单）→ 46ea4f2；第 2、3 轮零发现 → 收敛。记录 062 + README 行已写；PR 说明 MAIN `_tmp/20261124-b21/pr-13b-vote.md` 占位全填。下一步：大总管提交记录 → 开 PR（一级评审）→ 13b-2 按钮（codex 065）
 - 13b-1 PR #179 人审过、已合 main（8edd495）。13b-2 分支 feat/13b-press（从 71f9872）；计划 MAIN `_tmp/20261124-b21/plan-13b-press.md`，人定 B×2（回话网址自动打开只开 http/https；键盘换过照样发、计划说一句）。① 拆 error.rs → f2d078c。②③ press 写完：回调直发进防重复、数据只在 td 交出口现取；键盘转 send；只读三种；其余拒。全绿 725 过（先红后绿：--again 被吞，改 verify_again）。等大总管提交检查点 + 合 main → 自审 → codex 065
+- 13b-2 自审 4 轮（第 2 轮 P1：bot_silent 认 TDLib 改写后的 502；第 3、4 轮无 P0/P1；第 4 轮「挑刺」一路空）；codex 065 三轮（第 1 轮 P1：防重复意图去掉按钮文字；第 2 轮 P2 开网址失败；第 3 轮 P2 留 issue），第 2、3 轮无 P0/P1 → 收敛。733 过 0 败。PR 说明 MAIN `_tmp/20261124-b21/pr-13b-press.md`（差 issue 号）；issue 草稿 `issue-press-unknown-wording.md`。下一步：大总管开 issue、提交记录、开 PR（一级评审）→ 交代里 #13 之后的活
 
 ## b20 接手（2026-11-16）
 
