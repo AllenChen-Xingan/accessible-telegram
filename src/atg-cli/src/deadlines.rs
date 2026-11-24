@@ -48,9 +48,6 @@ pub const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 pub const AUTH_POLL: Duration = Duration::from_millis(200);
 /// 取一个论坛话题的设置（`watch` / `serve`）· 取不到就按 `topic_unknown` 不提示，宁可不吵 · 大总管定 2026-11-13、#73
 pub const TOPIC_TIMEOUT: Duration = Duration::from_secs(5);
-/// `history` / `watch` 的 `saved` 等事件流里 TDLib 推来的 `my_id` · 本地就有，5 秒足够 · 等不到报 `me_unknown`（`errors.md`）。
-/// `send` 的 `saved` 不等它，直接问 `me()`（闸用的也是它），按 [`QUERY_TIMEOUT`] 等、到点报 `network`
-pub const ME_TIMEOUT: Duration = Duration::from_secs(5);
 /// 转发时两帧之间：一条 `chats` 最长约 30 秒（等授权 + 加载 + 等补发各 10 秒），执行方还可能先在处理别人的请求；
 /// `send` 出 `plan` 之前要找会话、取会话、做计划、取被回复的那条（各 10 秒，约 40 秒），出完之后再等结果
 /// （最多 30 秒），中间都没有帧——留足（原先还要留等人按 Touch ID 的 60 秒，已去掉，留余量不缩）· `config-privacy.md` 本机接口

@@ -58,6 +58,7 @@ fn attachments() -> Vec<Attachment> {
                 percent: 100,
                 chosen: true,
                 correct: true,
+                pending: false,
             }],
             total: 1,
             results_visible: true,

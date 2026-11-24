@@ -237,6 +237,8 @@ fn saved_uses_own_chat() {
         ..FakeAuth::default()
     });
     b.push_net("connectionStateReady");
+    // `saved` 问后端 `me()`（#60 R4 起，不再等事件流里的 `my_id`）；`my_id` 照真 TDLib 的样子仍推一条
+    b.set_me(ME);
     b.push(json!({"@type": "updateOption", "name": "my_id", "value": {"@type": "optionValueInteger", "value": ME.to_string()}}));
     b.set_chat(
         ME,
@@ -255,6 +257,27 @@ fn saved_uses_own_chat() {
     assert_eq!(ids(&p), vec![1, 2]);
     assert!(!p.more && !p.more_newer);
     assert!(b.calls().contains(&Call::ChatGet(ME)));
+}
+
+/// `saved` 换不出收藏夹 id 时照后端 `me()` 的错报，不再是 `internal`（`me_unknown`）（#60 R4，`cli.md` 修订记录）。
+/// 假后端没登记 `me` 时 `me()` 回 401，即 `auth_required`；就算事件流里有 `my_id` 也不再拿它顶
+#[test]
+fn saved_failure_is_not_internal() {
+    let b = FakeBackend::new().unwrap();
+    b.set_auth(FakeAuth {
+        logged_in: true,
+        ..FakeAuth::default()
+    });
+    b.push_net("connectionStateReady");
+    // 事件流里有 `my_id`，但后端 `me()` 答不出：现在以 `me()` 为准
+    b.push(json!({"@type": "updateOption", "name": "my_id", "value": {"@type": "optionValueInteger", "value": ME.to_string()}}));
+    let mut query = q(Anchor::Landing, 5);
+    query.chat = ChatRef::Saved;
+    let p = testkit::profile("saved-fail", ServerKind::Main);
+    let r = with_backend(&b, &p, Instant::now(), |b, s, f| {
+        collect(b, s, f, &query, Duration::from_millis(300))
+    });
+    assert_eq!(fail_code(r), "auth_required");
 }
 
 #[test]

@@ -18,7 +18,7 @@ pub struct LinkList {
 
 pub fn links_query(a: &LinksArgs) -> Result<LinksQuery, Fail> {
     Ok(LinksQuery {
-        chat: ChatRef::parse(&a.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
+        chat: chat_arg(&a.chat)?,
         message_id: a.message,
     })
 }
@@ -31,7 +31,7 @@ pub fn collect_links<B: Backend>(
     q: &LinksQuery,
 ) -> Result<LinkList, Fail> {
     chats::ensure_ready(b)?;
-    let chat_id = resolve(b, stream, feed, q.chat)?;
+    let chat_id = resolve_chat(b, q.chat)?;
     load_chat(b, stream, feed, chat_id)?;
     let id = MsgId {
         chat_id,
