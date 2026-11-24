@@ -495,3 +495,20 @@ fn spoiler_option_text_is_withheld() {
     assert_eq!(plan.choices()[0].text, None);
     assert!(!vote_plan_json(&plan).to_string().contains("七点"));
 }
+
+/// codex 062 第 1 轮 #1：同一条投票上已有一个在途（复核到交出之间），第二个按「还在提交」拒、不交出；前一个收尾后放开
+#[test]
+fn concurrent_vote_on_same_poll_is_refused() {
+    let r = rig("inflight", false, &Poll::default());
+    let held = super::InFlight::take(r.b.gate(), id(FRIEND)).unwrap();
+    let e = once(&r, FRIEND, &[1]).unwrap_err();
+    assert_eq!(why(e), InvalidSendWhy::VoteBlocked);
+    assert!(r.b.submitted().is_empty());
+    assert!(log_lines(&r).is_empty());
+    drop(held);
+    assert!(once(&r, FRIEND, &[1]).is_ok());
+    // 别的后端（另一道闸）上的同一条不受影响
+    let other = rig("inflight-other", false, &Poll::default());
+    let _held = super::InFlight::take(r.b.gate(), id(FRIEND)).unwrap();
+    assert!(once(&other, FRIEND, &[1]).is_ok());
+}

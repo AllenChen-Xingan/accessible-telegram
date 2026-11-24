@@ -285,7 +285,40 @@ async fn recheck<B: Backend>(b: &B, plan: &VotePlan) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// `vote`（L2）：验凭据 → 复核 → 留痕「已提交」→ 交给 TDLib → 记结果。成功回凭据的开法
+/// 在途的投票（键带上闸的地址：一个后端一道闸，并行的测试互不相拦）。放开后（交完、失败、到点被丢掉）由 TDLib 自己的
+/// `is_being_chosen`（[`PollOption::pending`]）接着挡：`setPollAnswer` 一交出 TDLib 就标上，直到服务器回话
+static IN_FLIGHT: std::sync::Mutex<Vec<(usize, MsgId)>> = std::sync::Mutex::new(Vec::new());
+
+pub(super) struct InFlight(usize, MsgId);
+
+fn slots() -> std::sync::MutexGuard<'static, Vec<(usize, MsgId)>> {
+    IN_FLIGHT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+impl InFlight {
+    pub(super) fn take(gate: &gate::Gate, id: MsgId) -> Result<Self, CoreError> {
+        let key = (std::ptr::from_ref(gate) as usize, id);
+        let mut v = slots();
+        if v.contains(&key) {
+            return Err(CoreError::InvalidSend {
+                why: InvalidSendWhy::VoteBlocked,
+            });
+        }
+        v.push(key);
+        Ok(Self(key.0, key.1))
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        let key = (self.0, self.1);
+        slots().retain(|k| *k != key);
+    }
+}
+
+/// `vote`（L2）：验凭据 → 同一条投票串行 → 复核 → 留痕「已提交」→ 交给 TDLib → 记结果。成功回凭据的开法
 pub async fn vote<B: Backend>(
     b: &B,
     plan: &VotePlan,
@@ -302,6 +335,9 @@ async fn vote_inner<B: Backend>(
     sent: &std::sync::atomic::AtomicBool,
 ) -> Result<ConfirmMode, CoreError> {
     let mode = b.gate().verify(token, plan)?;
+    // 同一条投票同时只许一个在「复核 → 交出 → 等应答」之间（codex 062 第 1 轮 #1）：两个都先复核、再各自交出，后一个
+    // 会整组覆盖前一个，`vote_would_replace` 与 `pending` 都挡不住（交出前 TDLib 还没标「在提交」）。第二个按「还在提交」拒
+    let _one = InFlight::take(b.gate(), plan.message)?;
     recheck(b, plan).await?;
     b.gate().before_submit(mode, plan)?;
     let sealed = Sealed {
