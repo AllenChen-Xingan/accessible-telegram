@@ -60,7 +60,7 @@
 |---|---|
 | `--test-dc` | 等于「选 `test` 档案，并断言它是测试服务器档案」；断言不过就拒绝启动（`config-privacy.md` 第一节第 2 小节） |
 | `--profile NAME` | 选本地档案，默认 `main`。档案是哪种服务器由档案自己的标记决定，不由选项决定 |
-| `--fake SCENARIO` | 用假后端装一个场景，不联网、不碰人的档案和钥匙串：只由 `[a-z0-9-]` 组成的当场景名，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（只在开发构建里认；发布构建给裸名字报 `internal{what:"fixture_needs_path"}`），别的当目录路径。每次用一个一次性测试档案（临时目录、种类 `test`、跑完即删）。场景不合格式报 `internal{what:"fixture_bad"}`。格式、解析规则、排查办法的正本是 `testing.md` 第一节第 3 小节。**现在只有 `chats`、`history` 认它**，别的命令带它报 `not_implemented`（#169） |
+| `--fake SCENARIO` | 用假后端装一个场景，不联网、不碰人的档案和钥匙串：只由 `[a-z0-9-]` 组成的当场景名，读 `src/atg-core/fixtures/scenarios/<SCENARIO>/`（只在开发构建里认；发布构建给裸名字报 `internal{what:"fixture_needs_path"}`），别的当目录路径。每次用一个一次性测试档案（临时目录、种类 `test`、跑完即删）。场景不合格式报 `internal{what:"fixture_bad"}`。格式、解析规则、排查办法的正本是 `testing.md` 第一节第 3 小节。**现在只有 `chats`、`history` 认它**；`speech` 带它报 `usage`（`speech` 吃的是读法夹具，用 `--fixture`）；别的命令带它报 `not_implemented`（#169）。和 `--profile`、`--test-dc` 一起给时，那两个不起作用：`--fake` 一律用自己的一次性测试档案 |
 | `--format json\|text` | 默认 `json`；`text` 给人看，每行一句读法（`speech.brief`） |
 | `--redact` | 打码输出，用于贴进 issue / 发给别人：**白名单**——只留 `type`、计数、时间、状态、错误码；正文、说明、名字、用户名、手机号、文件名、链接、`speech` 全部换成「类型 + 长度」；id 换成**每次随机加盐**的哈希（同一次输出内一致，跨次不可对照、也无法穷举反推）。日志打码另有脚本，见 `config-privacy.md` |
 | `--unsafe-direct-send` | 旧参数，已无作用，帮助里不显示（发送一律直发：`actions.md` 第一节第 5 小节；#113）。留着只为旧脚本不报错；每条直发照常写 `direct-send.log` |

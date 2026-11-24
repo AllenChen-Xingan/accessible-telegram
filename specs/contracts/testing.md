@@ -54,10 +54,10 @@ src/atg-core/fixtures/
 - `me.json` 必有，是 TDLib `user` 对象；`users.jsonl`、`chats.jsonl`、`history/` 都可以没有，没有就是空
 - `.jsonl` 一行一个 JSON 对象，空行跳过。`users.jsonl` 每行是 `user`，`chats.jsonl` 每行是 `chat`
 - `history/` 下只认文件名是**规范写法**的 `<会话 id>.jsonl`：十进制整数，不带 `+`、不补前导 0（`-1001.jsonl`、`101.jsonl`）；每行是 `message`，`chat_id` 必须等于文件名
-- 跳过、不读的：点开头的（访达的 `.DS_Store`、`._101.jsonl`，编辑器的 `.swp`）、不以 `.jsonl` 结尾的（`101.jsonl~`）、目录（哪怕叫 `202.jsonl/`）
+- 跳过、不读的：点开头的（访达的 `.DS_Store`、`._101.jsonl`，编辑器的 `.swp`）、不以 `.jsonl` 结尾的（`101.jsonl~`）、目录（哪怕叫 `202.jsonl/`）、文件名不是 UTF-8 的
 - 场景一律当作「已登录、已连接」装进假后端；`timeline.jsonl` 还没实现，不读
 
-会报 `internal{fixture_bad}` 的（逐条对应加载器的单测 `every_bad_shape_is_fixture_bad`）：
+会报 `internal{fixture_bad}` 的（第 2–5 条每种写法在加载器的单测 `every_bad_shape_is_fixture_bad` 里各有一例；第 1 条另有 `missing_dir_is_fixture_bad`；第 6 条单测造不出来，只靠代码审）：
 
 1. 场景目录或 `me.json` 不在（开发构建里场景名打错也是这一条：报错不区分「没这个场景」和「内容坏了」）
 2. `me.json` 不是合法 JSON、不是 `user`、没有整数 `id`
@@ -66,7 +66,7 @@ src/atg-core/fixtures/
 5. 历史里某行不是 `message`、没有整数 `id`，或 `chat_id` 和文件名不符
 6. 读不了（权限等）
 
-只是**约定**、加载器不查的：历史行序从新到旧（照 TDLib `getChatHistory` 的返回顺序；`atg-cli history` 的输出是从旧到新，命令自己倒过来，见 `cli.md`）。主列表的顺序**不看 `chats.jsonl` 的行序**，看每个会话 `positions` 里 `chatListMain` 那一项的 `order`（从大到小，同 TDLib）；没有这一项或 `order` 为 `"0"` 的会话不进主列表，也不报错——写新场景时每个会话都要带上它。
+只是**约定**、加载器不查的：历史文件对应的会话应在 `chats.jsonl` 里（不在也照样装进去，只是拉列表时看不到它）；历史行序从新到旧（照 TDLib `getChatHistory` 的返回顺序；`atg-cli history` 的输出是从旧到新，命令自己倒过来，见 `cli.md`）。主列表的顺序**不看 `chats.jsonl` 的行序**，看每个会话 `positions` 里 `chatListMain` 那一项的 `order`（从大到小，同 TDLib）；没有这一项或 `order` 为 `"0"` 的会话不进主列表，也不报错——写新场景时每个会话都要带上它。
 
 排查：`fixture_bad` 不带是哪个文件。先对照上面六条；`python3 scripts/check-fixtures.py` **只查隐私**（名字、号码、链接、id 区间），不查这些形状，帮不上；能用的手段是拿最小场景（只有 `me.json`）起步、一个文件一个文件加，每加一个跑一次 `atg-cli --fake <目录> chats`。
 
@@ -75,9 +75,9 @@ src/atg-core/fixtures/
 - **名字还是路径**：只由 `[a-z0-9-]` 组成的当场景名，去 `src/atg-core/fixtures/scenarios/<名>/` 找；别的一律当目录路径。所以当前目录下的 `myscene` 要写成 `./myscene`。按名字找只在**开发构建**（`cfg(debug_assertions)` 开着，即 `cargo build` / `cargo test` 默认）里有；**发布构建**（`--release`，含 `cargo test --release`）不带夹具目录，给裸名字报 `internal{fixture_needs_path}`
 - `--fake` 每次用一个一次性测试档案：系统临时目录下 0700 的新目录里建档案（名字照 CLI 默认叫 `main`、种类 `test`；在临时目录里，和人的档案目录不相干），照常拿它的档案锁 `atg.lock`（同一档案同时只许一个进程开，`config-privacy.md` 第一节第 1 小节），跑完即删。种类 `test` 只决定走测试服务器的那套规矩（如发送闸只对收藏夹放行）；假后端**不联网**，不会连 Telegram 测试服务器
 - **不碰钥匙串**：真实后端起来时要从 macOS 钥匙串取本地库的加密钥匙（`config-privacy.md` 第一节第 3 小节），会动到人的真凭据、可能弹窗；假后端没有这一步，`--fake` 也构造不出真实后端（arch 审定）
-- 现在 `atg-cli` 只有 `chats`、`history` 认 `--fake`，别的命令带它报 `not_implemented`
+- 哪些命令认 `--fake`、别的命令带它报什么、和 `--profile` / `--test-dc` 一起给时怎样：正本在 `cli.md` 全局选项那一行
 
-**场景的命名与形状约定**（惯例，加载器不强制；字符集以上面「名字还是路径」为准）：
+**夹具的命名与形状约定**（惯例，加载器不强制；管 `td/`、`speech/`、`scenarios/` 全部夹具；场景名的字符集以上面「名字还是路径」为准）：
 
 - 场景名用 kebab-case（小写字母、数字、单个连字符），按用途起：`empty`、`basic-4-chats`、`unread-mixed`、`busy-group-flood`、`reply-forward-edit`、`media-kinds`、`unknown-types`、`offline-reconnect`
 - **夹具用 TDLib 原样 JSON 形状**，这样「解析 → 映射 → 树 → 读法」一次测住（架构方案第三节）

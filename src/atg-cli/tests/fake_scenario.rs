@@ -27,6 +27,14 @@ fn lines(out: &Output) -> Vec<Value> {
         .collect()
 }
 
+/// 自带场景 basic-4-chats 的目录。用路径不用名字：`cargo test --release` 跑的是发布构建，它不认裸场景名
+fn basic4() -> String {
+    format!(
+        "{}/../atg-core/fixtures/scenarios/basic-4-chats",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
 /// 系统临时目录里 `atg-fake-` 开头的目录
 fn fake_dirs() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(std::env::temp_dir())
@@ -45,7 +53,7 @@ fn fake_dirs() -> Vec<String> {
 fn chats_on_scenario_lists_four_chats_in_order() {
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["chats", "--fake", "basic-4-chats"]);
+    let out = run(&["chats", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -74,7 +82,7 @@ fn history_on_scenario_takes_negative_chat_id() {
     // `history` 行、`docs/plan/003_decisions-b2.md` F2），比它新的没有了
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["history", "-1001", "--fake", "basic-4-chats"]);
+    let out = run(&["history", "-1001", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -103,7 +111,7 @@ fn history_saved_resolves_to_my_own_chat() {
     // `saved` 换成自己的用户 id（R4：问后端 me()）；场景里收藏夹是会话 9「我自己」
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["history", "saved", "--fake", "basic-4-chats"]);
+    let out = run(&["history", "saved", "--fake", &basic4()]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -122,15 +130,13 @@ fn history_saved_resolves_to_my_own_chat() {
     assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
+/// 别的测试都按路径给场景；按名字找只在开发构建里有，这里单测这一条路
+#[cfg(debug_assertions)]
 #[test]
-fn scenario_by_path_works_too() {
+fn scenario_by_name_works_in_debug_builds() {
     let _s = serial();
-    let dir = format!(
-        "{}/../atg-core/fixtures/scenarios/basic-4-chats",
-        env!("CARGO_MANIFEST_DIR")
-    );
     let before = fake_dirs();
-    let out = run(&["chats", "--fake", &dir]);
+    let out = run(&["chats", "--fake", "basic-4-chats"]);
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
@@ -139,7 +145,7 @@ fn scenario_by_path_works_too() {
 fn missing_scenario_is_fixture_bad_and_leaves_nothing() {
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["chats", "--fake", "no-such-scenario"]);
+    let out = run(&["chats", "--fake", "/nonexistent/atg-scenario"]);
     // internal 的退出码是 1（cli.md 第一节第 4 小节）
     assert_eq!(out.status.code(), Some(1));
     let ls = lines(&out);

@@ -51,7 +51,12 @@ mod tests {
 
     #[test]
     fn chats_on_basic_scenario_uses_test_profile_and_only_expected_calls() {
-        let Ok(f) = open(OsStr::new("basic-4-chats")) else {
+        // 用路径，开发构建、发布构建都认（按名字找只在开发构建里有）
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../atg-core/fixtures/scenarios/basic-4-chats"
+        );
+        let Ok(f) = open(OsStr::new(dir)) else {
             panic!("basic-4-chats 场景应能装");
         };
         assert_eq!(f.profile.kind(), ServerKind::Test);
@@ -90,7 +95,7 @@ mod tests {
 
     #[test]
     fn missing_scenario_is_fixture_bad() {
-        match open(OsStr::new("no-such-scenario")) {
+        match open(OsStr::new("/nonexistent/atg-scenario")) {
             Err(Fail::Core(atg_core::error::CoreError::Internal { what })) => {
                 assert_eq!(what, "fixture_bad")
             }

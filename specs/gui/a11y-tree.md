@@ -144,10 +144,10 @@
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）怎么写，见各层格式那段（GPUI 层：不写标识一格）；`check-a11y-tree.py` 只对能操作的角色查标识
 
-**例**（GPUI 层，场景 `basic-4-chats`，进了「林小雨」的会话，名称是读法草稿）：
+**例**（GPUI 层，**示意**：不是哪个夹具的真实导出，条数、时间、名称都是编的，名称是读法草稿；真实导出见 M3.1 后面的 PR 入库的 `src/atg-gui/tests/a11y/`）：
 
 ```
-# gui-schema v1 · gpui 79fe6a6 · fixture basic-4-chats
+# gui-schema v1 · gpui 79fe6a6 · fixture <场景>
 Window window
   Navigation region-chats "会话"
     List chats "会话" active=chat:101

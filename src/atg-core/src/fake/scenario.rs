@@ -228,12 +228,17 @@ mod tests {
         )
     }
 
+    /// 自带场景的目录（用路径，开发构建、发布构建都认；按名字找只在开发构建里有）
+    fn shipped(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/scenarios")
+            .join(name)
+    }
+
     #[test]
     fn shipped_scenarios_load() {
         for name in ["basic-4-chats", "empty"] {
-            let Ok(p) = Scenario::resolve(OsStr::new(name)) else {
-                panic!("{name} 解析不了");
-            };
+            let p = shipped(name);
             let Ok(sc) = Scenario::load(&p) else {
                 panic!("{name} 装不上");
             };
@@ -327,6 +332,27 @@ mod tests {
                 &[("me.json", ME), ("history/101.jsonl.jsonl", MSG)],
             ),
             ("文件名是 -0", &[("me.json", ME), ("history/-0.jsonl", MSG)]),
+            (
+                "users 一行没有整数 id",
+                &[
+                    ("me.json", ME),
+                    ("users.jsonl", r#"{"@type":"user","id":"101"}"#),
+                ],
+            ),
+            (
+                "chats 一行没有整数 id",
+                &[
+                    ("me.json", ME),
+                    ("chats.jsonl", r#"{"@type":"chat","title":"林小雨"}"#),
+                ],
+            ),
+            (
+                "历史一行没有整数 id",
+                &[
+                    ("me.json", ME),
+                    ("history/101.jsonl", r#"{"@type":"message","chat_id":101}"#),
+                ],
+            ),
         ];
         for (what, files) in cases {
             let d = dir("sc-bad");
@@ -335,6 +361,24 @@ mod tests {
             }
             assert!(is_bad(Scenario::load(d.path())), "{what} 应报 fixture_bad");
         }
+    }
+
+    #[test]
+    fn missing_dir_is_fixture_bad() {
+        let d = dir("sc-missing");
+        assert!(is_bad(Scenario::load(&d.path().join("no-such-scenario"))));
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn bare_name_needs_a_path_in_release_builds() {
+        // 发布构建不带夹具目录：裸名字报 fixture_needs_path（testing.md 第一节第 3 小节）
+        assert!(matches!(
+            Scenario::resolve(OsStr::new("basic-4-chats")),
+            Err(CoreError::Internal {
+                what: "fixture_needs_path"
+            })
+        ));
     }
 
     #[test]
