@@ -144,6 +144,11 @@ pub enum InvalidSendWhy {
     NotAFile,
     /// 说明文字超过上限（`send::file::CAPTION_MAX`）
     CaptionTooLong,
+    /// 投票（#13）：这条显示的不是投票 · 已结束或不让投 · 投过且不许改 · 没选 / 选重 / 越界 / 不许多选却选了几项
+    NotAPoll,
+    VoteBlocked,
+    VoteNotRevotable,
+    VoteBadChoice,
 }
 
 /// 不能删 / 不能改（机读码仍是 `forbidden`，`why` 平铺进 `error.data`；`actions.md` `delete_prepare`、`edit_prepare`，#8）
@@ -451,6 +456,14 @@ impl CoreError {
                 }
                 InvalidSendWhy::CaptionTooLong => {
                     "说明文字太长：最多 1024 个 UTF-16 码元（多数汉字算 1 个，emoji 常算 2 个）；什么都没发"
+                }
+                InvalidSendWhy::NotAPoll => "这条消息不是投票；什么都没投",
+                InvalidSendWhy::VoteBlocked => {
+                    "这个投票已结束，或你不能投（详情里说了原因）；什么都没投"
+                }
+                InvalidSendWhy::VoteNotRevotable => "你已投过这个投票，它不许改票；什么都没投",
+                InvalidSendWhy::VoteBadChoice => {
+                    "选项不对：写全文里读的第几项（从 1 起），不能重复；这个投票不许多选时只能选一项；什么都没投"
                 }
             },
             Self::ActionRefused { why } => match why {

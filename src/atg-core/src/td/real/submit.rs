@@ -129,6 +129,14 @@ impl TdBackend {
                 }
                 Ok(Answer::Done)
             }
+            SealedKind::Vote { request } => {
+                let (chat, message, ids) = requests::vote(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "vote")]);
+                let none = |_: &()| vec![];
+                self.detached(functions::set_poll_answer(chat, message, ids, id), none)
+                    .await?;
+                Ok(Answer::Done)
+            }
         }
     }
 }
