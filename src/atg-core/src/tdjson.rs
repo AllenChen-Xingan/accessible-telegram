@@ -29,6 +29,7 @@ use serde_json::Value;
 
 pub mod file;
 mod interactive;
+pub(crate) use interactive::callback_data;
 mod react;
 use react::reactions;
 pub use react::{added_reactions, reaction_type};

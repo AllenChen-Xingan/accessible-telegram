@@ -69,6 +69,10 @@ pub enum InvalidSendWhy {
     VoteNotRevotable,
     VoteWouldReplace,
     VoteBadChoice,
+    /// 按按钮（#13 13b-2）：这条消息上没有第 N 个按钮（没有按钮、编号越界，或显示的是临时内容）
+    ButtonNotFound,
+    /// 这种按钮本应用不按（带密码的回调、游戏、付款、网页应用、内联切换、交手机号 / 位置……、按不了的、认不出的）
+    ButtonNotSupported,
 }
 
 impl InvalidSendWhy {
@@ -142,6 +146,12 @@ impl InvalidSendWhy {
             InvalidSendWhy::VoteNotRevotable => "你已投过这个投票，它不许改票；什么都没投",
             InvalidSendWhy::VoteWouldReplace => {
                 "你已投过这个投票，这次会把你现在投的换掉（不是加上）；什么都没投"
+            }
+            InvalidSendWhy::ButtonNotFound => {
+                "这条消息上没有这个按钮：写详情里读的第几个按钮（从 1 起）；什么都没按"
+            }
+            InvalidSendWhy::ButtonNotSupported => {
+                "这种按钮本应用不按（如要密码、付款、交出手机号或位置的），请在手机上按；什么都没按"
             }
             InvalidSendWhy::VoteBadChoice => {
                 "选项不对：写全文里读的第几项（从 1 起），不能重复；这个投票不许多选时只能选一项；什么都没投"

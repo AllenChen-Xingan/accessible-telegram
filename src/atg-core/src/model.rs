@@ -504,4 +504,7 @@ pub struct ChatTarget {
     pub is_forum: bool,
     /// 是自己的收藏夹（按用户 id 判，不认名字）
     pub saved: bool,
+    /// 这个会话此刻的键盘按钮在哪条消息上（`chat.reply_markup_message_id`，0 = 没有）：键盘是会话级的，旧消息上的那套
+    /// 可能早已换掉（`press` 按键盘按钮时说一句，#13 13b-2）
+    pub keyboard_message_id: i64,
 }

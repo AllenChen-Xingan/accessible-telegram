@@ -307,6 +307,7 @@ fn send_types_debug_never_leaks_content() {
         title: s("会话名"),
         is_forum: false,
         saved: false,
+        keyboard_message_id: 0,
     };
     assert_clean("ChatTarget", format!("{target:?} {target:#?}"));
     let draft = Draft {

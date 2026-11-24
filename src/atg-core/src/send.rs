@@ -46,6 +46,7 @@ use std::time::{Duration, Instant};
 pub mod file;
 pub mod forward;
 mod outcome;
+pub mod press;
 pub mod react;
 pub(crate) mod resending;
 mod text;
@@ -123,6 +124,19 @@ pub(crate) enum SealedKind<'a> {
     Edit { request: &'a Value },
     /// `setPollAnswer`（`chat_id` · `message_id` · `option_ids`）：投票（#13 13b-1）；应答只有 `ok`（[`Answer::Done`]）
     Vote { request: &'a Value },
+    /// 按回调按钮（#13 13b-2）：请求只有会话、消息、第几个按钮与按钮文字，**不带回调数据**——交出口在 td 层现取那条
+    /// 消息、核对文字、拿数据，再调 `getCallbackQueryAnswer`；数据不进计划、摘要、留痕。应答 [`Answer::Callback`]
+    Callback { request: &'a Value },
+}
+
+/// 机器人对回调按钮的回话（`callbackQueryAnswer`，`td_api.tl:8384`）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallbackReply {
+    pub text: String,
+    /// 机器人要求当弹窗显示（不只是一闪而过的提示）
+    pub alert: bool,
+    /// 机器人要打开的网址（空 = 没有）
+    pub url: String,
 }
 
 /// 交出口的应答
@@ -132,8 +146,10 @@ pub enum Answer {
     Message(Message),
     /// `resendMessages`：按请求顺序，不能重发的那条是 `None`
     Resent(Vec<Option<Message>>),
-    /// 应答只有 `ok` 的（表情回应）
+    /// 应答只有 `ok` 的（表情回应、投票）
     Done,
+    /// 按回调按钮：机器人的回话；`None` = 机器人没回话（TDLib 等不到机器人应答，按下已送到）
+    Callback(Option<CallbackReply>),
     /// `deleteMessages`：TDLib 回了 `ok`
     Deleted,
 }
