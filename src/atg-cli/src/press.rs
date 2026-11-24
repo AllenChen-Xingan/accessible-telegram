@@ -2,7 +2,7 @@
 //!
 //! `press CHAT_ID MSG_ID N [--again] [--dry-run]`：N 是 `history --detail` 详情里读的第几个按钮（从 1 起，跨行连续数）。
 //! - 回调按钮：一行 `plan` → 闸开凭据（直发、不确认；测试服务器只许收藏夹）→ 交出 → 一行 `result`（带机器人的回话）。
-//!   10 分钟内同一个按钮再按拦下（`duplicate_recent`），`--again` 放行。回话带网址的**自动打开**（人定 B 2026-11-24，
+//!   同一个按钮再按拦下（`duplicate_recent`；已按下的看 10 分钟、结果未知的看 24 小时），`--again` 放行。回话带网址的**自动打开**（人定 B 2026-11-24，
 //!   照官方客户端），只开 `http` / `https`，别的只读出；打开经 [`execute`] 的 `open` 出口，测试里换成只记录
 //! - 键盘文字按钮：转给 `send`（以你的名义发出按钮上的字），计划里说明按的是哪个按钮、键盘换没换过
 //! - 网址 / 登录网址 / 复制文字 / 用户：只读出，一行 `result`
@@ -197,14 +197,20 @@ fn run_press<B: Backend>(
 fn read_only(chat_id: i64, p: &PressParams, button: &Button, started: Instant) -> (Value, String) {
     let (kind, value, zh) = match &button.action {
         ButtonAction::Url { url } => ("url", json!(url), format!("网址 {url}")),
-        ButtonAction::LoginUrl { url } => {
-            ("login_url", json!(url), format!("以你的身份登录网站 {url}"))
-        }
+        ButtonAction::LoginUrl { url } => (
+            "login_url",
+            json!(url),
+            format!(
+                "按下会以你的身份登录网站 {url}；要在官方 Telegram 客户端里按（Telegram 先给地址签上授权），自己打开这个地址登不进去"
+            ),
+        ),
         ButtonAction::CopyText { text } => ("copy_text", json!(text), format!("复制文字：{text}")),
         ButtonAction::User { user_id } => (
             "user",
             json!(user_id),
-            format!("按下会打开这个用户的资料，用户 id {user_id}"),
+            format!(
+                "按下会打开这个用户的资料，用户 id {user_id}（本应用还不能按 id 打开资料，请在官方客户端里看）"
+            ),
         ),
         _ => ("other", Value::Null, String::new()),
     };
@@ -282,7 +288,7 @@ fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, 
     let mut said = if r.text.trim().is_empty() {
         "机器人没带文字（可能没回话，按下已送到）".to_owned()
     } else if r.alert {
-        format!("机器人回话（弹窗）：{}", r.text.trim())
+        format!("机器人回话（它要求弹窗提示）：{}", r.text.trim())
     } else {
         format!("机器人回话：{}", r.text.trim())
     };
