@@ -4,7 +4,8 @@
 //! 界面代码只经 [`aid`] 拿标识，不手拼字符串（`check-gui-strings.py` 将来扫）。种类和每种带几个数字
 //! 由 [`IdKind`] 定，[`crate::schema`] 把这张表原样导出，`scripts/check-a11y-tree.py`（待写，PR-3）将照它核快照里的标识；现在只有本文件的单测在管。
 //!
-//! 现在只有 M3.1 用到的种类；加一种就加一个变体，[`IdKind::ALL`] 与 `match` 不写 `_ =>`，漏一处编不过。
+//! 现在只有 M3.1 用到的种类；加一种就加一个变体：`match` 不写 `_ =>`，漏了分支编不过；[`IdKind::ALL`] 是手写数组，
+//! 漏写编得过，由 `a11y` 的单测（每个标识种类都有元素用、元素表每个 Element 恰好一行）兜着。
 
 use atg_core::tree::MsgId;
 
@@ -15,12 +16,12 @@ pub enum IdKind {
     Window,
     /// 地标：会话区
     RegionChats,
-    /// 地标：消息区
-    RegionMessages,
     /// 会话列表
     Chats,
     /// 会话项 `chat:<chat_id>`
     Chat,
+    /// 地标：消息区
+    RegionMessages,
     /// 消息列表 `messages:<chat_id>`：带会话 id，切会话时整列表换身份
     Messages,
     /// 消息项、系统消息项、撤回占位 `msg:<chat_id>:<message_id>`（撤回后原位留占位，标识不变）
@@ -75,9 +76,9 @@ impl IdKind {
 pub enum Aid {
     Window,
     RegionChats,
-    RegionMessages,
     Chats,
     Chat(i64),
+    RegionMessages,
     Messages(i64),
     /// 用**当前**的消息 id（发送成功换 id 时跟着换，与 `atg-cli` 输出对得上；`a11y-tree.md` 第二节末段）
     Msg(MsgId),

@@ -70,7 +70,7 @@ impl NameFrom {
         match self {
             NameFrom::WindowTitle(t) => format!("window_title:{}+alert+status", t.key()),
             NameFrom::Text(t) => format!("text:{}", t.key()),
-            NameFrom::TextWithAlert(t) => format!("text+alert:{}", t.key()),
+            NameFrom::TextWithAlert(t) => format!("text:{}+alert", t.key()),
             NameFrom::ChatBrief => "speech:chat_brief".into(),
             NameFrom::Brief => "speech:brief".into(),
         }
@@ -212,7 +212,8 @@ mod tests {
         Element::StatusBar,
     ];
 
-    // 新加 Element 变体时这里编不过，逼着把它加进 ELEMENTS
+    // ELEMENTS 是手写的：新加 Element 变体时编不过的是 spec() 的 match；忘了补进 ELEMENTS 由
+    // every_element_exactly_once 里的 TABLE.len() == ELEMENTS.len() 抓
     fn _exhaustive(e: Element) {
         match e {
             Element::Window

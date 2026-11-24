@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 pub const GUI_SCHEMA_V: u32 = 1;
 
 /// 内容哈希（`scripts/schema-stamp.py` 的算法：去掉本字段后按键排序、紧凑 JSON 的 sha256 前 16 位）
-pub const GUI_SCHEMA_HASH: &str = "8c023670543d95a4";
+pub const GUI_SCHEMA_HASH: &str = "8b46f8ccbb7d3fba";
 
 /// 生成自描述
 pub fn schema() -> Value {
@@ -38,7 +38,7 @@ pub fn schema() -> Value {
             "ids": "稳定标识（macOS 的 AXIdentifier）的种类。写法：kind，后面跟 arity 个十进制整数，每个前面加一个冒号，如 msg:-100123:4567；数字是什么见 specs/gui/a11y-tree.md 第二节",
             "roles": "树里会出现的角色（AccessKit 的角色名）",
             "elements": "每类元素：role 角色、id 用哪种标识、name 名称从哪来、role_description 角色描述取哪条文案（null 为不设）、operable 能不能获焦或被选中",
-            "elements.name": "text:<文案>：就是这条文案；text+alert:<文案>：文案加新消息提醒（提醒还没接上时只有文案）；speech:<读法>：由 atg-core 的这条读法现算；window_title:<文案>+alert+status：根节点不带名称，窗口名在 NSWindow 标题上（文案 + 新消息提醒 + 用户状态）",
+            "elements.name": "text:<文案>：就是这条文案；text:<文案>+alert：文案加新消息提醒（提醒还没接上时只有文案）；speech:<读法>：由 atg-core 的这条读法现算；window_title:<文案>+alert+status：根节点不带名称（附加段都写在冒号后、用 + 连），窗口名在 NSWindow 标题上（文案 + 新消息提醒 + 用户状态）",
             "texts": "固定文案表：key 与中文"
         },
         "ids": IdKind::ALL.iter().map(|k| json!({ "kind": k.prefix(), "arity": k.arity() })).collect::<Vec<_>>(),

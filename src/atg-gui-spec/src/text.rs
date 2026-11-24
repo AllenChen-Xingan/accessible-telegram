@@ -13,7 +13,7 @@ pub enum TextId {
     Chats,
     /// 消息区地标、消息列表的名称
     Messages,
-    /// 消息项的角色描述（VoiceOver 读「消息」不读「组」；卡 G15 人选 B，013 B20-3）
+    /// 消息项的角色描述（VoiceOver 读「消息」不读「组」；卡 G15 人选 B，`docs/plan/013_decisions-b19-gui.md` B20-3）
     MessageRole,
 }
 

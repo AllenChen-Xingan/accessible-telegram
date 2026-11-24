@@ -51,13 +51,11 @@
 
 **界面代码只调一个函数** `aid(种类, 数字…)` 拿标识，不手拼字符串（`check-gui-strings.py` 扫）。
 
-## 三、元素表 v0
-
-角色用 AccessKit 的名字（`accesskit::Role`）；macOS 那一列出自 `findings-gpui.md` 第 2.3 节（读源码）和 exp003（实测 List / ListItem）。「状态」列里 VoiceOver 拿得到的照写；macOS 层没有的（位置 / 总数）注明「只进 GPUI 层」，只给 agent 和快照用；`expanded`、快捷键这些 macOS 层没有（同上第 2.1 节），要用得等 `upstream-patches.md` 的补丁。
+## 三、元素表（机读契约 + 手写 v0）
 
 ### 机读契约（已移交：M3.1 的 8 类元素）
 
-正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述只在这段；下面「元素表 v0」里对应的行（窗口 → `window`，区块 → `region_chats` / `region_messages`，会话列表 → `chat_list`，会话项 → `chat_item`，消息列表 → `message_list`，消息项、系统消息项、撤回占位三行都 → `message_item`，状态栏 → `status_bar`）这两列只写「见上表」和 macOS 层的映射（还没进表），其余列照旧手写。「能操作」= 能获焦或能被选中，`check-a11y-tree.py`（待写）对这类元素查角色、名称、标识三样；标识种类后的数字是什么，见第二节。
+正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述只在这段；下面「元素表 v0」里对应的行（窗口 → `window`，区块 → `region_chats` / `region_messages`，会话列表 → `chat_list`，会话项 → `chat_item`，消息列表 → `message_list`，消息项、系统消息项、撤回占位三行都 → `message_item`，状态栏 → `status_bar`）「角色（macOS）」一列写「见上表」加 macOS 层的映射（还没进表），「名称来自」一列只写「见上表」（必要时括号注明读的是哪种 `Doc`），其余列照旧手写。「能操作」= 能获焦或能被选中，`check-a11y-tree.py`（待写）对这类元素查角色、名称、标识三样；标识种类后的数字是什么，见第二节。
 
 <!-- 由 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements` 生成，别手改：开始 -->
 
@@ -75,6 +73,8 @@
 <!-- 生成段结束 -->
 
 ### 元素表 v0（手写；没移交的行和列）
+
+角色用 AccessKit 的名字（`accesskit::Role`）；macOS 那一列出自 `findings-gpui.md` 第 2.3 节（读源码）和 exp003（实测 List / ListItem）。「状态」列里 VoiceOver 拿得到的照写；macOS 层没有的（位置 / 总数）注明「只进 GPUI 层」，只给 agent 和快照用；`expanded`、快捷键这些 macOS 层没有（同上第 2.1 节），要用得等 `upstream-patches.md` 的补丁。
 
 | 元素 | 角色（macOS） | 名称来自 | 提示语 | 状态 | 动作（agent 怎么按） | 出处 |
 |---|---|---|---|---|---|---|
@@ -95,7 +95,7 @@
 | 搜索结果 | `List` + `ListItem`（同 `NavList`，卡 G17 人选 A） | 列表名「搜索结果」+ 结果数（`speech`）；消息项 = `speech::brief`，会话项 = `speech::chat_brief` | — | 同 `NavList` | 回车打开；Esc 回搜索框 | M4.5 |
 | 链接列表 | `List` + `ListItem`（同 `NavList`） | 列表名文案「链接」；项 = 链接文字 + 地址（`message_links`；隐藏的链接读「隐藏内容」，`content-tree.md` 第八节） | — | 同 `NavList` | 回车 = 打开（过 `open_link` 的确认） | M3.5 |
 | 帮助页 | `List` + `ListItem` | 列表名文案「快捷键」；第一项是使用前提（关快速导航，B19-3），其余每项「<键的读法>：<说明>」 | — | 同 `NavList` | Esc 回去 | `keymap.md` 第六节 |
-| 状态栏 | 见上表 `status_bar`；AXGroup / AXApplicationStatus（VO 读法未实测） | 见上表 `status_bar` | — | — | — | T10 |
+| 状态栏 | 见上表 `status_bar`；AXGroup / AXApplicationStatus（VO 读法未实测） | 见上表 `status_bar`（读的是用户状态 `Doc::Status`） | — | — | — | T10 |
 | 播报节点 | `Status`，不可见，经 `parent_node().set_live()` 设 Live | 要播的那句（来自 `speech`）；**名称和值设同一句**（`announce.md` 第四节：AccessKit 0.27 改了触发字段） | — | Live：Polite / Assertive | — | exp001；`announce.md` |
 | 阅读视图 | ⏳ `Document` 或只读 `MultilineTextInput`。⚠️ 若选只读输入框，`keymap.md` 的 `list_focused` 谓词里的 `!TextInput` 要改成「可编辑的输入框」，否则阅读视图里的 `l`、Esc 失效 | `speech::full` | — | 焦点 | Esc 回原处 | M3.5 |
 | 确认框 | `AlertDialog`（AXWindow / AXDialog；业界附在窗口上的确认用 AXSheet，⏳ 选哪个） | 只有两种：打开链接（完整网址，域名单独读出）/ 附件（文件名、类型）（`actions.md` `open_link` / `open_file`）；打开即读正文（APG alertdialog）。发送、删除、重发不弹框，计划改由播报读（`announce.md` `send_plan`，#113） | — | 模态（经 `parent_node().set_modal()`） | 确认 / 取消两个 `Button` | M3.5、M3.7；`actions.md` 第一节第 2 小节「L1 外部」 |
@@ -118,10 +118,10 @@
 **GPUI 层**（`<场景>.gpui.txt`），每行：
 
 ```
-<角色> <标识> "<名称>" [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
+<角色> <标识> ["<名称>"] [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
 ```
 
-`roledesc` 只在应用自己设了角色描述时写（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）。两层都写这一项，位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
+名称为空的节点（根节点：窗口名在 NSWindow 标题上）不写名称一格。`roledesc` 两层都写，什么时候写见下面 macOS 层那段（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）；位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
 
 **macOS 层**（`<场景>.macos.txt`），每行：
 
@@ -139,7 +139,7 @@
 
 **两层共同**：
 
-- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`，借来的夹具写成 `speech/<名>`；靠这一格区分它和真窗口导出
+- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；场景目录建好之前它借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`。它存成 insta 快照（`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
 - 去掉几何位置、时间戳、GPUI 内部节点号（每次都变）；节点用标识定位
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）只写角色，`check-a11y-tree.py` 只对能操作的角色查标识

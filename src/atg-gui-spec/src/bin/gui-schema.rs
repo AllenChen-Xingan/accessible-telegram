@@ -1,7 +1,7 @@
 //! 打印界面自描述（JSON）。正本与更新步骤见 `atg_gui_spec::schema`。
 //! `--md-elements`：改打印契约表的 Markdown 段（贴进 `specs/gui/a11y-tree.md` 第三节，替换起止标记之间的那段）
 
-// 与 atg-core 同一行（拍板 005 补丁 ③，`scripts/check-no-debug.sh` 检查每个 crate 根都带着）
+// 与 atg-core 同一行（拍板 005 补丁 ③ `docs/plan/005_decisions-b3.md`，`scripts/check-no-debug.sh` 检查每个 crate 根都带着）
 #![cfg_attr(
     not(test),
     deny(

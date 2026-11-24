@@ -4,7 +4,7 @@
 //! 这一层是「视图模型 → 每个元素该设的角色、名称、标识、状态」（`docs/plan/012_gui-ssot.md` 第四节），CI 里快照测它；
 //! GPUI 那边只把 [`A11yNode`] 抄进 `.role()` / `.aria_*()` / `.accessibility_id()`，不自己再算一遍。
 //!
-//! - 名称一律来自 `atg_core::speech`（带数据的）或文案表（不带数据的），这里不拼句子（守则 3）
+//! - 名称一律来自 `atg_core::speech`（带数据的）或文案表（不带数据的），这里不拼句子（`specs/architecture-rules.md` 第 3 条）
 //! - 位置照设 `pos=`，名称里不放位置（`a11y-tree.md` 第一节第 4 条）
 //! - 两步投影别混：第一步在 core，`atg_core::project`（`chat_list` / `window`）把 `Store` 投成内容树 `Doc`；
 //!   第二步在这里，`Doc` + 界面状态投成无障碍树。这里不碰 `Store`，不缓存任何东西
@@ -86,7 +86,7 @@ impl A11yNode {
 fn text_name(e: Element) -> Option<String> {
     match spec(e).name {
         NameFrom::Text(t) => Some(t.zh().to_owned()),
-        // 提醒那段要 `speech` 给拼接口（M4.3）；接上之前只给文案，不在界面里拼句子（守则 3）
+        // 提醒那段要 `speech` 给拼接口（M4.3）；接上之前只给文案，不在界面里拼句子（`specs/architecture-rules.md` 第 3 条）
         NameFrom::TextWithAlert(t) => Some(t.zh().to_owned()),
         // 根节点不带名称（窗口名在 NSWindow 标题上）；读法来源的由调用处现算
         NameFrom::WindowTitle(_) | NameFrom::ChatBrief | NameFrom::Brief => None,
