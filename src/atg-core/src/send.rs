@@ -49,6 +49,7 @@ mod outcome;
 pub mod react;
 pub(crate) mod resending;
 mod text;
+pub mod vote;
 
 pub use outcome::{Waited, finish, wait};
 pub use react::react_plan_json;
@@ -57,6 +58,7 @@ pub use resending::{
     resend_and_wait, resend_plan_json,
 };
 pub use text::{Draft, TextPlan, check_kept, plan_json, prepare_text, send_and_wait, send_text};
+pub use vote::vote_plan_json;
 // `td.rs` 的测试（tdlib-api 特性）与本模块测试用
 #[cfg(test)]
 pub(crate) use text::text_request;
@@ -119,6 +121,8 @@ pub(crate) enum SealedKind<'a> {
     Forward { request: &'a Value },
     /// `editMessageText`（`chat_id` · `message_id` · `input_message_content`）：改自己发的一条（#8 B）
     Edit { request: &'a Value },
+    /// `setPollAnswer`（`chat_id` · `message_id` · `option_ids`）：投票（#13 13b-1）；应答只有 `ok`（[`Answer::Done`]）
+    Vote { request: &'a Value },
 }
 
 /// 交出口的应答

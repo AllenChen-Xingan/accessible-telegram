@@ -79,6 +79,19 @@ impl FakeBackend {
                 self.apply_reaction(request)?;
                 Ok(Answer::Done)
             }
+            SealedKind::Vote { request } => {
+                let chat = request["chat_id"].as_i64().unwrap_or(0);
+                lock(&self.calls).push(Call::Submit {
+                    chat,
+                    preview: false,
+                    resend: false,
+                });
+                if let Some(e) = self.scripted_reject() {
+                    return Err(e);
+                }
+                lock(&self.submitted).push(request.clone());
+                Ok(Answer::Done)
+            }
         }
     }
 
