@@ -25,7 +25,9 @@
   - 修正 3a89c68（大总管提交），名额内实测全过（带逗号的 dev-link 会让 tdlib 构建失败；改回去后 od 核过）
 - codex 072 第 2 轮：P0/P1 零，停止线满足；P2×1 属实：末尾带 `/` 的路径能过校验，但 `ln` 和 check-harden 的拼法对不上。已当场改：三处都要求每一段非空、不是 `.`（前后补 `/` 再查有没有 `//`、`/./`）。18 种样例在两种 locale 下三处一致
   - 修正 6fda775（大总管提交），名额内实测全过
-- codex 072 第 3 轮：P0/P1 零；P2×1 属实：dev-link 要是不是 UTF-8，`include_str!` 会连默认构建一起弄挂。已改成 `include_bytes!`，开了 tdlib 特性之后才解码、校验。还没编译
+- codex 072 第 3 轮：P0/P1 零；P2×1 属实：dev-link 要是不是 UTF-8，`include_str!` 会连默认构建一起弄挂。已改成 `include_bytes!`，开了 tdlib 特性之后才解码、校验。修正 6a7dd20，名额内实测全过（UTF-16 的 dev-link：默认构建能编过，tdlib 构建会失败）
+- ✅ codex 072 第 4 轮：P0/P1 零，四轮都没有 P0/P1，收敛。剩下 1 条 P2（两份 shell 读文件时丢掉 NUL，没有 BOM 的 UTF-16 能骗过 shell）按大总管定开成 #186
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/170-pr-arch.md`
 
 ## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
 
