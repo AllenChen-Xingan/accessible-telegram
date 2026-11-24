@@ -28,7 +28,13 @@
   - P3：login-main.sh 和 login.exp 不再依赖 DYLD；check-harden 加上可执行位、写明前置条件；config-privacy 写明旧版怎么处理；两处日期改成 2026-11-24（人定 11-17）；改了一个多余条件；README 加了术语表指针
   - 不改，报给大总管开 issue（P2）：两个 build.rs 内容一样，rpath 路径又在 4 处各写一遍，没有一处是正本
 - 改后已核：build.sh path 和 link 正常，check-harden 全过，file-size 超线 0。没改 Rust，cargo 没重跑
-- 下一步：大总管提交这批修改后，交 codex 063（contract 类，effort high）
+- 自审修改已提交为 0dd890e；#170（build.rs 重复）已开
+- ✅ codex 063（`origin/main...HEAD`，diff 类、effort high，契约攻击面写进 focus，大总管认可）：
+  - 第 1 轮：P1×1、P2×3，修正 2dc9ba3
+  - 第 2 轮：P2×2，修正 cc136f8
+  - 第 3 轮：零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/42-pr-arch.md`。写明了合并后 MAIN 要重编 TDLib，以及 `me` 是 not_implemented
+- 下一步：大总管提交收敛记录、开 PR。之后做 R7 / R3a 余下的刀（`plan-next-arch.md`），先报大总管
 
 ## b20 接手（2026-11-16）
 

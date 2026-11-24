@@ -9,6 +9,7 @@
 >
 > 类型说明：codex-review 的 `contract` 模板只收文件、不收提交范围，而评审只审已提交的范围（共同规矩 17），所以用 `diff` 类 + effort high，把契约模板的攻击面清单写进 `--focus-file`（本次重点：注入 / 换库是否真挡住、软链接被换、检查器会不会把失败判成通过、身份名与团队号不外泄、CI 不受影响、文档与脚本一致）。
 > 依据文件：`specs/contracts/config-privacy.md`、`docs/experiments/exp005-keychain-acl/README.md`。隐私扫描：干净。
+> **状态：第 3 轮（2026-11-24）· 总评「通过」· 第 2、3 轮连续无 P0/P1 → 满足停止线，收敛。留作 issue 的 P2：无（另有自审开的 #170）。**
 > 之前：
 > - **多视角自审 1 轮**（83f3487）：P1×1（团队号写进 build-info 并打印，已改），P2×11（改 10 条，build.rs 重复与 rpath 路径写 4 处开 #170），P3×9（全改），修正 0dd890e
 > - **实测**（开发机，2026-11-24，领名额跑）：TDLib 重编；fmt、两种 clippy、`cargo test --workspace`（713 过、0 败、5 忽略，经 runner 签成强化运行时版）、check-no-debug、check-sources；`check-harden.sh` 全过；测试服务器 `live_wait_phone` 直接跑到 `wait_phone`；正式档案只读 `chats -n 5` 退出码 0、不弹框（人同意，经大总管）；`me` 报 `not_implemented`（命令本身没做）
@@ -45,3 +46,17 @@
 ### 是否再审
 
 本轮无 P0/P1，是连续第 1 轮；改完再审一轮，确认是否连续第 2 轮。
+
+## 第 3 轮（2026-11-24）· 总评「通过」
+
+原文：MAIN 下 `_tmp/20261124-b21/r42-codex/r42-codex-3.md`（不入库）。HEAD = cc136f8。`result: P0×0 P1×0 P2×0 P3×0`。
+本轮 P0/P1：0 · 停止线：满足（第 2、3 轮连续无 P0/P1）· 留作 issue 的 P2：无
+
+- 上一轮复核：#1 两处源码生成都接了 `|| prep`；#2 README 的用法和脚本一致。前几轮的修复都还在；新加的 rpath 条数检查，多出一条就判不符
+- 无发现
+- 抽查属实 7 条：两处 heredoc 失败退 2、README 用法、`ATG_DEV_HARDEN` 只认精确的 `0`（bash 3.2 下实验过）、先确认 otool 成功再签名后算哈希且 build-info 不记身份、非软链接不覆盖、`build.rs` 的条件、签名信息读不出时退 2 加上 rpath 恰好一条
+- 无法核实 1 条：codex 读不到最终产物，也没复现注入和换库。这一块由作者实测和 `check-harden.sh` 支撑（见文件头「实测」和第 2 轮）
+
+### 是否再审
+
+不再审：连续两轮无 P0/P1，收敛。
