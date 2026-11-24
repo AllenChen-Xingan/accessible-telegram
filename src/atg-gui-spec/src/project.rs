@@ -65,6 +65,8 @@ pub enum NodeState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct A11yNode {
+    /// 是契约表里的哪类元素（角色、能不能操作都按它那一行）
+    pub element: Element,
     pub role: Role,
     pub aid: Option<String>,
     pub name: Option<String>,
@@ -107,6 +109,7 @@ impl A11yNode {
     fn of(e: Element, a: Aid, data: Data, cx: &SpeechCtx) -> Self {
         let s = spec(e);
         A11yNode {
+            element: e,
             role: s.role,
             aid: (a.kind() == s.id).then(|| aid(a)),
             name: name_of(e, data, cx),
@@ -150,7 +153,9 @@ fn chat_item(d: &Doc) -> Option<&ChatItem> {
 }
 
 /// 一个列表：容器 + 项；选中的那项带 `selected`，容器带 `active=`；区里有焦点时容器带 `focused`。
-/// 比对锚点、写 `active=` 都用项自己的 `aid`（标识只有这一处来源）：项没出标识时它不会被选中，容器也不会指向它
+/// 比对锚点、写 `active=` 都用项自己的 `aid`（标识只有这一处来源）：项没出标识时它不会被选中，容器也不会指向它。
+/// 能不能获焦、能不能被选中，看契约表的 `operable` 一列：容器不可操作就不带 `focused` / `active=`，项不可操作就不带
+/// `selected`、也不会被容器指向（表是正本，这里不另做判断）
 fn list(
     mut container: A11yNode,
     items: Vec<A11yNode>,
@@ -159,16 +164,19 @@ fn list(
 ) -> A11yNode {
     let n = items.len();
     let anchor = anchor.map(aid);
-    if focused {
+    let container_operable = spec(container.element).operable;
+    if focused && container_operable {
         container.states.push(NodeState::Focused);
     }
-    if let Some(a) = &anchor
-        && items.iter().any(|it| it.aid.as_ref() == Some(a))
+    let target = |it: &A11yNode| anchor.is_some() && it.aid == anchor && spec(it.element).operable;
+    if container_operable
+        && let Some(a) = &anchor
+        && items.iter().any(target)
     {
         container.states.push(NodeState::Active(a.clone()));
     }
     for (i, mut item) in items.into_iter().enumerate() {
-        if anchor.is_some() && item.aid == anchor {
+        if target(&item) {
             item.states.push(NodeState::Selected);
         }
         item.states.push(NodeState::Pos(i + 1, n));
@@ -315,7 +323,106 @@ pub fn escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape;
+    use super::*;
+    use atg_core::tree::{Doc, Status, UserStatus};
+
+    fn cx() -> SpeechCtx {
+        SpeechCtx {
+            utc_offset: 0,
+            offset_at: None,
+            listen_key: None,
+            expand_key: None,
+            reveal: false,
+        }
+    }
+
+    #[test]
+    fn wrong_id_kind_gives_no_id() {
+        // 标识种类和契约表那一行不符（会话项给了消息标识）→ 不出标识
+        let m = MsgId {
+            chat_id: 1,
+            message_id: 2,
+        };
+        assert_eq!(
+            A11yNode::of(Element::ChatItem, Aid::Msg(m), Data::None, &cx()).aid,
+            None
+        );
+        assert_eq!(
+            A11yNode::of(Element::StatusBar, Aid::Chats, Data::None, &cx()).aid,
+            None
+        );
+        assert!(
+            A11yNode::of(Element::ChatItem, Aid::Chat(1), Data::None, &cx())
+                .aid
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn wrong_data_for_speech_source_gives_no_name() {
+        // 表说读 chat_brief / brief，给的数据对不上 → 没有名称；文案来源不看数据
+        let doc = Doc::Status(Status {
+            status: UserStatus::Online,
+        });
+        assert_eq!(
+            A11yNode::of(Element::ChatItem, Aid::Chat(1), Data::Doc(&doc), &cx()).name,
+            None
+        );
+        assert_eq!(
+            A11yNode::of(Element::StatusBar, Aid::Status, Data::None, &cx()).name,
+            None
+        );
+        assert!(
+            A11yNode::of(Element::StatusBar, Aid::Status, Data::Doc(&doc), &cx())
+                .name
+                .is_some()
+        );
+        assert_eq!(
+            A11yNode::of(Element::ChatList, Aid::Chats, Data::Doc(&doc), &cx())
+                .name
+                .as_deref(),
+            Some(crate::text::TextId::Chats.zh())
+        );
+    }
+
+    fn items(ids: &[i64]) -> Vec<A11yNode> {
+        ids.iter()
+            .map(|&i| A11yNode::of(Element::ChatItem, Aid::Chat(i), Data::None, &cx()))
+            .collect()
+    }
+
+    #[test]
+    fn anchor_not_in_list_selects_nothing() {
+        // 锚点那一项不在这次的列表里（滚出窗口、被删）→ 不设 active=、不选中，不悬空
+        let c = A11yNode::of(Element::ChatList, Aid::Chats, Data::None, &cx());
+        let l = list(c, items(&[1, 2]), Some(Aid::Chat(9)), true);
+        assert!(l.states.contains(&NodeState::Focused));
+        assert!(!l.states.iter().any(|s| matches!(s, NodeState::Active(_))));
+        assert!(
+            l.children
+                .iter()
+                .all(|it| !it.states.contains(&NodeState::Selected))
+        );
+    }
+
+    #[test]
+    fn item_without_id_is_never_selected() {
+        // 项没出标识（种类不符）→ 不被选中，容器也不指向它
+        let c = A11yNode::of(Element::ChatList, Aid::Chats, Data::None, &cx());
+        let mut its = items(&[1]);
+        its[0].aid = None;
+        let l = list(c, its, Some(Aid::Chat(1)), true);
+        assert!(!l.states.iter().any(|s| matches!(s, NodeState::Active(_))));
+        assert!(!l.children[0].states.contains(&NodeState::Selected));
+    }
+
+    #[test]
+    fn non_operable_container_gets_no_focus_or_active() {
+        // 契约表说不可操作的元素（这里拿状态栏当容器）不带 focused / active=
+        let c = A11yNode::of(Element::StatusBar, Aid::Status, Data::None, &cx());
+        let l = list(c, items(&[1]), Some(Aid::Chat(1)), true);
+        assert!(l.states.is_empty(), "{:?}", l.states);
+    }
 
     #[test]
     fn escape_keeps_one_line() {

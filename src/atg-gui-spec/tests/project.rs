@@ -92,6 +92,18 @@ fn check_rules(root: &A11yNode) {
             .unwrap_or_else(|| panic!("{:?} 没有标识（或标识种类与契约表不符）", n.role));
         assert!(aid::is_valid(a), "标识不合规：{a}");
         assert!(seen.insert(a.clone()), "标识重复：{a}");
+        // 获焦、被选中、指向某项这三样只许出现在契约表里「能操作」的元素上（表的 operable 一列管行为）
+        let acts = n.states.iter().any(|s| {
+            matches!(
+                s,
+                NodeState::Focused | NodeState::Selected | NodeState::Active(_)
+            )
+        });
+        assert!(
+            !acts || atg_gui_spec::a11y::spec(n.element).operable,
+            "{:?} 不可操作却带了焦点 / 选中",
+            n.element
+        );
         if operable.contains(&n.role) {
             assert!(
                 n.name.as_deref().is_some_and(|s| !s.is_empty()),
@@ -215,16 +227,46 @@ fn chat_without_anchor_selects_nothing() {
 
 #[test]
 fn order_is_reading_order_and_positions_count_up() {
+    // 树的顺序 = 读的顺序（a11y-tree.md 第一节第 3 条）：输入里混着不是消息的 Doc（连接状态、不认识的更新），
+    // 投出来的消息项标识序列要和输入里消息的身份序列逐项一致，pos 从 1 数到总数
     let w = world("basic");
-    let msgs = messages_of(&w, -1001);
+    let mixed: Vec<Doc> = w
+        .docs()
+        .into_iter()
+        .filter(|d| match d {
+            Doc::Message(m) => m.id.chat_id == -1001,
+            Doc::Service(s) => s.id.chat_id == -1001,
+            Doc::Tombstone(t) => t.id.chat_id == -1001,
+            // 不是消息的留着，验证它们被滤掉、不打乱顺序也不算进总数
+            Doc::ChatItem(_)
+            | Doc::Alert(_)
+            | Doc::Status(_)
+            | Doc::Playback(_)
+            | Doc::Reactor(_)
+            | Doc::Transcription(_)
+            | Doc::Unknown(_) => true,
+        })
+        .collect();
+    let want: Vec<String> = messages_of(&w, -1001)
+        .iter()
+        .map(|d| match d {
+            Doc::Message(m) => m.id,
+            Doc::Service(s) => s.id,
+            Doc::Tombstone(t) => t.id,
+            _ => unreachable!("messages_of 只留列表项"),
+        })
+        .map(|id| aid::aid(aid::Aid::Msg(id)))
+        .collect();
+    assert!(mixed.len() > want.len(), "夹具里应混有不是消息的 Doc");
     let ui = UiState {
         region: Region::ChatList,
         chats_anchor: Some(-1001),
         msgs_anchor: HashMap::new(),
     };
-    let tree = dump(&w, Some((-1001, &msgs)), &ui);
+    let tree = dump(&w, Some((-1001, &mixed)), &ui);
     let items = &tree.children[1].children[0].children;
-    assert_eq!(items.len(), msgs.len());
+    let got: Vec<String> = items.iter().filter_map(|it| it.aid.clone()).collect();
+    assert_eq!(got, want);
     for (i, it) in items.iter().enumerate() {
         assert!(it.states.contains(&NodeState::Pos(i + 1, items.len())));
     }
