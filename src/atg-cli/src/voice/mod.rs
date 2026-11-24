@@ -41,7 +41,7 @@ pub struct VoiceFile {
 /// 命令行的「会话 + 消息 id」→ 查询（`download`、`play` 共用这一份）
 pub fn query(m: &crate::args::MsgRef) -> Result<VoiceQuery, Fail> {
     Ok(VoiceQuery {
-        chat: ChatRef::parse(&m.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?,
+        chat: history::chat_arg(&m.chat)?,
         message_id: m.message,
     })
 }
@@ -88,7 +88,7 @@ pub fn chat<B: Backend>(
     q: &VoiceQuery,
 ) -> Result<MsgId, Fail> {
     chats::ensure_ready(b)?;
-    let chat_id = history::resolve(b, stream, feed, q.chat)?;
+    let chat_id = history::resolve_chat(b, q.chat)?;
     history::load_chat(b, stream, feed, chat_id)?;
     Ok(MsgId {
         chat_id,
