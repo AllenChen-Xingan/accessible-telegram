@@ -26,7 +26,7 @@ use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -82,9 +82,7 @@ pub struct Shared {
     send_limits: std::sync::OnceLock<Arc<crate::send_limits::SendLimits>>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
+use crate::lock;
 
 impl Shared {
     /// 新建共享状态与它唯一的事件流（`subscribe()` 交出去，一个后端只许一个订阅者）
@@ -468,11 +466,7 @@ fn stamp(e: CoreEvent) -> CoreEvent {
     }
 }
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-}
+use crate::tree::time::now_ms;
 
 // ───────────────────────── 事件流 ─────────────────────────
 

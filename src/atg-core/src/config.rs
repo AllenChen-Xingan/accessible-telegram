@@ -325,7 +325,11 @@ impl Profile {
 
     /// 放上「运行中」标记；正常关闭时 [`Profile::mark_clean`] 拿掉。超时或故障时留着，下次启动提示
     pub fn mark_running(&self) -> Result<(), CoreError> {
-        write_private(&self.dir.join(RUNNING), "")
+        // 原子写（#60 R8 起；原来是就地写）。标记只看在不在、内容为空，两种写法读出来一样；
+        // 中途崩了最多在档案目录里留一个 `running.tmp<进程号>`，不影响 #61 的「新档案」判断（那只在缺档案标记时才看）
+        write_atomic(&self.dir.join(RUNNING), b"").map_err(|_| CoreError::Internal {
+            what: "profile_dir_io",
+        })
     }
 
     pub fn mark_clean(&self) {
@@ -446,17 +450,20 @@ fn write_marker(dir: &Path, kind: ServerKind) -> Result<(), CoreError> {
     }
 }
 
-fn write_private(path: &Path, content: &str) -> Result<(), CoreError> {
-    OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)
-        .and_then(|mut f| f.write_all(content.as_bytes()))
-        .map_err(|_| CoreError::Internal {
-            what: "profile_dir_io",
-        })
+/// 写私有文件，全 crate 共用这一份（#60 R8，010 S17；原在 `gate`）：先写同目录的临时文件（0600）再改名：中途崩了也不会留下半个文件
+pub fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(body)?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

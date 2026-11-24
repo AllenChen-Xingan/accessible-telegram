@@ -27,7 +27,7 @@ use serde_json::json;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tdlib_rs::{enums, functions, types};
@@ -45,9 +45,7 @@ mod upload;
 /// 一个进程只许一个真实后端（tdlib-rs 的收取与应答分发都是全局的）
 static INSTANCE: AtomicBool = AtomicBool::new(false);
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
+use crate::lock;
 
 /// 真实后端的配置
 pub struct TdConfig {

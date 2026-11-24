@@ -1,5 +1,15 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · R8 小零件归一（2026-11-24，工作副本 `atg-wt/arch-r8`，分支 `refactor/r8-dedupe`，从 main c48ff54 起；codex 066）
+
+- #42 那一段记在 `atg-wt/arch-42` 的现状页里（PR #173），合进 main 后两边合成一份
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r8-arch.md`。`gate::unix_now` 名字留着，只改函数体（大总管定）
+- 已改（未编译，待领名额）：
+  - `lock<T>` 原来 5 份，收成 `lib.rs` 里一份 `pub(crate)`；fake、gate、link、td/lifecycle、td/real 各换成一行 `use`，子模块不改。msg2 在改的 `td/real/submit.rs`、`td/requests.rs` 没碰
+  - 「现在」和时区收进 `tree::time`（`pub mod time`）：新增 `now_s`、`now_ms`，`local_offset_at` 从 cli 的 `speech` 挪过来，那条测试也跟着挪；`gate::unix_now`、`link`、cli 的 `out::now_rfc3339_ms` 改调它；cli 的 `watch::now_ms` 改成一行 `pub use`，调用方（serve、session、topics）不改，比计划少碰 3 个文件
+  - `write_atomic` 从 `gate` 挪到 `config`；非原子的 `write_private` 删掉，`mark_running` 改用原子写。这是一处行为变化，PR 里要单列一句，说明它为什么无害，以及和 #61 的关系
+  - 010：补了 3 个 ✅，S10、S13、S17、R8 也标上；b20 的旧计划已收档
+
 ## b20 接手（2026-11-16）
 
 - **手上**：#108（本分支 `chore/108-testkit-gate`，未提交：check-sources.py · test_sources.py · architecture-rules.md 第 10 条 · 未跟踪 docs/reviews/046）。自测 83 条全过；对真仓库 testkit 一条红（「[features] 里没有 testkit」），是故意的锚定，等 #110 合并后转绿。codex 046：第 1 轮 P1×1 已修，第 2 轮全零；第 3 轮提示词已写，没跑

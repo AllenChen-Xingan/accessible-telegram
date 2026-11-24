@@ -12,6 +12,7 @@ use crate::args::{Format, SpeechArgs, SpeechLevel};
 use crate::out::{self, Code, emit, envelope, fail, text_line};
 use atg_core::speech::{SpeechCtx, brief};
 use atg_core::tdjson::World;
+use atg_core::tree::time::{local_offset_at, now_s};
 use serde_json::json;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -20,7 +21,7 @@ pub fn run(a: &SpeechArgs, tz: Option<&str>, format: Format, started: Instant) -
     // 不给 --tz：跟系统时区，每个钟点按它自己的时间点取偏移（夏令时前后不一样）；给了：一律用它
     let (utc_offset, offset_at) = match tz {
         None => (
-            local_offset_at(now()),
+            local_offset_at(now_s()),
             Some(local_offset_at as fn(i64) -> i32),
         ),
         Some(s) => match parse_tz(s) {
@@ -120,26 +121,6 @@ pub(crate) fn parse_tz(s: &str) -> Option<i32> {
     Some(sign * (h * 3600 + m * 60))
 }
 
-pub(crate) fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
-}
-
-/// 系统时区在某个时间点（Unix 秒）的偏移（秒）；取不到按 0
-pub(crate) fn local_offset_at(t: i64) -> i32 {
-    // macOS 上 `time_t` 就是 i64
-    let t: libc::time_t = t;
-    // SAFETY: `localtime_r` 只读 `t`、只写我们给的 `tm`，返回空指针时不读它
-    unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&t, &mut tm).is_null() {
-            return 0;
-        }
-        i32::try_from(tm.tm_gmtoff).unwrap_or(0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,15 +138,6 @@ mod tests {
             "", "8", "+", "+15", "+14:30", "+08:60", "+a", "+08:0x", "+123", "++8",
         ] {
             assert_eq!(parse_tz(bad), None, "{bad}");
-        }
-    }
-
-    #[test]
-    fn local_offset_is_sane() {
-        assert!(local_offset_at(now()).abs() <= 14 * 3600);
-        // 冬夏各取一个时间点都能算（有夏令时的时区两者不同，这里只要求不出错、在范围内）
-        for t in [1_767_225_600, 1_782_864_000] {
-            assert!(local_offset_at(t).abs() <= 14 * 3600);
         }
     }
 }

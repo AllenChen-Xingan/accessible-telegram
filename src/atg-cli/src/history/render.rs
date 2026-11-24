@@ -7,8 +7,8 @@ use super::*;
 pub fn speech_ctx(tz: Option<&str>, reveal: bool) -> Result<SpeechCtx, Fail> {
     let (utc_offset, offset_at) = match tz {
         None => (
-            crate::speech::local_offset_at(crate::speech::now()),
-            Some(crate::speech::local_offset_at as fn(i64) -> i32),
+            atg_core::tree::time::local_offset_at(atg_core::tree::time::now_s()),
+            Some(atg_core::tree::time::local_offset_at as fn(i64) -> i32),
         ),
         Some(s) => match crate::speech::parse_tz(s) {
             Some(o) => (o, None),

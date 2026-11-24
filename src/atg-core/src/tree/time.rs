@@ -1,4 +1,5 @@
 //! Unix 秒 ↔ RFC3339 UTC，以及读法要的「本地钟点」。不引日期库：算法照 Howard Hinnant 的 civil_from_days。
+//! 「现在」与系统时区也在这里，全工作区共用这一份（#60 R8，010 S10；GUI 同样要用）。
 
 use super::Time;
 use serde::{Serialize, Serializer};
@@ -52,9 +53,46 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// 现在（Unix 秒）。时钟早于 1970 年按 0
+pub fn now_s() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
+/// 现在（Unix 毫秒）。时钟早于 1970 年按 0
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// 系统时区在某个时间点（Unix 秒）的偏移（秒）；取不到按 0
+pub fn local_offset_at(t: i64) -> i32 {
+    // macOS 上 `time_t` 就是 i64
+    let t: libc::time_t = t;
+    // SAFETY: `localtime_r` 只读 `t`、只写我们给的 `tm`，返回空指针时不读它
+    unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&t, &mut tm).is_null() {
+            return 0;
+        }
+        i32::try_from(tm.tm_gmtoff).unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_offset_is_sane() {
+        assert!(local_offset_at(now_s()).abs() <= 14 * 3600);
+        // 冬夏各取一个时间点都能算（有夏令时的时区两者不同，这里只要求不出错、在范围内）
+        for t in [1_767_225_600, 1_782_864_000] {
+            assert!(local_offset_at(t).abs() <= 14 * 3600);
+        }
+    }
 
     #[test]
     fn rfc3339_known_points() {

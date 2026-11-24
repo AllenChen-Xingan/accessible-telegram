@@ -43,7 +43,7 @@ use crate::tree::{FileRef, ReactionKind};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -146,9 +146,7 @@ pub struct FakeBackend {
     submitted: Mutex<Vec<Value>>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
+use crate::lock;
 
 impl FakeBackend {
     /// 新建并立刻起收线程（测试可以在 `start` 之前就喂更新）

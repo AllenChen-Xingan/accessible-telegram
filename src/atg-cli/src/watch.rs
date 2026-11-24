@@ -37,7 +37,7 @@ use atg_core::tree::Doc;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 /// 直跑时多久看一次退出标志、喂一次事件流
 pub const POLL: Duration = Duration::from_millis(50);
@@ -60,12 +60,8 @@ pub const NEW_PREFIX_ZH: &str = "新消息，";
 /// 「正在输入」的读法（F6：播一次「对方正在输入」；不带名字）
 pub const TYPING_ZH: &str = "对方正在输入";
 
-/// 现在（Unix 毫秒）
-pub fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-}
+/// 现在（Unix 毫秒）：core 那一份（#60 R8），在这里转出，调用方写法不变
+pub use atg_core::tree::time::now_ms;
 
 /// 解析好的参数
 #[derive(Debug, Clone, Copy)]
