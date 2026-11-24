@@ -10,6 +10,7 @@
 //! - [`Content`]（正文 + 附件）只取决于消息本身，收到消息时建一次，存进 model；`updateMessageContent` 整块替换
 //! - [`Doc`] 是渲染时从 model + store 现投影出来的（名字、已读状态都可能晚到），不存
 
+mod interactive;
 pub mod mask;
 mod media;
 mod reaction;
@@ -17,6 +18,9 @@ pub mod text;
 mod time;
 mod top;
 
+pub use interactive::{
+    Button, ButtonAction, Keyboard, KeyboardKind, PollKind, PollOption, VoteBlock,
+};
 pub use media::{
     Expirable, FileRef, Outcome, PlayState, Playback, Transcript, TranscriptSegment,
     TranscriptSource, Transcription,
@@ -88,6 +92,9 @@ pub struct Message {
     /// 语音的转写（store 的转写表，投影时填；存下来的消息没有）。没有不输出（新增可选字段，`v` 不加一）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript: Option<Transcript>,
+    /// 消息上的按钮（#13，只读；`reply_markup`）。没有不输出（新增可选字段，`v` 不加一）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buttons: Option<Keyboard>,
 }
 
 #[derive(Clone, PartialEq, Serialize)]
@@ -273,8 +280,29 @@ pub enum Attachment {
     Contact {
         name: String,
     },
+    /// 投票（#13 读全）：选项（已按显示顺序排）、票数、我选了哪个，以及能不能看结果 / 匿名 / 多选 / 能否改票 / 测验 /
+    /// 已结束 / 为什么不能投。投票的说明文字（`messagePoll.description`）放在消息正文 `body` 里，同媒体的说明文字
     Poll {
         question: Vec<Span>,
+        options: Vec<PollOption>,
+        /// 总投票人数
+        total: u32,
+        /// 我能看到各项票数（`can_see_results`）。看不到时各项都是 0：可能是我还没投，也可能是发起时设了「结束后才公布」
+        /// （`hide_results_until_closes`，`td_api.tl:6788`），投了也看不到
+        results_visible: bool,
+        anonymous: bool,
+        multiple: bool,
+        /// 投了还能改（`allows_revoting`）
+        revotable: bool,
+        /// 投票类型（开放集合）：普通 / 测验（有正确答案；投了能不能改同普通投票，看 `revotable`）/ 认不出的
+        kind: PollKind,
+        closed: bool,
+        /// 我为什么不能投；`None` = 能投
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blocked: Option<VoteBlock>,
+        /// 测验的解析（`pollTypeQuiz.explanation`；还没作答时为空）
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        explanation: Vec<Span>,
     },
     Call {
         video: bool,

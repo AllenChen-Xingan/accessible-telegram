@@ -92,6 +92,7 @@ pub fn message(m: &Value) -> Message {
         },
         mentions_me: b(m, "contains_unread_mention"),
         self_destruct: !m["self_destruct_type"].is_null(),
+        buttons: super::interactive::keyboard(m),
     };
     msg.enforce();
     msg
@@ -240,11 +241,10 @@ fn content(c: &Value) -> Content {
                 ),
             }),
         ),
+        // 投票的说明文字（`description`）当正文，同媒体的说明文字（#13 自审：文字一个字都不丢）
         "messagePoll" => (
-            vec![],
-            Some(Attachment::Poll {
-                question: formatted(&c["poll"]["question"]),
-            }),
+            formatted(&c["description"]),
+            Some(super::interactive::poll(&c["poll"])),
         ),
         "messageCall" => (
             vec![],

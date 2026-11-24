@@ -1,7 +1,7 @@
 # 内容树（AST）规约 v0
 
 > 2026-10-25 · 手下 tree 起草 · 状态：**草稿**；末尾「待人拍板」R1–R7 **已拍板**（`docs/plan/003_decisions-b2.md`），正文已同步；快照尚未按拍板改（S0 代码暂停，清单见 `state/coord.md`）
-> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、全文、转写 `speech/content.rs` · 系统消息 `speech/service.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · TDLib JSON 映射 `tdjson.rs`（消息与正文 `tdjson/message.rs`）
+> 代码：`src/atg-core/src/tree/`（消息节点 `mod.rs` · 带文件附件的小类型、播放状态、转写、`transcribe` 的结果 `media.rs` · 表情回应 `reaction.rs` · 投票选项与按钮 `interactive.rs` · 其余顶层节点 `top.rs` · 实体建树 `text.rs` · 遮住隐藏内容 `mask.rs`）· 读法 `speech.rs`（正文与附件、全文、转写 `speech/content.rs` · 系统消息 `speech/service.rs` · `transcribe` 的结果 `speech/transcription.rs` · 表情回应 `speech/reaction.rs` · 投票与按钮 `speech/interactive.rs`）· 转写表 `store/transcripts.rs` · JSON `json.rs` · TDLib JSON 映射 `tdjson.rs`（消息与正文 `tdjson/message.rs` · 投票与按钮 `tdjson/interactive.rs`）
 > 依据：`td_api.tl`（TDLib 1.8.69，下文写 `tl:行号`）· 内容类型清单 `docs/research/002_features/content-types.md`（api 手下）· 架构方案 `docs/plan/001_arch-stack.md`
 
 ## 术语（读到不懂回这里）
@@ -25,7 +25,7 @@
 ## 一、三条硬规矩
 
 1. **树只放数据。** 树里没有任何读法字符串、按键提示、界面文字。「按 M 收听」的 M 归 GUI，「已撤回的消息」这句话归读法
-2. **每个对应 TDLib「开放集合」的枚举都有兜底变体，并带原类型名 `td_type`**：消息内容、系统消息、文本实体、发送人、转发来源、回复对象、话题、表情回应、会话类型、顶层对象。（用户状态 `UserStatus` 不是 TDLib 的集合，是本项目合成的封闭值，没有兜底变体；TDLib 不认识的连接状态在合成之前就处理掉，见第三节第 6 小节）TDLib 升级会加新子类（`MessageContent` 现有 108 个），兜底变体是升级不崩的关键
+2. **每个对应 TDLib「开放集合」的枚举都有兜底变体，并带原类型名 `td_type`**：消息内容、系统消息、文本实体、发送人、转发来源、回复对象、话题、表情回应、会话类型、顶层对象，以及按钮区种类（`KeyboardKind`）、按钮动作（`ButtonAction`）、不能投的原因（`VoteBlock`）、投票类型（`PollKind`）（#13）。（用户状态 `UserStatus` 不是 TDLib 的集合，是本项目合成的封闭值，没有兜底变体；TDLib 不认识的连接状态在合成之前就处理掉，见第三节第 6 小节）TDLib 升级会加新子类（`MessageContent` 现有 108 个），兜底变体是升级不崩的关键
 3. **文字一个字都不丢。** 建树遇到不合规的实体只拆实体、不删文字：`plain_text(build(文本, 实体)) == 文本` 对任何输入成立（`text.rs` 的 `never_loses_text_on_messy_input` 用 500 组乱实体测住）
 
 ## 二、两层：存的 `Content`，现算的 `Doc`
@@ -93,12 +93,14 @@ Message
 │   ├── edited?: 时间
 │   ├── reactions: [{kind: emoji | custom_emoji | paid | unknown, count, chosen}]
 │   └── delivery?: pending | failed | sent | read   ← 只有自己发的才有
-└── transcript?: {lang, source: local, segments: [{text, start_s, end_s}]}   ← 语音的转写（投影时填）
+├── transcript?: {lang, source: local, segments: [{text, start_s, end_s}]}   ← 语音的转写（投影时填）
+└── buttons?: {kind: {type: inline | reply | unknown{td_type}}, rows: [[{text, action: {type, …}}]]}   ← 消息上的按钮（#13，只读）
 ```
 
 - 名字是 `Option`：查不到就是空，读法给兜底说法（「未知发送人」），**树里不写兜底文字**
 - `sender.deleted`：发送人是已注销账号（`userTypeDeleted`，投影时填，读法读「已注销的账号」，V14）；`head.in_channel`：消息在频道里（投影按会话种类填；读法据此分开「频道自己发的」和群里的「匿名管理员」，V10、V11）。两项为假时不输出（新增可选字段，`v` 不加一）
 - `transcript`：语音的转写（#59）。**不是消息本身的内容**（TDLib 不知道它，不进存下来的 `content`）：存在 store 的转写表里，投影时填；只在内存、不落盘。只对「同一个音频文件」作数——有效内容不再是那个语音文件（撤回、删除、内容替换、临时内容、受限）就没有。存原始片段，补标点只在读法里做；`source` 先只有 `local`（本机端侧模型），以后接 Telegram 的识别结果也落这里。18+ 遮挡的语音没展开时整个字段不输出（不像剧透那样留空节点占位），读法全文不读、详情不说「已转文字」（第八节「隐藏内容默认遮住」）。没有时不输出（新增可选字段，`v` 不加一）
+- `buttons`：消息上的按钮（#13，只读；`reply_markup`，`tl:4294-4314`）。`kind`（开放集合，判别字段 `type`）：`inline` 消息下面的按钮 / `reply` 机器人换掉输入框的键盘 / `unknown{td_type}` 不认识的带按钮种类（`rows` 为空，读法说「有暂不支持的按钮」）；「收起键盘」「强制回复」没有按钮，不建；空行去掉，一个按钮都没有就不输出。`action.type` 是开放集合（`url{url}` · `login_url{url}` · `web_app` · `callback` · `callback_with_password` · `game` · `switch_inline` · `buy` · `user{user_id}` · `copy_text{text}` · `disabled` · `text` · `request_phone` · `request_location` · `request_poll` · `request_users` · `request_chat` · `request_managed_bot` · `unknown{td_type}`）。回调按钮的数据（`data`）不进树、也不存进 `model`（`model::Message.buttons` 同样不带）：不给人看，按下时（13b）向 TDLib 重新取那条消息拿它。挂在消息上、不进 `content`：按钮跟着原消息（`model::Message.buttons`）；**有临时内容时不输出原消息的按钮**（显示的是临时内容，原按钮不属于它），临时内容自带的按钮 v0 不读；受限的消息不带按钮（同原内容一起清掉）。v0 只在收到、取到消息时建，会旧：机器人改按钮（`updateMessageEdited` 的 `reply_markup`）还没接；键盘按钮实际生效的那一套由会话级的 `updateChatReplyMarkup`（`tl:11375`；「收起键盘」只经它来、不出现在收到的消息上，`tl:4292`）定，也还没接——旧消息上的键盘按钮可能早已收起或用掉（13b 接；13a = 投票、13b = 按按钮，`specs/contracts/actions.md` 修订记录 2026-11-17 #13 人定）。没有时不输出（新增可选字段，`v` 不加一）
 - **建树前先选有效内容**：消息带临时内容（`ephemeral_content`，`tl:3547`、`:3594`「必须代替原内容显示」）就用它，否则用 `content`；更新 `updateMessageEphemeralContent`（`tl:11223`）归 reducer
 - **受限内容**（`restriction_info`，`tl:2738`、`:3591`「必须执行」）：原因非空 → 原内容**不进树**，附件换成 `restricted{reason}`、正文为空；只有「敏感」标记 → 照常建，`content.sensitive = true`，读法标「隐藏」
 - `reply_to.target.chat_id` 可能是别的会话、也可能是 0（TDLib：被回复的那条在未知会话）；被回复那条不在 store 里时，发送人先用 TDLib 附带的 `origin` 兜底（api 提醒 2）
@@ -118,7 +120,8 @@ Message
 | `document` | file_name, size（字节，不知道是 0） | `messageDocument` `tl:5706` |
 | `sticker` | emoji | `messageSticker` `tl:5725` |
 | `animated_emoji` | emoji | `messageAnimatedEmoji` `tl:5778` |
-| `location` · `venue` · `contact` · `poll` · `call` | 见代码 | `tl:5769` `5772` `5775` `5796` `5832` |
+| `poll` | question（行内树）· options: [{index（TDLib 的 0 起编号，投票用）, text（行内树）, votes, percent（0–100）, chosen?, correct?（测验的正确答案；自己答过、或测验是自己发起的才有（发起人本地留着答案，`PollManager.cpp:2444` 起）；TDLib 对别人发的、没答的测验给空，所以不会剧透）}]，**已按 `option_order` 排成显示顺序**（TDLib：「必须按这个顺序显示」；`option_order` 为空 = TDLib 说不改顺序；它对不上——缺号、重号、越界——也按原顺序）。**读法念的「第 N 项」= `options` 数组里（显示顺序）的第 N 个，1 起；投它要取那一项的 `index`**，两者可以不同（夹具 `interactive.json` 的「集合地点」：第 1 项是 `index` 2）· total（投票人数）· results_visible（`can_see_results`：为假时各项 votes / percent 都是 0，**不是真没人投**——可能是我还没投，也可能是发起时设了「结束后才公布结果」（`hide_results_until_closes`，`tl:6788`），投了也看不到）· anonymous · multiple · revotable（投了能改；= `allows_revoting`，TDLib 源码里是 `!has_revoting_disabled_`）· kind（投票类型，开放集合，判别字段 `type`：`regular` / `quiz`（测验，有正确答案）/ `unknown{td_type}`——读法在详情与全文里多说一句「暂不支持的投票类型」，不说它是不是测验；匿名、多选、能否改这些是投票自己的字段，照读）· closed · blocked?（我为什么不能投，开放集合：closed / yet_unsent / scheduled / country_restricted{country_code} / membership_required{chat_id}（只许投票发出前已在那个会话里满一天的人投——TDLib 判「入会时间早于投票发出时间一天以上」，`PollManager.cpp` `is_poll_vote_subscribers_only_limited`，**现在加入也投不了**；会话不一定是投票所在的）/ other / unknown{td_type}；能投时不输出；TDLib 没给原因但投票已结束的，也记 `closed`）· explanation?（测验解析，行内树）。投票的说明文字（`messagePoll.description`）放在消息正文 `body`，同媒体的说明文字。选项、题目、解析里的剧透同正文一样遮。**不进树的**：投票与选项带的媒体（`media`）、测验解析的媒体（`explanation_media`），v0 不读，留后续 issue；同样没收的还有选项的添加人与添加时间（`author` / `addition_date`）、自动结束的 `open_period` / `close_date`、能否加选项（`can_add_option`）、仅成员 / 地区（`members_only` / `country_codes`）、`can_get_voters`、`pollOption.id` / `is_being_chosen`；**谁投了**（`recent_voter_ids`，投票与选项上都有）**有意不收**（别人的投票去向，隐私），所有消息 JSON（新消息、取历史、`updateMessageContent` 换内容）都经 `tdjson/message.rs` 的 `content()` 走到 `tdjson/interactive.rs` 的 `poll()`，守卫写在 `poll()` 的文档注释里：不读它，以后改也不要读（快照测试 `voters_never_reach_the_tree` 用带投票人的夹具测住） | `messagePoll` `tl:5796`，`poll` `tl:731`，`pollOption` `tl:475`，`pollTypeQuiz` `tl:494`，`pollVoteRestrictionReason*` `tl:513-529`。**票数、你选的、已结束、测验答案的变化都跟着实时更新**：对用户账号 TDLib 把投票变化发成 `updateMessageContent`（`PollManager::notify_on_poll_update` → `on_external_update_message_content`），store 整块换内容、照样读全（快照测试 `poll_counts_follow_update_message_content`）；`updatePoll`（`tl:12059`）只发给机器人，本应用收不到、也不用接（#13 自审第 5 轮核 TDLib 源码）。13a = 投票、13b = 按按钮，见 `specs/contracts/actions.md` 修订记录 2026-11-17 #13 人定 |
+| `location` · `venue` · `contact` · `call` | 见代码 | `tl:5769` `5772` `5775` `5832` |
 | `expired` | what: photo / video / video_note / voice | `messageExpired*` `tl:5752-5761` |
 | `restricted` | reason | 消息的 `restriction_info` 原因非空（不是内容类型） |
 | `other` | td_type | **认识、但 v0 没做专门节点**的内容（骰子、Stories、游戏……清单在 `tdjson/message.rs` 的 `OTHER_CONTENT`） |
@@ -157,7 +160,7 @@ Message
 
 ### 7. 正式类型名（给别的规约引用）
 
-Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Reactor` ↔ `reactor` · `Unknown` ↔ `unknown`；零件：`Reaction`（消息尾部的回应汇总）· `ReactionKind`（回应种类，判别字段叫 `type`）· `MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
+Rust 类型名 ↔ JSON `type`：`Doc`（顶层，`type` 见第 1 小节）· `Message` ↔ `message` · `Service` ↔ `service` · `Tombstone` ↔ `tombstone` · `ChatItem` ↔ `chat_item` · `Alert` ↔ `alert` · `Status` ↔ `status`（值是 `UserStatus`）· `Playback` ↔ `playback` · `Transcription` ↔ `transcription` · `Reactor` ↔ `reactor` · `Unknown` ↔ `unknown`；零件：`Reaction`（消息尾部的回应汇总）· `ReactionKind`（回应种类，判别字段叫 `type`）· `MsgId`（消息身份）· `Sender` · `UserRef`（系统消息里提到的用户）· `Content` · `Attachment` · `Span` · `Action` · `ChatKind` · `Outcome`（转写结果：`text` / `no_speech` / `hidden`）· `Transcript`（转写文字与分段）· `PollOption`（投票的一个选项）· `VoteBlock`（不能投的原因）· `PollKind`（投票类型）· `Keyboard` / `KeyboardKind` / `Button` / `ButtonAction`（消息上的按钮）。树里没有「Group」「User」「ChatRef」这样的顶层类型：群是 `ChatKind::group` / `supergroup`。
 
 ## 四、建树规则：「纯文本 + 实体」→ 行内树
 
@@ -242,7 +245,7 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - id：会话、消息、用户 id 都是 int53，用数字；超过 2^53 的 int64（`custom_emoji_id`、`album_id`）写字符串
 - 时间：结构体里存 Unix 秒，JSON 里写 RFC3339 UTC（如 `2026-10-23T11:30:00Z`）；读法按调用方给的时区偏移转本地钟点
 - 空的可选字段不输出（`reply_to`、`forward`、`attachment`、`edited`、`delivery`、空的 `reactions`）
-- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、回复引用的那段、置顶系统消息带的内容、会话项的最后一条；18+ 遮挡的语音另把消息的 `transcript` 整个去掉（转写就是那段语音的内容），`transcription` 的 `outcome` 换成 `{"type":"hidden"}`。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
+- **隐藏内容默认遮住**（R1 的延伸：隐藏内容默认不给，人明确展开才给；大总管授权 2026-10-26）：输出的 `data` 里，剧透节点一律换成空的 `{"type":"spoiler","children":[]}`（只说明这里有一段隐藏内容）；落在剧透里、或文字里套着剧透的链接（`link` / `url`，判定 `text::link_hidden`）整个换成这个空剧透，地址也不留；`links` 与读法同一条（读法整条只读「隐藏内容」，#70）。管到正文、投票题目、选项与测验解析、回复引用的那段、置顶系统消息带的内容、会话项的最后一条；18+ 遮挡的语音另把消息的 `transcript` 整个去掉（转写就是那段语音的内容），`transcription` 的 `outcome` 换成 `{"type":"hidden"}`。调用方展开了（CLI 的 `--reveal`）才输出原文。实现：`tree::mask`，由 `json::value` 按读法上下文的 `reveal` 调。`data` 的遮挡只在输出 JSON 的那一刻做（读法另由 `speech` 按同一个 `reveal` 遮，第九节）；`reveal` 跟着读法上下文 `SpeechCtx` 一起传，是因为两者在同一处由调用方决定。Store 与投影出来的内容树（都只在内存里，不写盘）保留原文，展开时才拿得到。18+ 遮挡的媒体本身不进树，说明文字照常输出（同读法）。空的剧透是已有节点种类的一种取值，`v` 不加一
 - **版本**：外壳和树共用一个 `v`（代码里 `tree::SCHEMA_V`）。
   - **不加一**：新增可选字段、新增节点种类、新增 `td_type` 值；**某种内容从 `other` / `unknown` 升级成专门节点**（如骰子从 `attachment.type = "other", td_type = "messageDice"` 变成 `"dice"`）也不加——使用方本来就得把不认识的 `type` 当未知处理
   - **给取值固定的字段加新取值**（如 `status` 加 `stopping`）也**不加一**（拍板 006 乙10）——使用方遇到不认识的值按「未知」处理、读 `speech.brief` 兜底，与「新增节点种类」同理
@@ -258,12 +261,14 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 要点：
 
 - 自己发的读「我」；名字查不到**分场合**（V18 人定）：消息发送人与撤回占位读「未知发送人」，系统消息的操作人读「有人」，系统消息里被添加、被移出的人读「未知用户」；不认识或没做读法的内容一律读「暂不支持的消息」，**系统消息例外**读「暂不支持的系统消息」（V19 人定）——**英文类型名不读**，只进 JSON
-- 格式（粗斜下删）不读；**剧透、18+ 遮挡统一读「隐藏内容，按 D 展开」**（R1 人定），两边用逗号隔开（VoiceOver 不念括号）；键由调用方给（同提醒的「按 M 收听」），没有键的调用方（CLI）只读「隐藏内容」；**按键提示每条只说一次，放在整条末尾、钟点前**，各处遮挡只读「隐藏内容」（V13 人定；单处遮挡同样放末尾，如「图片，隐藏内容，山顶的风景，按 D 展开，19:33」，待人确认）；D 是否就是详情键，GUI 阶段定键位时一并定；链接只读文字不读地址，链接文字里只要有一段是剧透就整条只读「隐藏内容」（与 `data`、`links` 同一判定 `text::link_hidden`，#70）；置顶带的内容、投票题目里的隐藏内容同样算进整条的按键提示（#68）；代码照读文字
+- 格式（粗斜下删）不读；**剧透、18+ 遮挡统一读「隐藏内容，按 D 展开」**（R1 人定），两边用逗号隔开（VoiceOver 不念括号）；键由调用方给（同提醒的「按 M 收听」），没有键的调用方（CLI）只读「隐藏内容」；**按键提示每条只说一次，放在整条末尾、钟点前**，各处遮挡只读「隐藏内容」（V13 人定；单处遮挡同样放末尾，如「图片，隐藏内容，山顶的风景，按 D 展开，19:33」，待人确认）；D 是否就是详情键，GUI 阶段定键位时一并定；链接只读文字不读地址，链接文字里只要有一段是剧透就整条只读「隐藏内容」（与 `data`、`links` 同一判定 `text::link_hidden`，#70）；置顶带的内容、投票题目、选项与测验解析里的隐藏内容同样算进整条的按键提示（#68；选项与解析 #13）；代码照读文字
 - **「谁点了回应」一行**（`reactor`，#9；AI 草稿待人实听）：「名字，emoji，钟点」，如「林小雨，👍，19:33」；自己点的读「我」，名字查不到读「未知发送人」（同消息发送人，V18），已注销读「已注销的账号」；自定义表情读「自定义表情」、付费的读「星星」、不认识的种类读「暂不支持的回应」
+- **投票与按钮**（#13；AI 草稿待人实听）：名称读「投票，题目」，有说明文字的接在后面（说明文字在正文里，同媒体的说明文字「图片，山顶的风景」，如「投票，几点出发？周六早上集合」），选项、票数、性质都不进名称（同 R5 表情回应）；按钮不进名称。详情：投票「N 个选项，你已投，看不到票数时只说事实（投了、还没结束 →「结束后才公布结果」，别的 →「现在看不到各项票数」），匿名投票 / 公开投票（别人看得到你投了什么），可以多选，测验（有正确答案），投了能改 / 不能改（已结束就不说），不能投的原因」；按钮「按钮 4 个：确认，通知机器人，聊天里不出现；活动说明，打开网址 …」（VoiceOver 不念括号，按钮内用「，」、按钮之间用「；」；网址按钮、登录网址按钮读出地址，是「链接只读文字不读地址」的例外：按钮文字常说不清去哪，登录网址更要知道是把身份交给哪个网站），键盘按钮读「键盘按钮」、文字按钮说「以你的名义发出这句话」。全文：「投票，题目，说明文字」再逐项「第 1 项，文字，5 票，60%，你选的，正确答案」，再「共 N 人投票」，看不到结果时不读票数、只说推得出的事实（投了、还没结束却看不到 →「结束后才公布结果」，别的情形 →「现在看不到各项票数」，不许诺「投了就看得到」），测验有解析读「解析：…」；全文不读按钮。已结束的投票、测验都不说「投了能改 / 不能改」；测验投了能不能改同普通投票、只看 `revotable`（TDLib `PollManager.cpp` 的 `setPollAnswer`：改票、撤票只看 `has_revoting_disabled_`，不看是不是测验；#13 自审第 4 轮。人定里「测验许投」那一条已随之改定：13a 计划行照实际设置写能不能改、测验另写「投后会公布答案」，见 `specs/contracts/actions.md` 修订记录）。「要先加入指定的会话」暂不读出会话名（读法拿不到 store，13a 补）。标点衔接同下面那条通则（「投票，几点出发？第 1 项……」）。名称里要不要说「有按钮」待人定，默认不说（大总管定 2026-11-17，人改了再动）
 - **时间只读钟点**（R3）：日期进 `detail`。**回复谁、转发自谁**（R4）、**已编辑、表情回应**（R5）都不进 `brief`，进 `detail`
 - **相册每张一项**（R6），GUI 阶段再看
 - **撤回占位**（R7）：句式「〈发送人〉撤回了一条消息，〈钟点〉」，与消息句同形——发送人、时间取撤回前记下的（第三节第 1 小节），发送人沿用「我」「未知发送人」的规则（记不到发送人读「未知发送人撤回了一条消息，〈钟点〉」）。读的是**原作者**——TDLib 不给删除人，管理员删别人的消息也读成原作者撤回，接受；**会话项**里的占位不带时间（同会话项最后一条的规则）。实听再定（N8 人定）
 - 一律「类型，内容」用逗号隔开（空格停顿太短）：「图片，山顶的风景」「文件，路线.gpx」「投票，几点出发？」；时长读成「12 秒」「1 分 5 秒」；圆视频叫「圆形视频」，免得和普通视频混
+- 附件说法与后面的正文之间：附件说法以标点（`？` `!` `。` `…` `：` `；` `，` 等，正本 `speech/content.rs` 的 `ENDS` 与 `glue`）结尾就直接接，不再加逗号（#13 起，对所有附件生效，免得念成「？，」；投票题目衔接分隔号同此，大总管定 2026-11-17）
 - 正文末尾的句号、逗号去掉（后面还要接「，时间」，免得读成「。，」）；问号、叹号带语气，留着
 - 会话项：「名字，N 条未读，K 条提到你，最后一条」，最后一条不读时间、**不截断**（R2 人定，按原则；原 40 字截断撤销，`specs/tasks.md` T02「约 3 秒」判据已删）；私聊里对方发的、频道以自己名义发的，不重复读名字
 - 提醒：「2 条新消息，来自林小雨，按 M 收听」（键由调用方给，CLI 不读键）
@@ -299,3 +304,11 @@ api 清单 v0.1 列的读法要求——连续同一发送人、重名、以频�
 - 2026-11-16 #59 3c 自审：第三节第 7 小节正式类型名补 `Playback`、`Transcription` 与零件 `Outcome`、`Transcript`
 - 2026-11-14 #9 表情回应（手下 msg2；同 M2.6 `playback` 的做法：要读出来的都先成树）：顶层加 `reactor`；`v` 不加一（新增节点种类）；`Reaction` / `ReactionKind` / `Reactor` 放 `tree/reaction.rs`
 - 2026-11-14 #9 自审第 1 轮后（手下 msg2）：文首代码清单、第三节第 7 小节类型名补 `reaction.rs` / `Playback` / `Reactor` / `Reaction` / `ReactionKind`；第九节加 `reactor` 的句式
+- 2026-11-17 #13 只读（手下 msg2）：附件 `poll` 读全（选项、票数、你选的、匿名 / 多选 / 能否改票 / 测验 / 已结束 / 能不能投）；消息加可选字段 `buttons`（`Keyboard`，`tree/interactive.rs`）；选项里的剧透同题目一样遮；读法：名称加「N 个选项，你已投 / 已结束」「N 个按钮」（名称这部分第 1 轮已撤回，见第九节），详情加投票性质与按钮逐个，全文逐项读选项（AI 草稿，待人实听）；`v` 不加一（新增可选字段与字段）。票数变化（`updatePoll`）、机器人改按钮（`updateMessageEdited.reply_markup`）还没接（票数那半已更正，见第 5 轮那一行：走 `updateMessageContent`，早已接上）
+- 2026-11-17 #13 自审第 1 轮后（手下 msg2）：`poll` 加 `index`、`correct`、`results_visible`、`blocked`（开放集合，代替 `can_vote`）、`explanation`，选项按 `option_order` 排，说明文字进正文；名称撤回（只读「投票，题目」、不说按钮，守第九节原则），选项与性质进详情 / 全文；有临时内容时不输出原消息按钮；第九节加投票与按钮的读法规则；写明 `updateChatReplyMarkup` 也还没接
+- 2026-11-17 #13 自审第 2 轮后（手下 msg2）：`results_visible` 为假不再许诺「投了就看得到」（可能是结束后才公布），只说推得出的事实；`membership_required` 带 `chat_id`；写明「第 N 项」与 `index` 的对应；按钮详情改「文字，动作」、按钮间「；」（不念括号），网址按钮读地址写成明文例外；全文说明文字紧跟题目；已结束的测验不说能不能改；遮挡范围补测验解析；类型名补 `VoteBlock`；正文里的 13a / 13b 写明所指
+- 2026-11-17 #13 自审第 3 轮后（手下 msg2）：第九节投票详情改成新说法（不许诺「投了就看得到」）；写明名称带说明文字（同媒体说明）；「不进树的」清单补全、不再指向自己；测验不看 `revotable` 写明依据；「指定的会话」暂不读名
+- 2026-11-17 #13 自审第 4 轮后（手下 msg2）：测验投了能不能改照 `revotable`（TDLib 改票不看是不是测验）；按钮加 `request_managed_bot`；「不进树的」清单补全，`recent_voter_ids` 有意不收（隐私）；第九节写明「以标点结尾不接逗号」对所有附件生效；详情句式与代码对齐；文首清单补 `tdjson/interactive.rs`；回调数据从哪取写明
+- 2026-11-17 #13 自审第 5 轮后（手下 msg2）：**更正**投票变化的来源——对用户账号走 `updateMessageContent`（已接，实时更新），`updatePoll` 只给机器人、不用接（TDLib 源码核实，加快照测试）；`recent_voter_ids` 的守卫写在真正的入口 `poll()`；`buttons.kind` 改成带判别字段的开放集合、加 `unknown{td_type}` 兜底；硬规矩 2 清单补三个新开放集合；`revotable` 注出来源字段、测验答案自己答过才有、`blocked` 的 closed 兜底、`PollType` 只认测验写明；全文句式补「共 N 人投票」；「人定 6」改成指「测验许投那一条」
+- 2026-11-17 #13 自审第 6 轮后（手下 msg2；另派一个视角把引 TDLib 行为的说法逐条回 api.tl 与源码核过：约 30 条属实，改 2 处）：`quiz` 换成开放集合 `kind`（`regular` / `quiz` / `unknown{td_type}`，硬规矩 2）；「谁投了」的守卫真正写进 `poll()` 的注释并加快照测试；入口写全（所有消息 JSON 都经 `content()` → `poll()`）；按钮更新写明归 13b；「以标点结尾不接分隔号」只留一条通则、挪到「一律逗号」之后；`tl:4293` 改 `tl:4292`；测验答案「自己答过、或自己发起的才有」
+- 2026-11-17 #13 自审第 7 轮后（手下 msg2）：`membership_required` 的读法改成「只许投票发出前已在指定会话里满一天的人投，你投不了」（TDLib 源码：比的是投票发出时间，现在加入也没用）；登录网址按钮读地址；认不出的投票类型全文也说「暂不支持的投票类型」；遮挡与按键提示的投票分支写全字段（不用 `..`）；夹具补各兜底变体与其余不能投的原因
