@@ -8,6 +8,7 @@
 - 下一步：领名额编译全套 → 报检查点 → codex 035 → PR 说明；之后 13b
 - 2026-11-24 全套过（717 过 0 败，atg-core+cli 684；两种 clippy 0；三个 check 脚本过）；大总管核过准 `--force-secrets`（只限 interactive.rs:148）
 - codex 035 第 1 轮 P2×2：#2 属实（全文误用 spans 合并表情）→ 红测试 `poll_full_keeps_repeated_emoji` 已写、改法在 scratchpad fix2.py 待红后应用；#1 驳回（「只读出」是 13b 按下的规矩）→ PR 遗留「待人实听」。记录 docs/reviews/035 已起草。等名额（arch 之后）
+- #2 先红后绿已改（检查点 73e182d，大总管提交）；codex 035 第 2 轮零发现 → 收敛。记录 035 与 README 索引行已写；PR 说明 `_tmp/20261116-b20/pr-13-readonly.md` 占位全填、遗留加 #165、更正票数变化的说法。下一步：大总管提交记录 → 开 PR → 13b（动闸，先报）
 
 ## b20 接手（2026-11-16）
 
