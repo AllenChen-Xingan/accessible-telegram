@@ -4,6 +4,7 @@
 > 管：界面上每类元素进树时的**角色、名称、提示语、状态、稳定标识、动作**；树导出的规范化格式
 > 读者有两类，读的是同一棵树（`.42cog/cog.md`「一棵无障碍树，两类读者」）：VoiceOver 用户，和只读树、不看像素就能操作界面的 agent（`.42cog/intent.md`「AI 友好」第 ② 条）
 > 机读正本（移交后）：契约表 `a11y`，由 `atg-gui --schema` 的 `elements` 段导出（`docs/plan/012_gui-ssot.md` 第二节第 5、14 行）
+> **部分已移交（2026-11-24，#169）**：第三节「机读契约」那张表（M3.1 的 8 类元素的角色、标识种类、名称来源、角色描述、能不能操作）由 `atg-gui-spec` 的契约表 `a11y::TABLE` 生成，别手改；其余规则、格式、正反例，和第三节「元素表 v0」里还没移交的行，仍在本文手写
 
 ## 一、十二条总规矩
 
@@ -54,6 +55,27 @@
 
 角色用 AccessKit 的名字（`accesskit::Role`）；macOS 那一列出自 `findings-gpui.md` 第 2.3 节（读源码）和 exp003（实测 List / ListItem）。「状态」列里 VoiceOver 拿得到的照写；macOS 层没有的（位置 / 总数）注明「只进 GPUI 层」，只给 agent 和快照用；`expanded`、快捷键这些 macOS 层没有（同上第 2.1 节），要用得等 `upstream-patches.md` 的补丁。
 
+### 机读契约（已移交：M3.1 的 8 类元素）
+
+正本是 `src/atg-gui-spec/src/a11y.rs` 的 `TABLE`；下面这段由它生成，`atg-gui-spec` 的金样测试逐字比，对不上 CI 就红。这 8 类元素的角色、标识种类、名称来源、角色描述以这段为准；下面「元素表 v0」里同名的行只留提示语、状态、动作、出处这些还没进表的列。
+
+<!-- 由 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements` 生成，别手改：开始 -->
+
+| 元素 | 角色 | 标识种类 | 名称来自 | 角色描述 | 能操作 |
+|---|---|---|---|---|---|
+| `window` | `Window` | `window` | 无（窗口名走 NSWindow 标题：文案 `app_title`「无障碍 Telegram」） | — | 否 |
+| `region_chats` | `Navigation` | `region-chats` | 文案 `chats`「会话」 | — | 否 |
+| `chat_list` | `List` | `chats` | 文案 `chats`「会话」 | — | 是 |
+| `chat_item` | `ListItem` | `chat:…`（1 个数字） | `speech::chat_brief` | — | 是 |
+| `region_messages` | `Main` | `region-messages` | 文案 `messages`「消息」 | — | 否 |
+| `message_list` | `List` | `messages:…`（1 个数字） | 文案 `messages`「消息」 | — | 是 |
+| `message_item` | `ListItem` | `msg:…`（2 个数字） | `speech::brief` | 文案 `message_role`「消息」 | 是 |
+| `status_bar` | `Status` | `status` | `speech::brief` | — | 否 |
+
+<!-- 生成段结束 -->
+
+### 元素表 v0（手写；没移交的行和列）
+
 | 元素 | 角色（macOS） | 名称来自 | 提示语 | 状态 | 动作（agent 怎么按） | 出处 |
 |---|---|---|---|---|---|---|
 | 窗口 | 根节点 `Window` → macOS 上是**不带标题的 AXGroup**（`ak:node.rs:306-313`：根带标题 VO 会坏）；VoiceOver 读的窗口名是 **NSWindow 的标题**，经 GPUI 设窗口标题 | 窗口标题 = 文案「无障碍 Telegram」+ `speech` 的新消息提醒（`Alert`）+ 用户状态（`Status`） | — | — | — | 001 拍板 3 ⑥；`errors.md` 第一节第 4 小节；findings-gpui 第 2.3 节 |
@@ -96,10 +118,10 @@
 **GPUI 层**（`<场景>.gpui.txt`），每行：
 
 ```
-<角色> <标识> "<名称>" [desc="<提示语>"] [<状态>…]
+<角色> <标识> "<名称>" [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
 ```
 
-状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
+`roledesc` 只在应用自己设了角色描述时写（同 macOS 层；消息项设「消息」，卡 G15 人选 B，2026-11-24 起两层都写）。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
 
 **macOS 层**（`<场景>.macos.txt`），每行：
 
@@ -132,8 +154,8 @@ Window window
       ListItem chat:101 "林小雨，2 条未读，林小雨：明天见，7:00" selected pos=1/3
   Main region-messages "消息"
     List messages:101 "消息" focused active=msg:101:1001
-      ListItem msg:101:1001 "未读：林小雨：在吗，6:58" desc="按 D 听详情" selected pos=1/2
-      ListItem msg:101:1002 "林小雨：明天见，7:00" desc="按 D 听详情" pos=2/2
+      ListItem msg:101:1001 "未读：林小雨：在吗，6:58" roledesc="消息" desc="按 D 听详情" selected pos=1/2
+      ListItem msg:101:1002 "林小雨：明天见，7:00" roledesc="消息" desc="按 D 听详情" pos=2/2
     MultilineTextInput composer:101 "输入消息"
     Button send:101 "发送"
   Status status "已连接"

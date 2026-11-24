@@ -12,7 +12,7 @@
 //!
 //! 升版本的口径同 `specs/content-tree.md` 第八节：加字段、加取值不加一；改名、删、改义加一。
 
-use crate::a11y::{Role, TABLE};
+use crate::a11y::{NameFrom, Role, TABLE};
 use crate::aid::IdKind;
 use crate::text::TextId;
 use serde_json::{Value, json};
@@ -42,6 +42,52 @@ pub fn schema() -> Value {
     })
 }
 
+/// `specs/gui/a11y-tree.md` 第三节里由本表生成的那一段的起止标记（金样比对按它们取段）
+pub const MD_BEGIN: &str =
+    "<!-- 由 `cargo run -p atg-gui-spec --bin gui-schema -- --md-elements` 生成，别手改：开始 -->";
+pub const MD_END: &str = "<!-- 生成段结束 -->";
+
+fn name_md(n: NameFrom) -> String {
+    match n {
+        NameFrom::WindowTitle(t) => format!(
+            "无（窗口名走 NSWindow 标题：文案 `{}`「{}」）",
+            t.key(),
+            t.zh()
+        ),
+        NameFrom::Text(t) => format!("文案 `{}`「{}」", t.key(), t.zh()),
+        NameFrom::ChatBrief => "`speech::chat_brief`".into(),
+        NameFrom::Brief => "`speech::brief`".into(),
+    }
+}
+
+/// 契约表的 Markdown 形式（含起止标记），整段贴进 `a11y-tree.md` 第三节；`tests/golden.rs` 逐字比
+pub fn elements_md() -> String {
+    let mut s = format!(
+        "{MD_BEGIN}\n\n| 元素 | 角色 | 标识种类 | 名称来自 | 角色描述 | 能操作 |\n|---|---|---|---|---|---|\n"
+    );
+    for e in TABLE.iter() {
+        let roledesc = e.role_description.map_or("—".to_owned(), |t| {
+            format!("文案 `{}`「{}」", t.key(), t.zh())
+        });
+        let id = if e.id.arity() == 0 {
+            format!("`{}`", e.id.prefix())
+        } else {
+            format!("`{}:…`（{} 个数字）", e.id.prefix(), e.id.arity())
+        };
+        s.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} | {} |\n",
+            e.key,
+            e.role.name(),
+            id,
+            name_md(e.name),
+            roledesc,
+            if e.operable { "是" } else { "否" }
+        ));
+    }
+    s.push_str(&format!("\n{MD_END}\n"));
+    s
+}
+
 /// 输出的文字（金样里存的就是它）：两格缩进、末尾一个换行
 pub fn render() -> String {
     // 自描述只含字符串、数字、布尔，序列化不会失败；万一失败就出空串，金样测试会红
@@ -53,7 +99,6 @@ pub fn render() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::a11y::NameFrom;
 
     #[test]
     fn every_text_is_referenced_by_the_table() {
