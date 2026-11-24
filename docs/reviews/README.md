@@ -61,3 +61,4 @@
 | 059 | 2026-11-17 | #60 R7 第八刀：拆 core `fake.rs`（设置方法、登录、会话与历史各挪一个子文件，trait 方法一行转发，只挪不改）；R3a 收尾（codex · diff 类） | 两轮零发现（第 1 轮抽查不符 1 条，行数，已改），收敛 → `059_r7-fake-codex.md` |
 | 060 | 2026-11-17 | #60 R7 第九刀：拆 core `td.rs`（内联 `mod real` 挪成 `td/real.rs`，再拆 start、login、read，trait 方法一行转发，只挪不改；codex · diff 类） | 两轮零发现，收敛 → `060_r7-td-codex.md` |
 | 061 | 2026-11-17 | #137 修 22 条 rustdoc 警告（私有项、特性下断链、同名歧义），CI 加两步 `cargo doc -D warnings`（codex · diff 类） | 两轮零发现，收敛 → `061_137-rustdoc-links-codex.md` |
+| 063 | 2026-11-24 | #42 开发版开强化运行时（OpenSSL 静态链、libtdjson 签名、rpath 指常驻软链接、`--options runtime`、`check-harden.sh`；codex · diff 类，effort high，按契约 / 安全口径） | 第 1 轮 P1×1、P2×3，第 2 轮 P2×2，都已改；第 3 轮零发现，收敛 → `063_42-hardened-runtime-codex.md` |

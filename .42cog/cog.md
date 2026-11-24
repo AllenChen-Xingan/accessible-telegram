@@ -36,7 +36,7 @@
 | `src/atg-cli` | 入口一（先做）：命令行列会话、读消息（JSON 输出）、发消息（须人确认）。AI 的首选接口 | AI | 输入 `atg-core`；输出 → AI 代理 / 脚本 / 人 |
 | `src/atg-gui` | 入口二（后做）：GPUI 界面，负责角色标注、焦点管理、键盘导航、播报；无障碍树同时服务 VoiceOver 与 computer use | AI | 输入 `atg-core`；输出 → 人 / computer use 代理 |
 | `src/tdlib-rs` | 打过补丁的 tdlib-rs（TDLib 的 Rust 绑定 + 代码生成器 + TL 解析器），fork 分支 `atg/tdlib-1.8.69` 的 `git subtree`；自成工作区，不是根工作区成员（`docs/plan/004_tdlib-patch.md` 第二节） | 上游作者 + AI 写补丁；改动要能推回 fork | 输入 TDLib 库（`LOCAL_TDLIB_PATH`）与 `tl/api.tl`；输出 Rust 类型与客户端 → `atg-core` 的 `td` 模块（`tdlib-api` / `tdlib` 特性） |
-| `src/tdlib-build` | 拉取并编译 TDLib C++ 库的脚本（锁定 1.8.69 = `ea3f69c`；源码不进库） | AI | 输入 TDLib 源码（`resources/td` 或 GitHub）+ Homebrew `openssl@3`；输出 `_build/<时间戳>/tdlib/` → `src/tdlib-rs`（经 `LOCAL_TDLIB_PATH`） |
+| `src/tdlib-build` | 拉取并编译 TDLib C++ 库的脚本（锁定 1.8.69 = `ea3f69c`；源码不进库） | AI | 输入 TDLib 源码（`resources/td` 或 GitHub）+ Homebrew `openssl@3`；输出 `_build/<时间戳>/tdlib/`（OpenSSL 静态链入、用开发身份签名，#42）→ `src/tdlib-rs`（经 `LOCAL_TDLIB_PATH`），并更新常驻软链接 `~/.atg-dev/tdlib`（开发版程序的 rpath 指它） |
 
 **为什么是 core + cli + gui**：沿用 `-cli` / `-core` 的 Rust 强约定（依据课程 ch04/ch05，本地笔记 `resources/aias-course-notes.md`，不入库），界面只是第二种作品形态。读法放进 `atg-core::speech`，命令行和界面读出来的是同一句话。
 

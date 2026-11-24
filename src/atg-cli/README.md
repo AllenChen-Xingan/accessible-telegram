@@ -24,9 +24,9 @@
 
 ```sh
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
-cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名、带上库目录（scripts/dev-sign-run.sh）
+cargo run -p atg-cli --features tdlib -- --test-dc login   # runner 自动签名（scripts/dev-sign-run.sh），库按 rpath 找
 # 或分开做：cargo build -p atg-cli --features tdlib && bash scripts/dev-sign.sh target/debug/atg-cli
-#           DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" target/debug/atg-cli --test-dc login
+#           target/debug/atg-cli --test-dc login    # 库按 rpath ~/.atg-dev/tdlib/lib 找（#42，见 src/README.md）
 ```
 
 测试：`cargo test -p atg-cli`（各命令用假后端单测走分支；另跑真二进制对照契约检查外壳与退出码）。本机冒烟脚本 `live/login.exp`（测试服务器、测试号，用 expect 把输入喂进终端）。
