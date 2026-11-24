@@ -122,11 +122,19 @@ fn id(chat: i64) -> MsgId {
 }
 
 fn prepare(r: &Rig, chat: i64, numbers: &[u32]) -> Result<VotePlan, CoreError> {
-    block_on(prepare_vote(&r.b, id(chat), numbers, SendOrigin::Cli))
+    prepare_with(r, chat, numbers, false)
+}
+
+fn prepare_with(r: &Rig, chat: i64, n: &[u32], replace: bool) -> Result<VotePlan, CoreError> {
+    block_on(prepare_vote(&r.b, id(chat), n, replace, SendOrigin::Cli))
 }
 
 fn once(r: &Rig, chat: i64, numbers: &[u32]) -> Result<ConfirmMode, CoreError> {
-    let plan = prepare(r, chat, numbers)?;
+    once_with(r, chat, numbers, false)
+}
+
+fn once_with(r: &Rig, chat: i64, n: &[u32], replace: bool) -> Result<ConfirmMode, CoreError> {
+    let plan = prepare_with(r, chat, n, replace)?;
     let token = r.b.gate().issue(&plan, false)?;
     vote_within(&r.b, &plan, token, Duration::from_secs(2))
 }
@@ -269,16 +277,80 @@ fn closed_and_not_revotable_are_refused() {
         why(prepare(&r, ME, &[2]).unwrap_err()),
         InvalidSendWhy::VoteNotRevotable
     );
-    // 许改的可以改投
-    let r = rig(
-        "revote",
-        true,
-        &Poll {
-            chosen: Some(0),
-            ..Poll::default()
-        },
+}
+
+/// 自审 13b-1 第 1 轮 P1：许改票、我已投过，`setPollAnswer` 整组替换——默认拒，`replace` 放行并列出会换掉的那几项
+#[test]
+fn revote_replaces_and_needs_replace() {
+    let voted = Poll {
+        chosen: Some(0),
+        multiple: true,
+        ..Poll::default()
+    };
+    let r = rig("revote", true, &voted);
+    assert_eq!(
+        why(prepare(&r, ME, &[3]).unwrap_err()),
+        InvalidSendWhy::VoteWouldReplace
     );
-    assert!(once(&r, ME, &[2]).is_ok());
+    let plan = prepare_with(&r, ME, &[3], true).unwrap();
+    assert_eq!(
+        vote_plan_json(&plan)["replaces"],
+        json!([{"number": 1, "index": 0, "text": "七点"}])
+    );
+    // 把原来投的也写上 = 追加，还是会换（整组），照样要 replace；和现在投的一模一样的不会换掉什么，不用
+    assert_eq!(
+        why(prepare(&r, ME, &[1, 3]).unwrap_err()),
+        InvalidSendWhy::VoteWouldReplace
+    );
+    assert!(prepare(&r, ME, &[1]).unwrap().replaces().is_empty());
+    assert!(once_with(&r, ME, &[3], true).is_ok());
+    assert!(r.b.submitted().len() == 1);
+}
+
+/// 认不出的投票类型不投（读法说「暂不支持」，投了会怎样不知道）
+#[test]
+fn unknown_poll_type_is_refused() {
+    let r = rig("unknown", true, &Poll::default());
+    let mut m = poll_msg(ME, &Poll::default());
+    m["content"]["poll"]["type"] = json!({"@type": "pollTypeFuture"});
+    r.b.set_history(ME, vec![m]);
+    assert_eq!(
+        why(prepare(&r, ME, &[1]).unwrap_err()),
+        InvalidSendWhy::VoteBlocked
+    );
+}
+
+/// 准备之后我在别处投了票（许改）：没给 replace 的拒；给了 replace 但会换掉的已和计划说的不同 → changed
+#[test]
+fn recheck_catches_my_vote_elsewhere() {
+    let later = Poll {
+        chosen: Some(2),
+        ..Poll::default()
+    };
+    for (replace, want) in [
+        (false, InvalidSendWhy::VoteWouldReplace),
+        (true, InvalidSendWhy::Changed),
+    ] {
+        let r = rig(&format!("elsewhere-{replace}"), false, &Poll::default());
+        let plan = prepare_with(&r, FRIEND, &[1], replace).unwrap();
+        let token = r.b.gate().issue(&plan, false).unwrap();
+        r.b.set_history(FRIEND, vec![poll_msg(FRIEND, &later)]);
+        let e = vote_within(&r.b, &plan, token, Duration::from_secs(2)).unwrap_err();
+        assert_eq!(why(e), want);
+        assert!(r.b.submitted().is_empty());
+    }
+}
+
+/// 交出口报连接断了：请求可能已交出 → 按结果未知报、记 unknown；失败与未知的留痕都带那条消息的 id
+#[test]
+fn disconnected_submit_is_outcome_unknown() {
+    let r = rig("disc", false, &Poll::default());
+    r.b.script_sends(vec![FakeSend::Reject(CoreError::Disconnected)]);
+    let e = once(&r, FRIEND, &[1]).unwrap_err();
+    assert_eq!(e.code(), "send_outcome_unknown");
+    let log = log_lines(&r);
+    assert_eq!(log[1]["result"], "unknown");
+    assert_eq!(log[1]["final_id"], 5);
 }
 
 #[test]
@@ -378,6 +450,7 @@ fn rejected_submit_is_logged_as_failed() {
     assert_eq!(e.code(), "invalid_input");
     let log = log_lines(&r);
     assert_eq!(log[1]["result"], "failed");
+    assert_eq!(log[1]["final_id"], 5);
 }
 
 /// 含剧透的选项：计划行不替人揭开

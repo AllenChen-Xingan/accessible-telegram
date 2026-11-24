@@ -72,6 +72,7 @@ fn vote_p(choices: &[u32], dry_run: bool) -> VoteParams {
         chat: FRIEND.to_string(),
         message_id: 5,
         choices: choices.to_vec(),
+        replace: false,
         dry_run,
     }
 }
@@ -155,4 +156,21 @@ fn check_limits_choices() {
     assert!(check(&vote_p(&[], false)).is_err());
     assert!(check(&vote_p(&[1; 13], false)).is_err());
     assert!(check(&vote_p(&[1, 2], false)).is_ok());
+}
+
+#[test]
+fn would_replace_error_carries_the_replace_hint() {
+    let mut cap = Cap::default();
+    let e = CoreError::InvalidSend {
+        why: InvalidSendWhy::VoteWouldReplace,
+    };
+    assert_ne!(fail_line(&mut cap, Format::Json, &Fail::Core(e)), 0);
+    let end = lines(&cap).pop().unwrap();
+    assert_eq!(end["data"]["why"], "vote_would_replace");
+    assert!(
+        end["data"]["hint_zh"]
+            .as_str()
+            .unwrap()
+            .contains("--replace")
+    );
 }

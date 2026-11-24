@@ -12,6 +12,7 @@
 - 大总管提交 9e39148、开 PR #168（只读那半）。13b 计划 MAIN `_tmp/20261124-b21/plan-13b.md` 已报（press / vote 两命令，闸拦截逻辑不改，交出口加 getCallbackQueryAnswer、setPollAnswer；要人定 4 条：回调真机测不了、撤票不做、机器人没回话报成功、拆不拆 PR）；顺带更正 PR #168「人定 6 待重认」已过时（actions.md:403 已人改定）。等大总管回「开工」
 - 2026-11-24 大总管定：13b 拆两 PR（先投票 codex 062、后按钮 codex 065）；回调只假后端测；撤票不做；没回话报成功。分支 feat/13b-vote（从 9e39148）。#168 已 squash 合 main（c48ff54）→ 审查范围暂用 `feat/13-poll-buttons...HEAD`，大总管下次检查点合 main 后再改 `origin/main...HEAD`
 - 13b-1 投票代码已写（core send/vote.rs+tests、SealedKind::Vote、4 个 why；CLI vote.rs+tests；四份契约），未编译，排名额（gui 之后）。error.rs 593 行，PR 说明里提「再加 why 要拆」
+- 合 main（e107844，冲突 actions.md / 现状页由我解）后全绿 703 过。自审 13b-1 第 1 轮（origin/main...HEAD）：P1×1（许改票已投过时整组替换没拦没说）→ 照 react 默认拒 `vote_would_replace`、`--replace` 放行、计划列 `replaces`、复核比对；P2 修 5 留 1（交出后到点无测试，需 fake.rs 加挂起分支，压基线）；P3 修 6。error.rs 599 行。未编译，等名额
 
 ## b20 接手（2026-11-16）
 

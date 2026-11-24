@@ -172,8 +172,9 @@ pub trait Backend {
         limit: u32,
     ) -> Result<AddedReactions, CoreError>;
 
-    /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览）、`resendMessages`、`addMessageReaction` /
-    /// `removeMessageReaction`、`setPollAnswer`（应答 [`Answer::Done`]）。[`Sealed`] 只能由
+    /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览，发文字与发文件）、`resendMessages`、`forwardMessages`、
+    /// `editMessageText`、`deleteMessages`、`addMessageReaction` / `removeMessageReaction` 与 `setPollAnswer`（这两种应答
+    /// [`Answer::Done`]），与 `send::SealedKind` 的分支一一对应。[`Sealed`] 只能由
     /// [`crate::send`] 在闸验过凭据后造（预览除外：预览不发），crate 外调不到
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError>;
 

@@ -144,10 +144,11 @@ pub enum InvalidSendWhy {
     NotAFile,
     /// 说明文字超过上限（`send::file::CAPTION_MAX`）
     CaptionTooLong,
-    /// 投票（#13）：这条显示的不是投票 · 已结束或不让投 · 投过且不许改 · 没选 / 选重 / 越界 / 不许多选却选了几项
+    /// 投票（#13）：这条显示的不是投票 · 已结束或不让投 · 投过且不许改 · 投过、这次会整组换掉而没给 `--replace` · 选号不对
     NotAPoll,
     VoteBlocked,
     VoteNotRevotable,
+    VoteWouldReplace,
     VoteBadChoice,
 }
 
@@ -412,7 +413,7 @@ impl CoreError {
                     "没有可撤销的待发消息：这个会话里此刻没有待发的，或确认之后它已经发出、失败或内容变了；什么都没撤销"
                 }
                 InvalidSendWhy::Changed => {
-                    "那条消息在列出计划之后、真正动手之前被编辑过，计划里的正文已经不对；什么都没动，请重新发起"
+                    "那条消息在列出计划之后、真正动手之前变了（被编辑过，或投票的选项、性质、你投的票变了），计划已经不对；什么都没动，请重新发起"
                 }
                 InvalidSendWhy::EditNotText => {
                     "这条不是纯文字消息（带附件），本应用暂时只改纯文字消息的正文；什么都没改"
@@ -459,9 +460,12 @@ impl CoreError {
                 }
                 InvalidSendWhy::NotAPoll => "这条消息不是投票；什么都没投",
                 InvalidSendWhy::VoteBlocked => {
-                    "这个投票已结束，或你不能投（详情里说了原因）；什么都没投"
+                    "这个投票已结束、你不能投或类型暂不支持（history --detail 看那条投票会说原因）；什么都没投"
                 }
                 InvalidSendWhy::VoteNotRevotable => "你已投过这个投票，它不许改票；什么都没投",
+                InvalidSendWhy::VoteWouldReplace => {
+                    "你已投过这个投票，这次会把你现在投的换掉（不是加上）；什么都没投"
+                }
                 InvalidSendWhy::VoteBadChoice => {
                     "选项不对：写全文里读的第几项（从 1 起），不能重复；这个投票不许多选时只能选一项；什么都没投"
                 }

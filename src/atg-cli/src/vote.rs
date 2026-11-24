@@ -1,6 +1,6 @@
 //! `vote`：在一条投票里选一项或几项（#13 13b-1；契约 `specs/contracts/cli.md`）。
 //!
-//! `vote CHAT_ID MSG_ID N [N…] [--dry-run]`：N 是全文里读的「第 N 项」（显示顺序，1 起）。一行 `plan` → 闸开凭据（和 `send`
+//! `vote CHAT_ID MSG_ID N [N…] [--replace] [--dry-run]`：N 是 `history --full` 全文里读的「第 N 项」（显示顺序，1 起）。一行 `plan` → 闸开凭据（和 `send`
 //! 一样直发、不确认；测试服务器只许收藏夹）→ 交出 → 一行 `result`。L2：不自动重试；没等到应答按 `send_outcome_unknown` 报
 //! （票可能已投上）。能经本机接口转给占着档案的执行方（闸在执行方）。流程只在这里，GUI 以后同样调 `atg_core::send::vote`。
 
@@ -10,7 +10,7 @@ use crate::deadlines::{QUERY_TIMEOUT, bounded};
 use crate::history::{self, ChatRef};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
-use atg_core::error::CoreError;
+use atg_core::error::{CoreError, InvalidSendWhy};
 use atg_core::link::EventStream;
 use atg_core::model::MsgId;
 use atg_core::send::vote::{self, VotePlan};
@@ -29,9 +29,12 @@ pub const CHOICES_MAX: usize = 12;
 pub struct VoteArgs {
     #[command(flatten)]
     pub msg: MsgRef,
-    /// 选第几项：全文里读的「第 N 项」（从 1 起）；许多选的投票可给几个
+    /// 选第几项：`history --full` 全文里读的「第 N 项」（从 1 起，按显示顺序）；许多选的投票可给几个
     #[arg(value_name = "N", required = true, num_args = 1..)]
     pub choices: Vec<u32>,
+    /// 你已投过、这个投票许改票时照样投：会把你现在投的整组换掉（不是加上；多选要追加就把原来的也写上）
+    #[arg(long)]
+    pub replace: bool,
     /// 只输出要投什么，不投
     #[arg(long)]
     pub dry_run: bool,
@@ -44,6 +47,8 @@ pub struct VoteParams {
     pub message_id: i64,
     pub choices: Vec<u32>,
     #[serde(default)]
+    pub replace: bool,
+    #[serde(default)]
     pub dry_run: bool,
 }
 
@@ -55,7 +60,8 @@ fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
 pub fn check(p: &VoteParams) -> Result<(), Fail> {
     chat_ref(&p.chat)?;
     if p.choices.is_empty() || p.choices.len() > CHOICES_MAX {
-        return Err(Fail::Usage("给一到十二个选项编号（全文里读的第几项）"));
+        // 上限同 CHOICES_MAX（`Fail::Usage` 只收字面量）
+        return Err(Fail::Usage("给 1 到 12 个选项：全文里读的第几项"));
     }
     Ok(())
 }
@@ -73,9 +79,23 @@ fn fail_line(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
         Fail::Core(e) => {
             let mut data = out::core_error_data(e);
             data["retryable"] = json!(false);
+            // 内核的说法不写死前端的放行办法（同 react 的 --replace）：CLI 在这里补
+            let hint = matches!(
+                e,
+                CoreError::InvalidSend {
+                    why: InvalidSendWhy::VoteWouldReplace
+                }
+            )
+            .then_some("确要换掉就加 --replace；多选想追加就把原来投的也写上");
+            if let Some(h) = hint {
+                data["hint_zh"] = json!(h);
+            }
             match format {
                 Format::Json => emit_to(sink, &envelope("error", data)),
-                Format::Text => sink.out(e.message_zh()),
+                Format::Text => sink.out(&match hint {
+                    Some(h) => format!("{}；{h}", e.message_zh()),
+                    None => e.message_zh().to_owned(),
+                }),
             }
             out::core_exit(e)
         }
@@ -122,7 +142,7 @@ fn run_vote<B: Backend>(
     };
     let plan = bounded(
         b,
-        vote::prepare_vote(b, id, &p.choices, SendOrigin::Cli),
+        vote::prepare_vote(b, id, &p.choices, p.replace, SendOrigin::Cli),
         QUERY_TIMEOUT,
     )
     .map_err(Fail::Core)?;
@@ -151,17 +171,21 @@ fn run_vote<B: Backend>(
     Ok(0)
 }
 
-/// 「在 私聊 · 林小雨 · 777 里 id 5 那条投票里投第 2 项，八点；公开投票，别人看得到你投了什么；投了能改」。
-/// 能不能改照这个投票的实际设置说，测验另说投后公布答案（人改定 6）；含剧透的选项只说「隐藏内容」
-fn said(plan: &VotePlan) -> String {
-    let picks: Vec<String> = plan
-        .choices()
+/// 「第 N 项，选项原文」逐项，「、」隔开；含剧透的选项只说「隐藏内容」
+fn items(cs: &[vote::Choice]) -> String {
+    let v: Vec<String> = cs
         .iter()
         .map(|c| match &c.text {
             Some(t) => format!("第 {} 项，{}", c.number, t.trim()),
             None => format!("第 {} 项，隐藏内容", c.number),
         })
         .collect();
+    v.join("、")
+}
+
+/// 「在 私聊 · 林小雨 · 777 里 id 5 那条投票里投第 2 项，<选项原文>；公开投票，别人看得到你投了什么；投了能改」。
+/// 会换掉现在投的就先说换掉哪几项；能不能改照这个投票的实际设置说，测验另说投后公布答案（人改定 6）
+fn said(plan: &VotePlan) -> String {
     let mut notes = vec![
         if plan.anonymous() {
             "匿名投票"
@@ -177,11 +201,16 @@ fn said(plan: &VotePlan) -> String {
     if plan.quiz() {
         notes.push("这是测验，投后会公布答案");
     }
+    let swap = if plan.replaces().is_empty() {
+        String::new()
+    } else {
+        format!("（换掉你现在投的{}）", items(plan.replaces()))
+    };
     format!(
-        "在 {} 里 id {} 那条投票里投{}；{}",
+        "在 {} 里 id {} 那条投票里投{}{swap}；{}",
         send::target_zh(plan.target()),
         plan.message().message_id,
-        picks.join("、"),
+        items(plan.choices()),
         notes.join("；"),
     )
 }
@@ -196,6 +225,7 @@ pub fn run(g: &Global, format: Format, a: &VoteArgs, started: Instant) -> ExitCo
         chat: a.msg.chat.clone(),
         message_id: a.msg.message,
         choices: a.choices.clone(),
+        replace: a.replace,
         dry_run: a.dry_run,
     };
     if let Err(f) = check(&p) {

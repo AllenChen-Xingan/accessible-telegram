@@ -12,7 +12,7 @@
 //! 人定（`actions.md` 修订记录 2026-11-17 #13 与「人改定」）：测验许投；计划照这个投票的实际设置写投了能不能改
 //! （`allows_revoting`，测验也一样）；测验另写明「投后会公布答案」。收回投过的票（空选项）v0 不做（大总管定 2026-11-24）。
 
-use super::{Answer, Sealed, SealedKind, SendOrigin, server_of, submit_failed, target_json};
+use super::{Answer, Sealed, SealedKind, SendOrigin, server_of, submit_failed_for, target_json};
 use crate::backend::Backend;
 use crate::error::{CoreError, InvalidSendWhy};
 use crate::gate::{self, ConfirmMode, ConfirmToken, Gated, Outcome};
@@ -38,6 +38,10 @@ pub struct VotePlan {
     target: ChatTarget,
     message: MsgId,
     choices: Vec<Choice>,
+    /// 我现在投着、这次会被换掉的几项（`setPollAnswer` 整组替换，不是追加；自审 13b-1 第 1 轮 P1）。
+    /// 不空只可能是给了 `replace`；新选的与现在投的一样时为空（不会换掉什么）
+    replaces: Vec<Choice>,
+    replace: bool,
     /// 投票的性质，计划行照实际设置说（人改定 6）
     revotable: bool,
     anonymous: bool,
@@ -59,6 +63,10 @@ impl VotePlan {
     }
     pub fn choices(&self) -> &[Choice] {
         &self.choices
+    }
+    /// 这次会换掉的、我现在投着的几项（见 [`VotePlan`] 字段说明）
+    pub fn replaces(&self) -> &[Choice] {
+        &self.replaces
     }
     /// 投了还能改（`allows_revoting`）
     pub fn revotable(&self) -> bool {
@@ -110,6 +118,7 @@ struct PollView<'a> {
     revotable: bool,
     anonymous: bool,
     quiz: bool,
+    /// 没结束、没有不能投的原因、类型认得出（认不出的投票类型不投：不知道投了会怎样，读法也说「暂不支持」）
     open: bool,
 }
 
@@ -140,12 +149,27 @@ fn poll_of(m: &Message) -> Result<PollView<'_>, CoreError> {
         revotable: *revotable,
         anonymous: *anonymous,
         quiz: *kind == PollKind::Quiz,
-        open: !*closed && blocked.is_none(),
+        open: !*closed && blocked.is_none() && !matches!(kind, PollKind::Unknown { .. }),
     })
 }
 
-/// 能不能这样投；能就回选中的各项（按显示顺序）。`numbers` 是显示顺序里的第几项（1 起）
-fn judge(p: &PollView<'_>, numbers: &[u32]) -> Result<Vec<Choice>, CoreError> {
+fn choice(o: &PollOption, number: u32) -> Choice {
+    let hidden = o.text.iter().any(crate::tree::text::contains_spoiler);
+    Choice {
+        number,
+        index: o.index,
+        text: (!hidden).then(|| crate::tree::text::plain_text(&o.text)),
+    }
+}
+
+/// 能不能这样投；能就回（选中的各项，会换掉的我现在投着的各项），都按显示顺序。`numbers` 是显示顺序里的第几项（1 起）。
+/// 我投过、许改票、新选的和现在的不一样：会整组换掉，没给 `replace` 就拒（`vote_would_replace`，同 react 的
+/// `reaction_would_replace`：直发没人当场看着）
+fn judge(
+    p: &PollView<'_>,
+    numbers: &[u32],
+    replace: bool,
+) -> Result<(Vec<Choice>, Vec<Choice>), CoreError> {
     let err = |why| Err(CoreError::InvalidSend { why });
     if !p.open {
         return err(InvalidSendWhy::VoteBlocked);
@@ -165,18 +189,23 @@ fn judge(p: &PollView<'_>, numbers: &[u32]) -> Result<Vec<Choice>, CoreError> {
     if bad {
         return err(InvalidSendWhy::VoteBadChoice);
     }
-    Ok(sorted
+    let choices: Vec<Choice> = sorted
         .iter()
-        .map(|&n| {
-            let o = &p.options[n as usize - 1];
-            let hidden = o.text.iter().any(crate::tree::text::contains_spoiler);
-            Choice {
-                number: n,
-                index: o.index,
-                text: (!hidden).then(|| crate::tree::text::plain_text(&o.text)),
-            }
-        })
-        .collect())
+        .map(|&n| choice(&p.options[n as usize - 1], n))
+        .collect();
+    let mine: Vec<Choice> = (1u32..)
+        .zip(p.options)
+        .filter(|(_, o)| o.chosen)
+        .map(|(n, o)| choice(o, n))
+        .collect();
+    let replaces = if mine.is_empty() || mine == choices {
+        Vec::new()
+    } else if replace {
+        mine
+    } else {
+        return err(InvalidSendWhy::VoteWouldReplace);
+    };
+    Ok((choices, replaces))
 }
 
 /// 各选项原文，按 TDLib 编号排（交出前比对用）
@@ -196,12 +225,14 @@ pub(crate) fn vote_request(id: MsgId, choices: &[Choice]) -> Value {
     json!({"@type": "setPollAnswer", "chat_id": id.chat_id, "message_id": id.message_id, "option_ids": ids})
 }
 
-/// `vote_prepare`：只查不发。拒的情形（都是 `invalid_input`）：这条显示的不是投票 `not_a_poll`；已结束或有不能投的原因
-/// `vote_blocked`；我投过、这个投票不许改 `vote_not_revotable`；没选、选重了、编号越界、不许多选却选了几项 `vote_bad_choice`
+/// `vote_prepare`：只查不发。拒的情形（都是 `invalid_input`）：这条显示的不是投票 `not_a_poll`；已结束、有不能投的原因、
+/// 类型认不出 `vote_blocked`；我投过、这个投票不许改 `vote_not_revotable`；我投过、新选的不一样、没给 `replace`
+/// `vote_would_replace`；没选、选重了、编号越界、不许多选却选了几项 `vote_bad_choice`
 pub async fn prepare_vote<B: Backend>(
     b: &B,
     id: MsgId,
     numbers: &[u32],
+    replace: bool,
     origin: SendOrigin,
 ) -> Result<VotePlan, CoreError> {
     let me = b.me().await?;
@@ -210,13 +241,15 @@ pub async fn prepare_vote<B: Backend>(
     let mode = b.gate().mode_for(target.id)?;
     let m = b.message_get(id).await?;
     let p = poll_of(&m)?;
-    let choices = judge(&p, numbers)?;
+    let (choices, replaces) = judge(&p, numbers, replace)?;
     let request = vote_request(id, &choices);
     let digest = gate::digest(&request, me.user_id, server_of(b)?);
     Ok(VotePlan {
         target,
         message: id,
         choices,
+        replaces,
+        replace,
         revotable: p.revotable,
         anonymous: p.anonymous,
         quiz: p.quiz,
@@ -228,14 +261,16 @@ pub async fn prepare_vote<B: Backend>(
     })
 }
 
-/// 交出前复核：计划可能是早先准备的，期间投票可能结束了、我在手机上投过了（不许改的就不能再投）、发起人改了选项。
-/// 再取一次那条消息，按同样的规矩判；性质（匿名、能否改、测验）或选项原文变了 → `changed`（计划里说的已不对）
+/// 交出前复核：计划可能是早先准备的，期间投票可能结束了、我在手机上投过或改了票（不许改的就不能再投；许改的会被这次
+/// 整组换掉）、发起人改了选项。再取一次那条消息，按同样的规矩判；会换掉的那几项、性质（匿名、能否改、测验）或选项原文
+/// 变了 → `changed`（计划里说的已不对）
 async fn recheck<B: Backend>(b: &B, plan: &VotePlan) -> Result<(), CoreError> {
     let m = b.message_get(plan.message).await?;
     let p = poll_of(&m)?;
     let numbers: Vec<u32> = plan.choices.iter().map(|c| c.number).collect();
-    let again = judge(&p, &numbers)?;
+    let (again, replaces) = judge(&p, &numbers, plan.replace)?;
     let same = again == plan.choices
+        && replaces == plan.replaces
         && texts(p.options) == plan.options
         && p.revotable == plan.revotable
         && p.anonymous == plan.anonymous
@@ -283,7 +318,7 @@ async fn vote_inner<B: Backend>(
         Ok(Answer::Message(_) | Answer::Resent(_) | Answer::Deleted) => Err(CoreError::Internal {
             what: "vote_answer_shape",
         }),
-        Err(e) => Err(submit_failed(b, mode, plan, e)),
+        Err(e) => Err(submit_failed_for(b, mode, plan, e, id)),
     }
 }
 
@@ -325,6 +360,11 @@ pub fn vote_plan_json(plan: &VotePlan) -> Value {
         "target": target_json(plan.target()),
         "message_id": plan.message().message_id,
         "choices": choices,
+        "replaces": plan
+            .replaces
+            .iter()
+            .map(|c| json!({"number": c.number, "index": c.index, "text": c.text}))
+            .collect::<Vec<_>>(),
         "revotable": plan.revotable,
         "anonymous": plan.anonymous,
         "quiz": plan.quiz,
