@@ -71,8 +71,9 @@ impl ChatRef {
     }
 }
 
-/// 会话参数写错时的那句用法提示（#60 R4，`docs/plan/010` 第二节 S7）。R4 第一步只有 history、links、voice 用它；
-/// `send`、`react`、`edit`、`pending` 里还各有一份同样的字面量，R4 第二步收过来（`watch --chat`、`delete` 的提示本来就不同）
+/// 会话参数写错时的那句用法提示（#60 R4，`docs/plan/010` 第二节 S7）。谁在用它，以 grep 为准。
+/// 还没收过来的：`send`、`react` 里各有一份同样的字面量，等 issue #13 第 13b-2 步（改这两个文件）合进 main
+/// 以后再收（R4 第二步的第二刀，`_tmp/20261124-b21/plan-r4b-arch.md`）。`watch --chat`、`delete` 的提示本来就不同
 pub(crate) const CHAT_USAGE: &str = "会话写数字 id，或 saved（收藏夹）";
 
 /// 命令行的会话参数 → [`ChatRef`]，写错了报用法错误并带 [`CHAT_USAGE`]（#60 R4）
@@ -200,7 +201,7 @@ pub(crate) fn with_backend<B: Backend, T>(
 
 /// 会话 id：`saved` 换成自己的收藏夹 id。问后端 `me()`（发送闸判收藏夹用的也是它，`actions.md` 第一节第 4 小节），按查询类期限
 /// （[`QUERY_TIMEOUT`]），到点报 `network`、内核故障报 `disconnected`，别的错照 `me()` 报（如没登录 `auth_required`）（#60 R4 起；原来等事件流里的 `my_id`
-/// 最多 5 秒，等不到报 `internal`）。`send` 那一族目前还用 `send::resolve`（同一做法），R4 第二步合成这一份
+/// 最多 5 秒，等不到报 `internal`）。`send.rs` 自己还用 `send::resolve`（同一做法，另写的一份），等 issue #13 第 13b-2 步合进 main 以后删（R4 第二步的第二刀）
 pub(crate) fn resolve_chat<B: Backend>(b: &B, chat: ChatRef) -> Result<ChatId, Fail> {
     match chat {
         ChatRef::Id(id) => Ok(id),
@@ -210,7 +211,7 @@ pub(crate) fn resolve_chat<B: Backend>(b: &B, chat: ChatRef) -> Result<ChatId, F
     }
 }
 
-/// 同 [`resolve_chat`]，留着旧签名给还没改过来的调用方（`react`；R4 第二步删）。`stream`、`feed` 不再用
+/// 同 [`resolve_chat`]，留着旧签名给还没改过来的调用方（`react`；同上，R4 第二步的第二刀删）。`stream`、`feed` 不再用
 pub(crate) fn resolve<B: Backend>(
     b: &B,
     _stream: &mut EventStream,
