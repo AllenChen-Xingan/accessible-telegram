@@ -118,7 +118,8 @@ struct PollView<'a> {
     revotable: bool,
     anonymous: bool,
     quiz: bool,
-    /// 没结束、没有不能投的原因、类型认得出（认不出的投票类型不投：不知道投了会怎样，读法也说「暂不支持」）
+    /// 没结束、没有不能投的原因、类型认得出（认不出的投票类型不投：不知道投了会怎样，读法也说「暂不支持」）、
+    /// 上一次投票没在提交中（在提交时 TDLib 把我原来投着的也报成没选，判不了；自审第 3 轮 P2）
     open: bool,
 }
 
@@ -149,7 +150,10 @@ fn poll_of(m: &Message) -> Result<PollView<'_>, CoreError> {
         revotable: *revotable,
         anonymous: *anonymous,
         quiz: *kind == PollKind::Quiz,
-        open: !*closed && blocked.is_none() && !matches!(kind, PollKind::Unknown { .. }),
+        open: !*closed
+            && blocked.is_none()
+            && !matches!(kind, PollKind::Unknown { .. })
+            && !options.iter().any(|o| o.pending),
     })
 }
 
@@ -348,21 +352,15 @@ pub fn vote_within<B: Backend>(
 
 /// 计划行（`kind:"plan"` 的 `data`，`actions.md` 第一节第 6 小节 `VotePlan`）。选项文字含剧透的给 `null`
 pub fn vote_plan_json(plan: &VotePlan) -> Value {
-    let choices: Vec<Value> = plan
-        .choices
-        .iter()
-        .map(|c| json!({"number": c.number, "index": c.index, "text": c.text}))
-        .collect();
+    // `replaces` 形状同 `choices`（契约写明）：同一个函数出
+    let one = |c: &Choice| json!({"number": c.number, "index": c.index, "text": c.text});
+    let choices: Vec<Value> = plan.choices.iter().map(one).collect();
     json!({
         "action": "vote",
         "target": target_json(plan.target()),
         "message_id": plan.message().message_id,
         "choices": choices,
-        "replaces": plan
-            .replaces
-            .iter()
-            .map(|c| json!({"number": c.number, "index": c.index, "text": c.text}))
-            .collect::<Vec<_>>(),
+        "replaces": plan.replaces.iter().map(one).collect::<Vec<_>>(),
         "revotable": plan.revotable,
         "anonymous": plan.anonymous,
         "quiz": plan.quiz,

@@ -318,6 +318,25 @@ fn revote_replaces_and_needs_replace() {
     assert!(r.b.submitted().len() == 1);
 }
 
+/// 自审第 3 轮 P2：上一次投票还在提交（`is_being_chosen`，TDLib 这时把我原来投的也报成没选）：我投着什么拿不准，
+/// 不许改、会撤掉原先的两道保护都看不见——一律拒，等它交完
+#[test]
+fn pending_vote_is_refused() {
+    let p = Poll {
+        revoting: false,
+        ..Poll::default()
+    };
+    let r = rig("pending", true, &p);
+    let mut m = poll_msg(ME, &p);
+    m["content"]["poll"]["options"][1]["is_being_chosen"] = json!(true);
+    r.b.set_history(ME, vec![m]);
+    assert_eq!(
+        why(prepare(&r, ME, &[1]).unwrap_err()),
+        InvalidSendWhy::VoteBlocked
+    );
+    assert!(r.b.submitted().is_empty());
+}
+
 /// 认不出的投票类型不投（读法说「暂不支持」，投了会怎样不知道）
 #[test]
 fn unknown_poll_type_is_refused() {

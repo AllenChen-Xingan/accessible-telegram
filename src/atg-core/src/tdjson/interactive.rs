@@ -36,6 +36,7 @@ pub(super) fn poll(p: &Value) -> Attachment {
             votes: u(o, "voter_count"),
             percent: u(o, "vote_percentage").min(100),
             chosen: b(o, "is_chosen"),
+            pending: b(o, "is_being_chosen"),
             correct: quiz && correct.contains(&i64::try_from(n).unwrap_or(-1)),
         })
         .collect();

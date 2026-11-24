@@ -460,7 +460,7 @@ impl CoreError {
                 }
                 InvalidSendWhy::NotAPoll => "这条消息不是投票；什么都没投",
                 InvalidSendWhy::VoteBlocked => {
-                    "这个投票已结束、你不能投或类型暂不支持（history --detail 看那条投票会说原因）；什么都没投"
+                    "这个投票已结束、你不能投、类型暂不支持，或你上一次投的还在提交中（history --detail 看那条投票会说原因）；什么都没投"
                 }
                 InvalidSendWhy::VoteNotRevotable => "你已投过这个投票，它不许改票；什么都没投",
                 InvalidSendWhy::VoteWouldReplace => {

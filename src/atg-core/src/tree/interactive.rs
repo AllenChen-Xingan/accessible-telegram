@@ -21,6 +21,9 @@ pub struct PollOption {
     /// 测验的正确答案（`pollTypeQuiz.correct_option_ids`；别人发的、还没作答的测验 TDLib 不给，都为假）
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub correct: bool,
+    /// 我刚投的、还在提交（`is_being_chosen`）：这时 TDLib 把我原来投着的也报成没选，「我投了哪几项」拿不准（#13 13b-1）
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pending: bool,
 }
 
 /// 投票类型（`PollType`，`td_api.tl:484-494`）。开放集合：TDLib 以后加的类型进 `Unknown`；读法在详情与全文里多说一句

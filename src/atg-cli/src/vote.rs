@@ -87,7 +87,7 @@ fn fail_line(sink: &mut dyn Sink, format: Format, f: &Fail) -> u8 {
                 }
             )
             .then_some(
-                "确要换掉就加 --replace；多选想追加就把原来投的也写上（那样不丢，不用 --replace）",
+                "确要换掉就加 --replace；许多选的投票想追加，就把原来投的也写上（那样不丢，不用 --replace）",
             );
             if let Some(h) = hint {
                 data["hint_zh"] = json!(h);
