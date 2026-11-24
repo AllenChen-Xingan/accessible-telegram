@@ -252,10 +252,9 @@ fn run_cancel<B: Backend>(
     started: Instant,
     submit_timeout: std::time::Duration,
 ) -> Result<u8, Fail> {
-    let chat =
-        history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
+    let chat = history::chat_arg(&p.chat)?;
     chats::ensure_ready(b)?;
-    let chat_id = crate::send::resolve(b, chat)?;
+    let chat_id = history::resolve_chat(b, chat)?;
     // 续发的那几条在 TDLib 启动重放本地日志时就推来了（授权到 ready 之前），这里已在流里
     feed.drain(stream);
     let ids: Vec<i64> = feed

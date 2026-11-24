@@ -123,7 +123,7 @@ fn run_on<B: Backend>(
         return Err(Fail::Usage("消息 id 要给 1 到 100 个"));
     }
     chats::ensure_ready(b)?;
-    let chat_id = crate::send::resolve(b, chat)?;
+    let chat_id = history::resolve_chat(b, chat)?;
     let plan = bounded(
         b,
         delete::prepare_delete(b, chat_id, &p.ids, SendOrigin::Cli),
