@@ -8,8 +8,9 @@
 //! 写进程序的是构建时拼好的绝对路径，所以开发版二进制里带着构建机的家目录（只限开了 `tdlib` 特性的开发版）。
 //! 这件已记在 issue #167：正式包要换一种载入方式（如 `@executable_path` 加打进 `.app` 的库），到时一起解决。没开 `tdlib` 特性（默认、CI）时什么都不做。
 
-/// 常驻软链接相对家目录的路径：正本是同目录的 `dev-link`
-const DEV_LINK: &str = include_str!("dev-link");
+/// 常驻软链接相对家目录的路径：正本是同目录的 `dev-link`。按字节读进来（`include_bytes!`），到开了 `tdlib`
+/// 特性之后才解码、校验：用 `include_str!` 的话，文件不是 UTF-8（如被编辑器存成 UTF-16）时，默认构建也会编不过（codex 072 第 3 轮）
+const DEV_LINK: &[u8] = include_bytes!("dev-link");
 
 fn main() {
     // 这两个文件一改，cargo 就重跑本脚本（改了 dev-link，程序里的 rpath 才会跟着变）；`HOME` 变了同理。
@@ -24,18 +25,20 @@ fn main() {
     }
     // 规则（三处同一条，见 src/tdlib-build/README.md）：整个文件 = 一行路径 + 可有可无的一个换行；不 trim。
     // 不合规则就让构建失败，不悄悄产出一个找不到 libtdjson 的程序（同两份 shell 的「报错退出」）
-    let rel = DEV_LINK.strip_suffix('\n').unwrap_or(DEV_LINK);
+    let raw = DEV_LINK.strip_suffix(b"\n").unwrap_or(DEV_LINK);
     // 字符只许 ASCII 字母、数字和 . _ / -（白名单）：空白、非 ASCII 与 shell 那边的判法一致；逗号也拒，
     // 因为下面 `-Wl,-rpath,…` 会把逗号当成参数分隔符（#170 codex 072）
     let allowed = |b: u8| b.is_ascii_alphanumeric() || b"._/-".contains(&b);
     // 前后各补一个 / 再查（同两份 shell）：`//` = 开头的 /、末尾的 / 或连着的 /；`/./` = 有 . 这一段。
     // 末尾带 / 的路径会让 `ln` 和 check-harden 的拼法对不上（codex 072 第 2 轮）
+    // 白名单全是 ASCII：先按字节查白名单，过了才当字符串用（非 UTF-8 的内容在这一步就被拒）
+    let rel = std::str::from_utf8(raw)
+        .ok()
+        .filter(|s| !s.is_empty() && s.bytes().all(allowed))
+        .unwrap_or("");
     let framed = format!("/{rel}/");
-    let bad = rel.is_empty()
-        || !rel.bytes().all(allowed)
-        || rel.contains("..")
-        || framed.contains("//")
-        || framed.contains("/./");
+    let bad =
+        rel.is_empty() || rel.contains("..") || framed.contains("//") || framed.contains("/./");
     assert!(
         !bad,
         "src/tdlib-build/dev-link 的内容不对：要恰好一行相对家目录的路径，只许字母、数字和 . _ / -，每一段非空、不是 . 也不含 ..（不以 / 开头或结尾、没有 //；见同目录 README.md）"
