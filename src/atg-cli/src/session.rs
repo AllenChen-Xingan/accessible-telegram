@@ -172,17 +172,16 @@ fn real(
     drive(&b, profile, job, p, on_step, &crate::signals::STOP)
 }
 
-/// `chats`：选档案、起真实后端、列（`--fake` 场景目录还没做）
+/// `chats`：选档案、起真实后端、列；`--fake <场景>` 用假后端与一次性测试档案
 pub fn chats(
     g: &Global,
     q: &crate::chats::Query,
     started: std::time::Instant,
 ) -> Result<crate::chats::Listing, Fail> {
-    if g.fake.is_some() {
-        return Err(Fail::NotImplemented {
-            command: "chats",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
-        });
+    // 假后端场景：一次性测试档案，排在起真实后端之前就返回（不碰钥匙串，见 `fake_run`）
+    if let Some(sc) = &g.fake {
+        let f = crate::fake_run::open(sc)?;
+        return crate::chats::run(&f.backend, &f.profile, q, started);
     }
     #[cfg(not(feature = "tdlib"))]
     {
@@ -200,17 +199,16 @@ pub fn chats(
     }
 }
 
-/// `history`：选档案、起真实后端、取一页（`--fake` 场景目录还没做）
+/// `history`：选档案、起真实后端、取一页；`--fake <场景>` 用假后端与一次性测试档案
 pub fn history(
     g: &Global,
     q: &crate::history::Query,
     started: std::time::Instant,
 ) -> Result<crate::history::Page, Fail> {
-    if g.fake.is_some() {
-        return Err(Fail::NotImplemented {
-            command: "history",
-            message_zh: "假后端的场景目录还没做；要用真实账号或测试服务器（--test-dc）",
-        });
+    // 假后端场景：一次性测试档案，排在起真实后端之前就返回（不碰钥匙串，见 `fake_run`）
+    if let Some(sc) = &g.fake {
+        let f = crate::fake_run::open(sc)?;
+        return crate::history::run(&f.backend, &f.profile, q, started);
     }
     #[cfg(not(feature = "tdlib"))]
     {
