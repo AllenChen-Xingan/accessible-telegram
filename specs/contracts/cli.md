@@ -277,4 +277,4 @@
 - 2026-11-17 #12 发文件 / 图片（手下 msg2）：加 `send-file` 子命令（文件 `atg-cli/src/send_file.rs`）；不经本机接口代跑，档案被常驻进程占着报 `profile_busy`
 - 2026-11-17 #12 自审第 1 轮后（手下 msg2）：`send-file` 行写明结果未知后的下一步（带文件的待发撤不了）、说明文字按 UTF-16 码元计、硬链接与「三个文件夹以外一律不许」
 - 2026-11-17 #12 自审第 2 轮后（手下 msg2）：`send-file` 行写明 MB 的算法、`PATH` 与 `~` 怎么解析、压缩的后果与发原图的办法、`can_resend` 时 `resend` 的限制与快照期限；中间文件夹不存在按不许报
-- 2026-11-24 #60 R4 第一步（手下 arch，大总管定）：会话写 `saved` 时一律问后端 `me()` 换成收藏夹 id，按查询类 10 秒，到点 `network`、内核故障 `disconnected`。`history`、`links`、`watch`、`react`、`download`、`play`、`transcribe` 原来是等事件流里的 `my_id`，最多 5 秒，等不到报 `internal`（`what:"me_unknown"`），现在和 `send` 那一族一样。「最多等多久」一段写明了这一类
+- 2026-11-24 #60 R4 第一步（手下 arch，大总管定）：会话写 `saved` 时一律问后端 `me()` 换成收藏夹 id（发送闸判断收藏夹用的也是它，`actions.md` 第一节第 4 小节），按查询类 10 秒；换不出就照 `me()` 的错报：到点 `network`、内核故障 `disconnected`，没登录 `auth_required`（多半在这之前的等授权一步已报过）。受影响的命令：`history`、`links`、`watch`（含 `serve` 或 GUI 代跑的 `watch --chat saved`）、`react`、`reactions`、`download`、`play`、`transcribe`。它们原来等事件流里的 `my_id`，最多 5 秒，等不到报 `internal`（`what:"me_unknown"`，这个码已从 `errors.md` 删去）。现在和 `send`、`resend`、`send-file`、`forward`、`delete`、`edit`、`pending cancel` 一样。「最多等多久」一段写明了这一类

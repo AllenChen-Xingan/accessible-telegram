@@ -318,7 +318,7 @@ pub fn status_line<B: Backend>(b: &B, format: Format) -> String {
     }
 }
 
-/// 会话 id：`saved` 换成自己的用户 id；`--chat` 的会话要在 store 里（`getChat`），找不到 → `not_found`
+/// 会话 id：`saved` 换成收藏夹 id（[`crate::history::resolve_chat`]，问 `me()`）；`--chat` 的会话要在 store 里（`getChat`，[`crate::history::load_chat`]），找不到 → `not_found`
 pub fn resolve<B: Backend>(
     b: &B,
     stream: &mut EventStream,

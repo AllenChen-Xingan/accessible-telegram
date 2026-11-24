@@ -40,7 +40,9 @@
 - 草案已批：MAIN 下 `_tmp/20261124-b21/plan-r4-arch.md` 文件头。统一成问 `me()`（对外错误码会变，PR 单列「行为变化」一节，同步改 `errors.md`、`cli.md`）；`delete` 保持现状；cli 新建 `target.rs`
 - 分两步，避开 msg2 的 13b。第一步只碰：core 的 `target.rs`（新）、`lib.rs`，cli 的 `target.rs`（新）、`history.rs`、`history/links.rs`、`voice/mod.rs`、`watch.rs`，以及 `errors.md`、`cli.md`。`history::resolve` 留成一行转调（`react.rs` 不动，但行为跟着变），`watch::resolve` 签名不变（`serve.rs` 不动）
 - 第二步（13b-1 合进 main 以后）：send 那一族、`args.rs` 的 `-n` 常量
-- 状态：开工
+- 检查点 8c76222（大总管提交）：8 个文件；名额内全量检查全过（test 719 过、0 败、5 忽略；第一遍有 3 个没用的导入和 1 条测试红，改完重跑之前打过招呼）
+- 自审第 1 轮：P1×2，都是同一件事：`errors.md` 的码表里其实登记着 `me_unknown`，我用子串搜，被 `send_outcome_unknown` 淹掉了，没看见，修订记录还写错了。已改。另外：契约改成「照 `me()` 的错报」、删掉 `ME_TIMEOUT`、测试钉死为 `auth_required`、受影响命令补上 `reactions` 和 `serve`。修改还没编译，等名额
+- 遗留（写进 PR，和 #175「假后端缺『不应答』的分支」合在一起说）：「到点报 `network`、内核故障报 `disconnected`」还没有测试，第二步补
 
 ## b21 · R8 小零件归一（2026-11-24，工作副本 `atg-wt/arch-r8`，分支 `refactor/r8-dedupe`，从 main c48ff54 起；codex 066）
 - #42 那一段记在 `atg-wt/arch-42` 的现状页里（PR #173），合进 main 后两边合成一份

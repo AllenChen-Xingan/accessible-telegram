@@ -267,7 +267,8 @@ fn saved_uses_own_chat() {
     assert!(b.calls().contains(&Call::ChatGet(ME)));
 }
 
-/// `saved` 换不出收藏夹 id 时照后端 `me()` 的错报，不再是 `internal`（`me_unknown`）（#60 R4，`cli.md` 修订记录）
+/// `saved` 换不出收藏夹 id 时照后端 `me()` 的错报，不再是 `internal`（`me_unknown`）（#60 R4，`cli.md` 修订记录）。
+/// 假后端没登记 `me` 时 `me()` 回 401，即 `auth_required`；就算事件流里有 `my_id` 也不再拿它顶
 #[test]
 fn saved_failure_is_not_internal() {
     let b = FakeBackend::new().unwrap();
@@ -284,9 +285,7 @@ fn saved_failure_is_not_internal() {
     let r = with_backend(&b, &p, Instant::now(), |b, s, f| {
         collect(b, s, f, &query, Duration::from_millis(300))
     });
-    let code = fail_code(r);
-    assert_ne!(code, "internal");
-    assert_ne!(code, "ok");
+    assert_eq!(fail_code(r), "auth_required");
 }
 
 #[test]
