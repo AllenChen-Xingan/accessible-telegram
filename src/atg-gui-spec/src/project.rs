@@ -39,14 +39,17 @@ pub enum Region {
     MessageList,
 }
 
-/// 纯界面状态（只放 id 和枚举，不放下标、不放读法字符串：012 第二节第 2 行）
+/// 纯界面状态（只放 id 和枚举，不放下标、不放读法字符串：012 第二节第 2 行）。不放下标是因为新消息插进来、往上加载历史、
+/// 有消息被撤回时，下标会漂、id 不会
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiState {
     pub region: Region,
     /// 会话列表选中哪个
     pub chats_anchor: Option<i64>,
-    /// 每个会话里选中哪条（键 = 会话 id）：离开再回来保持（012 第三节第 2 小节、exp003b-v2）
-    pub msgs_anchor: HashMap<i64, MsgId>,
+    /// 每个会话里选中哪条：会话 id → 那个会话里的消息 id（会话 id 只存在键里，不再在值里存第二份）。
+    /// 离开再回来保持（012 第三节第 2 小节、exp003b-v2）。锚点那条不在这次传进来的 `messages`（core 的窗口只是一段）
+    /// 里时，什么都不选、不写 `active=`；要不要回落到最近的一条，由 M3.4 的焦点规则定（`specs/gui/focus.md`）
+    pub msgs_anchor: HashMap<i64, i64>,
 }
 
 /// 节点状态（导出格式里「只写有的」那几样，M3.1 用到的）
@@ -82,7 +85,7 @@ enum Data<'a> {
 /// 照契约表的 `name` 一列算名称。来源是读法（`chat_brief` / `brief`）而数据给错了（比如给的是一条消息）就没有名称；
 /// 来源是文案时不看数据，多给了也照出文案。没名称的兜底：可操作元素由本 crate 的投影测试 `tests/project.rs` 的
 /// `check_rules` 抓（它只对可操作角色查名称，只跑那几个夹具）；不可操作的（如状态栏）只能靠快照里它那一行变了才看得出。
-/// 规约里的 `check-a11y-tree.py` 还没写（PR-3），现在不兜这一层
+/// 规约里的 `check-a11y-tree.py` 还没写（M3.1 的树导出那一块，#169），现在不兜这一层
 fn name_of(e: Element, data: Data, cx: &SpeechCtx) -> Option<String> {
     match (spec(e).name, data) {
         // 根节点不带名称（窗口名在 NSWindow 标题上）
@@ -218,7 +221,12 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
             .map(|(id, d)| A11yNode::of(Element::MessageItem, Aid::Msg(id), Data::Doc(d), input.cx))
             .collect();
         // 只取这个会话自己的锚点；别的会话的锚点留在表里，切回去时还在
-        let anchor = ui.msgs_anchor.get(&open.chat_id).copied().map(Aid::Msg);
+        let anchor = ui.msgs_anchor.get(&open.chat_id).map(|&message_id| {
+            Aid::Msg(MsgId {
+                chat_id: open.chat_id,
+                message_id,
+            })
+        });
         region_msgs.children.push(list(
             A11yNode::of(
                 Element::MessageList,

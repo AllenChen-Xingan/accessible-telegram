@@ -121,7 +121,7 @@
 <角色> [<标识>] ["<名称>"] [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
 ```
 
-没有标识的节点（纯装饰容器）不写标识一格；名称为空的节点（根节点：窗口名在 NSWindow 标题上）不写名称一格。`roledesc` 两层都写，什么时候写见下面 macOS 层那段（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）；位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
+没有标识的节点（纯装饰容器）不写标识一格；名称为空的节点（根节点：窗口名在 NSWindow 标题上）不写名称一格。`roledesc` 两层都写，什么时候写见下面 macOS 层那段（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）；位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant：键盘焦点留在列表容器上，容器告诉读屏「当前是哪一项」；所以 `active=` 跟着选中项走，焦点不在这个区时也照写，`focused` 才表示焦点在不在）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
 
 **macOS 层**（`<场景>.macos.txt`），每行：
 
@@ -142,7 +142,7 @@
 - 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；场景目录建好之前它借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`。它存成 insta 快照（insta 是 Rust 的快照测试库；`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
 - 去掉几何位置、时间戳、GPUI 内部节点号（每次都变）；节点用标识定位
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
-- 没有标识的节点（纯装饰容器）只写角色，`check-a11y-tree.py` 只对能操作的角色查标识
+- 没有标识的节点（纯装饰容器）怎么写，见各层格式那段（GPUI 层：不写标识一格）；`check-a11y-tree.py` 只对能操作的角色查标识
 
 **例**（GPUI 层，场景 `basic-3-chats`，进了「林小雨」的会话，名称是读法草稿）：
 

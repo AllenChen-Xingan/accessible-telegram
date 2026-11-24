@@ -101,7 +101,7 @@ pub struct ElementSpec {
     pub name: NameFrom,
     /// 角色描述（macOS AXRoleDescription）；只在应用自己设时有
     pub role_description: Option<TextId>,
-    /// 能操作（能获焦或能被选中）：`check-a11y-tree.py`（待写，PR-3）将对这类元素查角色、名称、标识三样（第一节第 1 条）
+    /// 能操作（能获焦或能被选中）：`check-a11y-tree.py`（待写，M3.1 的树导出那一块，#169）将对这类元素查角色、名称、标识三样（第一节第 1 条）
     pub operable: bool,
 }
 
