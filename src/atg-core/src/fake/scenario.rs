@@ -118,10 +118,13 @@ impl Scenario {
                     if name.starts_with('.') || !name.ends_with(".jsonl") || !path.is_file() {
                         continue;
                     }
-                    let chat_id = name
-                        .trim_end_matches(".jsonl")
-                        .parse::<i64>()
-                        .map_err(|_| BAD)?;
+                    // 规范写法的十进制整数：只去一次后缀；`+101`、`0101`、`-0`、`101.jsonl.jsonl` 都不认。
+                    // 一个 id 只有一种规范写法，所以同一会话不会有两个文件、装哪份也不随列目录的顺序变
+                    let stem = name.strip_suffix(".jsonl").unwrap_or(name);
+                    let chat_id = stem.parse::<i64>().map_err(|_| BAD)?;
+                    if chat_id.to_string() != stem {
+                        return Err(BAD);
+                    }
                     let msgs = lines(&path)?;
                     for m in &msgs {
                         typed_id(m, "message")?;
@@ -260,6 +263,11 @@ mod tests {
         put(d.path(), "history/101.jsonl~", "x");
         put(d.path(), "history/notes.txt", "x");
         put(d.path(), "history/sub/202.jsonl", MSG);
+        // 三条跳过规则各有一个只靠它才跳得过的例子（审查第 2 轮）：
+        // 点开头又以 .jsonl 结尾（macOS 在非 HFS 卷上留的「._」文件）→ 只靠「点开头」
+        put(d.path(), "history/._101.jsonl", "\0binary");
+        // 目录名本身像夹具 → 只靠「不是文件」
+        std::fs::create_dir_all(d.path().join("history/202.jsonl")).expect("建目录");
         let Ok(sc) = Scenario::load(d.path()) else {
             panic!("history/ 里的杂项应跳过");
         };
@@ -306,6 +314,19 @@ mod tests {
                 "消息的 chat_id 和文件名不符",
                 &[("me.json", ME), ("history/102.jsonl", MSG)],
             ),
+            (
+                "文件名带 +",
+                &[("me.json", ME), ("history/+101.jsonl", MSG)],
+            ),
+            (
+                "文件名补前导 0",
+                &[("me.json", ME), ("history/0101.jsonl", MSG)],
+            ),
+            (
+                "文件名两层后缀",
+                &[("me.json", ME), ("history/101.jsonl.jsonl", MSG)],
+            ),
+            ("文件名是 -0", &[("me.json", ME), ("history/-0.jsonl", MSG)]),
         ];
         for (what, files) in cases {
             let d = dir("sc-bad");

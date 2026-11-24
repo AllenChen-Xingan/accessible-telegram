@@ -9,7 +9,7 @@
   email     邮箱只许保留域名（.invalid / .test / .example，RFC 2606），别的一律算真邮箱
   url       链接只许保留域名（同上，另含 example.com / .org / .net）；t.me 等真实链接算
   ids       user / chat / message 的 id，及 chat_id、user_id、message_id、supergroup_id、basic_group_id：
-            只许 0–99999；会话 id 可为负（-1…-99999），超级群可写成 -100 加 1–99999
+            只许 0–99999；会话 id 可为负（-1…-99999），超级群与频道是 -100 后面接上 1–99999 的数（字符串拼接：-1001 是超级群 1，不是 -100+1）
   files     minithumbnail.data、文件 remote.id / remote.unique_id 只许空串或 fixture- 开头的占位
 
 用法：python3 scripts/check-fixtures.py [--root <仓库根>]
