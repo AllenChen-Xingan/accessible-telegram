@@ -171,4 +171,4 @@ src/atg-core/fixtures/
 - 2026-11-16 issue #115（codex 047 补审，只改文字）：发送闸矩阵的说明不再提「默认模式下免确认」
 - 2026-11-17 #83 自审（手下 fix，属技术细节）：直发模式测试要点的留痕行数与 `actions.md` 对齐（每条两行，批量重发按条）
 - 2026-11-24 #42 开发版开强化运行时（手下 arch，人定 2026-11-17 做）：第一节第 4 小节加「强化运行时」一行（`scripts/check-harden.sh`）；runner 那段改成按 rpath 找库
-- 2026-11-24 #170（手下 arch）：「强化运行时」一行，两个 `build.rs` 改成共用的 `src/tdlib-build/rpath.rs`，软链接路径的正本是 `src/tdlib-build/dev-link`
+- 2026-11-24 #170（手下 arch）：「强化运行时」一行写的「改了两个 `build.rs` 后要跑」，改成「改了共用构建脚本 `src/tdlib-build/rpath.rs` 或 `dev-link` 后要跑」（两个 `build.rs` 已合成一份；软链接路径的正本是 `src/tdlib-build/dev-link`）

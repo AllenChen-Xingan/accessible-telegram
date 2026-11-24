@@ -3,13 +3,21 @@
 ## b21 · #170 常驻软链接路径一份正本、两个 build.rs 合一（2026-11-24，工作副本 `atg-wt/arch-170`，分支 `chore/170-dev-link`，从 main 8b8b5de 起；codex 072）
 
 - 计划已批：MAIN 下 `_tmp/20261124-b21/plan-170-arch.md`。正本用纯文本 `dev-link`；两份 shell 各自读；Cargo 要是不认包目录外的构建脚本路径，就退回两个 3 行的 `build.rs`
-- 已改（还没编译，等名额）：
+- 检查点 ea8c9f3（大总管提交）。名额内全量检查与实测都过了：test 772 过；默认构建 LC_RPATH 为 0；第二次构建 Fresh；touch dev-link、touch rpath.rs、改 HOME 都让两个包重跑；带 tdlib 的构建 rpath 只有一条；check-harden 全过；Cargo 认包目录外的构建脚本路径，没走退路
+- 检查点里的改动：
   - 新加 `src/tdlib-build/dev-link`（一行 `.atg-dev/tdlib`）和 `src/tdlib-build/rpath.rs`（两包共用的构建脚本，用 `include_str!` 读 dev-link）
   - 两个包的 `Cargo.toml` 各加一行 `build = "../tdlib-build/rpath.rs"`，删掉两个 `build.rs`。`cargo metadata` 能过，也就是清单认这个写法
   - `build.sh`、`check-harden.sh` 改成读 dev-link：空的、绝对路径、含 `..`、含空白、多于一行，一律报错退出。在临时副本里 7 种情况都试过
   - `testing.md` 里「强化运行时」那一行跟着改，加一条修订记录
 - 事实（和大总管一起改正过一次）：rpath 是构建时拼好的绝对路径，所以带 TDLib 的开发版二进制里有构建机的家目录。#42 起就是这样，不是这次带来的，已并进 #167
-- 还要实测：rerun-if-changed 生效（第二次 Fresh；touch dev-link、rpath.rs 后两包都重跑；改 HOME 也重跑）、默认构建 LC_RPATH 为 0、check-harden 全过
+- 自审第 1 轮：P0/P1 零，P2×4，P3×8。改了：
+  - **三处校验统一成一条规则**：整个文件就是一行路径，末尾可以有、也可以没有一个换行；不 trim；不许空、不许绝对路径、不许含 `..`、不许含空白。规则写在新文件 `src/tdlib-build/README.md` 里
+    - Rust 侧原来不合规则只打警告，现在构建直接失败；没有 HOME 也一样
+    - shell 侧用 `$(cat; printf x)` 保住末尾换行，`check-harden` 也补上了多行检查
+    - 13 种样例三处结论一致（Rust 那一列是用同一个表达式另编的小程序测的；真的构建脚本会不会让构建失败，还要实测）
+  - `build.sh` 只在真要动软链接时才读 dev-link，`path` 子命令不受影响；`set -e` 靠什么停住、为什么不能写成 `local x="$(…)"`，都加了注释
+  - 注释、头注释、`testing.md` 修订记录、`cog.md` 跟着改，#167 的说法改准
+  - 改完还没编译
 
 ## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
 

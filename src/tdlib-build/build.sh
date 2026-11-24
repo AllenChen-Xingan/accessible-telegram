@@ -5,7 +5,7 @@
 # 用法（在仓库任意位置跑都行）：
 #   bash src/tdlib-build/build.sh          # 编一次（约 3–4 分钟，M 系列 Mac）；最后一行打印 LOCAL_TDLIB_PATH
 #   bash src/tdlib-build/build.sh path     # 只打印最近一次编好的前缀（没有就报错、退出码 1）
-#   bash src/tdlib-build/build.sh link     # 只把常驻软链接 ~/.atg-dev/tdlib 指到最近一次编好的前缀，不重编
+#   bash src/tdlib-build/build.sh link     # 只把常驻软链接 ~/<dev-link>（现为 ~/.atg-dev/tdlib，正本 src/tdlib-build/dev-link）指到最近一次编好的前缀，不重编
 #   export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 #
 # 需要：git、cmake、gperf、Homebrew 的 openssl@3（含静态库），以及开发签名身份（bash scripts/setup-dev-codesign.sh 检查并给步骤；
@@ -54,20 +54,26 @@ latest_prefix() {
 }
 
 # 常驻软链接相对家目录的路径：唯一正本是 src/tdlib-build/dev-link（程序的 rpath 也从它拼，见 rpath.rs，#170）。
-# 读出来是空、绝对路径、含 .. 或空白的，报错退出，不悄悄用默认值
+# 内容不合规则就报错退出，不悄悄用默认值
 dev_link_rel() {
   local f="${root}/src/tdlib-build/dev-link" rel
   [[ -r "${f}" ]] || die "读不了 ${f}"
-  # 只去掉行尾换行；中间有空白不去掉、直接拒（不悄悄改成别的路径）
-  rel="$(head -n 1 "${f}")"
-  [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* \
-     && "$(wc -l <"${f}" | tr -d ' ')" -le 1 ]] || die "${f} 的内容不对（要一行相对家目录的路径，不带空白）"
+  # 规则（三处同一条，见 src/tdlib-build/README.md）：整个文件 = 一行路径 + 可有可无的一个换行；不 trim。
+  # `$(cat; printf x)` 再去掉 x：保住文件末尾的换行原样（`$( )` 本身会吞掉所有末尾换行，那样多出的空行就查不出来）
+  rel="$(cat "${f}"; printf x)"
+  rel="${rel%x}"
+  rel="${rel%$'\n'}"
+  [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* ]] \
+    || die "${f} 的内容不对（要恰好一行相对家目录的路径，不带空白、不以 / 开头、不含 ..）"
   printf '%s' "${rel}"
 }
-# 常驻软链接（#42）：程序的 rpath 指 ~/<dev-link>/lib。那里已有东西但不是软链接 → 不碰，报错退出
-dev_link="${HOME}/$(dev_link_rel)"
+# 常驻软链接（#42）：程序的 rpath 指 ~/<dev-link>/lib。那里已有东西但不是软链接 → 不碰，报错退出。
+# 只在真要动软链接时才读 dev-link（`path` 子命令用不到它，dev-link 坏了也不该连累它）
 update_link() {
-  local target="$1"
+  local target="$1" dev_link
+  # 赋值语句的退出码就是命令替换的退出码：dev_link_rel 里 die 了，set -e 在这里停住。别改成 `local dev_link="$(…)"`
+  # （那样退出码是 local 的、恒为 0，就停不住了）
+  dev_link="${HOME}/$(dev_link_rel)"
   if [[ -e "${dev_link}" && ! -L "${dev_link}" ]]; then
     die "${dev_link} 已存在且不是软链接，不覆盖；先看看它是什么"
   fi

@@ -6,7 +6,7 @@
 #      所以要一个非系统程序来设 DYLD_INSERT_LIBRARIES 再 exec）
 #   ② 把要核的程序拷两份：一份 ATG_DEV_HARDEN=0 签（对照，注入应该成功——证明这个检查本身有效），
 #      一份照常签（强化运行时，注入应该不生效）；各跑一次 `<程序> version`
-#   ③ 程序链了 libtdjson 时再核两件：rpath 里有 ~/.atg-dev/tdlib/lib 且照常能起；把 rpath 换成一个放着
+#   ③ 程序链了 libtdjson 时再核两件：rpath 里有 ~/<dev-link>/lib（现为 ~/.atg-dev/tdlib/lib，正本 src/tdlib-build/dev-link）且照常能起；把 rpath 换成一个放着
 #      临时签名 libtdjson 的目录，强化运行时版应被 dyld 拒载（库验证：不同团队号）
 # 用法：bash scripts/check-harden.sh [atg-cli 的路径]     # 只收 atg-cli；默认 target/debug/atg-cli（先 cargo build -p atg-cli [--features tdlib]）
 # 前置：clang（Xcode 命令行工具）、开发签名身份；核带 TDLib 的程序时还要先编过 TDLib（bash src/tdlib-build/build.sh，
@@ -87,8 +87,13 @@ libs="$(otool -L "${bin}")" || prep "otool -L 读不了程序"
 if has "${libs}" libtdjson; then
   echo "→ TDLib 动态库"
   # 软链接路径的正本是 src/tdlib-build/dev-link（#170），和程序里的 rpath 同一个来源
-  [[ -r "${root}/src/tdlib-build/dev-link" ]] || prep "读不了 src/tdlib-build/dev-link"
-  rel="$(head -n 1 "${root}/src/tdlib-build/dev-link")"
+  f="${root}/src/tdlib-build/dev-link"
+  [[ -r "${f}" ]] || prep "读不了 src/tdlib-build/dev-link"
+  # 规则（三处同一条，见 src/tdlib-build/README.md）：整个文件 = 一行路径 + 可有可无的一个换行；不 trim。
+  # `$(cat; printf x)` 再去掉 x：保住文件末尾的换行原样（`$( )` 本身会吞掉所有末尾换行，那样多出的空行就查不出来）
+  rel="$(cat "${f}"; printf x)"
+  rel="${rel%x}"
+  rel="${rel%$'\n'}"
   [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* ]] || prep "src/tdlib-build/dev-link 的内容不对"
   rp="${HOME}/${rel}/lib"
   loads="$(otool -l "${bin}")" || prep "otool -l 读不了程序"
