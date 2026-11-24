@@ -7,6 +7,8 @@ use crate::fake::{Cap, FakeAuth, FakeBackend, FakeSend};
 use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
+// 别名留着原来的名字，测试体不用改：这里的 `new_chat(id, title)` 就是私聊、通知设置为空（不是三参数的 `td_json::new_chat`）
+use crate::testkit::td_json::{self, new_private_chat as new_chat};
 use std::path::PathBuf;
 
 const ME: i64 = 4242;
@@ -19,20 +21,11 @@ struct Rig {
     dir: PathBuf,
 }
 
-fn new_chat(id: i64, title: &str) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title,
-        "type": {"@type": "chatTypePrivate", "user_id": id}, "positions": [], "notification_settings": {}}})
-}
-
 fn msg(chat: i64, id: i64, text: &str, extra: Value) -> Value {
-    let mut m = json!({"@type": "message", "id": id, "chat_id": chat,
-        "sender_id": {"@type": "messageSenderUser", "user_id": FRIEND}, "is_outgoing": false,
-        "date": 1_792_755_000,
-        "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": text, "entities": []}}});
-    if let (Some(o), Value::Object(x)) = (m.as_object_mut(), extra) {
-        o.extend(x);
-    }
-    m
+    td_json::with(
+        td_json::message(chat, id, FRIEND, 1_792_755_000, td_json::text(text)),
+        extra,
+    )
 }
 
 fn friend_history() -> Vec<Value> {

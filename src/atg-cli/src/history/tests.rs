@@ -4,6 +4,7 @@ use crate::out::Sink;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::testkit;
+use atg_core::testkit::td_json::{text, user};
 use serde_json::{Value, json};
 
 const ME: i64 = 100;
@@ -12,15 +13,6 @@ const ZHOU: i64 = 102;
 const GROUP: i64 = -1001;
 /// 2026-10-26T11:30:00Z（东八区 19:30）
 const T0: i64 = 1_793_014_200;
-
-fn user(id: i64, name: &str) -> Value {
-    json!({"@type": "updateUser", "user": {"@type": "user", "id": id, "first_name": name, "last_name": "",
-        "usernames": null, "phone_number": "", "is_contact": true, "type": {"@type": "userTypeRegular"}}})
-}
-
-fn text(t: &str) -> Value {
-    json!({"@type": "messageText", "text": {"@type": "formattedText", "text": t, "entities": []}})
-}
 
 /// 一条消息：`sender` 是自己就算自己发的；时间每条加一分钟
 fn msg(chat: i64, id: i64, sender: i64, content: Value) -> Value {

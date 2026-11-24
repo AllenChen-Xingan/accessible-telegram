@@ -1,5 +1,45 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · R4 第二步 2a：其余调用方接上 chat_arg / resolve_chat（2026-11-24，工作副本 `atg-wt/arch-r4b`，分支 `refactor/r4b-chat-arg`，从 main 8edd495 起；codex 070）
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r4b-arch.md`。先做 2a；文件大总管对过了，和 msg2 的 13b-2 不撞。注意 cli 的 `vote.rs` 和 core 的 `send/vote.rs` 是两个文件
+- 检查点 35229f2（大总管提交），合 main f088145。名额内全量检查都过了：test 770 过、0 败、5 忽略；`--features tdlib` 的 clippy 零警告，两个 `exp_real` 都编到了。改了的文件：cli 的 `edit`、`pending`、`delete`、`forwarding`、`send_file`、`vote`、`edit/exp_real`、`pending/exp_real`、`history`（只改注释），共 9 个文件
+  - 改用 `history::chat_arg` / `resolve_chat`，直接写名字，不用 `as` 别名
+  - `vote.rs` 删了本地那份 `chat_ref`
+  - `delete` 的提示保持不变
+- 行为不变：`send::resolve` 和 `resolve_chat` 本来就是同一种做法（问 `me()`）。`vote` 原来走 `history::resolve` 转调，现在直接调，也一样
+- 改完以后，`send::resolve`、`send::chat_ref` 只剩 `send.rs` 自己在用，`history::resolve` 只剩 `react` 在用，都等 2b 再删
+- 验证要多跑一项：两个 `exp_real` 只在 `tdlib` 特性下编译，要加跑 `cargo clippy -p atg-cli --features tdlib --all-targets`（要用 TDLib 库，`~/.atg-dev/tdlib`）
+- 自审第 1 轮：**三个视角里只回了两个**（第三个没交结果，不算它审过）；回了的两个都只报 P3，共 6 条。改了：
+  - 调用写法统一成 `history::chat_arg` / `history::resolve_chat`，导入里不再单列这两个名字
+  - `CHAT_USAGE` 注释不再手抄调用方清单
+  - 注释里的批次代号补上出处（issue #13 第 13b-2 步、plan 文件）
+  - 本页记上实测结果
+  - 没改的：`send.rs` 里 `send::resolve`、`chat_ref` 的注释，因为 `send.rs` 是 msg2 在改的文件，留到 2b 删的时候一起处理
+  - 自审修正 d5abe39，名额内编译过了（772 过）
+- ✅ codex 070（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r4b-pr-arch.md`
+- 排在 2a 后面的（大总管派，2026-11-24）：等 13b-2 合进 main 以后，做 cli `main.rs` → `lib.rs` 的纯挪动，单独开一个 PR，codex 071（照 R7 的只挪不改，附 `--color-moved` 证据）；做完接着做 R4 2b，那时 `mod target` 加在 `lib.rs` 里。依据：gui PR-4 的边界方案（MAIN 下 `_tmp/20261124-b21/plan-m31-pr4-boundary.md`），我审过的意见已经由大总管转给 gui
+
+## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
+
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r3b-arch.md`。大总管定：`testkit.rs` 照样加 `pub mod td;`（和 gui 冲突就这一两行，谁后合谁解）；两种通知设置都留，不改测试数据；`send/react/tests.rs` 先不碰；`send/tests.rs` 可以动（msg2 的 13b 不碰它）
+- 检查点里的改动（编译与测试结果见下）：
+  - 新文件 core `testkit/td.rs`（自审后改名 `td_json.rs`）：`user`、`new_chat`、`new_private_chat`、`new_private_chat_notify_default`、`text`、`message`、`with`，带两条自测
+  - 7 个测试文件改用它：core `send/file`、`send/forward`、`send/tests`，cli `forwarding`、`send_file`、`history`、`watch`。测试体一字不改；本地助手要么删掉、改成导入同名函数，要么留一行包装
+  - `testkit.rs`：加了 `pub mod td;`，头注释里 R3b 那句改了
+- 只动测试；测试数 746 过（测试体没改，多出的 2 条是新自测；没在 main 上单独对数）
+- 检查点 e0de0a2（大总管提交，10 个文件）。名额内全量检查都过了（test 746 过、0 败、5 忽略）
+- ⚠️ 踩过的坑：给 `pub mod x;` 写 `///` 文档注释，会和 `x.rs` 头上的 `//!` 合成一段，里面的链接（如 [`with`]）就按父模块解析，结果断链（开 testkit 特性的 `cargo doc -D warnings` 才报出来）。父模块那里只写普通注释 `//`，说明一律写在子文件头上
+- 自审第 1 轮：P0/P1 零，P2×3，P3×8。改了：
+  - 模块改名 `td_json`（原来叫 `td`，和真实后端 `crate::td` 撞名）
+  - 两种私聊助手写明各自什么时候用；`message` 写明 `is_outgoing` 一律是 false
+  - 写法规矩照上级 `testkit` 的说清楚；日期的说法改准；自测里的名字改用 `names.txt` 里的「林小雨」
+  - `pub mod` 挪到文件头；testkit 头上和 Cargo.toml 的特性说明补上 TDLib JSON 助手
+  - 四处 `as` 别名各加一行说明
+  - 本页的状态写准
+  - 自审修正 9cbaf79（大总管提交），名额内编译全过（746 过）
+- ✅ codex 069（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r3b-pr-arch.md`
 ## b21 接手（2026-11-24）
 
 - 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`

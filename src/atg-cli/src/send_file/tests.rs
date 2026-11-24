@@ -4,6 +4,8 @@ use atg_core::config::{Profile, ServerKind};
 use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend};
 use atg_core::gate::Gate;
+// 别名留着原来的名字，测试体不用改：这里的 `chat(id, title)` 是私聊、通知设置写全
+use atg_core::testkit::td_json::new_private_chat_notify_default as chat;
 use serde_json::Value;
 
 #[derive(Default)]
@@ -19,12 +21,6 @@ impl Sink for Cap {
 }
 
 const ME: i64 = 4242;
-
-fn chat(id: i64, title: &str) -> Value {
-    json!({"@type": "updateNewChat", "chat": {"@type": "chat", "id": id, "title": title,
-        "type": {"@type": "chatTypePrivate", "user_id": id}, "positions": [],
-        "notification_settings": {"@type": "chatNotificationSettings", "use_default_mute_for": true, "mute_for": 0}}})
-}
 
 fn backend() -> FakeBackend {
     let b = FakeBackend::with_gate(Gate::new(Holder::Cli)).unwrap();

@@ -129,13 +129,12 @@ fn run_on<B: Backend>(
     started: Instant,
     submit_timeout: Duration,
 ) -> Result<u8, Fail> {
-    let chat =
-        history::ChatRef::parse(&p.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
+    let chat = history::chat_arg(&p.chat)?;
     let cx = history::speech_ctx(p.tz.as_deref(), false)?;
     // 经本机接口转来的参数绕过了发起方的检查，这里再查一次
     crate::send::check_len(&p.text)?;
     chats::ensure_ready(b)?;
-    let chat_id = crate::send::resolve(b, chat)?;
+    let chat_id = history::resolve_chat(b, chat)?;
     let plan = bounded(
         b,
         edit::prepare_edit(b, chat_id, p.message_id, &p.text, SendOrigin::Cli),

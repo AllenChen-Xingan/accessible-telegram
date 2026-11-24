@@ -7,7 +7,7 @@
 use crate::args::{Format, Global, MsgRef};
 use crate::chats::{self, Feed};
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
-use crate::history::{self, ChatRef};
+use crate::history;
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::Backend;
 use atg_core::error::{CoreError, InvalidSendWhy};
@@ -52,13 +52,9 @@ pub struct VoteParams {
     pub dry_run: bool,
 }
 
-fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
-    ChatRef::parse(s).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))
-}
-
 /// 参数检查（直跑与执行方都走这里：执行方收到的参数绕过了 clap）
 pub fn check(p: &VoteParams) -> Result<(), Fail> {
-    chat_ref(&p.chat)?;
+    history::chat_arg(&p.chat)?;
     if p.choices.is_empty() || p.choices.len() > CHOICES_MAX {
         // 上限同 CHOICES_MAX（`Fail::Usage` 只收字面量）
         return Err(Fail::Usage("给 1 到 12 个选项：全文里读的第几项"));
@@ -136,7 +132,7 @@ fn run_vote<B: Backend>(
 ) -> Result<u8, Fail> {
     check(p)?;
     chats::ensure_ready(b)?;
-    let chat_id = history::resolve(b, stream, feed, chat_ref(&p.chat)?)?;
+    let chat_id = history::resolve_chat(b, history::chat_arg(&p.chat)?)?;
     history::load_chat(b, stream, feed, chat_id)?;
     let id = MsgId {
         chat_id,

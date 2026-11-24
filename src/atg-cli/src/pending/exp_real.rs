@@ -33,7 +33,7 @@ fn exp_pending_cancel() {
     let b = crate::session::td_backend().unwrap_or_else(|_| panic!("后端起不来"));
     let r = history::with_backend(&b, &profile, Instant::now(), |b, stream, feed| {
         chats::ensure_ready(b)?;
-        let saved = crate::send::resolve(b, history::ChatRef::Saved)?;
+        let saved = history::resolve_chat(b, history::ChatRef::Saved)?;
         let mut texts = Vec::new();
         for n in 1..=ROUNDS {
             let text = format!("atg 实验 待发撤销 {n}");
