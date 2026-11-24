@@ -3,10 +3,10 @@
 //! - 名称（`brief`）：投票读「投票，题目」，有说明文字的接在后面（说明在正文里，同媒体说明）；按钮不进名称
 //! - 详情（`detail`）：投票几个选项、你投了没有、能不能看结果、性质（匿名、多选、能否改票、测验）、为什么不能投；
 //!   按钮逐个「文字，按下会怎样」
-//! - 全文（`full`）：投票「题目，说明」再逐项「第 1 项，文字，5 票，42%，你选的，正确答案」+ 总人数 + 测验解析；看不到结果时不读各项票数。
+//! - 全文（`full`）：照原样（同正文用 `full_spans`，表情不合并，codex 035 #2）读投票「题目，说明」再逐项「第 1 项，文字，5 票，42%，你选的，正确答案」+ 总人数 + 测验解析；看不到结果时不读各项票数。
 //!   全文不读按钮（按钮在详情里）
 
-use super::content::{glue, spans};
+use super::content::{full_spans, glue, spans};
 use crate::tree::{
     Attachment, ButtonAction, Keyboard, KeyboardKind, PollKind, PollOption, VoteBlock,
 };
@@ -43,7 +43,7 @@ pub(super) fn poll_full(a: &Attachment, description: &str, reveal: bool) -> Stri
     };
     let mut items = Vec::new();
     for (i, o) in options.iter().enumerate() {
-        let mut p = format!("第 {} 项，{}", i + 1, spans(&o.text, reveal).0.trim());
+        let mut p = format!("第 {} 项，{}", i + 1, full_spans(&o.text, reveal).trim());
         if *results_visible {
             p.push_str(&format!("，{} 票，{}%", o.votes, o.percent));
         }
@@ -61,11 +61,11 @@ pub(super) fn poll_full(a: &Attachment, description: &str, reveal: bool) -> Stri
     } else {
         format!("共 {total} 人投票，{}", hidden_results(voted, *closed))
     });
-    let e = spans(explanation, reveal).0;
+    let e = full_spans(explanation, reveal);
     if !e.trim().is_empty() {
         items.push(format!("解析：{}", e.trim()));
     }
-    let q = spans(question, reveal).0;
+    let q = full_spans(question, reveal);
     let mut head = format!("投票，{}", q.trim());
     // 认不出的投票类型：全文也先说一句（同详情），别让人当普通投票听
     if matches!(kind, PollKind::Unknown { .. }) {

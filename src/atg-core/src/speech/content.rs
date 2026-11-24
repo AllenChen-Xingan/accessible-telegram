@@ -125,7 +125,7 @@ fn is_punct(c: char) -> bool {
 /// 遮住处先放占位符，最后看两边：紧挨着别的字才补逗号（原文自己的空格、标点、换行照留）
 const MASK: char = '\u{FFFC}';
 
-fn full_spans(list: &[Span], reveal: bool) -> String {
+pub(super) fn full_spans(list: &[Span], reveal: bool) -> String {
     let mut raw = String::new();
     for s in list {
         full_span(&mut raw, s, reveal);

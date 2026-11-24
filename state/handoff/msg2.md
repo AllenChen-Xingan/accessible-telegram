@@ -1,5 +1,14 @@
 # 现状页 · 手下 msg2（批次 b18：收发消息其余功能）
 
+## b21 接手（2026-11-24）
+
+- 交代：MAIN `_tmp/20261124-b21/msg2.md`；大总管 `telegram-accessibility-7a`（旧 `allenchen-37` 不在了）
+- 现状：#13 只读那半已提交 dade7f7（自审 7 轮收敛；当时全套过：684 过 0 败、两种 clippy 0）；大总管已合 main 27038c9（0c81363，未编译）
+- codex 035 卡在隐私扫描：`tdjson/interactive.rs:148` 一行（TDLib 类型名 `…CallbackWithPassword` 被当成密钥赋值），共 2 条命中（源码 + 补丁），不在 ConfirmToken 长期放行内，等大总管核 A（`--force-secrets`）/ B（改写绕开）
+- 下一步：领名额编译全套 → 报检查点 → codex 035 → PR 说明；之后 13b
+- 2026-11-24 全套过（717 过 0 败，atg-core+cli 684；两种 clippy 0；三个 check 脚本过）；大总管核过准 `--force-secrets`（只限 interactive.rs:148）
+- codex 035 第 1 轮 P2×2：#2 属实（全文误用 spans 合并表情）→ 红测试 `poll_full_keeps_repeated_emoji` 已写、改法在 scratchpad fix2.py 待红后应用；#1 驳回（「只读出」是 13b 按下的规矩）→ PR 遗留「待人实听」。记录 docs/reviews/035 已起草。等名额（arch 之后）
+
 ## b20 接手（2026-11-16）
 
 - 交代：MAIN `_tmp/20261116-b20/msg2.md`；大总管 `allenchen-37`
