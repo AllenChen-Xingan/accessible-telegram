@@ -1,17 +1,11 @@
 //! 场景夹具：读 `fixtures/scenarios/<名>/` 一整套数据，装进 [`FakeBackend`]。
-//! 格式正本：`specs/contracts/testing.md` 第一节第 3 小节；`atg-cli --fake <场景>` 与 `atg-gui --fixture <场景>` 共用这一份。
+//! **格式与解析规则的正本**：`specs/contracts/testing.md` 第一节第 3 小节（哪些文件可无、顺序、哪些目录项跳过、名字与路径怎么分、
+//! 会触发 `fixture_bad` 的情形）。这里不另写一份，只实现它。`atg-cli --fake <场景>` 现在用它；`atg-gui --fixture <场景>`
+//! （M3.1 后面的 PR，还没有）将用同一份。
 //!
-//! 一个场景目录：
-//! - `me.json`（必有）：自己，TDLib `user` 对象；收藏夹的会话 id 同它的 id
-//! - `users.jsonl`（可无）：别的用户，一行一个 TDLib `user`
-//! - `chats.jsonl`（可无）：主列表里的会话，一行一个 TDLib `chat`，按列表顺序
-//! - `history/<会话 id>.jsonl`（可无）：那个会话的消息，一行一个 TDLib `message`，从新到旧
-//! - `timeline.jsonl`（定时推更新）还没做，用到它的块再加
-//!
-//! 正式代码（`atg-cli` 与 `atg-gui` 的二进制会走到）：不 panic、不 unwrap。读不了、形状不对一律回
-//! `internal{fixture_bad}`；发布构建里给了裸场景名回 `internal{fixture_needs_path}`（两个码登记在
-//! `specs/contracts/errors.md` 第一节 `internal` 行）。[`Scenario::install`] 只调 [`FakeBackend`] 已有的公开编排方法，
-//! 不给 `Backend` 加任何能力（arch 审定，2026-11-24）。
+//! 正式代码（`atg-cli` 的二进制会走到）：不 panic、不 unwrap。发布构建里给了裸场景名回 `internal{fixture_needs_path}`，
+//! 其余读不了、形状不对一律回 `internal{fixture_bad}`（码登记在 `specs/contracts/errors.md` 第一节 `internal` 行）。
+//! [`Scenario::install`] 只调 [`FakeBackend`] 已有的公开编排方法，不给 `Backend` 加任何能力（arch 审定，2026-11-24）。
 
 use super::{FakeAuth, FakeBackend};
 use crate::error::CoreError;
@@ -116,11 +110,18 @@ impl Scenario {
             Ok(entries) => {
                 for e in entries {
                     let path = e.map_err(|_| BAD)?.path();
-                    let stem = path.file_stem().and_then(OsStr::to_str);
-                    let chat_id = match (stem, path.extension().and_then(OsStr::to_str)) {
-                        (Some(s), Some("jsonl")) => s.parse::<i64>().map_err(|_| BAD)?,
-                        _ => return Err(BAD),
+                    // 只认 `<会话 id>.jsonl`：点开头的（访达的 .DS_Store、编辑器的 .swp）、不是 .jsonl 的（101.jsonl~）、
+                    // 子目录一律跳过；形状像夹具（.jsonl）而文件名不是整数的才算坏
+                    let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+                        continue;
                     };
+                    if name.starts_with('.') || !name.ends_with(".jsonl") || !path.is_file() {
+                        continue;
+                    }
+                    let chat_id = name
+                        .trim_end_matches(".jsonl")
+                        .parse::<i64>()
+                        .map_err(|_| BAD)?;
                     let msgs = lines(&path)?;
                     for m in &msgs {
                         typed_id(m, "message")?;
@@ -149,7 +150,10 @@ impl Scenario {
         self.chats.len()
     }
 
-    /// 装进假后端：已登录的假账号、自己的 id、已连接、主列表的会话、每个会话的历史。`start` 之前调
+    /// 装进假后端：已登录的假账号、自己的 id、已连接、主列表的会话、每个会话的历史。`start` 之前调。
+    ///
+    /// 用户更新推两处，不是冗余：`set_chats` 管「拉整份列表」（`chats_load`）时推什么，`set_chat` 管「按 id 取一个会话」
+    /// （`chat_get`，`history` 先调它）时推什么。两边都要带上用户，会话项的名字、消息的发送人才认得出
     pub fn install(&self, b: &FakeBackend) {
         b.set_auth(FakeAuth {
             logged_in: true,
@@ -191,5 +195,146 @@ impl Scenario {
         for (id, msgs) in &self.histories {
             b.set_history(*id, msgs.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dir(tag: &str) -> crate::config::TempDirGuard {
+        crate::config::TempDirGuard::new(tag).expect("临时目录")
+    }
+
+    fn put(d: &Path, rel: &str, body: &str) {
+        let p = d.join(rel);
+        std::fs::create_dir_all(p.parent().expect("有上级")).expect("建目录");
+        std::fs::write(p, body).expect("写文件");
+    }
+
+    const ME: &str = r#"{"@type":"user","id":9,"first_name":"我自己"}"#;
+    const CHAT: &str = r#"{"@type":"chat","id":101,"title":"林小雨"}"#;
+    const MSG: &str = r#"{"@type":"message","id":1,"chat_id":101}"#;
+
+    fn is_bad(r: Result<Scenario, CoreError>) -> bool {
+        matches!(
+            r,
+            Err(CoreError::Internal {
+                what: "fixture_bad"
+            })
+        )
+    }
+
+    #[test]
+    fn shipped_scenarios_load() {
+        for name in ["basic-3-chats", "empty"] {
+            let Ok(p) = Scenario::resolve(OsStr::new(name)) else {
+                panic!("{name} 解析不了");
+            };
+            let Ok(sc) = Scenario::load(&p) else {
+                panic!("{name} 装不上");
+            };
+            assert_eq!(sc.chat_count(), if name == "empty" { 0 } else { 3 });
+        }
+    }
+
+    #[test]
+    fn only_me_json_is_required() {
+        let d = dir("sc-min");
+        put(d.path(), "me.json", ME);
+        let Ok(sc) = Scenario::load(d.path()) else {
+            panic!("只有 me.json 也该装得上");
+        };
+        assert_eq!(sc.chat_count(), 0);
+    }
+
+    #[test]
+    fn junk_in_history_is_skipped() {
+        // 访达、编辑器留下的东西不许把整个场景弄坏
+        let d = dir("sc-junk");
+        put(d.path(), "me.json", ME);
+        put(d.path(), "chats.jsonl", CHAT);
+        put(d.path(), "history/101.jsonl", MSG);
+        put(d.path(), "history/.DS_Store", "\0\0binary");
+        put(d.path(), "history/.101.jsonl.swp", "x");
+        put(d.path(), "history/101.jsonl~", "x");
+        put(d.path(), "history/notes.txt", "x");
+        put(d.path(), "history/sub/202.jsonl", MSG);
+        let Ok(sc) = Scenario::load(d.path()) else {
+            panic!("history/ 里的杂项应跳过");
+        };
+        assert_eq!(sc.histories.len(), 1);
+        assert_eq!(sc.histories[0].0, 101);
+    }
+
+    #[test]
+    fn every_bad_shape_is_fixture_bad() {
+        // 每一条拒绝路径各一例（规约 testing.md 第一节第 3 小节列的情形）
+        let cases: &[(&str, &[(&str, &str)])] = &[
+            ("缺 me.json", &[("chats.jsonl", CHAT)]),
+            ("me.json 不是 JSON", &[("me.json", "{")]),
+            ("me.json 不是 user", &[("me.json", CHAT)]),
+            (
+                "me.json 没有整数 id",
+                &[("me.json", r#"{"@type":"user","id":"9"}"#)],
+            ),
+            (
+                "users 一行不是对象",
+                &[("me.json", ME), ("users.jsonl", "[1]")],
+            ),
+            (
+                "users 一行不是 user",
+                &[("me.json", ME), ("users.jsonl", CHAT)],
+            ),
+            (
+                "chats 一行坏 JSON",
+                &[("me.json", ME), ("chats.jsonl", "{\"@type\"")],
+            ),
+            (
+                "chats 一行不是 chat",
+                &[("me.json", ME), ("chats.jsonl", ME)],
+            ),
+            (
+                "history 文件名不是整数",
+                &[("me.json", ME), ("history/abc.jsonl", MSG)],
+            ),
+            (
+                "history 一行不是 message",
+                &[("me.json", ME), ("history/101.jsonl", CHAT)],
+            ),
+            (
+                "消息的 chat_id 和文件名不符",
+                &[("me.json", ME), ("history/102.jsonl", MSG)],
+            ),
+        ];
+        for (what, files) in cases {
+            let d = dir("sc-bad");
+            for (rel, body) in *files {
+                put(d.path(), rel, body);
+            }
+            assert!(is_bad(Scenario::load(d.path())), "{what} 应报 fixture_bad");
+        }
+    }
+
+    #[test]
+    fn names_and_paths() {
+        assert!(is_name("basic-3-chats") && is_name("empty"));
+        for not_name in ["", "./basic", "Basic", "a_b", "a b", "/tmp/x", "场景"] {
+            assert!(!is_name(not_name), "{not_name}");
+        }
+        // 不是名字的原样当路径
+        assert_eq!(
+            Scenario::resolve(OsStr::new("./myscene")).ok(),
+            Some(PathBuf::from("./myscene"))
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn name_resolves_under_this_crate_in_debug_builds() {
+        let Ok(p) = Scenario::resolve(OsStr::new("empty")) else {
+            panic!("开发构建里名字该能解析");
+        };
+        assert!(p.ends_with("fixtures/scenarios/empty"));
     }
 }

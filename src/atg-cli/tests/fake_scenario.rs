@@ -1,5 +1,5 @@
 //! `--fake <场景>`：跑真二进制，`chats` / `history` 在场景 `basic-3-chats` 上的输出；缺场景报 `internal{fixture_bad}`；
-//! 不留一次性档案目录。另有「这条路不碰钥匙串」的文本门槛（arch 审定的三层证明之一，另两层是类型与路径，见 `src/fake_run.rs`）。
+//! 不留一次性档案目录。另有「这条路不碰钥匙串」的文本门槛（arch 审定的三层证明之一；另两层是类型与调用路径，见 `src/fake_run.rs` 文件头）。
 
 use serde_json::Value;
 use std::process::{Command, Output};
@@ -70,8 +70,10 @@ fn chats_on_scenario_lists_three_chats_in_order() {
 
 #[test]
 fn history_on_scenario_takes_negative_chat_id() {
-    // 群「周末爬山群」已读到 2001：落在第一条未读 2002（F2 落点），比它新的没有了
+    // 群「周末爬山群」已读到 2001：落在第一条未读 2002（F2 落点 = 进会话落在第一条未读，`specs/contracts/cli.md`
+    // `history` 行、`docs/plan/003_decisions-b2.md` F2），比它新的没有了
     let _s = serial();
+    let before = fake_dirs();
     let out = run(&["history", "-1001", "--fake", "basic-3-chats"]);
     assert_eq!(
         out.status.code(),
@@ -93,6 +95,7 @@ fn history_on_scenario_takes_negative_chat_id() {
         end["data"]["synced"], true,
         "场景是已连接的，不该等到同步超时"
     );
+    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 #[test]
@@ -102,8 +105,10 @@ fn scenario_by_path_works_too() {
         "{}/../atg-core/fixtures/scenarios/basic-3-chats",
         env!("CARGO_MANIFEST_DIR")
     );
+    let before = fake_dirs();
     let out = run(&["chats", "--fake", &dir]);
     assert_eq!(out.status.code(), Some(0));
+    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
 }
 
 #[test]
@@ -111,7 +116,8 @@ fn missing_scenario_is_fixture_bad_and_leaves_nothing() {
     let _s = serial();
     let before = fake_dirs();
     let out = run(&["chats", "--fake", "no-such-scenario"]);
-    assert_ne!(out.status.code(), Some(0));
+    // internal 的退出码是 1（cli.md 第一节第 4 小节）
+    assert_eq!(out.status.code(), Some(1));
     let ls = lines(&out);
     assert_eq!(ls.len(), 1);
     assert_eq!(ls[0]["data"]["code"], "internal");

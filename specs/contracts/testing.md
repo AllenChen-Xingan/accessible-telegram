@@ -29,7 +29,7 @@
 
 ### 3. 夹具目录约定
 
-只有一处：`src/atg-core/fixtures/`（`atg-cli --fake`、`atg-gui --fixture` 都读这里，不另存副本——铁律 7）。
+只有一处：`src/atg-core/fixtures/`（`atg-cli --fake <场景>` 读这里；`atg-gui --fixture <场景>` 是 M3.1 后面的 PR 将加的界面开关，读同一处、用同一个加载器——不另存副本，铁律 7）。参数名别混：`--fake <场景>` / `--fixture <场景>` 都吃**场景目录**；`atg-cli speech --fixture <文件>` 吃的是**读法夹具**（`speech/<名>.json`），是另一种东西。
 
 ```
 src/atg-core/fixtures/
@@ -41,11 +41,22 @@ src/atg-core/fixtures/
     chats.jsonl                会话，一行一个，用 TDLib JSON 形状
     users.jsonl
     history/<chat_id>.jsonl    每个会话的历史，从新到旧
-    timeline.jsonl             可选：{"after_ms":1200,"update":{…TDLib JSON…}}
+    timeline.jsonl             可选：{"after_ms":1200,"update":{…TDLib JSON…}}——**还没实现**，加载器现在不读它（用到它的块再做）
   speech/<名>.json             读法夹具：TDLib 更新对象的 JSON 数组，按顺序喂 store（`tdjson::World`）；
                                `atg-cli speech --fixture` 与 `atg-core` 的读法快照（`tests/snapshots/`）共用
   names.txt                    唯一允许用的假人名、假会话名清单
 ```
+
+**场景的解析规则**（加载器 `atg_core::fake::Scenario` 照这里实现，这里是正本）：
+
+- `me.json` 必有，是 TDLib `user` 对象（带整数 `id`）；`users.jsonl`、`chats.jsonl`、`history/` 都可以没有，没有就是空
+- `.jsonl` 一行一个 JSON 对象，空行跳过；`users.jsonl` 每行是 `user`，`chats.jsonl` 每行是 `chat`，都要有 `@type` 和整数 `id`；**`chats.jsonl` 的行序就是主列表的顺序**
+- `history/` 下只认 `<会话 id>.jsonl`（文件名是整数，如 `-1001.jsonl`）：每行是 `message`，`chat_id` 必须等于文件名；行序**从新到旧**，照 TDLib `getChatHistory` 的返回顺序（`atg-cli history` 的输出是从旧到新，命令自己倒过来，见 `cli.md`）。点开头的文件（访达的 `.DS_Store`、编辑器的 `.swp`）、不是 `.jsonl` 的文件（`101.jsonl~`）、子目录一律跳过
+- 场景一律当作「已登录、已连接」装进假后端
+- 不合上面任一条 → `internal{fixture_bad}`（报错不带是哪个文件；写新场景时先跑 `python3 scripts/check-fixtures.py`，再用 `atg-cli --fake <目录> chats` 试）
+- **名字还是路径**：只由 `[a-z0-9-]` 组成的当场景名，在开发构建里去 `src/atg-core/fixtures/scenarios/<名>/` 找；别的一律当目录路径。所以当前目录下的 `myscene` 要写成 `./myscene`。发布构建不带夹具目录，给裸名字报 `internal{fixture_needs_path}`
+- `--fake` 每次用一个一次性测试档案：系统临时目录下 0700 的新目录里建档案（名字照 CLI 默认叫 `main`、种类 `test`；在临时目录里，和人的档案目录不相干），照常拿它的 `atg.lock`，跑完即删。**不碰钥匙串**：真实后端起来时要从 macOS 钥匙串取本地库的加密钥匙（`config-privacy.md` 第一节第 3 小节），会动到人的真凭据、可能弹窗；假后端没有这一步，`--fake` 也构造不出真实后端（arch 审定）
+- 现在 `atg-cli` 只有 `chats`、`history` 认 `--fake`，别的命令带它报 `not_implemented`
 
 - 场景名用 kebab-case，按用途起：`empty`、`basic-3-chats`、`unread-mixed`、`busy-group-flood`、`reply-forward-edit`、`media-kinds`、`unknown-types`、`offline-reconnect`
 - **夹具用 TDLib 原样 JSON 形状**，这样「解析 → 映射 → 树 → 读法」一次测住（架构方案第三节）
@@ -55,9 +66,8 @@ src/atg-core/fixtures/
 
 - 人名、会话名只许取自 `names.txt`；正文是编的
 - 手机号只许 `99966` 开头的测试号；不许出现邮箱、真实链接
-- `chat_id` / `user_id` / `message_id` 只许在保留区间（1–99999，超级群用 `-100` + 同区间）；`minithumbnail.data`、文件的 `remote.id` / `unique_id` 必须为空或固定占位符；`username` 也只许取自 `names.txt`；日期用固定的假日期
+- `chat_id` / `user_id` / `message_id` 只许在保留区间：1–99999（`0` 表示没填，放行）；会话 id 可为负——基础群 `-1`…`-99999`，超级群与频道是 **`-100` 后面接上**同区间的数（字符串拼接：超级群 1 → `-1001`，不是 -100+1）；`minithumbnail.data`、文件的 `remote.id` / `unique_id` 必须为空或固定占位符；`username` 也只许取自 `names.txt`；日期用固定的假日期
 - `scripts/check-fixtures.py` 在 CI 里扫上面每一条（`arch.yml`），命中即失败；链接、邮箱只许保留域名（`.invalid` / `.test` / `.example`、`example.com` 一类，RFC 2606）；规则只防无心之失。日期是否固定它不查，靠评审
-- `atg-cli --fake <场景>`（现在 `chats`、`history` 能用）与 `atg-gui --fixture <场景>` 用同一个加载器 `atg_core::fake::Scenario`；`--fake` 每次用一个一次性测试档案（系统临时目录下 0700 的新目录，种类 `test`，跑完即删），不碰人的档案、不碰钥匙串。场景名（`[a-z0-9-]+`）只在开发构建里认，发布构建要给目录路径
 - **绝不从真实聊天截取、导出、改名后当夹具**
 
 ### 4. 必须有的单测（CI 每次都跑）
@@ -172,3 +182,4 @@ src/atg-core/fixtures/
 - 2026-11-16 issue #115（codex 047 补审，只改文字）：发送闸矩阵的说明不再提「默认模式下免确认」
 - 2026-11-17 #83 自审（手下 fix，属技术细节）：直发模式测试要点的留痕行数与 `actions.md` 对齐（每条两行，批量重发按条）
 - 2026-11-24 #42 开发版开强化运行时（手下 arch，人定 2026-11-17 做）：第一节第 4 小节加「强化运行时」一行（`scripts/check-harden.sh`）；runner 那段改成按 rpath 找库
+- 2026-11-24 #169 M3.1 第二刀（手下 gui，大总管批、arch 审定）：第一节第 3 小节场景目录建出 `basic-3-chats`、`empty`；写入场景的解析规则（正本）、名字与路径的分法、`--fake` 一次性测试档案与不碰钥匙串；`timeline.jsonl` 标「还没实现」；保留区间写清 0、负的基础群、`-100` 是拼接；`check-fixtures.py` 由「待写」改为已接进 CI

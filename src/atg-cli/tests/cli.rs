@@ -275,6 +275,7 @@ fn chats_bad_arguments_are_usage_errors() {
 fn chats_with_missing_fake_scenario_is_fixture_bad() {
     // 场景目录不存在：说清楚，不碰档案、不联网（在场景上真跑见 tests/fake_scenario.rs）
     let out = run(&["chats", "--fake", "basic", "--list", "archive", "--unread"]);
+    assert_eq!(out.status.code(), Some(1));
     let ls = lines(&out);
     assert_eq!(ls.len(), 1);
     assert_eq!(ls[0]["data"]["code"], "internal");

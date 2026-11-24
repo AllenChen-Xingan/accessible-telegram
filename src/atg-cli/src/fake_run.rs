@@ -3,8 +3,17 @@
 //!
 //! 一次性档案：系统临时目录下新建的私有目录（0700），`Profile::create(dir, "main", Test)`，跑这件事的时候照常拿它的
 //! `atg.lock`；[`FakeRun`] 一丢（跑完、出错、提前返回）目录就删。不碰人的正式档案目录。
-//! **这条路不碰钥匙串**：只构造 [`FakeBackend`]（具体类型，造不出真实后端），假后端没有库钥匙这一步；
-//! `tests/fake_scenario.rs` 另有一条文本门槛扫本文件与假后端源码。靠的是类型和文本扫描，运行时没有去 hook 钥匙串
+//! 档案名照 CLI 默认叫 `main`，但它建在这个临时目录里，和人的档案目录（`profiles/main`）不相干。
+//!
+//! **这条路不碰钥匙串**。为什么要紧：真实后端起来时要从 macOS 钥匙串取本地库的加密钥匙（「库钥匙」，
+//! `specs/contracts/config-privacy.md` 第一节第 3 小节），会动到人的真凭据、可能弹窗。三层证明（arch 审定）：
+//! 1. 类型：这里只构造具体类型 [`FakeBackend`]，造不出真实后端；假后端的库钥匙是写死的，不经钥匙串
+//! 2. 文本扫描：`tests/fake_scenario.rs` 的 `fake_path_never_mentions_the_keychain_or_real_backend` 扫本文件、假后端全部源码与
+//!    `config.rs` 里私有临时目录那一段，出现钥匙串模块、真实后端的名字就红（清单是那个测试文件里的 `FORBIDDEN`；
+//!    本注释不写出这几个名字，否则扫描会扫到自己）
+//! 3. 调用路径：下面的单测核对假后端记下的调用只有起、订阅、拉列表、关这几步
+//!
+//! 靠的是类型和文本扫描（加一条调用记录核对），运行时没有去 hook 钥匙串
 
 use crate::out::Fail;
 use atg_core::config::{Profile, ServerKind, TempDirGuard};
