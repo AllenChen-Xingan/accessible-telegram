@@ -1,5 +1,26 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
+
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r3b-arch.md`。大总管定：`testkit.rs` 照样加 `pub mod td;`（和 gui 冲突就这一两行，谁后合谁解）；两种通知设置都留，不改测试数据；`send/react/tests.rs` 先不碰；`send/tests.rs` 可以动（msg2 的 13b 不碰它）
+- 检查点里的改动（编译与测试结果见下）：
+  - 新文件 core `testkit/td.rs`（自审后改名 `td_json.rs`）：`user`、`new_chat`、`new_private_chat`、`new_private_chat_notify_default`、`text`、`message`、`with`，带两条自测
+  - 7 个测试文件改用它：core `send/file`、`send/forward`、`send/tests`，cli `forwarding`、`send_file`、`history`、`watch`。测试体一字不改；本地助手要么删掉、改成导入同名函数，要么留一行包装
+  - `testkit.rs`：加了 `pub mod td;`，头注释里 R3b 那句改了
+- 只动测试；测试数 746 过（测试体没改，多出的 2 条是新自测；没在 main 上单独对数）
+- 检查点 e0de0a2（大总管提交，10 个文件）。名额内全量检查都过了（test 746 过、0 败、5 忽略）
+- ⚠️ 踩过的坑：给 `pub mod x;` 写 `///` 文档注释，会和 `x.rs` 头上的 `//!` 合成一段，里面的链接（如 [`with`]）就按父模块解析，结果断链（开 testkit 特性的 `cargo doc -D warnings` 才报出来）。父模块那里只写普通注释 `//`，说明一律写在子文件头上
+- 自审第 1 轮：P0/P1 零，P2×3，P3×8。改了：
+  - 模块改名 `td_json`（原来叫 `td`，和真实后端 `crate::td` 撞名）
+  - 两种私聊助手写明各自什么时候用；`message` 写明 `is_outgoing` 一律是 false
+  - 写法规矩照上级 `testkit` 的说清楚；日期的说法改准；自测里的名字改用 `names.txt` 里的「林小雨」
+  - `pub mod` 挪到文件头；testkit 头上和 Cargo.toml 的特性说明补上 TDLib JSON 助手
+  - 四处 `as` 别名各加一行说明
+  - 本页的状态写准
+  - 自审修正 9cbaf79（大总管提交），名额内编译全过（746 过）
+- ✅ codex 069（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r3b-pr-arch.md`
+
 ## b21 接手（2026-11-24）
 
 - 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`

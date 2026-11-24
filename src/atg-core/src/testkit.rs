@@ -1,4 +1,4 @@
-//! 测试共用的夹具（#60 R3，`docs/plan/010_complexity-budget.md` S11）：临时目录与测试档案。
+//! 测试共用的夹具（#60 R3，`docs/plan/010_complexity-budget.md` S11）：临时目录与测试档案；造 TDLib JSON 的助手在 [`td_json`]。
 //!
 //! 只在测试里编：本 crate 的单元测试（`cfg(test)`），以及开了 `testkit` 特性的地方——`atg-core` 自己的集成测试
 //! （`tests/*.rs`，经自身 dev-dependency 开）和 `atg-cli` 的测试（经它的 dev-dependency 开）。正式构建里没有它。
@@ -24,7 +24,11 @@
 //! #12 合并后（2026-11-17，随 R7 拆 `fake.rs`）换了 cli `tests/cli.rs` 的 `send_usage_paths` 和 `send_file/tests.rs`；R3a 换完。
 //! 故意不换：core `ipc.rs` 的测试（要 0o700 的目录并断言它）；cli `serve/tests.rs`（套接字路径离 103 字节上限近）；core
 //! `tests/send_limits.rs`（同一个 tag 要再算出同一个路径，模拟下一个进程）；`atg-audio`（不依赖 atg-core）。各处都有注释写明原因。
-//! R3b 还没做。
+//! R3b 第一刀（2026-11-24）：造 TDLib JSON 的助手放进 `testkit::td_json`（不叫 `td`：会和真实后端模块 `crate::td` 撞名），换了 core `send/file`、`send/forward`、`send/tests`，cli
+//! `forwarding`、`send_file`、`history`、`watch` 的测试；core `send/react/tests.rs` 和其余各处还没换。
+
+// 造 TDLib JSON 的助手（#60 R3b）。说明写在 td_json.rs 头上：这里写 `///` 会和它合并，链接按本模块解析就断了
+pub mod td_json;
 
 use crate::config::{Profile, ServerKind};
 use std::path::PathBuf;
