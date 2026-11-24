@@ -475,6 +475,56 @@ pub(crate) fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, path)
 }
 
+/// 新建一个私有的空临时目录：`系统临时目录/atg-<tag>-<进程号>-<本进程第几个>`，权限 0700（[`ensure_private_dir`]）。
+/// 同名残留（进程号会被重用）先删；删不掉、建不了都回 `internal{temp_dir_io}`，绝不把留着旧东西的目录当新的交出去。
+/// 正式代码可用（`atg-cli --fake` 的一次性测试档案就建在这里，arch 审定 2026-11-24），不 panic；`testkit::temp_dir`
+/// 是它的测试包装。用完要删的配 [`TempDirGuard`]
+pub fn private_temp_dir(tag: &str) -> Result<PathBuf, CoreError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let d = std::env::temp_dir().join(format!(
+        "atg-{tag}-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    fresh_private_dir(&d)?;
+    Ok(d)
+}
+
+/// 把 `d` 弄成一个私有的空目录：有残留就删，删不掉就报 `internal{temp_dir_io}`——绝不把删了一半、还留着旧东西的
+/// 目录当成新的交出去（codex 044 第 1 轮 #1）。不存在算删好了
+pub(crate) fn fresh_private_dir(d: &Path) -> Result<(), CoreError> {
+    let io = CoreError::Internal {
+        what: "temp_dir_io",
+    };
+    match fs::remove_dir_all(d) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(io),
+    }
+    ensure_private_dir(d).map_err(|_| io)
+}
+
+/// 离开作用域时删掉整个目录（出错、提前返回也删）。删失败不报：临时目录在系统临时区，会被定期清
+pub struct TempDirGuard(PathBuf);
+
+impl TempDirGuard {
+    /// [`private_temp_dir`] 建一个，交给守卫
+    pub fn new(tag: &str) -> Result<Self, CoreError> {
+        private_temp_dir(tag).map(TempDirGuard)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,6 +534,28 @@ mod tests {
         let root = crate::testkit::temp_dir(tag);
         fs::create_dir_all(root.join("profiles").join("p")).unwrap();
         root
+    }
+
+    #[test]
+    fn private_temp_dir_is_new_empty_and_0700() {
+        let a = private_temp_dir("cfg-tmp").unwrap();
+        let b = private_temp_dir("cfg-tmp").unwrap();
+        assert_ne!(a, b);
+        assert_eq!(fs::read_dir(&a).unwrap().count(), 0);
+        assert_eq!(
+            fs::metadata(&a).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+
+    #[test]
+    fn guard_removes_the_dir_on_drop() {
+        let p = {
+            let g = TempDirGuard::new("cfg-guard").unwrap();
+            fs::write(g.path().join("x"), "y").unwrap();
+            g.path().to_path_buf()
+        };
+        assert!(!p.exists());
     }
 
     /// 读到「缺」之后、判新旧之前，别的进程建好了档案并拿了锁：不报 missing，按落盘的标记走（codex 045 第 1 轮 #3）

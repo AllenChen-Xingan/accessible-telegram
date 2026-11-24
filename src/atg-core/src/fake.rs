@@ -23,7 +23,7 @@
 //! 文件分工（#60 R7）：根上留共用状态（[`FakeBackend`] 的字段、收线程）、几个各处都用的内部助手（`started`、`injected`、
 //! `ready_or_401`、`find_message`……）和 `Backend` 的实现；`Backend` 方法的主体放在子模块，根上一行转给它的 `do_*`。
 //! `script.rs` 测试用的设置方法 · `login.rs` 登录 · `read.rs` 会话与历史 · `submit.rs` 交出口 · `edit.rs` 编辑 ·
-//! `files.rs` 文件与语音 · `upload.rs` 上传进度 · `caps.rs` 消息能力 · `call.rs` 记账
+//! `files.rs` 文件与语音 · `upload.rs` 上传进度 · `caps.rs` 消息能力 · `call.rs` 记账 · `scenario.rs` 场景夹具（读 `fixtures/scenarios/<名>/`、装进假后端，`atg-cli --fake` 与 `atg-gui --fixture` 共用）
 
 use crate::auth::{self, AuthPrompt};
 use crate::backend::{
@@ -54,6 +54,7 @@ mod edit;
 mod files;
 mod login;
 mod read;
+mod scenario;
 mod script;
 mod submit;
 mod upload;
@@ -61,6 +62,7 @@ mod upload;
 pub use call::Call;
 pub use caps::Cap;
 pub use login::FakeAuth;
+pub use scenario::Scenario;
 
 /// 一次真发送之后「TDLib」怎么推结果
 #[derive(Debug, Clone, PartialEq, Eq)]
