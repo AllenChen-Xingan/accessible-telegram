@@ -118,10 +118,10 @@
 **GPUI 层**（`<场景>.gpui.txt`），每行：
 
 ```
-<角色> <标识> ["<名称>"] [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
+<角色> [<标识>] ["<名称>"] [roledesc="<角色描述>"] [desc="<提示语>"] [<状态>…]
 ```
 
-名称为空的节点（根节点：窗口名在 NSWindow 标题上）不写名称一格。`roledesc` 两层都写，什么时候写见下面 macOS 层那段（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）；位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
+没有标识的节点（纯装饰容器）不写标识一格；名称为空的节点（根节点：窗口名在 NSWindow 标题上）不写名称一格。`roledesc` 两层都写，什么时候写见下面 macOS 层那段（消息项设「消息」，卡 G15 人选 B：把「组」换成「消息」）；位置各按本层格式：GPUI 层在名称之后，macOS 层在 AXRole 之后。状态只写有的：`focused` · `selected` · `active=<标识>`（active descendant 指向谁）· `pos=<第几>/<共几>` · `expanded` · `busy` · `disabled` · `required` · `modal` · `invalid` · `readonly`（AccessKit `read_only`） · `live=polite|assertive` · `value="<值>"`。
 
 **macOS 层**（`<场景>.macos.txt`），每行：
 

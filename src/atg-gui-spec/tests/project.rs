@@ -11,6 +11,7 @@ use atg_gui_spec::aid;
 use atg_gui_spec::project::{
     A11yNode, NodeState, OpenChat, Region, UiState, ViewInput, header, project, render,
 };
+use std::collections::HashMap;
 
 fn cx() -> SpeechCtx {
     // M3.1 还没绑展开、收听键：键从按键表来（012 第二节第 7 行），表没进之前不读按键提示
@@ -92,7 +93,6 @@ fn check_rules(root: &A11yNode) {
         assert!(aid::is_valid(a), "标识不合规：{a}");
         assert!(seen.insert(a.clone()), "标识重复：{a}");
         if operable.contains(&n.role) {
-            assert!(n.aid.is_some(), "{:?} 缺标识", n.role);
             assert!(
                 n.name.as_deref().is_some_and(|s| !s.is_empty()),
                 "{:?} {:?} 缺名称",
@@ -114,7 +114,7 @@ fn basic_open_private_chat() {
     let ui = UiState {
         region: Region::MessageList,
         chats_anchor: Some(101),
-        msgs_anchor: Some(first_msg(&msgs)),
+        msgs_anchor: HashMap::from([(101, first_msg(&msgs))]),
     };
     let tree = dump(&w, Some((101, &msgs)), &ui);
     check_rules(&tree);
@@ -127,7 +127,7 @@ fn basic_chat_list_only() {
     let ui = UiState {
         region: Region::ChatList,
         chats_anchor: None,
-        msgs_anchor: None,
+        msgs_anchor: HashMap::new(),
     };
     let tree = dump(&w, None, &ui);
     check_rules(&tree);
@@ -141,21 +141,55 @@ fn chat_items_fixture_follows_rules() {
     let ui = UiState {
         region: Region::ChatList,
         chats_anchor: None,
-        msgs_anchor: None,
+        msgs_anchor: HashMap::new(),
     };
     check_rules(&dump(&w, None, &ui));
 }
 
 #[test]
-fn anchor_from_another_chat_is_ignored() {
-    // 锚点指向别的会话的消息：不设 active、不选中任何项（锚点按 id，不按下标：012 第一节第 5 条）
+fn each_chat_keeps_its_own_anchor() {
+    // 锚点按会话各存一个、按 id 不按下标（012 第三节第 2 小节、第一节第 5 条）：A 选了一条，切到 B 再切回 A，A 的选中还在
+    let w = world("basic");
+    let a = messages_of(&w, 101);
+    let b = messages_of(&w, -1001);
+    let anchors = HashMap::from([(101, first_msg(&a)), (-1001, first_msg(&b))]);
+    for (chat, msgs, want) in [
+        (101, &a, first_msg(&a)),
+        (-1001, &b, first_msg(&b)),
+        (101, &a, first_msg(&a)),
+    ] {
+        let ui = UiState {
+            region: Region::MessageList,
+            chats_anchor: Some(chat),
+            msgs_anchor: anchors.clone(),
+        };
+        let tree = dump(&w, Some((chat, msgs)), &ui);
+        let list = &tree.children[1].children[0];
+        let want = aid::aid(aid::Aid::Msg(want));
+        assert!(
+            list.states.contains(&NodeState::Active(want.clone())),
+            "{chat}"
+        );
+        let selected: Vec<_> = list
+            .children
+            .iter()
+            .filter(|c| c.states.contains(&NodeState::Selected))
+            .collect();
+        assert_eq!(selected.len(), 1, "{chat}");
+        assert_eq!(selected[0].aid.as_deref(), Some(want.as_str()));
+    }
+}
+
+#[test]
+fn chat_without_anchor_selects_nothing() {
+    // 打开的会话没有锚点（别的会话有）：不设 active、不选中任何项
     let w = world("basic");
     let msgs = messages_of(&w, 101);
     let other = first_msg(&messages_of(&w, -1001));
     let ui = UiState {
         region: Region::MessageList,
         chats_anchor: Some(101),
-        msgs_anchor: Some(other),
+        msgs_anchor: HashMap::from([(-1001, other)]),
     };
     let tree = dump(&w, Some((101, &msgs)), &ui);
     let list = &tree.children[1].children[0];
@@ -180,7 +214,7 @@ fn order_is_reading_order_and_positions_count_up() {
     let ui = UiState {
         region: Region::ChatList,
         chats_anchor: Some(-1001),
-        msgs_anchor: None,
+        msgs_anchor: HashMap::new(),
     };
     let tree = dump(&w, Some((-1001, &msgs)), &ui);
     let items = &tree.children[1].children[0].children;

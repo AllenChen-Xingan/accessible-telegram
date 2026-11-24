@@ -14,6 +14,7 @@ use crate::a11y::{Element, NameFrom, Role, spec};
 use crate::aid::{Aid, aid};
 use atg_core::speech::{self, SpeechCtx};
 use atg_core::tree::{ChatItem, Doc, MsgId, Status, UserStatus};
+use std::collections::HashMap;
 
 /// 打开着的那个会话
 pub struct OpenChat<'a> {
@@ -44,8 +45,8 @@ pub struct UiState {
     pub region: Region,
     /// 会话列表选中哪个
     pub chats_anchor: Option<i64>,
-    /// 打开的会话里选中哪条
-    pub msgs_anchor: Option<MsgId>,
+    /// 每个会话里选中哪条（键 = 会话 id）：离开再回来保持（012 第三节第 2 小节、exp003b-v2）
+    pub msgs_anchor: HashMap<i64, MsgId>,
 }
 
 /// 节点状态（导出格式里「只写有的」那几样，M3.1 用到的）
@@ -78,8 +79,10 @@ enum Data<'a> {
     Doc(&'a Doc),
 }
 
-/// 照契约表的 `name` 一列算名称。数据和来源对不上（比如表说读 `chat_brief`、给的却是一条消息）就没有名称——
-/// 可操作元素没名称会被规则检查抓到，不可操作的会让快照变
+/// 照契约表的 `name` 一列算名称。来源是读法（`chat_brief` / `brief`）而数据给错了（比如给的是一条消息）就没有名称；
+/// 来源是文案时不看数据，多给了也照出文案。没名称的兜底：可操作元素由本 crate 的投影测试 `tests/project.rs` 的
+/// `check_rules` 抓（它只对可操作角色查名称，只跑那几个夹具）；不可操作的（如状态栏）只能靠快照里它那一行变了才看得出。
+/// 规约里的 `check-a11y-tree.py` 还没写（PR-3），现在不兜这一层
 fn name_of(e: Element, data: Data, cx: &SpeechCtx) -> Option<String> {
     match (spec(e).name, data) {
         // 根节点不带名称（窗口名在 NSWindow 标题上）
@@ -95,7 +98,9 @@ fn name_of(e: Element, data: Data, cx: &SpeechCtx) -> Option<String> {
 }
 
 impl A11yNode {
-    /// 角色、角色描述、名称来源都取契约表那一行；标识种类和那一行对不上就不出标识（规则检查要求每个节点都有标识，会红）
+    /// 角色、角色描述、名称来源都取契约表那一行；标识种类和那一行对不上就不出标识。契约表每一行都带标识种类（没有
+    /// 「纯装饰容器」这一类），所以本 crate 投出的节点个个该有标识——这比规约第四节（装饰容器可以不带）严；
+    /// `tests/project.rs` 的 `check_rules` 按这条要求每个节点都有标识，种类不符就红
     fn of(e: Element, a: Aid, data: Data, cx: &SpeechCtx) -> Self {
         let s = spec(e);
         A11yNode {
@@ -141,24 +146,26 @@ fn chat_item(d: &Doc) -> Option<&ChatItem> {
     }
 }
 
-/// 一个列表：容器 + 项；选中的那项带 `selected`，容器带 `active=`；区里有焦点时容器带 `focused`
+/// 一个列表：容器 + 项；选中的那项带 `selected`，容器带 `active=`；区里有焦点时容器带 `focused`。
+/// 比对锚点、写 `active=` 都用项自己的 `aid`（标识只有这一处来源）：项没出标识时它不会被选中，容器也不会指向它
 fn list(
     mut container: A11yNode,
-    items: Vec<(String, A11yNode)>,
-    anchor: Option<&str>,
+    items: Vec<A11yNode>,
+    anchor: Option<Aid>,
     focused: bool,
 ) -> A11yNode {
     let n = items.len();
+    let anchor = anchor.map(aid);
     if focused {
         container.states.push(NodeState::Focused);
     }
-    if let Some(a) = anchor
-        && items.iter().any(|(id, _)| id == a)
+    if let Some(a) = &anchor
+        && items.iter().any(|it| it.aid.as_ref() == Some(a))
     {
-        container.states.push(NodeState::Active(a.to_owned()));
+        container.states.push(NodeState::Active(a.clone()));
     }
-    for (i, (id, mut item)) in items.into_iter().enumerate() {
-        if anchor == Some(id.as_str()) {
+    for (i, mut item) in items.into_iter().enumerate() {
+        if anchor.is_some() && item.aid == anchor {
             item.states.push(NodeState::Selected);
         }
         item.states.push(NodeState::Pos(i + 1, n));
@@ -172,25 +179,23 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
     let mut root = A11yNode::of(Element::Window, Aid::Window, Data::None, input.cx);
 
     // 会话区
-    let chats: Vec<(String, A11yNode)> = input
+    let chats: Vec<A11yNode> = input
         .chats
         .iter()
         .filter_map(chat_item)
         .map(|c| {
-            let node = A11yNode::of(
+            A11yNode::of(
                 Element::ChatItem,
                 Aid::Chat(c.chat_id),
                 Data::Chat(c),
                 input.cx,
-            );
-            (aid(Aid::Chat(c.chat_id)), node)
+            )
         })
         .collect();
-    let chat_anchor = ui.chats_anchor.map(|c| aid(Aid::Chat(c)));
     let chat_list = list(
         A11yNode::of(Element::ChatList, Aid::Chats, Data::None, input.cx),
         chats,
-        chat_anchor.as_deref(),
+        ui.chats_anchor.map(Aid::Chat),
         ui.region == Region::ChatList,
     );
     let mut region_chats =
@@ -206,19 +211,14 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
         input.cx,
     );
     if let Some(open) = &input.open {
-        let items: Vec<(String, A11yNode)> = open
+        let items: Vec<A11yNode> = open
             .messages
             .iter()
             .filter_map(|d| message_id(d).map(|id| (id, d)))
-            .map(|(id, d)| {
-                let node = A11yNode::of(Element::MessageItem, Aid::Msg(id), Data::Doc(d), input.cx);
-                (aid(Aid::Msg(id)), node)
-            })
+            .map(|(id, d)| A11yNode::of(Element::MessageItem, Aid::Msg(id), Data::Doc(d), input.cx))
             .collect();
-        let anchor = ui
-            .msgs_anchor
-            .filter(|m| m.chat_id == open.chat_id)
-            .map(|m| aid(Aid::Msg(m)));
+        // 只取这个会话自己的锚点；别的会话的锚点留在表里，切回去时还在
+        let anchor = ui.msgs_anchor.get(&open.chat_id).copied().map(Aid::Msg);
         region_msgs.children.push(list(
             A11yNode::of(
                 Element::MessageList,
@@ -227,7 +227,7 @@ pub fn project(input: &ViewInput, ui: &UiState) -> A11yNode {
                 input.cx,
             ),
             items,
-            anchor.as_deref(),
+            anchor,
             ui.region == Region::MessageList,
         ));
     }
