@@ -160,6 +160,8 @@ C 小探针（`probe.c`）建、读、删服务名 `atg.exp005` 的实验条目�
 
 ### 开强化运行时要做的（#42；何时做见待人定 C）
 
+> 2026-11-17 补记：人改了「缓做」，定 #42 现在做（经大总管转达）。下面四处已按建议落地：OpenSSL 静态链、libtdjson 用同一身份签、常驻软链接 `~/.atg-dev/tdlib` + 各包 `build.rs` 写 rpath、签名加 `--options runtime`；核法见 `scripts/check-harden.sh`。
+
 签名加 `--options runtime`。开了以后库验证生效、`DYLD_LIBRARY_PATH` 失效，TDLib 的加载要改下面四处（依据：取证 10 ⑤、取证 11）——**都没在真程序上测过，是 #42 最大的风险**：
 
 1. **`libtdjson` 依赖的 OpenSSL 过不了库验证**：`libtdjson.1.8.69.dylib` 动态链接 Homebrew 的 `libssl.3.dylib`、`libcrypto.3.dylib`，这两个是临时签名、无团队号（取证 11）。按取证 10 ⑤ 的机制，几乎肯定被拒载（推断：替身库没有这层依赖）。出路（未测）：① 编 TDLib 时把 OpenSSL 静态链进去（CMake 的 `OPENSSL_USE_STATIC_LIBS=TRUE`）——静态链接就是把库的代码直接编进 `libtdjson`，运行时不再单独载入 OpenSSL，也就不受库验证管，**建议这个**；② 把两个库拷进 TDLib 前缀、`install_name_tool -change` 改引用、用同一身份签。**不要**用 `disable-library-validation`（加了就放宽库验证，同用户可写目录里被换掉的库也能进来）

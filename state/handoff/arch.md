@@ -1,5 +1,22 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 接手（2026-11-24）
+
+- 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`
+- **#166（#137）**：只读核过 f5777f5 的合并：`origin/main...HEAD` 只剩 #137 的 16 个文件，没有冲突标记，`ci.yml` 两步 doc 都在（45、50 行）。CI 里 arch、arch-guard 已过，check 还在跑
+- **#42（arch-42）**：基点 36d2cea，main 只多一个提交 #163；和我 11 处未提交改动只在本页重叠，其他文件 #163 都没动。建议合 main，冲突只会出在本页
+- 大总管定：先不合 main，提交检查点时一起合
+- ✅ #166 CI 全绿（arch、arch-guard、check）
+- ✅ #42 名额内跑完：
+  - TDLib 重编 6 分 41 秒，放在 `_build/20261124-104209`；OpenSSL 静态链入；用开发身份（带团队号）签；`~/.atg-dev/tdlib` 已建
+  - 全量检查：fmt、两种 clippy、test（713 过、0 败、5 忽略）、no-debug、sources 都过。doc 红、file-size 超线 1 个，都是基点早于 #137、#163 的缘故
+  - `check-harden.sh`：修了一处 pipefail 与 `grep -q` 一起用时把判断弄反的毛病，重跑全过
+  - 测试服务器冒烟：直接跑，库按 rpath 找到，状态到 wait_phone，退出码 0，没弹框
+- 已归还名额；提交草稿已报大总管
+- 待人点头：正式档案只读跑 `me`、`chats -n 5`（可能弹钥匙串框）
+- 已只读审完 gui PR-2 三处并报大总管：① 同意；② 要改，临时档案的新建目录要做成正式代码里的共用能力，并保证不碰钥匙串；③ 要改，只在 debug 构建里按名字找场景，名字只许 `[a-z0-9-]+`
+- 下一步：提交并合 main 以后，atg-review，再交 codex 063（contract 类，effort high）
+
 ## b20 接手（2026-11-16）
 
 - **手上**：#108（本分支 `chore/108-testkit-gate`，未提交：check-sources.py · test_sources.py · architecture-rules.md 第 10 条 · 未跟踪 docs/reviews/046）。自测 83 条全过；对真仓库 testkit 一条红（「[features] 里没有 testkit」），是故意的锚定，等 #110 合并后转绿。codex 046：第 1 轮 P1×1 已修，第 2 轮全零；第 3 轮提示词已写，没跑
@@ -379,3 +396,27 @@
 - codex 059 第 1 轮（`f5ca5b2...HEAD`，name `r7fk`）：零发现。抽查「不符」1 条：010 写 script.rs 156 行，自审时补了两行头注释，实际 158，已改。记录 `docs/reviews/059_r7-fake-codex.md`
 - codex 059 第 2 轮：零发现，连续两轮无 P0/P1，收敛
 - PR 说明草稿：`_tmp/20261116-b20/r7-fake-pr-arch.md`（MAIN 下）
+
+## #42：开发版开强化运行时（2026-11-17，工作副本 `atg-wt/arch-42`，分支 `fix/42-hardened-runtime`，从 main 36d2cea 起）
+
+人定（2026-11-17，经大总管）：改 exp005 当时「缓做」的建议，现在做。开关 `ATG_DEV_HARDEN=0` 可以用；软链接放 `~/.atg-dev/tdlib`。计划见 MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`。
+
+- `src/tdlib-build/build.sh`：
+  - OpenSSL 改成静态链（`OPENSSL_USE_STATIC_LIBS=TRUE`），编完用 `otool` 核
+  - 用开发身份给 libtdjson 签名（在算 sha256 之前签）；`build-info.txt` 加 `openssl_link=static`、`signed_team=`
+  - 维护软链接 `~/.atg-dev/tdlib`：路径已存在、但不是软链接时报错，不覆盖；新增子命令 `link`
+  - `ATG_TDLIB_SRC` 可以指定本地 TDLib 仓库（工作副本里没有 `resources/` 时用）
+- `scripts/dev-sign.sh`：默认加 `--options runtime`；`ATG_DEV_HARDEN=0` 关掉，只在调试时用；不加 `get-task-allow`
+  - 空数组照 bash 3.2 的写法处理
+- 新文件 `src/atg-cli/build.rs`、`src/atg-core/build.rs`：开了 `tdlib` 特性、在 macOS 上时，写 rpath `$HOME/.atg-dev/tdlib/lib`
+- 新文件 `scripts/check-harden.sh`，核四件事：
+  - 签名带 runtime 标志
+  - 注入对照：普通签名版能注入（说明这个检查本身有效），强化运行时版注入不进去
+  - 程序链了 libtdjson 时，rpath 在、照常能起
+  - 换成临时签名的库会被拒载
+- 文档：`src/README.md`、`src/atg-cli/README.md`、`dev-sign-run.sh` 头注释、`specs/contracts/config-privacy.md`（第 71 行和变更记录）、exp005 补记
+- 注意：
+  - 重编放进 arch-42 自己的 `_build/<时间戳>/`，不动 MAIN 的 `_build/20261025-171733`
+  - 软链接会指向 arch-42 里的新前缀。PR 合进 main 后，要在 MAIN 再编一次（或者用 `build.sh link` 指到 MAIN 的新构建），不然副本删了以后链接就断了
+  - #42 之前签的旧版（还在磁盘上的）照样能被注入，强化运行时管不到它们
+- 状态：代码写完，没编译；`~/.atg-dev` 目前不存在（已核）；待领名额

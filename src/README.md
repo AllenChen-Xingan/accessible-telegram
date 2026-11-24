@@ -37,9 +37,12 @@ cargo clippy -p atg-core --features tdlib-api --all-targets -- -D warnings   # �
 #   test 由下面的冒烟（live_wait_phone）读到；main 由 src/atg-cli/live/login-main.sh 或带 TDLib 的 atg-cli 读到
 # 本机冒烟：测试服务器 → 授权状态到 wait_phone，然后正常关闭（不登录、不发消息）
 ATG_LIVE=1 cargo run -p atg-core --features tdlib --example live_wait_phone
-# 不经 cargo 直接跑时（程序里没写库搜索路径，要指给它）：
+# 不经 cargo 直接跑时（先签名；库按程序里的 rpath 找，不用再指）：
 #   bash scripts/dev-sign.sh target/debug/examples/live_wait_phone
-#   DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib" ATG_LIVE=1 target/debug/examples/live_wait_phone
+#   ATG_LIVE=1 target/debug/examples/live_wait_phone
+#   （#42 起开发版签名开强化运行时：DYLD_LIBRARY_PATH 被忽略，程序按写进去的 rpath ~/.atg-dev/tdlib/lib 找 libtdjson；
+#    软链接由 build.sh 维护，换过构建目录跑一次 bash src/tdlib-build/build.sh link。调试要挂 lldb 时：ATG_DEV_HARDEN=0
+#    bash scripts/dev-sign.sh <程序>，再照旧带 DYLD_LIBRARY_PATH 跑。核注入被挡住：bash scripts/check-harden.sh <程序>）
 ```
 
 依赖怎么接、CI 管到哪、怎么把 `tdlib-rs/` 的改动推回 fork：`docs/plan/004_tdlib-patch.md` 第二、三节。

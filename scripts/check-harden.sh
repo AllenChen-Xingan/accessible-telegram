@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# check-harden.sh — 核开发版的强化运行时真挡住了注入（#42）。不碰钥匙串、不连 Telegram，产物全在 mktemp 目录，退出时删。
+#
+# 做什么（依据 docs/experiments/exp005-keychain-acl/README.md 取证 9、10 ⑤）：
+#   ① 编一个只在载入时往临时文件写标记的 libmark.dylib，和一个几行的启动器（系统 shell 会删掉 DYLD_* 变量，
+#      所以要一个非系统程序来设 DYLD_INSERT_LIBRARIES 再 exec）
+#   ② 把要核的程序拷两份：一份 ATG_DEV_HARDEN=0 签（对照，注入应该成功——证明这个检查本身有效），
+#      一份照常签（强化运行时，注入应该不生效）；各跑一次 `<程序> version`
+#   ③ 程序链了 libtdjson 时再核两件：rpath 里有 ~/.atg-dev/tdlib/lib 且照常能起；把 rpath 换成一个放着
+#      临时签名 libtdjson 的目录，强化运行时版应被 dyld 拒载（库验证：不同团队号）
+# 用法：bash scripts/check-harden.sh [程序]     # 默认 target/debug/atg-cli（先 cargo build -p atg-cli [--features tdlib]）
+# 退出码：0 全部符合预期 · 1 有一项不符 · 2 用法错 / 准备失败
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd "${here}/.." && pwd)"
+bin="${1:-${CARGO_TARGET_DIR:-${root}/target}/debug/atg-cli}"
+[[ -f "${bin}" ]] || { echo "check-harden: 没有这个程序：${bin}" >&2; exit 2; }
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/atg-harden.XXXXXX")"
+trap 'rm -rf "${tmp}"' EXIT
+fail=0
+ok() { echo "  ✓ $*"; }
+bad() { echo "  ✗ $*"; fail=1; }
+
+cat >"${tmp}/mark.c" <<'C'
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+__attribute__((constructor)) static void mark(void) {
+  const char *p = getenv("ATG_HARDEN_MARK");
+  if (p) { int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0600); if (fd >= 0) { write(fd, "injected\n", 9); close(fd); } }
+}
+C
+cat >"${tmp}/launch.c" <<'C'
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+/* 用法：launch <dylib> <程序> [参数…]：设 DYLD_INSERT_LIBRARIES 后 exec，非系统程序，变量不会被删 */
+int main(int argc, char **argv) {
+  if (argc < 3) return 2;
+  setenv("DYLD_INSERT_LIBRARIES", argv[1], 1);
+  execv(argv[2], argv + 2);
+  perror("execv");
+  return 2;
+}
+C
+clang -dynamiclib -o "${tmp}/libmark.dylib" "${tmp}/mark.c" || { echo "check-harden: 编 libmark 失败" >&2; exit 2; }
+clang -o "${tmp}/launch" "${tmp}/launch.c" || { echo "check-harden: 编启动器失败" >&2; exit 2; }
+
+cp "${bin}" "${tmp}/plain"
+cp "${bin}" "${tmp}/hard"
+ATG_DEV_HARDEN=0 bash "${here}/dev-sign.sh" "${tmp}/plain" 2>/dev/null || { echo "check-harden: 签对照版失败" >&2; exit 2; }
+bash "${here}/dev-sign.sh" "${tmp}/hard" || { echo "check-harden: 签强化运行时版失败" >&2; exit 2; }
+
+# 先把输出存进变量再匹配：开着 pipefail，`… | grep -q` 一匹配就提前退出，前一个命令收到 SIGPIPE，整条管道算失败，结论会反过来
+has() { [[ "$1" == *"$2"* ]]; }
+runtime_re='flags=0x[0-9a-f]+\([^)]*runtime'   # flags=0x10000(runtime)，或几个标志并列时其中有 runtime
+echo "→ 签名标志"
+sig_hard="$(codesign -dv "${tmp}/hard" 2>&1 || true)"
+sig_plain="$(codesign -dv "${tmp}/plain" 2>&1 || true)"
+if [[ "${sig_hard}" =~ ${runtime_re} ]]; then ok "强化运行时版带 runtime 标志"; else bad "强化运行时版没有 runtime 标志"; fi
+if [[ "${sig_plain}" =~ ${runtime_re} ]]; then bad "对照版也带了 runtime（ATG_DEV_HARDEN=0 没生效）"; else ok "对照版不带 runtime"; fi
+
+inject() { # $1=程序；标记文件出现 = 注入生效
+  rm -f "${tmp}/mark"
+  ATG_HARDEN_MARK="${tmp}/mark" "${tmp}/launch" "${tmp}/libmark.dylib" "$1" version >/dev/null 2>&1 || true
+  [[ -f "${tmp}/mark" ]]
+}
+echo "→ 注入（DYLD_INSERT_LIBRARIES）"
+if inject "${tmp}/plain"; then ok "对照版被注入（说明检查有效）"; else bad "对照版也没被注入：检查本身不灵，结论不可信"; fi
+if inject "${tmp}/hard"; then bad "强化运行时版被注入了"; else ok "强化运行时版挡住了注入"; fi
+
+libs="$(otool -L "${bin}")"
+if has "${libs}" libtdjson; then
+  echo "→ TDLib 动态库"
+  rp="${HOME}/.atg-dev/tdlib/lib"
+  loads="$(otool -l "${bin}")"
+  if has "${loads}" "path ${rp} "; then ok "rpath 有 ${rp}"; else bad "rpath 里没有 ${rp}"; fi
+  if "${tmp}/hard" version >/dev/null 2>&1; then ok "强化运行时版照常起（同团队号签的 libtdjson 按 rpath 载入）"; else bad "强化运行时版起不来（libtdjson 没签、没静态链 OpenSSL，或软链接不对）"; fi
+  # 换库：临时签名的 libtdjson 副本放进另一个目录，把 rpath 改指那里
+  real="$(cd "${rp}" && pwd -P)"
+  mkdir -p "${tmp}/fake-lib"
+  cp "${real}"/libtdjson.*.dylib "${tmp}/fake-lib/"
+  for f in "${tmp}"/fake-lib/libtdjson.*.dylib; do codesign -s - --force "${f}" 2>/dev/null; done
+  cp "${bin}" "${tmp}/swapped"
+  install_name_tool -rpath "${rp}" "${tmp}/fake-lib" "${tmp}/swapped" 2>/dev/null
+  bash "${here}/dev-sign.sh" "${tmp}/swapped"
+  if "${tmp}/swapped" version >/dev/null 2>"${tmp}/swapped.err"; then
+    bad "换成临时签名的 libtdjson 后照常起了（库验证没生效）"
+  elif grep -q 'Team ID\|not valid for use in process\|code signature' "${tmp}/swapped.err"; then
+    ok "换成临时签名的 libtdjson 被 dyld 拒载"
+  else
+    bad "换库后起不来，但不是库验证拒载（看 dyld 报错：$(head -c 200 "${tmp}/swapped.err" | tr '\n' ' ')）"
+  fi
+else
+  echo "→ 这个程序没链 libtdjson，跳过 TDLib 那几项（要核就 cargo build -p atg-cli --features tdlib）"
+fi
+
+if (( fail )); then echo "✗ 有不符合预期的项"; exit 1; fi
+echo "✓ 全部符合预期"
