@@ -16,8 +16,8 @@
 # 强化运行时（#42）：开发版签名开了 `--options runtime`，库验证只许载入苹果签的、或与程序同团队号签的库，
 #   `DYLD_LIBRARY_PATH` 也被忽略。所以这里：① OpenSSL 静态链进 libtdjson（Homebrew 的 libssl / libcrypto 是临时签名、
 #   没有团队号，动态链会被拒载）；② 编完用开发身份（scripts/dev-codesign-id.sh）给 libtdjson 签名，签在算 sha256 之前；
-#   ③ 维护常驻、不带空格的软链接 ~/.atg-dev/tdlib → 最新前缀，程序里写死的 rpath 指它（src/atg-cli/build.rs、
-#   src/atg-core/build.rs）。不加 disable-library-validation：加了，同用户可写目录里被换掉的库也能进来。
+#   ③ 维护常驻、不带空格的软链接 ~/.atg-dev/tdlib → 最新前缀，程序里写的 rpath 指它（两个包共用的构建脚本
+#   src/tdlib-build/rpath.rs；路径的正本是 src/tdlib-build/dev-link，#170）。不加 disable-library-validation：加了，同用户可写目录里被换掉的库也能进来。
 #   依据：docs/experiments/exp005-keychain-acl/README.md「开强化运行时要做的」。
 #
 # 项目路径末尾有空格（state/memory/20261025-path-trailing-space.md）：TDLib 链接参数
@@ -53,8 +53,19 @@ latest_prefix() {
   return 1
 }
 
-# 常驻软链接（#42）：程序的 rpath 写死指 ~/.atg-dev/tdlib/lib。那里已有东西但不是软链接 → 不碰，报错退出
-dev_link="${HOME}/.atg-dev/tdlib"
+# 常驻软链接相对家目录的路径：唯一正本是 src/tdlib-build/dev-link（程序的 rpath 也从它拼，见 rpath.rs，#170）。
+# 读出来是空、绝对路径、含 .. 或空白的，报错退出，不悄悄用默认值
+dev_link_rel() {
+  local f="${root}/src/tdlib-build/dev-link" rel
+  [[ -r "${f}" ]] || die "读不了 ${f}"
+  # 只去掉行尾换行；中间有空白不去掉、直接拒（不悄悄改成别的路径）
+  rel="$(head -n 1 "${f}")"
+  [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* \
+     && "$(wc -l <"${f}" | tr -d ' ')" -le 1 ]] || die "${f} 的内容不对（要一行相对家目录的路径，不带空白）"
+  printf '%s' "${rel}"
+}
+# 常驻软链接（#42）：程序的 rpath 指 ~/<dev-link>/lib。那里已有东西但不是软链接 → 不碰，报错退出
+dev_link="${HOME}/$(dev_link_rel)"
 update_link() {
   local target="$1"
   if [[ -e "${dev_link}" && ! -L "${dev_link}" ]]; then

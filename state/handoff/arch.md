@@ -1,5 +1,16 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · #170 常驻软链接路径一份正本、两个 build.rs 合一（2026-11-24，工作副本 `atg-wt/arch-170`，分支 `chore/170-dev-link`，从 main 8b8b5de 起；codex 072）
+
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-170-arch.md`。正本用纯文本 `dev-link`；两份 shell 各自读；Cargo 要是不认包目录外的构建脚本路径，就退回两个 3 行的 `build.rs`
+- 已改（还没编译，等名额）：
+  - 新加 `src/tdlib-build/dev-link`（一行 `.atg-dev/tdlib`）和 `src/tdlib-build/rpath.rs`（两包共用的构建脚本，用 `include_str!` 读 dev-link）
+  - 两个包的 `Cargo.toml` 各加一行 `build = "../tdlib-build/rpath.rs"`，删掉两个 `build.rs`。`cargo metadata` 能过，也就是清单认这个写法
+  - `build.sh`、`check-harden.sh` 改成读 dev-link：空的、绝对路径、含 `..`、含空白、多于一行，一律报错退出。在临时副本里 7 种情况都试过
+  - `testing.md` 里「强化运行时」那一行跟着改，加一条修订记录
+- 事实（和大总管一起改正过一次）：rpath 是构建时拼好的绝对路径，所以带 TDLib 的开发版二进制里有构建机的家目录。#42 起就是这样，不是这次带来的，已并进 #167
+- 还要实测：rerun-if-changed 生效（第二次 Fresh；touch dev-link、rpath.rs 后两包都重跑；改 HOME 也重跑）、默认构建 LC_RPATH 为 0、check-harden 全过
+
 ## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
 
 - 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r3b-arch.md`。大总管定：`testkit.rs` 照样加 `pub mod td;`（和 gui 冲突就这一两行，谁后合谁解）；两种通知设置都留，不改测试数据；`send/react/tests.rs` 先不碰；`send/tests.rs` 可以动（msg2 的 13b 不碰它）

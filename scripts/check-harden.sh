@@ -86,7 +86,11 @@ if inject "${tmp}/hard"; then bad "强化运行时版被注入了"; else ok "强
 libs="$(otool -L "${bin}")" || prep "otool -L 读不了程序"
 if has "${libs}" libtdjson; then
   echo "→ TDLib 动态库"
-  rp="${HOME}/.atg-dev/tdlib/lib"
+  # 软链接路径的正本是 src/tdlib-build/dev-link（#170），和程序里的 rpath 同一个来源
+  [[ -r "${root}/src/tdlib-build/dev-link" ]] || prep "读不了 src/tdlib-build/dev-link"
+  rel="$(head -n 1 "${root}/src/tdlib-build/dev-link")"
+  [[ -n "${rel}" && "${rel}" != /* && "${rel}" != *..* && "${rel}" != *[[:space:]]* ]] || prep "src/tdlib-build/dev-link 的内容不对"
+  rp="${HOME}/${rel}/lib"
   loads="$(otool -l "${bin}")" || prep "otool -l 读不了程序"
   if has "${loads}" "path ${rp} "; then ok "rpath 有 ${rp}"; else bad "rpath 里没有 ${rp}"; fi
   # 只许这一条：别的 rpath（如 tdlib-rs 的 OUT_DIR、@loader_path）可能先被搜到，那里同用户可写（codex 063 第 2 轮）
