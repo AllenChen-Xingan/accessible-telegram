@@ -7,7 +7,8 @@ use crate::fake::{Cap, FakeAuth, FakeBackend, FakeSend};
 use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
-use crate::testkit::td::{self, new_private_chat as new_chat};
+// 别名留着原来的名字，测试体不用改：这里的 `new_chat(id, title)` 就是私聊、通知设置为空（不是三参数的 `td_json::new_chat`）
+use crate::testkit::td_json::{self, new_private_chat as new_chat};
 use std::path::PathBuf;
 
 const ME: i64 = 4242;
@@ -21,8 +22,8 @@ struct Rig {
 }
 
 fn msg(chat: i64, id: i64, text: &str, extra: Value) -> Value {
-    td::with(
-        td::message(chat, id, FRIEND, 1_792_755_000, td::text(text)),
+    td_json::with(
+        td_json::message(chat, id, FRIEND, 1_792_755_000, td_json::text(text)),
         extra,
     )
 }

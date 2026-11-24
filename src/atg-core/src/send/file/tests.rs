@@ -8,7 +8,8 @@ use crate::fake::{FakeAuth, FakeBackend, FakeSend};
 use crate::gate::{DIRECT_LOG_FILE, Gate};
 use crate::link::block_on;
 use crate::status::AuthStep;
-use crate::testkit::td::new_private_chat as new_chat;
+// 别名留着原来的名字，测试体不用改：这里的 `new_chat(id, title)` 就是私聊、通知设置为空（不是三参数的 `td_json::new_chat`）
+use crate::testkit::td_json::new_private_chat as new_chat;
 use std::path::{Path, PathBuf};
 
 /// 自审第 1 轮补的边界

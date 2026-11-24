@@ -4,7 +4,7 @@ use crate::out::Sink;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::testkit;
-use atg_core::testkit::td::{text, user};
+use atg_core::testkit::td_json::{text, user};
 use serde_json::{Value, json};
 
 const ME: i64 = 100;

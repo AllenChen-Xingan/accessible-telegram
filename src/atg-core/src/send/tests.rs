@@ -15,15 +15,15 @@ use crate::fake::{FakeAuth, FakeBackend, FakeSend};
 use crate::gate::Gate;
 use crate::link::block_on;
 use crate::status::AuthStep;
-use crate::testkit::td::{self, new_chat};
+use crate::testkit::td_json::{self, new_chat};
 
 const ME: i64 = 4242;
 const FRIEND: i64 = 777;
 const FORUM: i64 = -100_555;
 
 fn msg(chat: i64, id: i64, text: &str, topic: Value) -> Value {
-    td::with(
-        td::message(chat, id, FRIEND, 1_792_755_000, td::text(text)),
+    td_json::with(
+        td_json::message(chat, id, FRIEND, 1_792_755_000, td_json::text(text)),
         json!({"topic_id": topic}),
     )
 }

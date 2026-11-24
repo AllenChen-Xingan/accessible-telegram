@@ -4,7 +4,7 @@ use super::*;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::link::block_on;
-use atg_core::testkit::td::user;
+use atg_core::testkit::td_json::user;
 use std::sync::{Arc, Mutex};
 
 mod ctrl_c;

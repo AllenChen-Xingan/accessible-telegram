@@ -4,7 +4,8 @@ use atg_core::config::{Profile, ServerKind};
 use atg_core::error::Holder;
 use atg_core::fake::{FakeAuth, FakeBackend, FakeSend};
 use atg_core::gate::Gate;
-use atg_core::testkit::td::{self, new_private_chat_notify_default as chat};
+// 别名留着原来的名字，测试体不用改：这里的 `chat(id, title)` 是私聊、通知设置写全
+use atg_core::testkit::td_json::{self, new_private_chat_notify_default as chat};
 use serde_json::Value;
 
 #[derive(Default)]
@@ -24,7 +25,7 @@ const FRIEND: i64 = 777;
 const OTHER: i64 = 888;
 
 fn msg(id: i64, text: &str) -> Value {
-    td::message(FRIEND, id, FRIEND, 1_792_755_000, td::text(text))
+    td_json::message(FRIEND, id, FRIEND, 1_792_755_000, td_json::text(text))
 }
 
 fn backend() -> FakeBackend {
