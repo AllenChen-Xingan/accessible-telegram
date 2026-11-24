@@ -70,4 +70,5 @@
 | 064 | 2026-11-24 | #169 M3.1 第一刀：`atg-gui-spec`（界面的表 + 纯函数投影，不依赖 GPUI；先多视角自审 5 轮；codex · diff 类） | 三轮：第 1 轮 P1×1 P2×3、第 3 轮 P2×1，全部属实已修；第 2、3 轮无 P0/P1，收敛 → `064_gui-spec-pr1-codex.md` |
 | 067 | 2026-11-24 | #60 R4 第一步：会话参数与 `saved` 解析收进 `history` 一份；`saved` 改问 `me()`，对外错误码 `internal`（`me_unknown`）→ 照 `me()` 报（codex · diff 类） | 第 1 轮 P2×1（交接页）已改，第 2 轮零发现，收敛 → `067_r4-target-step1-codex.md` |
 | 069 | 2026-11-24 | #60 R3b 第一刀：造 TDLib JSON 的测试助手收进 `testkit::td_json`，7 个测试文件换用（只动测试；codex · diff 类） | 两轮零发现，收敛 → `069_r3b-td-json-codex.md` |
+| 070 | 2026-11-24 | #60 R4 第二步 2a：edit、pending、delete、forwarding、send-file、vote 接上 `chat_arg` / `resolve_chat`（行为不变；codex · diff 类） | 两轮零发现，收敛 → `070_r4b-chat-arg-codex.md` |
 | 072 | 2026-11-24 | #170 常驻软链接路径一份正本（`src/tdlib-build/dev-link`）、两个 build.rs 合成共用的 `rpath.rs`，三处按同一条规则校验（codex · diff 类） | 四轮无 P0/P1，收敛；P2 共 5 条，前 4 条已改，最后 1 条（shell 读文件丢 NUL）开成 #186 → `072_170-dev-link-codex.md` |

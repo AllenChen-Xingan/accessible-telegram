@@ -1,5 +1,24 @@
 # 现状页 · arch（批次 b18，#60 压复杂度）
 
+## b21 · R4 第二步 2a：其余调用方接上 chat_arg / resolve_chat（2026-11-24，工作副本 `atg-wt/arch-r4b`，分支 `refactor/r4b-chat-arg`，从 main 8edd495 起；codex 070）
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r4b-arch.md`。先做 2a；文件大总管对过了，和 msg2 的 13b-2 不撞。注意 cli 的 `vote.rs` 和 core 的 `send/vote.rs` 是两个文件
+- 检查点 35229f2（大总管提交），合 main f088145。名额内全量检查都过了：test 770 过、0 败、5 忽略；`--features tdlib` 的 clippy 零警告，两个 `exp_real` 都编到了。改了的文件：cli 的 `edit`、`pending`、`delete`、`forwarding`、`send_file`、`vote`、`edit/exp_real`、`pending/exp_real`、`history`（只改注释），共 9 个文件
+  - 改用 `history::chat_arg` / `resolve_chat`，直接写名字，不用 `as` 别名
+  - `vote.rs` 删了本地那份 `chat_ref`
+  - `delete` 的提示保持不变
+- 行为不变：`send::resolve` 和 `resolve_chat` 本来就是同一种做法（问 `me()`）。`vote` 原来走 `history::resolve` 转调，现在直接调，也一样
+- 改完以后，`send::resolve`、`send::chat_ref` 只剩 `send.rs` 自己在用，`history::resolve` 只剩 `react` 在用，都等 2b 再删
+- 验证要多跑一项：两个 `exp_real` 只在 `tdlib` 特性下编译，要加跑 `cargo clippy -p atg-cli --features tdlib --all-targets`（要用 TDLib 库，`~/.atg-dev/tdlib`）
+- 自审第 1 轮：**三个视角里只回了两个**（第三个没交结果，不算它审过）；回了的两个都只报 P3，共 6 条。改了：
+  - 调用写法统一成 `history::chat_arg` / `history::resolve_chat`，导入里不再单列这两个名字
+  - `CHAT_USAGE` 注释不再手抄调用方清单
+  - 注释里的批次代号补上出处（issue #13 第 13b-2 步、plan 文件）
+  - 本页记上实测结果
+  - 没改的：`send.rs` 里 `send::resolve`、`chat_ref` 的注释，因为 `send.rs` 是 msg2 在改的文件，留到 2b 删的时候一起处理
+  - 自审修正 d5abe39，名额内编译过了（772 过）
+- ✅ codex 070（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r4b-pr-arch.md`
+- 排在 2a 后面的（大总管派，2026-11-24）：等 13b-2 合进 main 以后，做 cli `main.rs` → `lib.rs` 的纯挪动，单独开一个 PR，codex 071（照 R7 的只挪不改，附 `--color-moved` 证据）；做完接着做 R4 2b，那时 `mod target` 加在 `lib.rs` 里。依据：gui PR-4 的边界方案（MAIN 下 `_tmp/20261124-b21/plan-m31-pr4-boundary.md`），我审过的意见已经由大总管转给 gui
 ## b21 · #170 常驻软链接路径一份正本、两个 build.rs 合一（2026-11-24，工作副本 `atg-wt/arch-170`，分支 `chore/170-dev-link`，从 main 8b8b5de 起；codex 072）
 
 - 计划已批：MAIN 下 `_tmp/20261124-b21/plan-170-arch.md`。正本用纯文本 `dev-link`；两份 shell 各自读；Cargo 要是不认包目录外的构建脚本路径，就退回两个 3 行的 `build.rs`
@@ -49,7 +68,6 @@
   - 自审修正 9cbaf79（大总管提交），名额内编译全过（746 过）
 - ✅ codex 069（diff 类，medium）：两轮零发现，收敛
 - PR 草稿：MAIN 下 `_tmp/20261124-b21/r3b-pr-arch.md`
-
 ## b21 接手（2026-11-24）
 
 - 大总管换成 `telegram-accessibility-7a`；交代 `_tmp/20261124-b21/arch.md`

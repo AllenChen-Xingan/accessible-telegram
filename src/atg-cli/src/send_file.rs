@@ -16,7 +16,7 @@ use crate::chats::{self, Feed};
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
 use crate::history;
 use crate::out::{self, Fail, Sink, Stdio, emit_to, envelope};
-use crate::send::{chat_ref, confirm_zh, ctx, echo, fail_any, finish_line, l2_fail, resolve};
+use crate::send::{confirm_zh, ctx, echo, fail_any, finish_line, l2_fail};
 use atg_core::backend::Backend;
 use atg_core::error::CoreError;
 use atg_core::link::EventStream;
@@ -70,7 +70,7 @@ pub struct SendFileParams {
 }
 
 pub fn params(a: &SendFileArgs, tz: Option<&str>) -> Result<SendFileParams, Fail> {
-    chat_ref(&a.chat)?;
+    history::chat_arg(&a.chat)?;
     ctx(tz)?;
     let caption = match (&a.caption, &a.caption_file) {
         (Some(t), None) => t.clone(),
@@ -182,7 +182,7 @@ fn run_inner<B: Backend>(
     started: Instant,
     wait: Wait,
 ) -> Result<u8, Fail> {
-    let chat = chat_ref(&p.chat)?;
+    let chat = history::chat_arg(&p.chat)?;
     let cx = ctx(p.tz.as_deref())?;
     let src = FileSource {
         path: p.path.clone(),
@@ -192,7 +192,7 @@ fn run_inner<B: Backend>(
     // 文件的问题先报（会话不存在、网络不通时也是；自审第 2 轮）
     file::precheck(&src, roots).map_err(Fail::Core)?;
     chats::ensure_ready(b)?;
-    let chat_id = resolve(b, chat)?;
+    let chat_id = history::resolve_chat(b, chat)?;
     history::load_chat(b, stream, feed, chat_id)?;
     let plan = bounded(
         b,
