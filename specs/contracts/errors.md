@@ -204,3 +204,4 @@
 - 2026-11-17 #8 B 自审（msg1）：链接预览按默认重新生成写进说明（留 issue）；签名 `text: String`、事件名、`forbidden.why` 限定词、转发 `tz` 清单等措辞对齐
 - 2026-11-17 #12 发文件（手下 msg2）：`invalid_input.why` 加 `file_not_allowed`、`file_too_large`、`not_a_file`、`caption_too_long`；`profile_busy`「命令不转」的场景加 `send-file`
 - 2026-11-17 #12 自审第 1 轮后（手下 msg2）：`file_not_allowed` 加硬链接一条与原因；`not_a_file` 分界、`caption_too_long` 按 UTF-16 码元计写明
+- 2026-11-24 #60 R4 第一步（手下 arch，大总管定）：`internal` 的 `what` 不再出现 `me_unknown`（它本来就没登记在上表里）。会话写 `saved`、换不出收藏夹 id 时，各命令统一报 `network` / `disconnected`（见 `cli.md`「最多等多久」）

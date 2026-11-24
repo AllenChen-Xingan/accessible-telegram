@@ -25,7 +25,7 @@
 
 use crate::args::{Format, HistoryArgs, LinksArgs};
 use crate::chats::{self, Feed};
-use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
+use crate::deadlines::{QUERY_TIMEOUT, START_TIMEOUT, SYNC_TIMEOUT, bounded};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use atg_core::backend::{Backend, HistoryReq, SHUTDOWN_TIMEOUT};
 use atg_core::config::Profile;
@@ -35,7 +35,7 @@ use atg_core::link::EventStream;
 use atg_core::model::{Body, ChatId, MsgId};
 use atg_core::project;
 use atg_core::speech::{self, SpeechCtx};
-use atg_core::status::{CoreState, NetState};
+use atg_core::status::NetState;
 use atg_core::store::Input;
 use atg_core::tree::Doc;
 use atg_core::tree::text::links_marked;
@@ -69,6 +69,14 @@ impl ChatRef {
         }
         s.parse().ok().map(Self::Id)
     }
+}
+
+/// 会话参数写错时的那句用法提示：只在这里写一次（#60 R4，`docs/plan/010` 第二节 S7）
+pub(crate) const CHAT_USAGE: &str = "会话写数字 id，或 saved（收藏夹）";
+
+/// 命令行的会话参数 → [`ChatRef`]，写错了报用法错误并带 [`CHAT_USAGE`]（#60 R4）
+pub(crate) fn chat_arg(s: &str) -> Result<ChatRef, Fail> {
+    ChatRef::parse(s).ok_or(Fail::Usage(CHAT_USAGE))
 }
 
 /// 从哪取
@@ -126,7 +134,7 @@ fn doc_id(d: &Doc) -> Option<i64> {
 
 /// 参数 → 查询；形状不对是用法错误。直跑与执行方都走这里（执行方收到的参数绕过了 clap，检查只在这一处）
 pub fn query(a: &HistoryArgs) -> Result<Query, Fail> {
-    let chat = ChatRef::parse(&a.chat).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))?;
+    let chat = chat_arg(&a.chat)?;
     if !(1..=1000).contains(&a.limit) {
         return Err(Fail::Usage("-n 要在 1 到 1000 之间"));
     }
@@ -189,29 +197,26 @@ pub(crate) fn with_backend<B: Backend, T>(
     r
 }
 
-/// 会话 id：`saved` 换成自己的用户 id（与自己的私聊，会话 id 即用户 id）
-pub(crate) fn resolve<B: Backend>(
-    b: &B,
-    stream: &mut EventStream,
-    feed: &mut Feed,
-    chat: ChatRef,
-) -> Result<ChatId, Fail> {
+/// 会话 id：`saved` 换成自己的收藏夹 id。问后端 `me()`（闸判收藏夹用的也是它），按查询类期限
+/// （[`QUERY_TIMEOUT`]），到点报 `network`、内核故障报 `disconnected`（#60 R4 起；原来等事件流里的 `my_id`
+/// 最多 5 秒，等不到报 `internal`）。`send` 那一族目前还用 `send::resolve`（同一做法），R4 第二步合成这一份
+pub(crate) fn resolve_chat<B: Backend>(b: &B, chat: ChatRef) -> Result<ChatId, Fail> {
     match chat {
         ChatRef::Id(id) => Ok(id),
-        ChatRef::Saved => {
-            let deadline = Instant::now() + ME_TIMEOUT;
-            loop {
-                feed.drain(stream);
-                if let Some(me) = feed.store().me() {
-                    return Ok(me);
-                }
-                if Instant::now() >= deadline || b.status().lines.core == CoreState::Faulted {
-                    return Err(Fail::Core(CoreError::Internal { what: "me_unknown" }));
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
+        ChatRef::Saved => bounded(b, b.me(), QUERY_TIMEOUT)
+            .map(|m| m.saved_chat_id)
+            .map_err(Fail::Core),
     }
+}
+
+/// 同 [`resolve_chat`]，留着旧签名给还没改过来的调用方（`react`；R4 第二步删）。`stream`、`feed` 不再用
+pub(crate) fn resolve<B: Backend>(
+    b: &B,
+    _stream: &mut EventStream,
+    _feed: &mut Feed,
+    chat: ChatRef,
+) -> Result<ChatId, Fail> {
+    resolve_chat(b, chat)
 }
 
 /// 让会话进 Store（`getChat`），找不到 → `not_found`
@@ -243,7 +248,7 @@ pub fn collect<B: Backend>(
     sync: Duration,
 ) -> Result<Page, Fail> {
     chats::ensure_ready(b)?;
-    let chat_id = resolve(b, stream, feed, q.chat)?;
+    let chat_id = resolve_chat(b, q.chat)?;
     load_chat(b, stream, feed, chat_id)?;
     // 未读位置要等补发完才准；断网时等不到，照样从本地出
     let synced = b.wait_net(sync, &|n| *n == NetState::Ready).is_some();

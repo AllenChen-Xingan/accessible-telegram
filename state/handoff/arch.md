@@ -35,6 +35,13 @@
   - 第 3 轮：零发现，收敛
 - PR 草稿：MAIN 下 `_tmp/20261124-b21/42-pr-arch.md`。写明了合并后 MAIN 要重编 TDLib，以及 `me` 是 not_implemented
 - 下一步：大总管提交收敛记录、开 PR。之后做 R7 / R3a 余下的刀（`plan-next-arch.md`），先报大总管
+## b21 · R4 目标解析第一步（2026-11-24，工作副本 `atg-wt/arch-r4`，分支 `refactor/r4-target`，从 main 16220c5 起；codex 067）
+
+- 草案已批：MAIN 下 `_tmp/20261124-b21/plan-r4-arch.md` 文件头。统一成问 `me()`（对外错误码会变，PR 单列「行为变化」一节，同步改 `errors.md`、`cli.md`）；`delete` 保持现状；cli 新建 `target.rs`
+- 分两步，避开 msg2 的 13b。第一步只碰：core 的 `target.rs`（新）、`lib.rs`，cli 的 `target.rs`（新）、`history.rs`、`history/links.rs`、`voice/mod.rs`、`watch.rs`，以及 `errors.md`、`cli.md`。`history::resolve` 留成一行转调（`react.rs` 不动，但行为跟着变），`watch::resolve` 签名不变（`serve.rs` 不动）
+- 第二步（13b-1 合进 main 以后）：send 那一族、`args.rs` 的 `-n` 常量
+- 状态：开工
+
 ## b21 · R8 小零件归一（2026-11-24，工作副本 `atg-wt/arch-r8`，分支 `refactor/r8-dedupe`，从 main c48ff54 起；codex 066）
 - #42 那一段记在 `atg-wt/arch-42` 的现状页里（PR #173），合进 main 后两边合成一份
 - 计划已批：MAIN 下 `_tmp/20261124-b21/plan-r8-arch.md`。`gate::unix_now` 名字留着，只改函数体（大总管定）
@@ -52,6 +59,8 @@
   - 改完编译过了（a7755f4，名额内跑，全过）
 - ✅ codex 066（diff 类，medium）：第 1 轮 P2×2，修正 9c36417；第 2 轮 P2×2（注释措辞），当场改掉。连续两轮无 P0/P1，收敛
 - PR 草稿：MAIN 下 `_tmp/20261124-b21/r8-pr-arch.md`
+- ✅ R8 已合（PR #176，main 16220c5）
+- ✅ #42 已合（PR #173，bcb544e）。MAIN 已重编 TDLib：`_build/20261124-120844`，用了 524 秒；`~/.atg-dev/tdlib` 已指过去，check-harden 全过。arch-42、arch-r8、arch-137 三个副本的 `target/` 已删（大总管）；整个副本删不删、旧的 `_build/20261025-171733` 删不删，等人定
 
 ## b20 接手（2026-11-16）
 

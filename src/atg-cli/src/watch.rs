@@ -17,7 +17,7 @@
 
 use crate::args::{Format, WatchArgs};
 use crate::chats::{self, Feed};
-use crate::deadlines::{ME_TIMEOUT, QUERY_TIMEOUT, START_TIMEOUT, bounded};
+use crate::deadlines::{START_TIMEOUT, bounded};
 use crate::history::ChatRef;
 use crate::lease::{self, Leases};
 use crate::out::{Fail, Stdio, envelope};
@@ -325,30 +325,9 @@ pub fn resolve<B: Backend>(
     feed: &mut Feed,
     chat: ChatRef,
 ) -> Result<ChatId, Fail> {
-    let id = match chat {
-        ChatRef::Id(id) => id,
-        ChatRef::Saved => {
-            let deadline = Instant::now() + ME_TIMEOUT;
-            loop {
-                feed.drain(stream);
-                if let Some(me) = feed.store().me() {
-                    break me;
-                }
-                if Instant::now() >= deadline || b.status().lines.core == CoreState::Faulted {
-                    return Err(Fail::Core(CoreError::Internal { what: "me_unknown" }));
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
-    };
-    bounded(b, b.chat_get(id), QUERY_TIMEOUT).map_err(Fail::Core)?;
-    feed.drain(stream);
-    if feed.store().chat(id).is_none() {
-        return Err(Fail::Core(CoreError::NotFound {
-            what: "chat",
-            td: None,
-        }));
-    }
+    // 同 `history`：`saved` 问 `me()`、再确认会话存在（#60 R4，两份收成一份）
+    let id = crate::history::resolve_chat(b, chat)?;
+    crate::history::load_chat(b, stream, feed, id)?;
     Ok(id)
 }
 
