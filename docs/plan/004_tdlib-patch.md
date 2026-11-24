@@ -69,19 +69,20 @@ bash src/tdlib-build/build.sh                              # 约 3–4 分钟；
 export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"   # 以后取最近一次编好的前缀
 ```
 
-脚本锁定 TDLib 1.8.69 = `ea3f69ce11aef458bfbb09869b809ede4447486f`：按提交号先从本地 `resources/td` 取（复制约 6.5 MB 对象，不走网络；它是浅克隆，`--shared` 会被 git 静默忽略，所以干脆不用），取不到再从 GitHub 只拉这一个提交；先核对 openssl@3 与终端架构一致（防 Rosetta 终端编 3 分钟后才在链接时失败）；cmake Release 只编 `tdjson`；手工布置前缀；写 `build-info.txt`（版本、提交、用时、dylib 的 sha256）。缺 git / cmake / gperf / Homebrew `openssl@3` 就报错退出，不自动安装。改版本时三处一起改：脚本头、`src/tdlib-rs` 的 `TDLIB_VERSION`、本文。`path` 只认带 `build-info.txt` 的目录（脚本之前手工编的 `_build/20261025-161449/` 已删，人定 2026-10-25）。每次构建约 300 MB，失败的半截目录不自动删（`path` 会跳过它）；脚本结束时提示目录个数，删由人定。
+脚本锁定 TDLib 1.8.69 = `ea3f69ce11aef458bfbb09869b809ede4447486f`：按提交号先从本地 `resources/td` 取（复制约 6.5 MB 对象，不走网络；它是浅克隆，`--shared` 会被 git 静默忽略，所以干脆不用），取不到再从 GitHub 只拉这一个提交；先核对 openssl@3 与终端架构一致（防 Rosetta 终端编 3 分钟后才在链接时失败）；cmake Release 只编 `tdjson`；手工布置前缀；写 `build-info.txt`（版本、提交、用时、dylib 的 sha256；#42 起加 `openssl_link=static` 与 `signed=`，只记「用开发身份签过」，不记身份名和团队号）。#42 起还要：OpenSSL 静态链进 libtdjson、编完用开发身份给 libtdjson 签名（在算 sha256 之前）、更新常驻软链接 `~/.atg-dev/tdlib`（`build.sh link` 只更新链接）；`path` 只认 #42 以后的构建。缺 git / cmake / gperf / Homebrew `openssl@3`（含静态库 `libssl.a`、`libcrypto.a`）/ 开发签名身份就报错退出，不自动安装。改版本时三处一起改：脚本头、`src/tdlib-rs` 的 `TDLIB_VERSION`、本文。`path` 只认带 `build-info.txt` 的目录（脚本之前手工编的 `_build/20261025-161449/` 已删，人定 2026-10-25）。每次构建约 300 MB，失败的半截目录不自动删（`path` 会跳过它）；脚本结束时提示目录个数，删由人定。
 
 | 东西 | 位置 | 入库？ |
 |---|---|---|
 | 源码 | 脚本取到 `_build/<时间戳>/td-src/`（`resources/td` 只读，作本地来源） | 否 |
 | 构建 | `_build/<时间戳>/build/`（约 260 MB）· 日志 `cmake-*.log` | 否（`_build/` 已忽略） |
 | 库（`LOCAL_TDLIB_PATH` 指这里） | `_build/<时间戳>/tdlib/`：`lib/libtdjson.1.8.69.dylib` + `libtdjson.dylib` 软链接 + `include/` | 否 |
+| 常驻软链接（#42；程序的 rpath 指它的 `lib/`） | `~/.atg-dev/tdlib` → 最后一次编的那份 `_build/<时间戳>/tdlib/`，全机一个 | 否（仓库外） |
 
 脚本照下面三个坑处理好了（留作原因）：
 
 1. **项目路径末尾有空格**（`telegram accessibility `）：TDLib 的 CMake 把 `-Wl,-exported_symbols_list,<源码目录>/tdclientjson_export_list` 原样拼进链接命令、没加引号，路径在空格处被拆成两段，第一次编到最后链接一步失败（`no such file or directory: '/_build/…/tdclientjson_export_list'`）。办法：在**不带空格**的路径建一个软链接指向 `_build/<时间戳>/`，cmake 的源码、构建、前缀全走软链接路径。脚本把软链接建在 `$TMPDIR`，用完即删；`build/CMakeCache.txt` 记的是软链接路径，所以**要重编就再跑一次脚本**（新时间戳目录），别在旧目录里原地重编
 2. `--target tdjson` 只编一个目标，`cmake --install` 会报缺文件；手工把 dylib（连同 `libtdjson.dylib` 软链接，链接时用 `-ltdjson`）与三个头文件放进前缀
-3. 库按绝对路径依赖 Homebrew 的 `openssl@3`；卸了它库就打不开。做成正式安装包时要另想（打包进 .app 或静态链接）
+3. 库按绝对路径依赖 Homebrew 的 `openssl@3`；卸了它库就打不开。做成正式安装包时要另想（打包进 .app 或静态链接）。**#42 起已改为静态链接**（强化运行时下 Homebrew 那两个临时签名的库会被拒载），编完的库不再依赖 `openssl@3`；编的时候仍要装着它（取静态库）
 
 ## 四、验证结果（2026-10-25，macOS arm64）
 

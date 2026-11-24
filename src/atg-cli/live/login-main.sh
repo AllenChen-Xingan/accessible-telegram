@@ -38,7 +38,7 @@ if ! bash scripts/dev-sign.sh "$bin"; then
   echo "签名失败：跑一次 bash scripts/setup-dev-codesign.sh 看开发签名身份是否就绪。" >&2
   exit 2
 fi
-export DYLD_LIBRARY_PATH="$LOCAL_TDLIB_PATH/lib"
+# 库按程序里的 rpath（~/.atg-dev/tdlib/lib）找；#42 起签名开强化运行时，DYLD_LIBRARY_PATH 会被忽略，不再设
 
 # ── 登录 ──
 echo
@@ -61,5 +61,5 @@ if [[ $login_status -eq 0 ]]; then
 else
   echo "登录没有完成（退出码 $login_status），上面那行说了原因。"
 fi
-printf '要退出登录：DYLD_LIBRARY_PATH=%q %q logout （会让你输入 yes 确认）\n' "$DYLD_LIBRARY_PATH" "$bin"
+printf '要退出登录：%q logout （会让你输入 yes 确认）\n' "$bin"
 exit "$login_status"

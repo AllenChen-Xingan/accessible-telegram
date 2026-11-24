@@ -16,7 +16,7 @@
 //!
 //! ```sh
 //! export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
-//! ATG_LIVE=1 cargo run -p atg-core --features tdlib --example live_wait_phone   # runner 签名并带上 TDLib 库目录
+//! ATG_LIVE=1 cargo run -p atg-core --features tdlib --example live_wait_phone   # runner 签名；库按 rpath 找（#42）
 //! ```
 //!
 //! 只读出状态名、序号、耗时；不打印 `api_id` / `api_hash` / 钥匙。
