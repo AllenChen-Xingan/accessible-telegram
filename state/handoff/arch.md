@@ -17,7 +17,9 @@
   - `pub mod` 挪到文件头；testkit 头上和 Cargo.toml 的特性说明补上 TDLib JSON 助手
   - 四处 `as` 别名各加一行说明
   - 本页的状态写准
-  - 改完还没编译，等名额
+  - 自审修正 9cbaf79（大总管提交），名额内编译全过（746 过）
+- ✅ codex 069（diff 类，medium）：两轮零发现，收敛
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/r3b-pr-arch.md`
 
 ## b21 接手（2026-11-24）
 

@@ -67,3 +67,4 @@
 | 063 | 2026-11-24 | #42 开发版开强化运行时（OpenSSL 静态链、libtdjson 签名、rpath 指常驻软链接、`--options runtime`、`check-harden.sh`；codex · diff 类，effort high，按契约 / 安全口径） | 第 1 轮 P1×1、P2×3，第 2 轮 P2×2，都已改；第 3 轮零发现，收敛 → `063_42-hardened-runtime-codex.md` |
 | 066 | 2026-11-24 | #60 R8 小零件归一：`lock`、时钟与时区（新模块 `clock`）、原子写各留一份；`mark_running` 改原子写（codex · diff 类） | 两轮无 P0/P1，收敛（P2 共 4 条都是注释与记录，已改）→ `066_r8-dedupe-codex.md` |
 | 064 | 2026-11-24 | #169 M3.1 第一刀：`atg-gui-spec`（界面的表 + 纯函数投影，不依赖 GPUI；先多视角自审 5 轮；codex · diff 类） | 三轮：第 1 轮 P1×1 P2×3、第 3 轮 P2×1，全部属实已修；第 2、3 轮无 P0/P1，收敛 → `064_gui-spec-pr1-codex.md` |
+| 069 | 2026-11-24 | #60 R3b 第一刀：造 TDLib JSON 的测试助手收进 `testkit::td_json`，7 个测试文件换用（只动测试；codex · diff 类） | 两轮零发现，收敛 → `069_r3b-td-json-codex.md` |
