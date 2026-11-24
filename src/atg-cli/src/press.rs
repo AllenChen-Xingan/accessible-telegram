@@ -13,7 +13,7 @@
 use crate::args::{Format, Global, MsgRef};
 use crate::chats::{self, Feed};
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
-use crate::history::{self, ChatRef};
+use crate::history;
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use crate::send::{KeyPress, SendParams};
 use atg_core::backend::Backend;
@@ -59,13 +59,9 @@ pub struct PressParams {
     pub tz: Option<String>,
 }
 
-fn chat_ref(s: &str) -> Result<ChatRef, Fail> {
-    ChatRef::parse(s).ok_or(Fail::Usage("会话写数字 id，或 saved（收藏夹）"))
-}
-
 /// 参数检查（直跑与执行方都走这里：执行方收到的参数绕过了 clap）
 pub fn check(p: &PressParams) -> Result<(), Fail> {
-    chat_ref(&p.chat)?;
+    history::chat_arg(&p.chat)?;
     if p.button == 0 {
         return Err(Fail::Usage("按钮从 1 数起：详情里读的第几个按钮"));
     }
@@ -146,7 +142,7 @@ fn run_press<B: Backend>(
 ) -> Result<u8, Fail> {
     check(p)?;
     chats::ensure_ready(b)?;
-    let chat_id = history::resolve(b, stream, feed, chat_ref(&p.chat)?)?;
+    let chat_id = history::resolve_chat(b, history::chat_arg(&p.chat)?)?;
     history::load_chat(b, stream, feed, chat_id)?;
     let id = MsgId {
         chat_id,
