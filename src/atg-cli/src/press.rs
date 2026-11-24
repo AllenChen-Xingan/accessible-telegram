@@ -37,7 +37,7 @@ pub struct PressArgs {
     /// 第几个按钮：`history --detail` 详情里读的顺序（从 1 起，跨行连续数）
     #[arg(value_name = "N")]
     pub button: usize,
-    /// 10 分钟内按过同一个按钮会被拦下；确要再按一次就加它
+    /// 按过同一个按钮会被拦下（已按下的看 10 分钟，结果未知的看 24 小时）；确要再按一次就加它
     #[arg(long)]
     pub again: bool,
     /// 只输出要按什么，不按
@@ -277,10 +277,10 @@ fn callback<B: Backend>(
 /// 机器人的回话：JSON、读给人听的一句、开没开网址
 fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, String, bool) {
     let Some(r) = reply else {
-        return (Value::Null, "机器人没回话".to_owned(), false);
+        return (Value::Null, "机器人没回话（按下已送到）".to_owned(), false);
     };
     let mut said = if r.text.trim().is_empty() {
-        "机器人回话了，没带文字（按下已送到）".to_owned()
+        "机器人没带文字（可能没回话，按下已送到）".to_owned()
     } else if r.alert {
         format!("机器人回话（弹窗）：{}", r.text.trim())
     } else {

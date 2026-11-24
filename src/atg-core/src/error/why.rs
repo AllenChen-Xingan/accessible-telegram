@@ -147,14 +147,14 @@ impl InvalidSendWhy {
             InvalidSendWhy::VoteWouldReplace => {
                 "你已投过这个投票，这次会把你现在投的换掉（不是加上）；什么都没投"
             }
+            InvalidSendWhy::VoteBadChoice => {
+                "选项不对：写全文里读的第几项（从 1 起），不能重复；这个投票不许多选时只能选一项；什么都没投"
+            }
             InvalidSendWhy::ButtonNotFound => {
                 "这条消息上没有这个按钮：写 history --detail 详情里每个按钮前念的「第 N 个」（从 1 起）；什么都没按"
             }
             InvalidSendWhy::ButtonNotSupported => {
                 "这种按钮本应用不按（如要密码、付款、交出手机号或位置的），请在手机上按；什么都没按"
-            }
-            InvalidSendWhy::VoteBadChoice => {
-                "选项不对：写全文里读的第几项（从 1 起），不能重复；这个投票不许多选时只能选一项；什么都没投"
             }
         }
     }

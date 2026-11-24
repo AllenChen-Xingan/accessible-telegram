@@ -135,7 +135,7 @@ pub(super) fn keyboard(m: &Value) -> Option<Keyboard> {
     (!rows.is_empty()).then_some(Keyboard { kind, rows })
 }
 
-/// 交出口用：消息 JSON 里第 `n` 个按钮（1 起，跨行连续数，同 [`Keyboard::nth`]）是回调按钮、文字还是 `text`，就回它的
+/// 交出口用：消息 JSON 里第 `n` 个按钮（1 起，跨行连续数，同 [`Keyboard::nth`]）是回调按钮、**并且**文字仍等于 `text`，才回它的
 /// 回调数据（`inlineKeyboardButtonTypeCallback.data`）；否则 `None`（按钮被机器人换了）。**只在交出口里用**：数据不进树、不进
 /// model、不进计划与留痕（#13 13b-2）
 pub(crate) fn callback_data(m: &Value, n: usize, text: &str) -> Option<String> {

@@ -126,6 +126,12 @@ fn nth(m: &Message, n: usize) -> Result<(KeyboardKind, Button), CoreError> {
         (None, Some(k)) => k,
         _ => return Err(not_found),
     };
+    // 认不出的按钮区：读法说「有暂不支持的按钮」，这里同样说不支持，不说「没有这个按钮」（自审第 3 轮）
+    if matches!(k.kind, KeyboardKind::Unknown { .. }) {
+        return Err(CoreError::InvalidSend {
+            why: InvalidSendWhy::ButtonNotSupported,
+        });
+    }
     let b = k.nth(n).ok_or(not_found)?;
     Ok((k.kind.clone(), b.clone()))
 }

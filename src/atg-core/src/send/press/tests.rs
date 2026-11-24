@@ -261,7 +261,7 @@ fn kinds_route_to_readonly_keyboard_or_refusal() {
 
 /// 人定 B：键盘已换到别的消息上 / 已收起，照样给文字，计划里说一句（收起不说成更换，自审第 1 轮 P2）
 #[test]
-fn replaced_keyboard_still_presses() {
+fn replaced_or_hidden_keyboard_still_presses() {
     let r = rig("hidden", false, 0);
     match prepare(&r, BOT, 6, 1).unwrap() {
         Press::Keyboard { keyboard, .. } => assert_eq!(keyboard, KeyboardNow::Hidden),
@@ -295,4 +295,17 @@ fn bot_silence_is_recognised_as_tdlib_reports_it() {
     assert!(bot_silent(400, "BOT_RESPONSE_TIMEOUT"));
     assert!(!bot_silent(400, "MESSAGE_ID_INVALID"));
     assert!(!bot_silent(502, "Bad Gateway"));
+}
+
+/// 自审 13b-2 第 3 轮：认不出的按钮区（读法说「有暂不支持的按钮」）按的时候报「不支持」，不报「没有这个按钮」
+#[test]
+fn unknown_keyboard_kind_is_not_supported() {
+    let r = rig("unknown-kb", false, 0);
+    let mut m = inline_msg(BOT, 5, "确认");
+    m["reply_markup"] = json!({"@type": "replyMarkupFutureThing", "rows": []});
+    r.b.set_history(BOT, vec![m]);
+    assert_eq!(
+        why(prepare(&r, BOT, 5, 1).unwrap_err()),
+        InvalidSendWhy::ButtonNotSupported
+    );
 }

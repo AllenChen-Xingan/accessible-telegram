@@ -193,13 +193,18 @@ fn url_button_is_read_only() {
 
 /// 键盘文字按钮转给 send；键盘已换过的照样发，计划里说一句（人定 B）
 #[test]
-fn keyboard_button_goes_through_send_and_says_replaced() {
+fn keyboard_button_goes_through_send_and_says_replaced_hidden_or_here() {
     let b = backend(99);
     let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Text);
     let plan = &cap.out[0];
     assert!(plan.contains("键盘按钮"), "{plan}");
     assert!(plan.contains("键盘已更换，照原文字发"), "{plan}");
     assert!(plan.contains("好的"), "{plan}");
+    // 已收起不说成更换（第 1 轮修法，CLI 这层也守住）
+    let b = backend(0);
+    let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Text);
+    assert!(cap.out[0].contains("键盘已收起"), "{}", cap.out[0]);
+    assert!(!cap.out[0].contains("键盘已更换"), "{}", cap.out[0]);
     let b = backend(6);
     let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Json);
     let plan = &lines(&cap)[0];
