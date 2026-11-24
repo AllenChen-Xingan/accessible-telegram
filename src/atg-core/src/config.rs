@@ -325,10 +325,15 @@ impl Profile {
 
     /// 放上「运行中」标记；正常关闭时 [`Profile::mark_clean`] 拿掉。超时或故障时留着，下次启动提示
     pub fn mark_running(&self) -> Result<(), CoreError> {
-        // 原子写（#60 R8 起；原来是就地写）。这个「运行中」标记（不是 #61 的档案标记）只看在不在、内容为空，两种写法读出来一样。
-        // 写到一半失败或崩溃，档案目录里可能留下 `running.tmp<进程号>`（`write_atomic` 失败时不删临时文件），不会自动清，但无害：
-        // `previous_unclean` 只看 `running`；`is_fresh`（#61）只在缺档案标记时才看目录内容，那时它算「不新」、拒绝启动，
-        // 和原来留着 `running` 时的结果一样
+        // 原子写（#60 R8 起；原来是就地写）。这个「运行中」标记（不是 #61 的档案标记）只看在不在、内容为空：
+        // 写成功以后，两种写法读出来一样。
+        // 写到一半失败或崩溃：
+        // - 原来：`running` 可能已经建了，下次 `previous_unclean` 为真；现在：`running` 还没出现，下次为假。
+        //   这一步发生在起后端之前（`td/real/start.rs` 里在 `create_client` 之前；假后端同样在登记运行之前），
+        //   TDLib 还没开库、什么都没跑，没有「上次没正常关」可提示，所以为假才是对的
+        // - 档案目录里可能留下 `running.tmp<进程号>`（`write_atomic` 失败时不删临时文件），不会自动清，但无害：
+        //   `previous_unclean` 只看 `running`；`is_fresh`（#61）只在缺档案标记时才看目录内容，那时它算「不新」、拒绝启动，
+        //   和原来留着 `running` 时的结果一样
         write_atomic(&self.dir.join(RUNNING), b"").map_err(|_| CoreError::Internal {
             what: "profile_dir_io",
         })
