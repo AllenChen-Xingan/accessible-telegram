@@ -92,6 +92,16 @@ fn lines(cap: &Cap) -> Vec<Value> {
 
 /// 跑一次，回（退出码，输出，打开过的网址）
 fn run(b: &FakeBackend, p: &PressParams, format: Format) -> (u8, Cap, Vec<String>) {
+    run_with(b, p, format, true)
+}
+
+/// `opens`：打开出口回什么（假 = 系统 `open` 起不来）
+fn run_with(
+    b: &FakeBackend,
+    p: &PressParams,
+    format: Format,
+    opens: bool,
+) -> (u8, Cap, Vec<String>) {
     crate::history::with_backend(b, &profile(), Instant::now(), |b, st, fe| {
         let mut cap = Cap::default();
         let mut opened = Vec::new();
@@ -107,6 +117,7 @@ fn run(b: &FakeBackend, p: &PressParams, format: Format) -> (u8, Cap, Vec<String
             t,
             &mut |u| {
                 opened.push(u.to_owned());
+                opens
             },
         );
         Ok((code, cap, opened))
@@ -235,4 +246,21 @@ fn keyboard_button_in_group_replies_to_the_keyboard_message() {
     let b = backend(6);
     let (_, cap, _) = run(&b, &press_p(6, 1, true), Format::Json);
     assert!(lines(&cap)[0]["data"]["reply_to"].is_null());
+}
+
+/// codex 065 第 2 轮 #1：系统 `open` 起不来时 `opened:false`、照样算按下了，说清别为开网址再按
+#[test]
+fn failed_open_is_reported_and_press_still_counts() {
+    let b = backend(0);
+    b.script_callback(Some(CallbackReply {
+        text: "去这里".into(),
+        alert: false,
+        url: "https://example.org/x".into(),
+    }));
+    let (code, cap, tried) = run_with(&b, &press_p(5, 1, false), Format::Json, false);
+    assert_eq!(code, 0);
+    assert_eq!(tried.len(), 1);
+    let end = lines(&cap).pop().unwrap();
+    assert_eq!(end["data"]["pressed"], true);
+    assert_eq!(end["data"]["opened"], false);
 }

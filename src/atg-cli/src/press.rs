@@ -78,13 +78,15 @@ pub fn openable(url: &str) -> bool {
 }
 
 /// 真的打开：交给系统（macOS `open`），网址作为单独一个参数，不经 shell
-fn system_open(url: &str) {
-    let _ = std::process::Command::new("/usr/bin/open")
+/// 回真 = 系统 `open` 起来了且退出码为 0（不保证浏览器真开了）；起不来或退出码非 0 回假（codex 065 第 2 轮 #1）
+fn system_open(url: &str) -> bool {
+    std::process::Command::new("/usr/bin/open")
         .arg(url)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .status();
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 fn result_line(sink: &mut dyn Sink, format: Format, data: Value, zh: &str) {
@@ -122,7 +124,7 @@ pub fn execute<B: Backend>(
     format: Format,
     started: Instant,
     timeout: Duration,
-    open: &mut dyn FnMut(&str),
+    open: &mut dyn FnMut(&str) -> bool,
 ) -> u8 {
     match run_press(b, stream, feed, p, sink, format, started, timeout, open) {
         Ok(code) => code,
@@ -140,7 +142,7 @@ fn run_press<B: Backend>(
     format: Format,
     started: Instant,
     timeout: Duration,
-    open: &mut dyn FnMut(&str),
+    open: &mut dyn FnMut(&str) -> bool,
 ) -> Result<u8, Fail> {
     check(p)?;
     chats::ensure_ready(b)?;
@@ -236,7 +238,7 @@ fn callback<B: Backend>(
     format: Format,
     started: Instant,
     timeout: Duration,
-    open: &mut dyn FnMut(&str),
+    open: &mut dyn FnMut(&str) -> bool,
 ) -> Result<u8, Fail> {
     let who = match plan.sender() {
         atg_core::model::SenderId::User(u) => format!("（发这条的是 id {u}）"),
@@ -281,7 +283,10 @@ fn callback<B: Backend>(
 }
 
 /// 机器人的回话：JSON、读给人听的一句、开没开网址
-fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, String, bool) {
+fn answer(
+    reply: Option<&CallbackReply>,
+    open: &mut dyn FnMut(&str) -> bool,
+) -> (Value, String, bool) {
     let Some(r) = reply else {
         return (Value::Null, "机器人没回话（按下已送到）".to_owned(), false);
     };
@@ -295,9 +300,16 @@ fn answer(reply: Option<&CallbackReply>, open: &mut dyn FnMut(&str)) -> (Value, 
     let mut opened = false;
     if !r.url.is_empty() {
         if openable(&r.url) {
-            open(&r.url);
-            opened = true;
-            said.push_str(&format!("；已把网址交给系统打开：{}", r.url));
+            opened = open(&r.url);
+            if opened {
+                said.push_str(&format!("；已把网址交给系统打开：{}", r.url));
+            } else {
+                // 按下已送到：打开失败不是按钮的事，别为了开网址再按一次
+                said.push_str(&format!(
+                    "；网址没能交给系统打开（按下已送到，别为这个再按），可自己打开：{}",
+                    r.url
+                ));
+            }
         } else {
             said.push_str(&format!("；回话带的地址不是网页，没打开：{}", r.url));
         }

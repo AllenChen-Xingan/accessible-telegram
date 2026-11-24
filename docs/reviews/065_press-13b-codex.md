@@ -39,3 +39,28 @@
 ### 是否再审
 
 要再审：改完开第 2 轮。
+
+## 第 2 轮（2026-11-24）· 总评「修改」
+
+原文：`_tmp/reviews-065/press-13b-codex-2.md`（不入库）。范围含 dea88de，`--previous` 带第 1 轮原文、`--response` 带本记录。模型 gpt-6-astra，read-only，effort medium（`result: P0×0 P1×0 P2×1 P3×0`）。隐私扫描 27 条：第 1 轮那 24 条挪了行号，另 3 条是本记录第 15 行引的类型标注文字。大总管逐条核过，准 `--force-secrets`，只限这 27 条。
+本轮 P0/P1：0 条 · 停止线：从第 2 轮起算，连续第 1 轮 · 留作 issue 的 P2：0 条
+
+- **P2｜src/atg-cli/src/press.rs:298 打开网址失败仍报 `opened:true`**（第 2 轮 #1）
+  - 核实：属实。`system_open` 丢掉了启动错误和退出码，`answer` 不管结果一律报「已交给系统打开」。
+  - 处理：打开出口改成回 `bool`，系统 `open` 起来且退出码为 0 才算交出去。失败时 `pressed:true`、`opened:false`，文字版说「网址没能交给系统打开（按下已送到，别为这个再按）」。补测试 `failed_open_is_reported_and_press_still_counts`。原来的出口签名表达不了失败，修前写不出会红的测试，这里如实记下。cli.md 同步改了。
+
+### 引用抽查
+
+- 核实属实：6 条
+  - 第 1 轮修法：意图与凭据摘要已分开；
+  - 改标签的测试；
+  - `verify_again` → `recheck` → `before_submit_again` 的顺序；
+  - 编号数法一致；
+  - td 层核对与 `bot_silent`；
+  - 开网址的限定。
+- 不符：0 条
+- 无法核实：1 条，同第 1 轮（TDLib 源码不在 codex 可读范围内）
+
+### 是否再审
+
+要再审：改完开第 3 轮确认。
