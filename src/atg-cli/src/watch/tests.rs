@@ -4,6 +4,7 @@ use super::*;
 use atg_core::config::ServerKind;
 use atg_core::fake::{Call, FakeAuth, FakeBackend};
 use atg_core::link::block_on;
+use atg_core::testkit::td_json::user;
 use std::sync::{Arc, Mutex};
 
 mod ctrl_c;
@@ -21,11 +22,6 @@ fn clock() -> i64 {
 
 fn profile(tag: &str) -> Profile {
     atg_core::testkit::profile(&format!("cli-watch-{tag}"), ServerKind::Main)
-}
-
-fn user(id: i64, name: &str) -> Value {
-    json!({"@type": "updateUser", "user": {"@type": "user", "id": id, "first_name": name, "last_name": "",
-        "usernames": null, "phone_number": "", "is_contact": true, "type": {"@type": "userTypeRegular"}}})
 }
 
 fn chat(id: i64, ty: Value, title: &str) -> Value {
