@@ -51,8 +51,8 @@ mod tests {
 
     #[test]
     fn chats_on_basic_scenario_uses_test_profile_and_only_expected_calls() {
-        let Ok(f) = open(OsStr::new("basic-3-chats")) else {
-            panic!("basic-3-chats 场景应能装");
+        let Ok(f) = open(OsStr::new("basic-4-chats")) else {
+            panic!("basic-4-chats 场景应能装");
         };
         assert_eq!(f.profile.kind(), ServerKind::Test);
         let dir = f.profile.dir().to_path_buf();
@@ -65,10 +65,10 @@ mod tests {
         let listing = match crate::chats::run(&f.backend, &f.profile, &q, std::time::Instant::now())
         {
             Ok(l) => l,
-            Err(_) => panic!("basic-3-chats 上 chats 应成功"),
+            Err(_) => panic!("basic-4-chats 上 chats 应成功"),
         };
         let ids: Vec<i64> = listing.items.iter().map(|c| c.chat_id).collect();
-        assert_eq!(ids, vec![101, -1001, -1002]);
+        assert_eq!(ids, vec![101, -1001, -1002, 9]);
         // 路径层：只有起、订阅、拉列表、关这几步（没有登录动作，更没有任何真实后端才有的步骤）
         for c in f.backend.calls() {
             assert!(

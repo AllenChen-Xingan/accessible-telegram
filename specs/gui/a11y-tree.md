@@ -144,14 +144,14 @@
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）怎么写，见各层格式那段（GPUI 层：不写标识一格）；`check-a11y-tree.py` 只对能操作的角色查标识
 
-**例**（GPUI 层，场景 `basic-3-chats`，进了「林小雨」的会话，名称是读法草稿）：
+**例**（GPUI 层，场景 `basic-4-chats`，进了「林小雨」的会话，名称是读法草稿）：
 
 ```
-# gui-schema v1 · gpui 79fe6a6 · fixture basic-3-chats
+# gui-schema v1 · gpui 79fe6a6 · fixture basic-4-chats
 Window window
   Navigation region-chats "会话"
     List chats "会话" active=chat:101
-      ListItem chat:101 "林小雨，2 条未读，林小雨：明天见，7:00" selected pos=1/3
+      ListItem chat:101 "林小雨，2 条未读，林小雨：明天见，7:00" selected pos=1/4
   Main region-messages "消息"
     List messages:101 "消息" focused active=msg:101:1001
       ListItem msg:101:1001 "未读：林小雨：在吗，6:58" roledesc="消息" desc="按 D 听详情" selected pos=1/2

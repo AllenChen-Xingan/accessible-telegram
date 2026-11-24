@@ -1,4 +1,4 @@
-//! `--fake <场景>`：跑真二进制，`chats` / `history` 在场景 `basic-3-chats` 上的输出；缺场景报 `internal{fixture_bad}`；
+//! `--fake <场景>`：跑真二进制，`chats` / `history` 在场景 `basic-4-chats` 上的输出；缺场景报 `internal{fixture_bad}`；
 //! 不留一次性档案目录。另有「这条路不碰钥匙串」的文本门槛（arch 审定的三层证明之一；另两层是类型与调用路径，见 `src/fake_run.rs` 文件头）。
 
 use serde_json::Value;
@@ -42,10 +42,10 @@ fn fake_dirs() -> Vec<String> {
 }
 
 #[test]
-fn chats_on_scenario_lists_three_chats_in_order() {
+fn chats_on_scenario_lists_four_chats_in_order() {
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["chats", "--fake", "basic-3-chats"]);
+    let out = run(&["chats", "--fake", "basic-4-chats"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -58,7 +58,7 @@ fn chats_on_scenario_lists_three_chats_in_order() {
         .filter(|l| l["data"]["type"] == "chat_item")
         .filter_map(|l| l["data"]["chat_id"].as_i64())
         .collect();
-    assert_eq!(ids, vec![101, -1001, -1002]);
+    assert_eq!(ids, vec![101, -1001, -1002, 9]);
     let end = ls.last().unwrap();
     assert_eq!(end["kind"], "result");
     assert_eq!(
@@ -74,7 +74,7 @@ fn history_on_scenario_takes_negative_chat_id() {
     // `history` 行、`docs/plan/003_decisions-b2.md` F2），比它新的没有了
     let _s = serial();
     let before = fake_dirs();
-    let out = run(&["history", "-1001", "--fake", "basic-3-chats"]);
+    let out = run(&["history", "-1001", "--fake", "basic-4-chats"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -99,10 +99,34 @@ fn history_on_scenario_takes_negative_chat_id() {
 }
 
 #[test]
+fn history_saved_resolves_to_my_own_chat() {
+    // `saved` 换成自己的用户 id（R4：问后端 me()）；场景里收藏夹是会话 9「我自己」
+    let _s = serial();
+    let before = fake_dirs();
+    let out = run(&["history", "saved", "--fake", "basic-4-chats"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let ls = lines(&out);
+    let ids: Vec<i64> = ls
+        .iter()
+        .filter(|l| l["data"]["type"] == "message")
+        .filter_map(|l| l["data"]["id"]["message_id"].as_i64())
+        .collect();
+    assert!(ids.contains(&5001) && ids.contains(&5002), "{ids:?}");
+    let end = ls.last().unwrap();
+    assert_eq!(end["data"]["chat_id"], 9);
+    assert_eq!(fake_dirs(), before, "一次性档案目录没删干净");
+}
+
+#[test]
 fn scenario_by_path_works_too() {
     let _s = serial();
     let dir = format!(
-        "{}/../atg-core/fixtures/scenarios/basic-3-chats",
+        "{}/../atg-core/fixtures/scenarios/basic-4-chats",
         env!("CARGO_MANIFEST_DIR")
     );
     let before = fake_dirs();

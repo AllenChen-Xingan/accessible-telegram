@@ -1,0 +1,6 @@
+# basic-4-chats
+
+已登录、已连接、主列表里四个会话（按 `positions` 的 `order` 从大到小）：私聊「林小雨」（2 条未读）、群「周末爬山群」（超级群 1，会话 id `-1001` = `-100` 接 1，同读法夹具；1 条未读）、频道「示例频道」（已读完）、收藏夹「我自己」（会话 id 同自己的用户 id 9，排最后，已读完）。
+每个会话几条纯文字消息，历史从新到旧。M3.1 的骨架与树导出、`atg-cli --fake basic-4-chats chats / history`（含 `history saved`）用它。
+
+格式见 `specs/contracts/testing.md` 第一节第 3 小节；名字只取 `../../names.txt`，id 在保留区间，日期是固定的假日期。

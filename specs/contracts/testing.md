@@ -79,7 +79,7 @@ src/atg-core/fixtures/
 
 **场景的命名与形状约定**（惯例，加载器不强制；字符集以上面「名字还是路径」为准）：
 
-- 场景名用 kebab-case（小写字母、数字、单个连字符），按用途起：`empty`、`basic-3-chats`、`unread-mixed`、`busy-group-flood`、`reply-forward-edit`、`media-kinds`、`unknown-types`、`offline-reconnect`
+- 场景名用 kebab-case（小写字母、数字、单个连字符），按用途起：`empty`、`basic-4-chats`、`unread-mixed`、`busy-group-flood`、`reply-forward-edit`、`media-kinds`、`unknown-types`、`offline-reconnect`
 - **夹具用 TDLib 原样 JSON 形状**，这样「解析 → 映射 → 树 → 读法」一次测住（架构方案第三节）
 - 读法快照（`insta`）放各 crate 默认的 `snapshots/` 目录，`cargo insta review` 审，改了就在 PR 里贴差异
 
@@ -170,8 +170,8 @@ src/atg-core/fixtures/
 
 | | 例子 |
 |---|---|
-| ✅ | `atg-cli --fake basic-3-chats chats` 在 CI 里输出 3 行 `chat` + 1 行 `result` |
-| ✅ | 改了消息列表的名称 → PR 里贴 `basic-3-chats.macos.txt` 的两行差异 |
+| ✅ | `atg-cli --fake basic-4-chats chats` 在 CI 里输出 4 行 `chat` + 1 行 `result` |
+| ✅ | 改了消息列表的名称 → PR 里贴 `basic-4-chats.macos.txt` 的两行差异 |
 | ✅ | 测试服务器上账号被清空 → 测试走注册 → 继续往收藏夹发 |
 | ❌ | 夹具里出现「王小明」而 `names.txt` 里没有他 |
 | ❌ | 为了跑测试临时把豁免改成「任何服务器的收藏夹」 |
@@ -203,4 +203,4 @@ src/atg-core/fixtures/
 - 2026-11-16 issue #115（codex 047 补审，只改文字）：发送闸矩阵的说明不再提「默认模式下免确认」
 - 2026-11-17 #83 自审（手下 fix，属技术细节）：直发模式测试要点的留痕行数与 `actions.md` 对齐（每条两行，批量重发按条）
 - 2026-11-24 #42 开发版开强化运行时（手下 arch，人定 2026-11-17 做）：第一节第 4 小节加「强化运行时」一行（`scripts/check-harden.sh`）；runner 那段改成按 rpath 找库
-- 2026-11-24 #169 M3.1 第二刀（手下 gui，大总管批、arch 审定）：第一节第 3 小节场景目录建出 `basic-3-chats`、`empty`；写入场景的解析规则（正本）、名字与路径的分法、`--fake` 一次性测试档案与不碰钥匙串；`timeline.jsonl` 标「还没实现」；保留区间写清 0、负的基础群、`-100` 是拼接；`check-fixtures.py` 由「待写」改为已接进 CI
+- 2026-11-24 #169 M3.1 第二刀（手下 gui，大总管批、arch 审定）：第一节第 3 小节场景目录建出 `basic-4-chats`、`empty`；写入场景的解析规则（正本）、名字与路径的分法、`--fake` 一次性测试档案与不碰钥匙串；`timeline.jsonl` 标「还没实现」；保留区间写清 0、负的基础群、`-100` 是拼接；`check-fixtures.py` 由「待写」改为已接进 CI

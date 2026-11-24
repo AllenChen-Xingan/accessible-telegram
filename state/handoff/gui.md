@@ -7,7 +7,7 @@
 - **名额**：PR-1 用完已归还（2026-11-24）
 - **PR-1**：PR #177 已合进 main（b9f6459，squash，2026-11-24）
 - **PR-2 状态**（2026-11-24）：4 笔已提交（c9c08ba ① 夹具 + check-fixtures · c948271 ② core · a38bfca ③ cli · b850609 ④ 99001；① 单独跑 check-fixtures 会红，④ 才修好，PR 说明要写）。atg-review 第 1 轮（origin/main...HEAD）无 P0/P1，P2×8 全部属实、当场修了（最要紧：history/ 里的 .DS_Store 会让场景整个报 fixture_bad），**修复还没编译**，等名额 → 提交 → 第 2 轮 → codex 068。改动：
-  - 夹具 `src/atg-core/fixtures/scenarios/{basic-3-chats,empty}/`；`scripts/check-fixtures.py` + `scripts/tests/test_check_fixtures.py`（15 条，过）
+  - 夹具 `src/atg-core/fixtures/scenarios/{basic-4-chats,empty}/`；`scripts/check-fixtures.py` + `scripts/tests/test_check_fixtures.py`（15 条，过）
   - core：`fake/scenario.rs`（新）、`fake.rs` 接入、`config.rs` 的 `private_temp_dir` + `TempDirGuard`、`testkit::temp_dir` 改调它
   - cli：`fake_run.rs`（新）、`session.rs` 的 chats / history `--fake` 分支、`main.rs`、`args.rs`；测试 `tests/fake_scenario.rs`（新）、`tests/cli.rs` 两条改
   - `errors.md` 登记 `fixture_bad` · `fixture_needs_path` · `temp_dir_io`

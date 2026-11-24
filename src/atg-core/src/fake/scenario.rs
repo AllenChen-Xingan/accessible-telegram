@@ -230,14 +230,14 @@ mod tests {
 
     #[test]
     fn shipped_scenarios_load() {
-        for name in ["basic-3-chats", "empty"] {
+        for name in ["basic-4-chats", "empty"] {
             let Ok(p) = Scenario::resolve(OsStr::new(name)) else {
                 panic!("{name} 解析不了");
             };
             let Ok(sc) = Scenario::load(&p) else {
                 panic!("{name} 装不上");
             };
-            assert_eq!(sc.chat_count(), if name == "empty" { 0 } else { 3 });
+            assert_eq!(sc.chat_count(), if name == "empty" { 0 } else { 4 });
         }
     }
 
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn names_and_paths() {
-        assert!(is_name("basic-3-chats") && is_name("empty"));
+        assert!(is_name("basic-4-chats") && is_name("empty"));
         for not_name in ["", "./basic", "Basic", "a_b", "a b", "/tmp/x", "场景"] {
             assert!(!is_name(not_name), "{not_name}");
         }
