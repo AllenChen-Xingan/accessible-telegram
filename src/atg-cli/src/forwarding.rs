@@ -12,7 +12,6 @@ use crate::args::Format;
 use crate::chats::{self, Feed};
 use crate::deadlines::{QUERY_TIMEOUT, bounded};
 use crate::history;
-use crate::history::{chat_arg, resolve_chat};
 use crate::out::{self, Fail, Sink, emit_to, envelope};
 use crate::send::{confirm_zh, ctx, echo, fail_any, finish_line, l2_fail};
 use atg_core::backend::Backend;
@@ -42,8 +41,8 @@ pub struct ForwardParams {
 
 /// 从参数组出请求：先查会话写法与条数，好在起后端之前报用法错误
 pub fn params(a: &crate::args::ForwardArgs, tz: Option<&str>) -> Result<ForwardParams, Fail> {
-    chat_arg(&a.from)?;
-    chat_arg(&a.to)?;
+    history::chat_arg(&a.from)?;
+    history::chat_arg(&a.to)?;
     ctx(tz)?;
     check_ids(&a.ids)?;
     Ok(ForwardParams {
@@ -131,11 +130,14 @@ fn run_inner<B: Backend>(
     started: Instant,
     timeout: Duration,
 ) -> Result<u8, Fail> {
-    let (from, to) = (chat_arg(&p.from)?, chat_arg(&p.to)?);
+    let (from, to) = (history::chat_arg(&p.from)?, history::chat_arg(&p.to)?);
     check_ids(&p.ids)?;
     let cx = ctx(p.tz.as_deref())?;
     chats::ensure_ready(b)?;
-    let (from, to) = (resolve_chat(b, from)?, resolve_chat(b, to)?);
+    let (from, to) = (
+        history::resolve_chat(b, from)?,
+        history::resolve_chat(b, to)?,
+    );
     // 目标会话装进 store：成功的那几条要回显（读法同 `history`）
     history::load_chat(b, stream, feed, to)?;
     let plan = bounded(
