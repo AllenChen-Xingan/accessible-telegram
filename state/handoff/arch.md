@@ -411,3 +411,22 @@
 - ✅ codex 060（`origin/main...HEAD`，name `r7td`）：两轮零发现，收敛。记录 `docs/reviews/060_r7-td-codex.md`
   - 起第 1 轮时，dry-run 留下的身份文件绑的是旧范围，删掉后重跑
 - PR 说明草稿：MAIN 下 `_tmp/20261116-b20/r7-td-pr-arch.md`
+
+## #137：rustdoc 链接（2026-11-17，工作副本 `atg-wt/arch-137`，分支 `docs/137-rustdoc-links`，从 refactor/r7-td 的 2a17a44 起）
+
+计划已批：MAIN 下 `_tmp/20261116-b20/plan-42-137-arch.md`（先做 #137，再做 #42）。
+
+- 修法：链到私有项的、只在某种特性下才断的，改成反引号；同名歧义（`decode` 既是模块 `pub mod decode`，又是经 `pub use decode::decode` 导出的函数）加 `()`，让 rustdoc 只找函数，链接还在。代码一行不动
+- CI：在 `ci.yml` 加两步 `RUSTDOCFLAGS="-D warnings" cargo doc`（一步 `--workspace --no-deps`，一步 `-p atg-core --features tdlib-api,testkit --no-deps`）。门槛文件（改了要人加 `baseline:loosen` 标签才放行的那几份，清单是 `scripts/check-file-size.py` 的 `GATE_FILES`，规矩见 `specs/architecture-rules.md` 第 1 条）里没有 `ci.yml`，所以不用挂标签（大总管已批）。
+  - 不覆盖 atg-cli 在 `tdlib` 特性下的代码：它要链接 TDLib 库，而 atg-cli 没有「只拉类型、不链接」的特性，CI 的 clippy 也是同样的空缺。已开成 #164（给 atg-cli 加一个只开 `atg-core/tdlib-api` 的特性，补上 clippy 和 doc），排在 #42 之后
+- 评审范围：`2a17a44...HEAD`。本副本起点在 #163（拆 td.rs）的分支上，好让数链接时看到的是拆完的 td；#163 合进 main、大总管把 main 合进本分支以后，范围改成 `origin/main...HEAD`（换基要换 codex 的 name）
+- 数出来 22 条（比 issue 多）：atg-core 16 条链到私有项、2 条 `TdBackend` 只在不开特性时断，atg-audio 4 条（1 条私有项、3 条 `decode` 同名歧义）。全改：私有项和 `TdBackend` 改反引号，`decode` 加 `()`（仍是链接）
+- ✅ 全量检查全过（领名额跑，已还）：两遍 `RUSTDOCFLAGS=-D warnings cargo doc` 零警告，fmt、两种 clippy、test 713 过 0 败 5 忽略、no-debug、file-size、sources；`ci.yml` 用 ruby 解析过
+- 检查点 49fe0b8（大总管提交）
+- 多视角自审第 1 轮：P0/P1 零
+  - P2×2：① CI 第二步没开 `testkit`，测试夹具的文档没被查过，已改成 `tdlib-api,testkit`；② atg-cli 的 `tdlib` 特性下的代码没被查，CI 加不了，已在注释和本页写明，大总管开了 #164
+  - P3×6，改了 5 条（CI 注释、本页措辞）。不改 1 条：`td.rs` 头注释里的 `TdBackend` 开了特性也不再能跳转，要做到「开特性才有链接」得写 `cfg_attr(doc = …)`，为一条链接不值得
+- ✅ 重跑 `RUSTDOCFLAGS=-D warnings cargo doc -p atg-core --features tdlib-api,testkit --no-deps` 零警告（领名额跑，已还）
+- ✅ codex 061（`2a17a44...HEAD`，name `d137`）两轮零发现，收敛。隐私扫描密钥类命中 7 条，全是 `ConfirmToken` 类型标注，大总管逐条核过，按共同规矩 15 加 `--force-secrets`。记录 `docs/reviews/061_137-rustdoc-links-codex.md`
+- PR 说明草稿：MAIN 下 `_tmp/20261116-b20/137-pr-arch.md`
+- 之后：#163 合并后大总管合 main，到时只解冲突、跑检查，不重审；然后做 #42

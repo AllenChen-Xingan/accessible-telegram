@@ -12,7 +12,7 @@
 //! [`FakeBackend::fail_next`] 给某一步注入一次错误（或一直不应答）。记账只记动作名，**不记输入的值**。
 //!
 //! 会话（第 5 块）：[`FakeBackend::set_chats`] 给某个列表排好一串会话（每个会话是几条 TDLib JSON 更新）。
-//! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。应答之前先等收线程把这批更新处理完（[`Feed::Barrier`]），与真实 TDLib「更新先于应答」一致。
+//! `chats_load(list, limit)` 每次推出前 `limit` 个会话的更新，推完了回「已到底」（TDLib 的 404）；没登录回 401。应答之前先等收线程把这批更新处理完（`Feed::Barrier`），与真实 TDLib「更新先于应答」一致。
 //! [`FakeBackend::push_net`] 推一条连接状态。
 //!
 //! 消息（第 8 块）：[`FakeBackend::set_chat`] 给 `chat_get` 时要推的更新（`updateNewChat`、`updateUser`……），
