@@ -1,0 +1,130 @@
+{
+  "v": 1,
+  "x-content-hash": "6a3834991b1e76a7",
+  "ids": [
+    {
+      "kind": "window",
+      "arity": 0
+    },
+    {
+      "kind": "region-chats",
+      "arity": 0
+    },
+    {
+      "kind": "region-messages",
+      "arity": 0
+    },
+    {
+      "kind": "chats",
+      "arity": 0
+    },
+    {
+      "kind": "chat",
+      "arity": 1
+    },
+    {
+      "kind": "messages",
+      "arity": 1
+    },
+    {
+      "kind": "msg",
+      "arity": 2
+    },
+    {
+      "kind": "status",
+      "arity": 0
+    }
+  ],
+  "roles": [
+    "Window",
+    "Navigation",
+    "Main",
+    "List",
+    "ListItem",
+    "Status"
+  ],
+  "elements": [
+    {
+      "key": "window",
+      "role": "Window",
+      "id": "window",
+      "name": "window_title:app_title",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "region_chats",
+      "role": "Navigation",
+      "id": "region-chats",
+      "name": "text:chats",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "chat_list",
+      "role": "List",
+      "id": "chats",
+      "name": "text:chats",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "chat_item",
+      "role": "ListItem",
+      "id": "chat",
+      "name": "speech:chat_brief",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "region_messages",
+      "role": "Main",
+      "id": "region-messages",
+      "name": "text:messages",
+      "role_description": null,
+      "operable": false
+    },
+    {
+      "key": "message_list",
+      "role": "List",
+      "id": "messages",
+      "name": "text:messages",
+      "role_description": null,
+      "operable": true
+    },
+    {
+      "key": "message_item",
+      "role": "ListItem",
+      "id": "msg",
+      "name": "speech:brief",
+      "role_description": "message_role",
+      "operable": true
+    },
+    {
+      "key": "status_bar",
+      "role": "Status",
+      "id": "status",
+      "name": "speech:brief",
+      "role_description": null,
+      "operable": false
+    }
+  ],
+  "texts": [
+    {
+      "key": "app_title",
+      "zh": "无障碍 Telegram"
+    },
+    {
+      "key": "chats",
+      "zh": "会话"
+    },
+    {
+      "key": "messages",
+      "zh": "消息"
+    },
+    {
+      "key": "message_role",
+      "zh": "消息"
+    }
+  ]
+}

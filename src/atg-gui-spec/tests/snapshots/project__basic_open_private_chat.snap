@@ -1,0 +1,24 @@
+---
+source: src/atg-gui-spec/tests/project.rs
+expression: "snap(&tree, \"speech/basic\")"
+---
+# gui-schema v1 · gpui projection · fixture speech/basic
+Window window
+  Navigation region-chats "会话"
+    List chats "会话" active=chat:101
+      ListItem chat:101 "林小雨，2 条未读，明天改到八点" selected pos=1/3
+      ListItem chat:-1001 "周末爬山群，5 条未读，1 条提到你，周大山：联系人，领队 老王" pos=2/3
+      ListItem chat:-1002 "示例频道，天气预报：周六全天晴，最高气温二十三度，最低气温十一度，西北风三级，适合户外活动，请大家注意防晒补水" pos=3/3
+  Main region-messages "消息"
+    List messages:101 "消息" focused active=msg:101:1000
+      ListItem msg:101:1000 "林小雨加入了 Telegram，19:20" roledesc="消息" selected pos=1/10
+      ListItem msg:101:1001 "林小雨：👍 今晚七点见，记得带书，19:30" roledesc="消息" pos=2/10
+      ListItem msg:101:1002 "我：好的，没问题，19:31" roledesc="消息" pos=3/10
+      ListItem msg:101:1003 "我：路上了，19:32" roledesc="消息" pos=4/10
+      ListItem msg:101:1004 "林小雨：图片，山顶的风景，结局是，隐藏内容，19:33" roledesc="消息" pos=5/10
+      ListItem msg:101:1005 "林小雨：语音 12 秒，19:34" roledesc="消息" pos=6/10
+      ListItem msg:101:1006 "林小雨：明天改到八点，19:35" roledesc="消息" pos=7/10
+      ListItem msg:101:1007 "林小雨撤回了一条消息，19:37" roledesc="消息" pos=8/10
+      ListItem msg:101:1008 "林小雨：未接语音通话，19:38" roledesc="消息" pos=9/10
+      ListItem msg:101:1009 "林小雨：已过期的图片，19:39" roledesc="消息" pos=10/10
+  Status status "已连接"

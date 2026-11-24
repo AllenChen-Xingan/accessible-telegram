@@ -7,6 +7,7 @@
 |---|---|---|
 | `atg-core/` | 能力层 crate：内容树、读法；`td` 模块接 TDLib（`tdlib-api` 只拉类型 / `tdlib` 真链接，默认都关） | 本项目 |
 | `atg-cli/` | 命令行入口 crate（JSON 行输出，AI 的首选接口），见 `atg-cli/README.md` | 本项目 |
+| `atg-gui-spec/` | 界面的表与纯函数投影（不依赖 GPUI；`cargo run -p atg-gui-spec --bin gui-schema` 出界面自描述） | 本项目 |
 | `atg-gui/` | 界面入口 crate（GPUI），还没建 | 本项目 |
 | `tdlib-rs/` | 打过补丁的 tdlib-rs（Rust 绑定 + 代码生成器 + TL 解析器三包），fork `AllenChen-Xingan/tdlib-rs` 分支 `atg/tdlib-1.8.69` 的 `git subtree`。**自成工作区，不是根工作区成员**；改动要对上游有意义，好推回 fork。说明见 `tdlib-rs/ATG.md` | fork（上游代码 + 我们的补丁） |
 | `tdlib-build/` | 拉取并编译 TDLib C++ 库的脚本。TDLib 源码**不进库**，按锁定提交拉到 `_build/<时间戳>/` | 本项目 |
