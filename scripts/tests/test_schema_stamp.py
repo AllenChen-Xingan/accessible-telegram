@@ -47,16 +47,25 @@ class SchemaStamp(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("哈希没更新", r.stdout)
 
-    def test_missing_version_or_hash_is_red(self):
+    def test_missing_version_is_red_even_when_hash_matches(self):
+        # 删掉 v 之后重新盖章，哈希是对的：只剩「缺版本」这一条能让它红（codex 064 第 3 轮 #1：不重新盖章的话，
+        # 哈希不配会先把它弄红，删掉检查器里的缺版本判断也看不出来）
         obj = self.get()
         del obj["v"]
         self.put(obj)
-        self.assertEqual(run(STAMP, "check", self.f).returncode, 1)
+        self.assertEqual(run(STAMP, "stamp", self.f).returncode, 0)
+        r = run(STAMP, "check", self.f)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("缺 v 字段", r.stdout)
+        self.assertNotIn("哈希没更新", r.stdout)
+
+    def test_missing_hash_is_red(self):
         obj = self.get()
-        obj["v"] = 1
         del obj["x-content-hash"]
         self.put(obj)
-        self.assertEqual(run(STAMP, "check", self.f).returncode, 1)
+        r = run(STAMP, "check", self.f)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("缺 x-content-hash", r.stdout)
 
     def test_unreadable_is_red(self):
         with open(self.f, "w") as f:
