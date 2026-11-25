@@ -113,7 +113,7 @@ src/atg-core/fixtures/
 | 发送结果未知 | 假后端扣住成败事件 → CLI `send` 30 秒后 `send_outcome_unknown`、退出码 10、没有第二次 `sendMessage` |
 | 直发模式 | 见矩阵；另测：环境变量 / 配置文件打不开直发；`direct-send.log` 每条两行（交出前「已提交」、等到结果后一行；批量重发每条各两行、带 `old_id`）且不含正文、名字；留痕写不进去就拒发 |
 | 钥匙访问（本机，非 CI） | 本人 Apple Development 身份 + 标识 `atg.dev` 签的程序（`scripts/dev-sign.sh`）读正式、测试档案的钥匙 → 不弹框直接拿到，**重编一次再读仍不弹**（N2，按 007 改写）；没用这个身份签的（临时签名、自签名证书如 atg-dev、未签名）、同身份但标识不是 `atg.dev` 的 → 拿不到**由 Apple Development 版新建的**条目（`config-privacy.md` 第一节第 3 小节；临时签名 / atg-dev 版见 exp005 取证 10 ③，同身份别的标识见 `docs/experiments/exp006-keychain-migrate/` 结论 3）。迁移过来的 `test`、`main` 真条目仍认旧 atg-dev 版，不拿它们测这一条。不测「静默签名拿不到」——它拿得到，人已接受（007 A1） |
-| 强化运行时（本机，非 CI） | `bash scripts/check-harden.sh [atg-cli 的路径]`（#42，只收 atg-cli：它的 `version` 没有副作用）：两版都先得照常起；照常签的版本带 `runtime` 标志、`DYLD_INSERT_LIBRARIES` 注入不进去；`ATG_DEV_HARDEN=0` 签的对照版能注入（证明检查本身有效）；带 TDLib 的程序 rpath 有 `~/.atg-dev/tdlib/lib`、照常起，把库换成临时签名的副本 → dyld 拒载。退出码 0 才算过。改了 `scripts/dev-sign.sh`、`src/tdlib-build/build.sh`、两个 `build.rs`，或重编过 TDLib 之后跑一次 |
+| 强化运行时（本机，非 CI） | `bash scripts/check-harden.sh [atg-cli 的路径]`（#42，只收 atg-cli：它的 `version` 没有副作用）：两版都先得照常起；照常签的版本带 `runtime` 标志、`DYLD_INSERT_LIBRARIES` 注入不进去；`ATG_DEV_HARDEN=0` 签的对照版能注入（证明检查本身有效）；带 TDLib 的程序 rpath 有 `~/.atg-dev/tdlib/lib`、照常起，把库换成临时签名的副本 → dyld 拒载。退出码 0 才算过。改了 `scripts/dev-sign.sh`、`src/tdlib-build/build.sh`、共用构建脚本 `src/tdlib-build/rpath.rs` 或 `dev-link`，或重编过 TDLib 之后跑一次 |
 | 外部打开 | 非 `http(s)` 链接、可执行类文件一律拒；打开不经 shell |
 | 场景加载器与夹具隐私（#169） | `atg-core` 的 `fake::scenario` 单测：第 3 小节第 1–5 条报 `fixture_bad`、`history/` 杂项各按自己那条规则跳过、名字与路径（按构建档各一条）；`scripts/tests/test_check_fixtures.py`：`check-fixtures.py` 每条规则在改坏的副本上红 |
 
@@ -204,4 +204,5 @@ src/atg-core/fixtures/
 - 2026-11-16 issue #115（codex 047 补审，只改文字）：发送闸矩阵的说明不再提「默认模式下免确认」
 - 2026-11-17 #83 自审（手下 fix，属技术细节）：直发模式测试要点的留痕行数与 `actions.md` 对齐（每条两行，批量重发按条）
 - 2026-11-24 #42 开发版开强化运行时（手下 arch，人定 2026-11-17 做）：第一节第 4 小节加「强化运行时」一行（`scripts/check-harden.sh`）；runner 那段改成按 rpath 找库
+- 2026-11-24 #170（手下 arch）：「强化运行时」一行写的「改了两个 `build.rs` 后要跑」，改成「改了共用构建脚本 `src/tdlib-build/rpath.rs` 或 `dev-link` 后要跑」（两个 `build.rs` 已合成一份；软链接路径的正本是 `src/tdlib-build/dev-link`）
 - 2026-11-24 #169 M3.1 第二刀（手下 gui，大总管批、arch 审定）：第一节第 3 小节场景目录建出 `basic-4-chats`、`empty`；写入场景的解析规则（正本）、名字与路径的分法、`--fake` 一次性测试档案与不碰钥匙串；`timeline.jsonl` 标「还没实现」；保留区间写清 0、负的基础群、`-100` 是拼接；`check-fixtures.py` 由「待写」改为已接进 CI
