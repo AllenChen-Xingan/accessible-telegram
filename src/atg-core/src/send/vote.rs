@@ -353,9 +353,11 @@ async fn vote_inner<B: Backend>(
                 .after_outcome(mode, plan, 0, id, Outcome::Succeeded, None);
             Ok(mode)
         }
-        Ok(Answer::Message(_) | Answer::Resent(_) | Answer::Deleted) => Err(CoreError::Internal {
-            what: "vote_answer_shape",
-        }),
+        Ok(Answer::Message(_) | Answer::Resent(_) | Answer::Deleted | Answer::Callback(_)) => {
+            Err(CoreError::Internal {
+                what: "vote_answer_shape",
+            })
+        }
         Err(e) => Err(submit_failed_for(b, mode, plan, e, id)),
     }
 }

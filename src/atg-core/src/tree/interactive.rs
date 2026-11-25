@@ -96,6 +96,10 @@ impl Keyboard {
     pub fn count(&self) -> usize {
         self.rows.iter().map(Vec::len).sum()
     }
+    /// 第 `n` 个按钮（1 起，跨行连续数，同详情里的读法；`press` 用）
+    pub fn nth(&self, n: usize) -> Option<&Button> {
+        self.rows.iter().flatten().nth(n.checked_sub(1)?)
+    }
 }
 
 /// 一个按钮：上面的字 + 按下会怎样

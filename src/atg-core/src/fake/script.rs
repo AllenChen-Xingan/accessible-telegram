@@ -39,6 +39,11 @@ impl FakeBackend {
         lock(&self.send_script).extend(s);
     }
 
+    /// 接下来按回调按钮时机器人回什么（`None` = 不回话）
+    pub fn script_callback(&self, reply: Option<crate::send::CallbackReply>) {
+        *lock(&self.callback_reply) = reply;
+    }
+
     /// 真交出去的请求（预览不算）
     pub fn submitted(&self) -> Vec<Value> {
         lock(&self.submitted).clone()

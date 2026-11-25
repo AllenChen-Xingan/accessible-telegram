@@ -444,6 +444,7 @@ impl Backend for TdBackend {
             title: mapped.title,
             is_forum,
             saved: false,
+            keyboard_message_id: v["reply_markup_message_id"].as_i64().unwrap_or(0),
         })
     }
 
