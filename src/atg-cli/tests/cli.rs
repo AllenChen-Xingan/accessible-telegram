@@ -274,14 +274,22 @@ fn chats_bad_arguments_are_usage_errors() {
 }
 
 #[test]
-fn chats_with_fake_scenario_is_not_implemented_yet() {
-    // 场景目录还没做：说清楚，不碰档案、不联网
-    let out = run(&["chats", "--fake", "basic", "--list", "archive", "--unread"]);
+fn chats_with_missing_fake_scenario_is_fixture_bad() {
+    // 场景目录不存在：说清楚，不碰档案、不联网（在场景上真跑见 tests/fake_scenario.rs）
+    // 用一个不存在的路径：开发构建、发布构建都报 fixture_bad（裸名字在发布构建里报的是 fixture_needs_path）
+    let out = run(&[
+        "chats",
+        "--fake",
+        "/nonexistent/atg-scenario",
+        "--list",
+        "archive",
+        "--unread",
+    ]);
     assert_eq!(out.status.code(), Some(1));
     let ls = lines(&out);
     assert_eq!(ls.len(), 1);
-    assert_eq!(ls[0]["data"]["code"], "not_implemented");
-    assert_eq!(ls[0]["data"]["command"], "chats");
+    assert_eq!(ls[0]["data"]["code"], "internal");
+    assert_eq!(ls[0]["data"]["what"], "fixture_bad");
 }
 
 // ───── speech --fixture（#19） ─────
@@ -422,11 +430,11 @@ fn history_and_links_usage_errors() {
     }
 }
 
-/// 负的会话 id（群、频道）当位置参数收下，不当成选项；`--fake` 场景目录还没做 → `not_implemented`
+/// 负的会话 id（群、频道）当位置参数收下，不当成选项；`links`、`watch` 的 `--fake` 还没做 → `not_implemented`
+/// （`history` 在场景上真跑负会话 id，见 tests/fake_scenario.rs）
 #[test]
 fn history_takes_negative_chat_ids() {
     for args in [
-        &["history", "-1001", "--fake", "x"][..],
         &["links", "-1001", "7", "--fake", "x"][..],
         &["watch", "--chat", "-1001", "--fake", "x"][..],
     ] {

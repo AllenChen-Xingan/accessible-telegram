@@ -28,6 +28,7 @@ mod deadlines;
 mod delete;
 mod download;
 mod edit;
+mod fake_run;
 mod forward;
 // 读消息的流程只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]

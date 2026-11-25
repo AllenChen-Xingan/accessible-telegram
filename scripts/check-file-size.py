@@ -106,7 +106,7 @@ def save(path: str, files: dict[str, int], note: str) -> None:
 
 SELF = "scripts/check-file-size.py"
 # 「门槛」本身：这些文件的任何改动都可能让门槛变松（上限、范围、比对逻辑、自测、CI 怎么调用），PR 改了就要标签
-GATE_FILES = (SELF, "scripts/check-sources.py", "scripts/schema-stamp.py", "scripts/tests", ".github/workflows/arch.yml",
+GATE_FILES = (SELF, "scripts/check-sources.py", "scripts/check-fixtures.py", "scripts/schema-stamp.py", "scripts/tests", ".github/workflows/arch.yml",
               ".github/workflows/arch-guard.yml", "scripts/arch-guard-auth.sh", "clippy.toml")  # clippy.toml：disallowed-methods 等编译期门槛
 
 

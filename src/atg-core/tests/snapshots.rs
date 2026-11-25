@@ -553,7 +553,7 @@ fn poll_counts_follow_update_message_content() {
     assert!(full.contains("共 10 人投票"), "{full}");
 }
 
-/// 「谁投了」（`recent_voter_ids`）有意不收：夹具 4001 的投票与选项上都带了投票人 424242，树、JSON、读法里都不能出现
+/// 「谁投了」（`recent_voter_ids`）有意不收：夹具 4001 的投票与选项上都带了投票人 99001，树、JSON、读法里都不能出现
 /// （隐私守卫在 `tdjson/interactive.rs` 的 `poll()`；#13 自审第 6 轮）
 #[test]
 fn voters_never_reach_the_tree() {
@@ -569,7 +569,7 @@ fn voters_never_reach_the_tree() {
         speech::detail(poll, &cx()),
         speech::full(poll, &revealed()),
     ] {
-        assert!(!out.contains("424242"), "投票人漏了：{out}");
+        assert!(!out.contains("99001"), "投票人漏了：{out}");
         assert!(!out.contains("voter"), "投票人字段漏了：{out}");
     }
 }

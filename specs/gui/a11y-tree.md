@@ -139,15 +139,15 @@
 
 **两层共同**：
 
-- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；场景目录建好之前它借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`。它存成 insta 快照（insta 是 Rust 的快照测试库；`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
+- 文件第一行：`# gui-schema v<GUI_SCHEMA_V> · gpui <commit> · fixture <场景>`。**纯函数层快照**（`atg-gui-spec` 的投影快照，没有真跑 GPUI，`docs/plan/012_gui-ssot.md` 第四节）正文用同一套 GPUI 层格式，`gpui` 那一格固定写 `projection`；它现在借 `atg-core` 的读法夹具（`src/atg-core/fixtures/speech/<名>.json`），`fixture` 一格写成 `speech/<名>`；场景目录已经有了（#169），投影快照改认场景放在 M3.1 的树导出那一块（`atg-gui` 建起来时一起改）。它存成 insta 快照（insta 是 Rust 的快照测试库；`src/atg-gui-spec/tests/snapshots/*.snap`，文件开头是 insta 自己的头信息，`# gui-schema` 是正文第一行），不是 `<场景>.gpui.txt`；`check-a11y-tree.py` 只读真窗口导出
 - 去掉几何位置、时间戳、GPUI 内部节点号（每次都变）；节点用标识定位
 - **Live 节点另记一行**：GPUI 的树导出看不到 `live` 字段（exp001 末段），在它那行后加 `live=polite` / `live=assertive`，由导出器从播报器自己的记录补上
 - 没有标识的节点（纯装饰容器）怎么写，见各层格式那段（GPUI 层：不写标识一格）；`check-a11y-tree.py` 只对能操作的角色查标识
 
-**例**（GPUI 层，场景 `basic-3-chats`，进了「林小雨」的会话，名称是读法草稿）：
+**例**（GPUI 层，**示意**：不是哪个夹具的真实导出，条数、时间、名称都是编的，名称是读法草稿；真实导出见 M3.1 后面的 PR 入库的 `src/atg-gui/tests/a11y/`）：
 
 ```
-# gui-schema v1 · gpui 79fe6a6 · fixture basic-3-chats
+# gui-schema v1 · gpui 79fe6a6 · fixture <场景>
 Window window
   Navigation region-chats "会话"
     List chats "会话" active=chat:101
@@ -161,7 +161,7 @@ Window window
   Status status "已连接"
 ```
 
-（窗口名「无障碍 Telegram」在 macOS 层是 NSWindow 标题，不在 GPUI 根节点上，所以 GPUI 层这一行没有名称；macOS 层快照里记 `AXWindow "无障碍 Telegram"`。虚拟化：屏幕外的项不在树里，`001` 第二节第 1 小节；所以快照只反映可见区，场景要设计得让要测的项在可见区内。）
+（「2 条未读」对得上：「未读：」只加在**第一条**未读上（B19-7），它后面的 1002 也算未读，只是不再加前缀。窗口名「无障碍 Telegram」在 macOS 层是 NSWindow 标题，不在 GPUI 根节点上，所以 GPUI 层这一行没有名称；macOS 层快照里记 `AXWindow "无障碍 Telegram"`。虚拟化：屏幕外的项不在树里，`001` 第二节第 1 小节；所以快照只反映可见区，场景要设计得让要测的项在可见区内。）
 
 ## 五、正例与反例
 

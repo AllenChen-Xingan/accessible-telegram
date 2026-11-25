@@ -4,7 +4,7 @@
 //! `classify` → 序号 → 三线合成 → 事件流。所以假后端测到的监督、序号、故障广播就是正式的那份。
 //! 不碰 tdlib-rs 的全局收线程，测试可以并行跑多个。
 //!
-//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）与假时钟留给用到它的块（CLI `--fake`）。
+//! 能编排：`start` 的结果（成功 / 指定错误 / 一直不应答）、`shutdown` 卡住、收线程崩溃、来源断掉；每次调用记账（[`FakeBackend::calls`]）。场景目录（`fixtures/scenarios/`）由 `scenario.rs` 读、装进来（`atg-cli --fake`，#169）；假时钟与时间线留给用到它的块。
 //!
 //! 登录（第 4 块）：[`FakeBackend::set_auth`] 给一个假账号 [`FakeAuth`]，`start` 后自己推到 `wait_phone`
 //! （已登录的推到 `ready`）；每步提交按账号核对，对了就推下一步的授权状态（TDLib JSON 形状，带提示字段，
@@ -23,7 +23,7 @@
 //! 文件分工（#60 R7）：根上留共用状态（[`FakeBackend`] 的字段、收线程）、几个各处都用的内部助手（`started`、`injected`、
 //! `ready_or_401`、`find_message`……）和 `Backend` 的实现；`Backend` 方法的主体放在子模块，根上一行转给它的 `do_*`。
 //! `script.rs` 测试用的设置方法 · `login.rs` 登录 · `read.rs` 会话与历史 · `submit.rs` 交出口 · `edit.rs` 编辑 ·
-//! `files.rs` 文件与语音 · `upload.rs` 上传进度 · `caps.rs` 消息能力 · `call.rs` 记账
+//! `files.rs` 文件与语音 · `upload.rs` 上传进度 · `caps.rs` 消息能力 · `call.rs` 记账 · `scenario.rs` 场景夹具（读 `fixtures/scenarios/<名>/`、装进假后端，`atg-cli --fake` 与 `atg-gui --fixture` 共用）
 
 use crate::auth::{self, AuthPrompt};
 use crate::backend::{
@@ -54,6 +54,7 @@ mod edit;
 mod files;
 mod login;
 mod read;
+mod scenario;
 mod script;
 mod submit;
 mod upload;
@@ -61,6 +62,7 @@ mod upload;
 pub use call::Call;
 pub use caps::Cap;
 pub use login::FakeAuth;
+pub use scenario::Scenario;
 
 /// 一次真发送之后「TDLib」怎么推结果
 #[derive(Debug, Clone, PartialEq, Eq)]

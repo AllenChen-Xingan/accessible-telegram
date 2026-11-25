@@ -23,5 +23,7 @@ jobs:
       # 「门槛不许被悄悄放宽」在 arch-guard.yml（pull_request_target，跑 main 上那份，PR 改不到）
       - name: 正本比对（契约表 ↔ 代码）
         run: python3 scripts/check-sources.py
+      - name: 夹具隐私（名字只取 names.txt、无真号码 / 邮箱 / 链接、id 在保留区间）
+        run: python3 scripts/check-fixtures.py
       - name: 界面自描述金样的内容哈希（内容变了哈希没跟着改就红）
         run: python3 scripts/schema-stamp.py check src/atg-gui-spec/tests/golden/gui-schema.json

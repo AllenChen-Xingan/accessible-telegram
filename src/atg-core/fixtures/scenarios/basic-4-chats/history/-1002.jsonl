@@ -1,0 +1,1 @@
+{"@type": "message", "id": 3001, "sender_id": {"@type": "messageSenderChat", "chat_id": -1002}, "chat_id": -1002, "is_outgoing": false, "is_pinned": false, "date": 1792754460, "edit_date": 0, "media_album_id": "0", "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": "天气预报：周六全天晴", "entities": []}}}

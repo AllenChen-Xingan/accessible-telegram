@@ -31,34 +31,18 @@
 pub mod td_json;
 
 use crate::config::{Profile, ServerKind};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
-/// 一个新的空临时目录：`系统临时目录/atg-<tag>-<进程号>-<本进程第几个>`。先删同名残留再建。
+/// 一个新的空临时目录：`系统临时目录/atg-<tag>-<进程号>-<本进程第几个>`，权限 0700。正式代码那一份是
+/// [`crate::config::private_temp_dir`]（返回 `Result`），这里只是测试包装：出错就 panic（#60 R3；PR-2 arch 审定把实现挪进 config）。
 ///
 /// 同一进程里每次调用都不同名（计数器），并行跑的测试、同一个 `tag` 用两次都不会撞；不同进程靠进程号分开。
-/// 测完不删（留着便于查失败；macOS 的系统临时目录会被定期清，CI 每次是新机器）。目录在 `std::env::temp_dir()` 下
+/// 同名残留先删，删不掉就 panic——绝不把一个删了一半、还留着旧东西的目录当成新的交出去（codex 044 第 1 轮 #1）。
+/// 测完不删（留着便于查失败；macOS 的系统临时目录会被定期清，CI 每次是新机器）
 pub fn temp_dir(tag: &str) -> PathBuf {
-    static N: AtomicU64 = AtomicU64::new(0);
-    let d = std::env::temp_dir().join(format!(
-        "atg-{tag}-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    fresh(&d);
-    d
-}
-
-/// 把 `d` 弄成一个空目录：有残留就删（进程号会被重用，可能撞上上一次留下的），删不掉就报错——绝不把一个
-/// 删了一半、还留着旧东西的目录当成新的交出去（codex 044 第 1 轮 #1）。不存在算删好了
-fn fresh(d: &Path) {
-    match std::fs::remove_dir_all(d) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => panic!("testkit：清理残留的临时目录 {} 失败：{e}", d.display()),
-    }
-    if let Err(e) = std::fs::create_dir_all(d) {
-        panic!("testkit：建临时目录 {} 失败：{e}", d.display());
+    match crate::config::private_temp_dir(tag) {
+        Ok(d) => d,
+        Err(e) => panic!("testkit：建临时目录（tag {tag}）失败：{}", e.code()),
     }
 }
 
@@ -89,7 +73,7 @@ mod tests {
     fn leftover_is_wiped() {
         let d = temp_dir("testkit-left");
         std::fs::create_dir_all(d.join("old/deep")).unwrap();
-        fresh(&d);
+        crate::config::fresh_private_dir(&d).unwrap();
         assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
     }
 
@@ -105,7 +89,7 @@ mod tests {
         std::fs::create_dir_all(locked.join("inner")).unwrap();
         // 子目录去掉全部权限：普通用户删不掉里面的东西，remove_dir_all 会失败
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-        let r = std::panic::catch_unwind(|| fresh(&d));
+        let r = crate::config::fresh_private_dir(&d);
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
         let _ = std::fs::remove_dir_all(&d);
         assert!(r.is_err(), "删不掉残留时必须报错，不能把旧目录当新的");

@@ -27,7 +27,7 @@
 | 焦点触发事件 | snake_case，「名词 + 过去分词」（发生了什么） | `chat_opened` · `message_sent` · `dialog_closed` |
 | 播报来源 | snake_case，与 `notify` 判定或树节点种类同名 | `new_message` · `status_bad` · `send_ok` |
 | 文案 `TextId` | 大驼峰；JSON 里 snake_case | `SendButton` ↔ `send_button` |
-| 树快照 | `<场景名>.gpui.txt` / `<场景名>.macos.txt`，场景名同夹具（`specs/contracts/testing.md` 第一节第 3、6 小节） | `basic-3-chats.macos.txt` |
+| 树快照 | `<场景名>.gpui.txt` / `<场景名>.macos.txt`，场景名同夹具（`specs/contracts/testing.md` 第一节第 3、6 小节） | `basic-4-chats.macos.txt` |
 
 本目录的文件是规约，**不编号、不带日期**（`specs/README.md`「命名」）。
 
