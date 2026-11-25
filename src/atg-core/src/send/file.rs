@@ -333,9 +333,11 @@ async fn hand_over<B: Backend>(
             temp: m.id,
             old: None,
         }),
-        Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
-            what: "send_answer_shape",
-        }),
+        Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted | Answer::Callback(_)) => {
+            Err(CoreError::Internal {
+                what: "send_answer_shape",
+            })
+        }
         Err(e) => Err(submit_failed(b, mode, plan, e)),
     }
 }

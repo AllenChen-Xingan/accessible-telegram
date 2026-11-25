@@ -47,6 +47,19 @@ pub struct SendParams {
     /// 读法时区（全局选项，发起方填进来）
     #[serde(default)]
     pub tz: Option<String>,
+    /// 是 `press` 按键盘文字按钮转来的（#13 13b-2）：计划里说明按的是哪个按钮、键盘换没换过
+    #[serde(default)]
+    pub press: Option<KeyPress>,
+}
+
+/// 按键盘文字按钮 = 以你的名义发出按钮上的字（`press` 转给 `send`）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyPress {
+    /// 第几个按钮（1 起）与那条消息的 id
+    pub button: usize,
+    pub message_id: i64,
+    /// 会话此刻的键盘（序列化为 `here` / `replaced` / `hidden`）。后两种照原文字发（人定 B 2026-11-24），计划里说一句
+    pub keyboard: atg_core::send::press::KeyboardNow,
 }
 
 /// 一次 `resend` 要的东西
@@ -76,6 +89,7 @@ pub fn send_params(a: &crate::args::SendArgs, tz: Option<&str>) -> Result<SendPa
         dry_run: a.dry_run,
         again: a.again,
         tz: tz.map(str::to_owned),
+        press: None,
     })
 }
 
@@ -251,7 +265,13 @@ fn run_send<B: Backend>(
             .and_then(|m| project_one(feed, m))
             .map(|d| speech::brief(&d, &cx).replace('\n', " ")),
     };
-    emit_plan(sink, format, &plan, reply_brief.as_deref());
+    emit_plan(
+        sink,
+        format,
+        &plan,
+        reply_brief.as_deref(),
+        p.press.as_ref(),
+    );
     if p.dry_run {
         finish_line(
             sink,
@@ -316,11 +336,21 @@ fn run_send<B: Backend>(
     }
 }
 
-fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &TextPlan, reply_brief: Option<&str>) {
+fn emit_plan(
+    sink: &mut dyn Sink,
+    format: Format,
+    plan: &TextPlan,
+    reply_brief: Option<&str>,
+    press: Option<&KeyPress>,
+) {
     match format {
         Format::Json => {
             let mut d = send::plan_json(plan);
             d["reply_brief"] = json!(reply_brief);
+            if let Some(k) = press {
+                d["press"] = json!({"button": k.button, "message_id": k.message_id,
+                    "keyboard": k.keyboard});
+            }
             emit_to(sink, &envelope("plan", d));
         }
         Format::Text => {
@@ -337,8 +367,24 @@ fn emit_plan(sink: &mut dyn Sink, format: Format, plan: &TextPlan, reply_brief: 
                 }
                 _ => String::new(),
             };
+            // 按键盘文字按钮转来的：先说清是按了哪个按钮、按下就是以你的名义发出这句话；键盘换过的也说（人定 B）
+            let head = press
+                .map(|k| {
+                    // 照旧文字发出去：机器人可能已不认这句话，但它照样以你的名义出现在会话里
+                    use atg_core::send::press::KeyboardNow;
+                    let swap = match k.keyboard {
+                        KeyboardNow::Replaced => "键盘已更换，照原文字发，机器人可能已不认这句；",
+                        KeyboardNow::Hidden => "键盘已收起，照原文字发，机器人可能已不认这句；",
+                        KeyboardNow::Here => "",
+                    };
+                    format!(
+                        "按 id {} 那条的第 {} 个键盘按钮 = 以你的名义发出按钮上的字；{swap}",
+                        k.message_id, k.button
+                    )
+                })
+                .unwrap_or_default();
             sink.out(&format!(
-                "将发给 {}：{}{reply}{topic}。{}；{}",
+                "{head}将发给 {}：{}{reply}{topic}。{}；{}",
                 send::target_zh(plan.target()),
                 atg_core::gate::visible(plan.text()),
                 confirm_zh(plan.mode()),

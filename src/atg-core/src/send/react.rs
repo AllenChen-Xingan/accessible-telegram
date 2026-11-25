@@ -406,7 +406,7 @@ async fn react_inner<B: Backend>(
                 .after_outcome(mode, plan, 0, None, Outcome::Succeeded, None);
             Ok(mode)
         }
-        Ok(Answer::Message(_) | Answer::Resent(_) | Answer::Deleted) => {
+        Ok(Answer::Message(_) | Answer::Resent(_) | Answer::Deleted | Answer::Callback(_)) => {
             one.armed = false;
             Err(CoreError::Internal {
                 what: "react_answer_shape",

@@ -236,9 +236,11 @@ async fn preview_check<B: Backend>(b: &B, plan: &TextPlan) -> Result<(), CoreErr
         Answer::Message(m) => {
             check_kept(plan, &m).map_err(|reason| CoreError::SendRefused { reason, last: None })
         }
-        Answer::Resent(_) | Answer::Done | Answer::Deleted => Err(CoreError::Internal {
-            what: "preview_answer_shape",
-        }),
+        Answer::Resent(_) | Answer::Done | Answer::Deleted | Answer::Callback(_) => {
+            Err(CoreError::Internal {
+                what: "preview_answer_shape",
+            })
+        }
     }
 }
 
@@ -302,9 +304,11 @@ async fn hand_over<B: Backend>(
             temp: m.id,
             old: None,
         }),
-        Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted) => Err(CoreError::Internal {
-            what: "send_answer_shape",
-        }),
+        Ok(Answer::Resent(_) | Answer::Done | Answer::Deleted | Answer::Callback(_)) => {
+            Err(CoreError::Internal {
+                what: "send_answer_shape",
+            })
+        }
         Err(e) => Err(submit_failed(b, mode, plan, e)),
     }
 }

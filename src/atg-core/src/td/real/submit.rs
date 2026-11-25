@@ -4,9 +4,10 @@
 
 use super::{TdBackend, requests};
 use crate::error::CoreError;
+use crate::link;
 use crate::logline::{self, Field};
-use crate::send::{Answer, Sealed, SealedKind};
-use tdlib_rs::{enums, functions};
+use crate::send::{Answer, CallbackReply, Sealed, SealedKind};
+use tdlib_rs::{enums, functions, types};
 
 impl TdBackend {
     pub(super) async fn submit_sealed(&self, req: Sealed<'_>) -> Result<Answer, CoreError> {
@@ -128,6 +129,52 @@ impl TdBackend {
                     .await?;
                 }
                 Ok(Answer::Done)
+            }
+            SealedKind::Callback { request } => {
+                let (chat, message, n, text) = crate::send::press::parse_request(request)?;
+                logline::info("send_submit", &[Field::Name("kind", "press")]);
+                // 回调数据只在这里现取、只交给 TDLib：不进树、不进 model、不进计划与留痕
+                let r = link::guard(
+                    self.shared.clone(),
+                    functions::get_message(chat, message, id),
+                )
+                .await?;
+                let m = r.map_err(|e| self.read_error("message", &e))?;
+                // 还没交出：名字不用 `td_message_reserialize_failed`（那个按「可能已交出」记账）
+                let raw = serde_json::to_value(&m).map_err(|_| CoreError::Internal {
+                    what: "press_message_reserialize_failed",
+                })?;
+                let data =
+                    crate::tdjson::callback_data(&raw, n, &text).ok_or(CoreError::InvalidSend {
+                        why: crate::error::InvalidSendWhy::Changed,
+                    })?;
+                let payload =
+                    enums::CallbackQueryPayload::Data(types::CallbackQueryPayloadData { data });
+                let none = |_: &Option<types::CallbackQueryAnswer>| vec![];
+                let a = self
+                    .detached(
+                        async move {
+                            match functions::get_callback_query_answer(chat, message, payload, id)
+                                .await
+                            {
+                                Ok(enums::CallbackQueryAnswer::CallbackQueryAnswer(a)) => {
+                                    Ok(Some(a))
+                                }
+                                // 机器人没回话：按下已送到（大总管定 2026-11-24：报成功、附一句没回话）
+                                Err(e) if crate::send::press::bot_silent(e.code, &e.message) => {
+                                    Ok(None)
+                                }
+                                Err(e) => Err(e),
+                            }
+                        },
+                        none,
+                    )
+                    .await?;
+                Ok(Answer::Callback(a.map(|a| CallbackReply {
+                    text: a.text,
+                    alert: a.show_alert,
+                    url: a.url,
+                })))
             }
             SealedKind::Vote { request } => {
                 let (chat, message, ids) = requests::vote(request)?;

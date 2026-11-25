@@ -174,7 +174,7 @@ pub trait Backend {
 
     /// 唯一的交出口：`sendMessage`（含 `only_preview` 预览，发文字与发文件）、`resendMessages`、`forwardMessages`、
     /// `editMessageText`、`deleteMessages`、`addMessageReaction` / `removeMessageReaction` 与 `setPollAnswer`（这两种应答
-    /// [`Answer::Done`]），与 `send::SealedKind` 的分支一一对应。[`Sealed`] 只能由
+    /// [`Answer::Done`]）、`getCallbackQueryAnswer`（按回调按钮，回调数据由交出口现取；应答 [`Answer::Callback`]），与 `send::SealedKind` 的分支一一对应。[`Sealed`] 只能由
     /// [`crate::send`] 在闸验过凭据后造（预览除外：预览不发），crate 外调不到
     async fn submit(&self, req: Sealed<'_>) -> Result<Answer, CoreError>;
 

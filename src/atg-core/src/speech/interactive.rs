@@ -149,7 +149,8 @@ fn blocked(b: &VoteBlock) -> &'static str {
     }
 }
 
-/// 详情里的按钮：「按钮 4 个：」再逐个「文字，按下会怎样」（按钮之间「；」），网址按钮读出地址（按钮文字常说不清去哪，
+/// 详情里的按钮：「按钮 4 个：」再逐个「第 N 个，文字，按下会怎样」（按钮之间「；」；编号即 `press` 的 N，跨行连续数，
+/// 自审 13b-2 第 1 轮 P2：不念编号，听的人得自己数，数错就按错），网址按钮读出地址（按钮文字常说不清去哪，
 /// 是「链接只读文字」的例外，第九节写明）
 pub(super) fn buttons_detail(k: &Keyboard) -> String {
     let head = match &k.kind {
@@ -161,7 +162,8 @@ pub(super) fn buttons_detail(k: &Keyboard) -> String {
         .rows
         .iter()
         .flatten()
-        .map(|b| format!("{}，{}", b.text.trim(), action(&b.action)))
+        .enumerate()
+        .map(|(i, b)| format!("第 {} 个，{}，{}", i + 1, b.text.trim(), action(&b.action)))
         .collect();
     // VoiceOver 不念括号（第九节）：按钮内用「，」，按钮之间用「；」，边界听得出来
     format!("{head} {} 个：{}", k.count(), list.join("；"))
