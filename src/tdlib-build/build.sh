@@ -5,7 +5,7 @@
 # 用法（在仓库任意位置跑都行）：
 #   bash src/tdlib-build/build.sh          # 编一次（约 3–4 分钟，M 系列 Mac）；最后一行打印 LOCAL_TDLIB_PATH
 #   bash src/tdlib-build/build.sh path     # 只打印最近一次编好的前缀（没有就报错、退出码 1）
-#   bash src/tdlib-build/build.sh link     # 只把常驻软链接 ~/.atg-dev/tdlib 指到最近一次编好的前缀，不重编
+#   bash src/tdlib-build/build.sh link     # 只把常驻软链接 ~/<dev-link>（现为 ~/.atg-dev/tdlib，正本 src/tdlib-build/dev-link）指到最近一次编好的前缀，不重编
 #   export LOCAL_TDLIB_PATH="$(bash src/tdlib-build/build.sh path)"
 #
 # 需要：git、cmake、gperf、Homebrew 的 openssl@3（含静态库），以及开发签名身份（bash scripts/setup-dev-codesign.sh 检查并给步骤；
@@ -16,8 +16,8 @@
 # 强化运行时（#42）：开发版签名开了 `--options runtime`，库验证只许载入苹果签的、或与程序同团队号签的库，
 #   `DYLD_LIBRARY_PATH` 也被忽略。所以这里：① OpenSSL 静态链进 libtdjson（Homebrew 的 libssl / libcrypto 是临时签名、
 #   没有团队号，动态链会被拒载）；② 编完用开发身份（scripts/dev-codesign-id.sh）给 libtdjson 签名，签在算 sha256 之前；
-#   ③ 维护常驻、不带空格的软链接 ~/.atg-dev/tdlib → 最新前缀，程序里写死的 rpath 指它（src/atg-cli/build.rs、
-#   src/atg-core/build.rs）。不加 disable-library-validation：加了，同用户可写目录里被换掉的库也能进来。
+#   ③ 维护常驻、不带空格的软链接 ~/.atg-dev/tdlib → 最新前缀，程序里写的 rpath 指它（两个包共用的构建脚本
+#   src/tdlib-build/rpath.rs；路径的正本是 src/tdlib-build/dev-link，#170）。不加 disable-library-validation：加了，同用户可写目录里被换掉的库也能进来。
 #   依据：docs/experiments/exp005-keychain-acl/README.md「开强化运行时要做的」。
 #
 # 项目路径末尾有空格（state/memory/20261025-path-trailing-space.md）：TDLib 链接参数
@@ -53,10 +53,29 @@ latest_prefix() {
   return 1
 }
 
-# 常驻软链接（#42）：程序的 rpath 写死指 ~/.atg-dev/tdlib/lib。那里已有东西但不是软链接 → 不碰，报错退出
-dev_link="${HOME}/.atg-dev/tdlib"
+# 常驻软链接相对家目录的路径：唯一正本是 src/tdlib-build/dev-link（程序的 rpath 也从它拼，见 rpath.rs，#170）。
+# 内容不合规则就报错退出，不悄悄用默认值
+dev_link_rel() {
+  local f="${root}/src/tdlib-build/dev-link" rel
+  [[ -r "${f}" ]] || die "读不了 ${f}"
+  # 规则（三处同一条，见 src/tdlib-build/README.md）：整个文件 = 一行路径 + 可有可无的一个换行；不 trim。
+  # `$(cat; printf x)` 再去掉 x：保住文件末尾的换行原样（`$( )` 本身会吞掉所有末尾换行，那样多出的空行就查不出来）
+  rel="$(cat "${f}"; printf x)"
+  rel="${rel%x}"
+  rel="${rel%$'\n'}"
+  # 字符只许 ASCII 字母、数字和 . _ / -（白名单，按 C locale 判，不随系统语言变；逗号、空白、非 ASCII 都拒，#170 codex 072）。
+  # 前后各补一个 / 再查：出现 // 就是开头的 /、末尾的 / 或连着的 /；出现 /./ 就是有 . 这一段（同 rpath.rs）
+  (LC_ALL=C; [[ "${rel}" =~ ^[A-Za-z0-9._/-]+$ && "${rel}" != *..* && "/${rel}/" != *//* && "/${rel}/" != */./* ]]) \
+    || die "${f} 的内容不对（要恰好一行相对家目录的路径：只许字母、数字和 . _ / -，每一段非空、不是 . 也不含 ..）"
+  printf '%s' "${rel}"
+}
+# 常驻软链接（#42）：程序的 rpath 指 ~/<dev-link>/lib。那里已有东西但不是软链接 → 不碰，报错退出。
+# 只在真要动软链接时才读 dev-link（`path` 子命令用不到它，dev-link 坏了也不该连累它）
 update_link() {
-  local target="$1"
+  local target="$1" dev_link
+  # 赋值语句的退出码就是命令替换的退出码：dev_link_rel 里 die 了，set -e 在这里停住。别改成 `local dev_link="$(…)"`
+  # （那样退出码是 local 的、恒为 0，就停不住了）
+  dev_link="${HOME}/$(dev_link_rel)"
   if [[ -e "${dev_link}" && ! -L "${dev_link}" ]]; then
     die "${dev_link} 已存在且不是软链接，不覆盖；先看看它是什么"
   fi

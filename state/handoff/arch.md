@@ -19,6 +19,34 @@
 - ✅ codex 070（diff 类，medium）：两轮零发现，收敛
 - PR 草稿：MAIN 下 `_tmp/20261124-b21/r4b-pr-arch.md`
 - 排在 2a 后面的（大总管派，2026-11-24）：等 13b-2 合进 main 以后，做 cli `main.rs` → `lib.rs` 的纯挪动，单独开一个 PR，codex 071（照 R7 的只挪不改，附 `--color-moved` 证据）；做完接着做 R4 2b，那时 `mod target` 加在 `lib.rs` 里。依据：gui PR-4 的边界方案（MAIN 下 `_tmp/20261124-b21/plan-m31-pr4-boundary.md`），我审过的意见已经由大总管转给 gui
+## b21 · #170 常驻软链接路径一份正本、两个 build.rs 合一（2026-11-24，工作副本 `atg-wt/arch-170`，分支 `chore/170-dev-link`，从 main 8b8b5de 起；codex 072）
+
+- 计划已批：MAIN 下 `_tmp/20261124-b21/plan-170-arch.md`。正本用纯文本 `dev-link`；两份 shell 各自读；Cargo 要是不认包目录外的构建脚本路径，就退回两个 3 行的 `build.rs`
+- 检查点 ea8c9f3（大总管提交）。名额内全量检查与实测都过了：test 772 过；默认构建 LC_RPATH 为 0；第二次构建 Fresh；touch dev-link、touch rpath.rs、改 HOME 都让两个包重跑；带 tdlib 的构建 rpath 只有一条；check-harden 全过；Cargo 认包目录外的构建脚本路径，没走退路
+- 检查点里的改动：
+  - 新加 `src/tdlib-build/dev-link`（一行 `.atg-dev/tdlib`）和 `src/tdlib-build/rpath.rs`（两包共用的构建脚本，用 `include_str!` 读 dev-link）
+  - 两个包的 `Cargo.toml` 各加一行 `build = "../tdlib-build/rpath.rs"`，删掉两个 `build.rs`。`cargo metadata` 能过，也就是清单认这个写法
+  - `build.sh`、`check-harden.sh` 改成读 dev-link：空的、绝对路径、含 `..`、含空白、多于一行，一律报错退出。在临时副本里 7 种情况都试过
+  - `testing.md` 里「强化运行时」那一行跟着改，加一条修订记录
+- 事实（和大总管一起改正过一次）：rpath 是构建时拼好的绝对路径，所以带 TDLib 的开发版二进制里有构建机的家目录。#42 起就是这样，不是这次带来的，已并进 #167
+- 自审第 1 轮：P0/P1 零，P2×4，P3×8。改了：
+  - **三处校验统一成一条规则**：整个文件就是一行路径，末尾可以有、也可以没有一个换行；不 trim；不许空、不许绝对路径、不许含 `..`、不许含空白。规则写在新文件 `src/tdlib-build/README.md` 里
+    - Rust 侧原来不合规则只打警告，现在构建直接失败；没有 HOME 也一样
+    - shell 侧用 `$(cat; printf x)` 保住末尾换行，`check-harden` 也补上了多行检查
+    - 13 种样例三处结论一致（Rust 那一列是用同一个表达式另编的小程序测的；真的构建脚本会不会让构建失败，还要实测）
+  - `build.sh` 只在真要动软链接时才读 dev-link，`path` 子命令不受影响；`set -e` 靠什么停住、为什么不能写成 `local x="$(…)"`，都加了注释
+  - 注释、头注释、`testing.md` 修订记录、`cog.md` 跟着改，#167 的说法改准
+  - 自审修正 4793072（大总管提交）。名额内跑完六步实测，全过；dev-link 改回去后 od 核过
+- codex 072 第 1 轮：P2×2，都属实
+  - shell 的 `[[:space:]]` 随 locale 变，会放过不换行空格
+  - 逗号会被 `-Wl,` 拆开
+  - 改法：三处都换成字符白名单（ASCII 字母、数字和 `. _ / -`），shell 在 `LC_ALL=C` 下判。15 种样例在两种 locale 下三处一致
+  - 修正 3a89c68（大总管提交），名额内实测全过（带逗号的 dev-link 会让 tdlib 构建失败；改回去后 od 核过）
+- codex 072 第 2 轮：P0/P1 零，停止线满足；P2×1 属实：末尾带 `/` 的路径能过校验，但 `ln` 和 check-harden 的拼法对不上。已当场改：三处都要求每一段非空、不是 `.`（前后补 `/` 再查有没有 `//`、`/./`）。18 种样例在两种 locale 下三处一致
+  - 修正 6fda775（大总管提交），名额内实测全过
+- codex 072 第 3 轮：P0/P1 零；P2×1 属实：dev-link 要是不是 UTF-8，`include_str!` 会连默认构建一起弄挂。已改成 `include_bytes!`，开了 tdlib 特性之后才解码、校验。修正 6a7dd20，名额内实测全过（UTF-16 的 dev-link：默认构建能编过，tdlib 构建会失败）
+- ✅ codex 072 第 4 轮：P0/P1 零，四轮都没有 P0/P1，收敛。剩下 1 条 P2（两份 shell 读文件时丢掉 NUL，没有 BOM 的 UTF-16 能骗过 shell）按大总管定开成 #186
+- PR 草稿：MAIN 下 `_tmp/20261124-b21/170-pr-arch.md`
 
 ## b21 · R3b 第一刀：造 TDLib JSON 的测试助手（2026-11-24，工作副本 `atg-wt/arch-r3b`，分支 `test/r3b-td-helpers`，从 main b9f6459 起；codex 069）
 
