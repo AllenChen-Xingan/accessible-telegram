@@ -436,6 +436,7 @@ fn execute<B: Backend>(
         }
         "react" | "reactions" => crate::react::serve(ctx, &req.command, fa, sink, started),
         "vote" => crate::vote::serve(ctx, fa, sink, started),
+        "press" => crate::press::serve(ctx, fa, sink, started),
         "links" => {
             let code = match serde_json::from_value::<LinksArgs>(fa.params) {
                 Err(_) => fail_with_to(sink, format, &bad("ipc_bad_request")),

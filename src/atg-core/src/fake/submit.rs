@@ -79,6 +79,34 @@ impl FakeBackend {
                 self.apply_reaction(request)?;
                 Ok(Answer::Done)
             }
+            SealedKind::Callback { request } => {
+                let (chat, message, n, text) = crate::send::press::parse_request(request)?;
+                lock(&self.calls).push(Call::Submit {
+                    chat,
+                    preview: false,
+                    resend: false,
+                });
+                if let Some(e) = self.scripted_reject() {
+                    return Err(e);
+                }
+                // 同真后端：交出口现取那条消息、核对按钮文字、拿回调数据；记下的是真要交给 TDLib 的那份
+                let m = self
+                    .find_message(MsgId {
+                        chat_id: chat,
+                        message_id: message,
+                    })
+                    .ok_or(CoreError::NotFound {
+                        what: "message",
+                        td: None,
+                    })?;
+                let data =
+                    crate::tdjson::callback_data(&m, n, &text).ok_or(CoreError::InvalidSend {
+                        why: crate::error::InvalidSendWhy::Changed,
+                    })?;
+                lock(&self.submitted).push(json!({"@type": "getCallbackQueryAnswer", "chat_id": chat,
+                    "message_id": message, "payload": {"@type": "callbackQueryPayloadData", "data": data}}));
+                Ok(Answer::Callback(lock(&self.callback_reply).clone()))
+            }
             SealedKind::Vote { request } => {
                 let chat = request["chat_id"].as_i64().unwrap_or(0);
                 lock(&self.calls).push(Call::Submit {

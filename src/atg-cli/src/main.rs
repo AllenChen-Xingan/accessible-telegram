@@ -41,6 +41,7 @@ mod out;
 // 放语音的准备只有真实后端调；不编 TDLib 时只有单测用它
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod play;
+mod press;
 // 转发与表情回应的流程只有真实后端与单测调
 #[cfg_attr(not(feature = "tdlib"), allow(dead_code))]
 mod forwarding;
@@ -132,6 +133,7 @@ fn main() -> ExitCode {
         Command::Forward(a) => forwarding::run(&cli.global, format, &a, started),
         Command::SendFile(a) => send_file::run(&cli.global, format, &a, started),
         Command::Vote(a) => vote::run(&cli.global, format, &a, started),
+        Command::Press(a) => press::run(&cli.global, format, &a, started),
         Command::Resend(a) => run_resend(&cli.global, format, &a, started),
         Command::React(a) => react::run(&cli.global, format, &a, started),
         Command::Reactions(a) => react::run_list(&cli.global, format, &a, started),

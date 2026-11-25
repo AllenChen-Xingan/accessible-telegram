@@ -144,6 +144,8 @@ pub struct FakeBackend {
     preview_hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     /// 接下来的几次真发送怎么推结果（取完默认成功）
     send_script: Mutex<VecDeque<FakeSend>>,
+    /// 按回调按钮时机器人回什么（[`FakeBackend::script_callback`]；没设 = 机器人没回话）
+    callback_reply: Mutex<Option<crate::send::CallbackReply>>,
     next_id: Mutex<i64>,
     /// 真交出去的请求（测试核对交给「TDLib」的就是确认过的那份）
     submitted: Mutex<Vec<Value>>,
@@ -202,6 +204,7 @@ impl FakeBackend {
             preview_drops: Mutex::new(VecDeque::new()),
             preview_hook: Mutex::new(None),
             send_script: Mutex::new(VecDeque::new()),
+            callback_reply: Mutex::new(None),
             next_id: Mutex::new(1_000_000),
             submitted: Mutex::new(Vec::new()),
         })
@@ -453,11 +456,11 @@ impl Backend for FakeBackend {
         self.started()?;
         self.ready_or_401("chat_target").await?;
         let updates = lock(&self.chat_info).get(&chat).cloned();
-        let c = updates
+        let (c, c_raw) = updates
             .iter()
             .flatten()
             .find(|u| u["@type"] == "updateNewChat" && u["chat"]["id"].as_i64() == Some(chat))
-            .map(|u| crate::tdjson::chat_object(&u["chat"]))
+            .map(|u| (crate::tdjson::chat_object(&u["chat"]), u["chat"].clone()))
             .ok_or(CoreError::NotFound {
                 what: "chat",
                 td: None,
@@ -468,6 +471,7 @@ impl Backend for FakeBackend {
             title: c.title,
             is_forum: lock(&self.forums).contains(&chat),
             saved: false,
+            keyboard_message_id: c_raw["reply_markup_message_id"].as_i64().unwrap_or(0),
         })
     }
 

@@ -333,14 +333,16 @@ async fn hand_over<B: Backend>(
             })
             .collect()),
         // 已交出、应答认不出：同条数对不上，按结果未知
-        Ok(Answer::Message(_) | Answer::Done | Answer::Deleted) => Err(submit_failed(
-            b,
-            mode,
-            plan,
-            CoreError::Internal {
-                what: "td_message_reserialize_failed",
-            },
-        )),
+        Ok(Answer::Message(_) | Answer::Done | Answer::Deleted | Answer::Callback(_)) => {
+            Err(submit_failed(
+                b,
+                mode,
+                plan,
+                CoreError::Internal {
+                    what: "td_message_reserialize_failed",
+                },
+            ))
+        }
         Err(e) => Err(submit_failed(b, mode, plan, e)),
     }
 }

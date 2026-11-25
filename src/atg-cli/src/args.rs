@@ -121,6 +121,9 @@ pub enum Command {
     SendFile(crate::send_file::SendFileArgs),
     /// 在一条投票里选一项或几项（写全文里读的第几项）。先输出一行 plan，直接投、不确认；测试服务器上只许收藏夹
     Vote(crate::vote::VoteArgs),
+    /// 按一条消息上的第几个按钮（详情里读的顺序）。回调按钮先输出一行 plan，直接按、不确认；键盘文字按钮 = 以你的名义发出
+    /// 按钮上的字（同 send）；网址、登录网址、复制文字、用户只读出。测试服务器上只许收藏夹
+    Press(crate::press::PressArgs),
     /// 重发发送失败的消息：先输出一行要重发什么（kind:"plan"），然后直接重发、逐条等结果（同 send，不确认）
     Resend(ResendArgs),
     /// 一条消息的全部细节（不标已读）
@@ -562,6 +565,7 @@ impl Command {
             Command::Forward(_) => "forward",
             Command::SendFile(_) => "send-file",
             Command::Vote(_) => "vote",
+            Command::Press(_) => "press",
             Command::Resend(_) => "resend",
             Command::Show(_) => "show",
             Command::Search(_) => "search",

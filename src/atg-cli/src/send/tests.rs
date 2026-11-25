@@ -62,6 +62,7 @@ fn params(chat: &str, text: &str) -> SendParams {
         dry_run: false,
         again: false,
         tz: Some("+08:00".into()),
+        press: None,
     }
 }
 
